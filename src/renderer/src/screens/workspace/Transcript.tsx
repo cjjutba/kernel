@@ -345,8 +345,8 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     await loadWorkspace(workspaceId)
     forked.current(next.id)
   }), [chatId, workspaceId])
-  // Only a workspace with its own worktree forks into a new one, and not the Lead's, which is on no branch (KERNEL-355). The new
-  // workspace opens while its setup runs.
+  // Only a workspace with its own worktree forks into a new one, and not a chat with Rowan's, which plans and hands off (KERNEL-405).
+  // The new workspace opens while its setup runs.
   const worktree = ws?.mode === 'worktree' && !ws.lead
   const forkWorkspace = useCallback((itemId: string) => attempt('Could not fork into a new workspace', async () => {
     const next = await call('workspaces.fork', { chatId, itemId })

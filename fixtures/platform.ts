@@ -1,4 +1,5 @@
-import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
@@ -150,6 +151,27 @@ const bigTerminal: Partial<Fixture> = {
   terminalClis: [codex]
 }
 
+
+/** Rowan's chat in its own workspace while its setup runs, or once it failed with `code`, the first message in the queue (KERNEL-405). */
+function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number): Partial<Fixture> {
+  const queue = [{ id: 'q-lead', chatId: ids.leadChat, parts: [{ type: 'text' as const, text: 'Add PDF export to invoices. Spec first.' }], ts: at(10, 40) }]
+  return {
+    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
+    workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'rowan/add-pdf-export-to-invoices' }),
+    threads: [{ id: 't-lead', roomId: ids.roomA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
+    chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, title: 'New tab' } : c)),
+    items: {},
+    queue: { [ids.leadChat]: queue },
+    push: [
+      ...f.push,
+      { type: 'chat.queue', chatId: ids.leadChat, queue, why: 'setup' },
+      ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
+      ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
+    ],
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+  }
+}
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
@@ -298,6 +320,19 @@ export const platformFixtures: Record<string, Fixture> = {
     ],
     ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
   })),
+  // A chat with Rowan sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
+  WorkspaceLeadSetup: scene((f) => leadSetup(f, [
+    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
+    { line: 'Progress: resolved 812, reused 806, downloaded 6, added 0', stream: 'stdout' }
+  ])),
+  // Its setup failed: the banner and Run again, as for a teammate, and the first message still waits.
+  WorkspaceLeadSetupFailed: scene((f) => leadSetup(f, [
+    { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
+    { line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' },
+    { line: 'Setup failed with exit code 1', stream: 'stderr' }
+  ], 1)),
+  // A worktree deleted outside Kernel (KERNEL-291): the banner says so and offers Archive, and the composer waits.
+  WorkspaceFolderMissing: scene((f) => ({ workspaces: withWorkspace(f, ids.table, { folderGone: true }), ui: open })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
   WorkspaceGitHubPaused: scene(() => ({ ...workspaceFixtures.WorkspacePRReady, github: { pausedUntil: next(15, 41) } })),

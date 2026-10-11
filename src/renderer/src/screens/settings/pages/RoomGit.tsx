@@ -4,6 +4,7 @@ import { call } from '../../../api'
 import { SegmentedControl, Select } from '../../../ui'
 import { isOverride, LinesField, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
+import { BranchPattern } from './Git'
 
 const USE_DEFAULT = ''
 const withCurrent = (list: string[], current: string) => [...new Set([current, ...list])].map((v) => ({ value: v, label: v }))
@@ -23,7 +24,7 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const set = (patch: Partial<Record<keyof RoomSettings['workspace'], string | boolean | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
   const reset = (key: 'mode' | 'baseRef' | 'remote') => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
   // The source line when the room's file says where the value is from, else what the app default is.
-  const note = (key: 'mode' | 'baseRef' | 'remote' | 'deleteBranchOnArchive' | 'archiveOnMerge', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
+  const note = (key: 'mode' | 'baseRef' | 'remote' | 'deleteBranchOnArchive' | 'archiveOnMerge' | 'leadWaitForSetup' | 'archiveChatWorkspaces', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
   // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
   const saveOptional = (lines: string[]) => void patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
   const base = rs?.workspace.baseRef ?? app.baseRef
@@ -57,6 +58,17 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
             <p className="set-hint">One check name per line. <code>*</code> matches anything, like <code>Vercel*</code>. A check on this list that fails doesn’t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.</p>
           </>
         } />
+      </Section>
+      <Section title="Lead chats">
+        <Row label="Branch name pattern" source={sourceLine(rs, 'workspace.leadBranchPattern')} desc={sourceLine(rs, 'workspace.leadBranchPattern') ? undefined : `The app default is ${app.leadBranchPattern}`} onReset={isOverride(rs, 'workspace.leadBranchPattern') ? () => set({ leadBranchPattern: null }) : undefined}>
+          <BranchPattern value={rs?.workspace.leadBranchPattern ?? ''} label="Lead chat branch name pattern" placeholder={app.leadBranchPattern} save={(v) => set({ leadBranchPattern: v })} />
+        </Row>
+        <Row label="Wait for setup before the first message" {...note('leadWaitForSetup', app.leadWaitForSetup ? 'On' : 'Off')}>
+          <SegmentedControl label="Wait for setup before the first message" value={onOff(rs?.workspace.leadWaitForSetup)} onChange={(v) => set({ leadWaitForSetup: v ? v === 'on' : null })} options={ON_OFF} />
+        </Row>
+        <Row label="Archive a chat's workspaces with it" {...note('archiveChatWorkspaces', app.archiveChatWorkspaces ? 'On' : 'Off')}>
+          <SegmentedControl label="Archive a chat's workspaces with it" value={onOff(rs?.workspace.archiveChatWorkspaces)} onChange={(v) => set({ archiveChatWorkspaces: v ? v === 'on' : null })} options={ON_OFF} />
+        </Row>
       </Section>
     </RoomPage>
   )

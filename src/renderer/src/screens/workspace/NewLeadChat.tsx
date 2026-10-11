@@ -5,6 +5,7 @@ import { effortFor } from '@shared/effort'
 import { call, cleanError } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { leadOf, openLeadChat } from '../../lead'
+import { leadNewKey } from '../../components/sidebar/slots'
 import { Button, Icon, IconButton, useBusy } from '../../ui'
 import { briefParts, leadMessage } from '../new-workspace/brief'
 import { ChatWelcome, LEAD_SUGGESTIONS } from './ChatWelcome'
@@ -17,11 +18,12 @@ import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
 import './composer/composer.css'
 
 /**
- * New chat with Rowan, in the Lead's workspace when the room has no chat (NewChat.png, KERNEL-366). The welcome, a composer and the suggestions.
- * Sending calls `lead.start`, as the New chat dialog does, so the chat and its sidebar row begin with the first message. The box shares the dialog's
- * room's own draft, so typed text survives leaving the screen and never shows in another room.
+ * New chat with Rowan when the room has no open chat (NewChat.png, KERNEL-366). The welcome, a composer and the suggestions. Sending calls
+ * `lead.start`, as the New chat dialog does, so the chat, its own worktree and its sidebar row begin with the first message (KERNEL-405). The box
+ * shares the dialog's room's own draft, so typed text survives leaving the screen and never shows in another room. `focusIn` is the workspace
+ * whose focus requests it takes, for the shared Lead workspace from before, else the room's New chat key.
  */
-export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; roomId: string }) {
+export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: string }) {
   const settings = useStore((s) => s.settings)
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const name = lead?.name ?? 'Rowan'
@@ -40,7 +42,7 @@ export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; room
   const plusAnchor = useRef<HTMLSpanElement>(null)
 
   // The sidebar's Lead row, ⌘⇧L, + and ⌘T ask for the caret in the workspace's composer. This box is it while no chat is open.
-  const focusAsked = () => { if (takeComposerFocus({ id: '', workspaceId })) d.focus() }
+  const focusAsked = () => { if (takeComposerFocus({ id: '', workspaceId: focusIn ?? leadNewKey(roomId) })) d.focus() }
   useEffect(() => { focusAsked() }, [])
   useEffect(() => onComposerFocusAsked(focusAsked))
 
@@ -72,7 +74,7 @@ export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; room
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
   const hasDraft = !d.empty
   return (
-    <ChatWelcome title={`New chat with ${name}`} suggestions={LEAD_SUGGESTIONS} onPick={(text) => { if (!busy) start([{ type: 'text', text }]) }}>
+    <ChatWelcome title={`New chat with ${name}`} sub="Its own worktree and branch, from the latest main." suggestions={LEAD_SUGGESTIONS} onPick={(text) => { if (!busy) start([{ type: 'text', text }]) }}>
       <div className="chat-empty-box">
         <div className="composer cmp" data-plan={plan || undefined} {...d.drop}>
           <DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={`Ask ${name} to plan work, check on the team, or run /skills`} onKeyDown={onKey} />

@@ -7,8 +7,10 @@ import { actions, getState, go, useStore } from './store'
 /** The room's Lead: the agent marked `lead: true`. */
 export const leadOf = (agents: Record<string, AgentDef[]>, roomId: string | undefined): AgentDef | undefined => (roomId ? agents[roomId]?.find((a) => a.lead) : undefined)
 
-/** The room's Lead workspace, the one `Kernel.leadChat` finds. A worktree the Lead works in doesn't count. */
+/** One of the room's Lead workspaces: a chat with Rowan's own, or the shared one from before KERNEL-405. A worktree the Lead works in doesn't count. */
 export const isLeadWorkspace = (w: Workspace, roomId: string, leadId: string | undefined) => w.roomId === roomId && isLead(w, leadId)
+
+export { chatWorkspaces } from './nav'
 
 const NONE: Approval[] = []
 
@@ -16,23 +18,24 @@ const NONE: Approval[] = []
 export const leadWaiting = (approvals: Approval[], workspaceId: string | undefined): Approval[] =>
   workspaceId ? approvals.filter((a) => a.workspaceId === workspaceId && a.status === 'pending') : NONE
 
-/** The Lead's pending approvals, found on its own workspace. The row and the card read the same ones, so they show the same icon. */
+/** The Lead's pending approvals, on any of its chats' workspaces. The row and the card read the same ones, so they show the same icon. */
 export function useLeadWaiting(roomId: string): Approval[] {
   const leadId = useStore((s) => leadOf(s.agents, roomId)?.id)
-  const workspaceId = useStore((s) => s.workspaces.find((w) => isLeadWorkspace(w, roomId, leadId))?.id)
+  const ids = useStore((s) => s.workspaces.filter((w) => isLeadWorkspace(w, roomId, leadId)).map((w) => w.id).join())
   const approvals = useStore((s) => s.approvals)
-  return useMemo(() => leadWaiting(approvals, workspaceId), [approvals, workspaceId])
+  return useMemo(() => (ids ? approvals.filter((a) => !!a.workspaceId && ids.split(',').includes(a.workspaceId) && a.status === 'pending') : NONE), [approvals, ids])
 }
 
 /**
- * Finds the room's Lead workspace. The engine finds it, or creates its worktree when nobody has briefed the Lead yet,
- * so the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan all work the same. A failure toasts and returns undefined.
+ * The workspace of the room's newest open chat with Rowan, or null when no chat is open (KERNEL-405). The engine never starts a
+ * chat for it, so the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan land on New chat with Rowan instead. A failure toasts and
+ * returns undefined.
  */
-async function leadWorkspace(roomId: string): Promise<Workspace | undefined> {
+async function leadWorkspace(roomId: string): Promise<Workspace | null | undefined> {
   try {
     const ws = await call('lead.open', { roomId })
     // The engine pushes the workspace too, but it may land after the route changes.
-    actions.workspaces.upsert(ws)
+    if (ws) actions.workspaces.upsert(ws)
     return ws
   } catch (e) {
     const name = leadOf(getState().agents, roomId)?.name
@@ -41,17 +44,25 @@ async function leadWorkspace(roomId: string): Promise<Workspace | undefined> {
   }
 }
 
-/** Opens the room's Lead chat, on the tab it last showed. Returns the Lead's workspace, or undefined when it could not be opened. */
+/**
+ * Opens the room's newest chat with Rowan, on the tab it last showed, or New chat with Rowan when none is open. Returns the chat's
+ * workspace, or undefined when there is none.
+ */
 export async function openLead(roomId: string): Promise<Workspace | undefined> {
   const ws = await leadWorkspace(roomId)
   if (ws) go({ name: 'workspace', workspaceId: ws.id })
-  return ws
+  else if (ws === null) go({ name: 'leadNew', roomId })
+  return ws ?? undefined
 }
 
-/** Where a room opens, now the floor is hidden (D-104): the Lead's chat, or Team when the room has no Lead to open. */
+/**
+ * Where a room opens, now the floor is hidden (D-104): its newest chat with Rowan, New chat with Rowan when none is open, or Team
+ * when the room has no Lead.
+ */
 export async function openRoom(roomId: string): Promise<void> {
   try {
     const ws = await call('lead.open', { roomId })
+    if (!ws) { go({ name: 'leadNew', roomId }); return }
     actions.workspaces.upsert(ws)
     go({ name: 'workspace', workspaceId: ws.id })
   } catch {
@@ -60,16 +71,17 @@ export async function openRoom(roomId: string): Promise<void> {
 }
 
 /**
- * Opens one of the Lead's chats: the Lead's workspace with that chat's tab selected. Each workspace keeps its own tab,
- * so the tab is set first and the navigation shows it.
+ * Opens a tab of a chat with Rowan: its chat's workspace with that tab selected (KERNEL-405). Each workspace keeps its own tab, so
+ * the tab is set first and the navigation shows it. A tab the store doesn't know yet is in the room's newest chat, the one a new
+ * chat or a question just made.
  */
 export async function openLeadChat(roomId: string, chatId: string): Promise<void> {
-  // With the Lead's workspace already on screen there is nothing to look up, so switching chats doesn't wait on the engine.
   const s = getState()
-  const shown = s.ui.route.name === 'workspace' ? s.workspaces.find((w) => w.id === (s.ui.route as { workspaceId: string }).workspaceId) : undefined
-  if (shown && isLeadWorkspace(shown, roomId, leadOf(s.agents, roomId)?.id)) return actions.ui.openTab(shown.id, chatId)
-  const ws = await leadWorkspace(roomId)
-  if (!ws) return
-  actions.ui.openTab(ws.id, chatId)
-  go({ name: 'workspace', workspaceId: ws.id })
+  const known = Object.entries(s.chats).find(([, list]) => list.some((c) => c.id === chatId))?.[0]
+  const shown = s.ui.route.name === 'workspace' ? s.ui.route.workspaceId : undefined
+  if (known && known === shown) return actions.ui.openTab(known, chatId)
+  const workspaceId = known ?? (await leadWorkspace(roomId))?.id
+  if (!workspaceId) return
+  actions.ui.openTab(workspaceId, chatId)
+  go({ name: 'workspace', workspaceId })
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,9 @@ import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewRule, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-130: a review is linked to the work it reviews, starts from its branch and reports a verdict Kernel can read.
 

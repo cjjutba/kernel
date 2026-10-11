@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +7,9 @@ import { Kernel } from '../src/main/kernel'
 import type { SessionDeps } from '../src/main/services/sessions'
 import { cleanTitle, titleText } from '../src/main/services/titles'
 import type { Chat, ChatItem, Workspace } from '../src/shared/types'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 const settle = () => new Promise((r) => setTimeout(r, 60))
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
@@ -65,13 +68,14 @@ describe('chat names (KERNEL-202)', () => {
   it('auto-names placeholder chats only: not a workspace chat, a fork or a big terminal', async () => {
     const s = await setup()
     const room = await s.k.addRoom(s.repo)
+    // A chat Kernel starts opens on an auto-named "New tab" (KERNEL-405).
     const first = await s.k.leadChat(room.id)
-    expect(first).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
-    // A brief opens its own auto-named "New tab" and leaves "Lead" as it was (KERNEL-242).
+    expect(first).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
+    // A brief starts a chat of its own and leaves the first as it was (KERNEL-242).
     const started = await s.k.startLeadChat(room.id, { prompt: 'Plan the release' })
     expect(started.id).not.toBe(first.id)
     expect(s.chat(started.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
-    expect(s.chat(first.id)).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
+    expect(s.chat(first.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
 
     const ws = await s.k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const h = s.k.handlers()

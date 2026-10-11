@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState } from '@shared/types'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, setUp } from './helpers'
 import { run } from '../src/main/services/exec'
 import { unpushedCommits } from '../src/main/services/archive'
 import { Kernel } from '../src/main/kernel'
@@ -98,8 +98,9 @@ describe('workspace saves read the store, not a stale copy', () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
     await k.archiveWorkspace(ws.id)
     const back = await k.restoreWorkspace(ws.id)
-    expect(back.status).toBe('ready')
+    expect(back.status).toBe('setup')
     expect(back.archivedAt).toBeUndefined()
+    await setUp(k, ws.id)
     expect(k.store.workspace(ws.id)?.archivedAt).toBeUndefined()
     await k.stop()
   })

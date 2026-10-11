@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +7,9 @@ import { kernelTools } from '../src/main/services/kernelMcp'
 import { git } from '../src/main/services/exec'
 import type { AgentDef } from '../src/shared/types'
 import { tempRepo } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-400: a workspace nobody picked a base for starts from the repo's default branch, where its PR goes.
 

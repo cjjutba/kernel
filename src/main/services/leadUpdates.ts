@@ -36,7 +36,7 @@ export interface LeadUpdateDeps {
    * Opens a Lead tab for an update that needs the Lead when `target` finds none (KERNEL-365), and returns where it goes as
    * `target` would. Called only when the update goes out now, so a room with no open Lead tab gets no tab it won't use.
    */
-  open?: (roomId: string, owner?: string) => { chat: Chat; from?: From } | undefined
+  open?: (roomId: string, owner?: string) => { chat: Chat; from?: From } | 'opening' | undefined
   /** Whether the workspace is the Lead's own. Its events are never reported back to it. */
   isLead: (ws: Workspace) => boolean
   agentName: (roomId: string, agentId: string) => string | undefined
@@ -551,7 +551,10 @@ export class LeadUpdates {
         if (!quiet) continue
         const alone = this.compose(roomId, [{ events: p.events, owner: p.owner }])
         if (alone && !alone.wakes) continue
-        t = alone && this.d.open(roomId, p.owner)
+        const opened = alone && this.d.open(roomId, p.owner)
+        // Kernel is starting a chat with Rowan for it (KERNEL-405). The update waits for it, and goes once its setup passed.
+        if (opened === 'opening') continue
+        t = opened
       }
       if (!t) { if (!this.timers.has(key)) drop(key); continue }
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }

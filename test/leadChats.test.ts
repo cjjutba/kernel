@@ -8,7 +8,10 @@ import type { QueueReason } from '../src/main/services/sessions'
 import { Nudges } from '../src/main/services/nudges'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-105: with several chats open with the Lead, each workspace reports to the chat that handed it off.
 
@@ -50,8 +53,16 @@ async function setup(files: Record<string, string> = {}) {
   k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
   const room = await k.addRoom(repo)
   await trustRoom(k, room.id)
-  const first = await k.leadChat(room.id)
-  const icons = k.newChat(first.workspaceId, 'Chat icons sizing', { model: first.model, effort: first.effort, plan: false })
+  // Each chat with Rowan has its own workspace (KERNEL-405). Both are set up before the test talks to them.
+  const named = async (title: string) => {
+    const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+    // A room whose setup fails fails Rowan's chats too. The tests talk to their tools, which don't wait for it.
+    await setUp(k, c.id, 'settled')
+    k.store.saveThread({ ...k.store.thread(c.threadId!)!, title })
+    return k.store.saveChat({ ...k.store.chat(c.id)!, title })
+  }
+  const first = await named('Lead')
+  const icons = await named('Chat icons sizing')
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   const run = async (chat: Chat, name: string, args: Record<string, unknown>) => {
     k.lead['leadTools'](room.id, rowan, chat)
@@ -62,9 +73,14 @@ async function setup(files: Record<string, string> = {}) {
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
   const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
   const target = (owner?: string) => k.lead['leadUpdateTarget'](room.id, owner) as { chat: Chat; from?: { title: string; tab?: boolean } } | undefined
-  /** A tab the + button opens in the Lead's workspace, in the Lead chat `threadId` or a new one (KERNEL-337). */
-  const tab = (threadId?: string) => k.handlers()['chats.create']({ workspaceId: first.workspaceId, threadId })
-  return { k, room, first, icons, call, run, byTitle, target, tab, sent, answer, where, rowan }
+  /** A tab the + button opens in the chat `threadId`'s workspace, or with none a new chat in a workspace of its own (KERNEL-337, KERNEL-405). */
+  const tab = async (threadId?: string) => {
+    if (!threadId) { const c = await k.lead.newLeadChat(room.id, { prompt: '' }); await setUp(k, c.id, 'settled'); return k.store.chat(c.id)! }
+    const ws = k.store.workspaces(room.id).find((w) => w.lead && w.threadId === threadId && w.status !== 'archived')
+    if (!ws) throw new Error('That chat no longer exists.')
+    return k.handlers()['chats.create']({ workspaceId: ws.id })
+  }
+  return { k, room, first, icons, call, run, byTitle, target, tab, named, sent, answer, where, rowan }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -98,18 +114,21 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
     expect(ws.taskId).toBe(task('icons-plan').id)
   })
 
-  it('sends updates to the open owner, then its newest open fork, then the first Lead chat', async () => {
+  it('sends updates to the open owner, else the newest open chat, naming an archived one (KERNEL-405)', async () => {
     const { k, first, icons, target } = await setup()
     expect(target(icons.id)).toEqual({ chat: icons })
-    expect(target()).toEqual({ chat: first })
-    k.closeChat(icons.id)
+    expect(target(first.id)).toEqual({ chat: first })
+    expect(target()).toEqual({ chat: icons })
+    // Closing a chat's last tab archives the chat, and its work goes to the newest open chat, never restoring it.
+    await k.closeChat(icons.id)
+    expect(k.store.workspace(icons.workspaceId)?.status).toBe('archived')
     expect(target(icons.id)).toEqual({ chat: first, from: { title: 'Chat icons sizing' } })
-    const fork = k.store.saveChat({ ...k.newChat(first.workspaceId, 'Fork of Chat icons sizing', { model: first.model, effort: first.effort, plan: false }), forkOf: { chatId: icons.id, itemId: '' } })
-    expect(target(icons.id)).toEqual({ chat: fork })
-    // A Lead workspace that was archived has nobody left to tell.
-    k.store.saveWorkspace({ ...k.store.workspace(first.workspaceId)!, status: 'archived' })
+    expect(target()).toEqual({ chat: first })
+    // No open chat has nobody to tell, and nothing is restored.
+    await k.closeChat(first.id)
     expect(target(icons.id)).toBeUndefined()
     expect(target()).toBeUndefined()
+    expect(k.store.workspace(icons.workspaceId)?.status).toBe('archived')
   })
 
   it("marks this chat's workspaces in list_workspaces, and says where another chat's workspace reports", async () => {
@@ -190,7 +209,7 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     const handed = await old.workspaces.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
     old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'rowan' })
     // As if this database came from a version before the mark existed, when the Lead worked on the main checkout.
-    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
+    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
     old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
     old.store.saveMeta('leadWorkspaceBackfill', false)
     await old.stop()
@@ -501,20 +520,25 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
 })
 
 describe('Ask Rowan (KERNEL-145)', () => {
-  it('opens a new Lead chat tab for each question, past a busy first tab, and gives it the Lead tools', async () => {
+  it('asks in a new tab of the newest open chat, past a busy tab, joins the chat it is asked from, and gives it the Lead tools (KERNEL-405)', async () => {
     const { k, room, first, icons, sent, rowan } = await setup()
-    k.sessions.isRunning = (id: string) => id === first.id
+    k.sessions.isRunning = (id: string) => id === icons.id
     const a = await k.askLead(room.id, 'What is kai working on?')
     const b = await k.askLead(room.id, 'Is the release branch ready to merge?')
     expect(sent).toEqual([
       { chatId: a.chatId, text: 'What is kai working on?', from: undefined },
       { chatId: b.chatId, text: 'Is the release branch ready to merge?', from: undefined }
     ])
-    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id, icons.id, a.chatId, b.chatId])
+    expect(k.chatTabs(icons.workspaceId).map((c) => c.id)).toEqual([icons.id, a.chatId, b.chatId])
+    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id])
+    expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.threadId)).toEqual([icons.threadId, icons.threadId])
     expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.plan)).toEqual([false, false])
-    expect(await k.leadChat(room.id)).toEqual(first)
+    // Asked from a chat, the question joins that chat.
+    const c = await k.askLead(room.id, 'And this one?', first.threadId)
+    expect(k.store.chat(c.chatId)).toMatchObject({ workspaceId: first.workspaceId, threadId: first.threadId })
+    expect(await k.leadChat(room.id)).toEqual(k.store.chat(icons.id))
     // Each tab gets the Lead's kernel server, bound to that tab.
-    const ws = k.store.workspace(first.workspaceId)!
+    const ws = k.store.workspace(icons.workspaceId)!
     expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.chatId)!)).toHaveProperty('kernel')
     expect(wired!.chatId).toBe(b.chatId)
   })
@@ -522,46 +546,49 @@ describe('Ask Rowan (KERNEL-145)', () => {
   it('leaves an unused Lead tab alone, since the user may be typing a brief there', async () => {
     const { k, room, first, icons, sent } = await setup()
     // Nothing sent yet, so the engine sees it as unused, but the composer may hold a draft.
-    const drafting = k.newChat(first.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true })
+    const drafting = k.store.saveChat({ ...k.newChat(icons.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true }), threadId: icons.threadId })
     for (const c of [first, icons]) k.store.saveChat({ ...k.store.chat(c.id)!, closed: true })
     const { chatId } = await k.askLead(room.id, 'What is kai working on?')
     expect(chatId).not.toBe(drafting.id)
     expect(sent.map((s) => s.chatId)).toEqual([chatId])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
-    // The New chat modal leaves it too (KERNEL-242).
+    // The New chat modal leaves it too, and starts a chat of its own whose brief waits for setup (KERNEL-242, KERNEL-405).
     const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
     expect(brief.id).not.toBe(drafting.id)
-    expect(sent.map((s) => s.chatId)).toEqual([chatId, brief.id])
+    expect(brief.workspaceId).not.toBe(icons.workspaceId)
+    expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
+    await setUp(k, brief.id)
   })
 })
 
 describe('Lead chats with several tabs (KERNEL-337)', () => {
-  it('starts a new Lead chat from lead.start, lead.ask, the + button and a first leadChat, and joins the one it is given', async () => {
-    const { k, room, first, tab } = await setup()
+  it('starts a new Lead chat from lead.start, the + button and a first leadChat, and joins the one it is given', async () => {
+    const { k, room, first, icons, tab } = await setup()
     const h = k.handlers()
     const thread = (c: Chat) => k.store.thread(k.store.chat(c.id)!.threadId!)
     // The first leadChat starts a Lead chat named like its tab.
     expect(thread(first)).toMatchObject({ roomId: room.id, title: 'Lead' })
     const started = await h['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
     expect(started.title).toBe('New tab')
+    await setUp(k, started.id)
+    // Ask Rowan joins the newest open chat (KERNEL-405).
     const asked = k.store.chat((await h['lead.ask']({ roomId: room.id, text: 'How is Kai doing?' })).chatId)!
+    expect(asked.threadId).toBe(started.threadId)
     const opened = await tab()
     expect(opened).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
-    const threads = [first, started, asked, opened].map((c) => thread(c)!.id)
+    const threads = [first, icons, started, opened].map((c) => thread(c)!.id)
     expect(new Set(threads).size).toBe(4)
+    expect(new Set([first, icons, started, opened].map((c) => c.workspaceId)).size).toBe(4)
     expect(thread(opened)).toMatchObject({ title: 'New tab' })
     // Given a Lead chat, a tab joins it.
     expect((await tab(started.threadId)).threadId).toBe(started.threadId)
     const askedIn = (await h['lead.ask']({ roomId: room.id, text: 'And Noor?', threadId: first.threadId })).chatId
     expect(k.store.chat(askedIn)!.threadId).toBe(first.threadId)
     expect((await h['threads.list']({ roomId: room.id })).map((t) => t.id)).toEqual(threads)
-    // A big terminal belongs to no Lead chat, and a Lead chat that is gone or in another room takes no tab.
+    // A big terminal belongs to no Lead chat, and a tab in a chat's workspace joins that chat, whatever thread it names.
     expect((await h['chats.create']({ workspaceId: first.workspaceId, kind: 'terminal' })).threadId).toBeUndefined()
-    await expect(tab('gone')).rejects.toThrow('That chat no longer exists.')
-    const other = await k.rooms.addRoom(await tempRepo(REPO))
-    await trustRoom(k, other.id)
-    await expect(tab((await k.lead.leadChat(other.id)).threadId)).rejects.toThrow('That chat no longer exists.')
+    expect((await h['chats.create']({ workspaceId: first.workspaceId, threadId: icons.threadId })).threadId).toBe(first.threadId)
   })
 
   it('keeps a fork of a Lead tab in its Lead chat, and leaves a workspace chat out of Lead chats', async () => {
@@ -574,29 +601,35 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect(k.store.chats(ws.id).every((c) => !c.threadId)).toBe(true)
   })
 
-  it('closes a Lead chat with its last open tab, and opens it again for a new tab', async () => {
+  it('archives a Lead chat with its last open tab, and Restore opens it again with its tabs (KERNEL-405)', async () => {
     const { k, room, first, icons, tab } = await setup()
     const second = await tab(first.threadId)
     const pushed: string[] = []
     const listen = (e: { type: string; thread?: { id: string; closedAt?: number } }) => { if (e.type === 'thread') pushed.push(`${e.thread!.id}:${e.thread!.closedAt ? 'closed' : 'open'}`) }
     bus.on('push', listen)
     onTestFinished(() => { bus.off('push', listen) })
-    k.chats.closeChat(first.id)
+    await k.chats.closeChat(first.id)
     expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
     expect(pushed).toEqual([])
-    k.chats.closeChat(second.id)
+    await k.chats.closeChat(second.id)
     const closed = k.store.thread(first.threadId!)!
     expect(closed.closedAt).toBeGreaterThan(0)
     expect(closed.title).toBe('Lead')
     expect(pushed).toEqual([`${closed.id}:closed`])
-    // Closing the last tab in the Lead's workspace starts nothing (KERNEL-365).
-    k.chats.closeChat(icons.id)
-    expect(k.chats['chatTabs'](first.workspaceId)).toEqual([])
-    expect(k.store.threads(room.id).map((t) => t.id)).toEqual([first.threadId])
-    // A new tab in the closed Lead chat opens it again.
-    await tab(first.threadId)
+    expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
+    // The tab it closed with stays open in the archived chat, so Restore brings the chat back as it was.
+    expect(k.store.chat(second.id)?.closed).toBeFalsy()
+    // Closing the last chat starts nothing (KERNEL-365).
+    await k.chats.closeChat(icons.id)
+    expect(k.lead.chatWorkspaces(room.id)).toEqual([])
+    expect(k.store.threads(room.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
+    // Restore opens the chat again, and it sets up before Rowan goes on.
+    const back = await k.restoreWorkspace(first.workspaceId)
+    expect(back.status).toBe('setup')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
     expect(pushed.at(-1)).toBe(`${first.threadId}:open`)
+    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([second.id])
+    await setUp(k, first.workspaceId)
   })
 
   it("names the Lead chat after its first tab's auto name until the user names it", async () => {
@@ -617,20 +650,22 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     await expect(k.handlers()['threads.rename']({ threadId: first.threadId!, title: ' ' })).rejects.toThrow()
   })
 
-  it('sends work to the owner tab, then the newest open tab of its Lead chat, then the first Lead tab, and says where it came from', async () => {
+  it('sends work to the owner tab, then the newest open tab of its Lead chat, then the newest open chat, and says where it came from', async () => {
     const { k, first, icons, target, tab } = await setup()
     const older = await tab(icons.threadId)
-    const owner = await tab(older.threadId)
-    const newer = await tab(owner.threadId)
-    k.store.saveThread({ ...k.store.thread(owner.threadId!)!, title: 'Chat icons work' })
+    const owner = await tab(icons.threadId)
+    const newer = await tab(icons.threadId)
+    k.store.saveThread({ ...k.store.thread(icons.threadId!)!, title: 'Chat icons work' })
     expect(target(owner.id)).toEqual({ chat: owner })
-    k.chats.closeChat(owner.id)
+    await k.chats.closeChat(owner.id)
     expect(target(owner.id)).toEqual({ chat: k.store.chat(newer.id), from: { title: owner.title, tab: true } })
-    k.chats.closeChat(newer.id)
+    await k.chats.closeChat(newer.id)
     expect(target(owner.id)).toEqual({ chat: k.store.chat(older.id), from: { title: owner.title, tab: true } })
-    k.chats.closeChat(older.id)
-    expect(target(owner.id)).toEqual({ chat: first, from: { title: 'Chat icons work' } })
-    expect(icons.threadId).toBeUndefined()
+    await k.chats.closeChat(older.id)
+    expect(target(owner.id)).toEqual({ chat: k.store.chat(icons.id), from: { title: owner.title, tab: true } })
+    // The chat's last tab archives it, and its work goes to the newest open chat under its name.
+    await k.chats.closeChat(icons.id)
+    expect(target(owner.id)).toEqual({ chat: k.store.chat(first.id), from: { title: 'Chat icons work' } })
   })
 
   it('treats work handed off in any tab of the Lead chat as yours, and names the Lead chat for the rest', async () => {
@@ -742,13 +777,22 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
   })
 })
 
-describe('a room with no open Lead chat (KERNEL-365)', () => {
-  /** Records Kernel's updates instead of running them, and closes every open tab in the Lead's workspace. */
+describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
+  /**
+   * Records Kernel's updates instead of running them, and closes every open tab of both chats, which archives them. The workspaces
+   * they handed off stay open at room level, so their updates have somewhere to come from.
+   */
   const quiet = async (s: Awaited<ReturnType<typeof setup>>) => {
     const posts: { chatId: string; text: string }[] = []
-    s.k.sessions.post = (chatId: string, parts: ChatPart[]) => { posts.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join('') }); return true }
-    for (const c of s.k.chats['chatTabs'](s.first.workspaceId)) s.k.chats.closeChat(c.id)
-    expect(s.k.chats['chatTabs'](s.first.workspaceId)).toEqual([])
+    // Like the real one, a chat held for its setup takes nothing yet.
+    s.k.sessions.post = (chatId: string, parts: ChatPart[]) => {
+      if (s.k.sessions.isHeld(chatId)) return false
+      posts.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join('') })
+      return true
+    }
+    s.k.settings = { ...s.k.settings, workspace: { ...s.k.settings.workspace, archiveChatWorkspaces: false } }
+    for (const chat of [s.first, s.icons]) for (const c of s.k.chats['chatTabs'](chat.workspaceId)) await s.k.chats.closeChat(c.id)
+    expect(s.k.lead.chatWorkspaces(s.room.id)).toEqual([])
     /** Sends what waits now, without the few seconds Kernel waits for more. */
     const flush = () => {
       const u = s.k.leadUpdates
@@ -756,98 +800,89 @@ describe('a room with no open Lead chat (KERNEL-365)', () => {
       u['timers'].clear()
       u.flushAll()
     }
-    const open = () => s.k.chats['chatTabs'](s.first.workspaceId).filter((c) => c.kind !== 'terminal')
+    const open = () => s.k.lead.chatWorkspaces(s.room.id).flatMap((w) => s.k.chats['chatTabs'](w.id).filter((c) => c.kind !== 'terminal'))
     return { posts, flush, open }
   }
 
-  it('leaves the Lead chat closed when its last tab closes, and still replaces the last tab in a teammate workspace', async () => {
+  it('archives a chat with its last tab, and still replaces the last tab in a teammate workspace', async () => {
     const s = await setup()
     const { k, room, first } = s
     await quiet(s)
     expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
-    expect(k.store.threads(room.id)).toHaveLength(1)
+    expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
+    expect(k.store.threads(room.id)).toHaveLength(2)
     const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const [brief] = k.chats['chatTabs'](ws.id)
-    k.chats.closeChat(brief.id)
+    await k.chats.closeChat(brief.id)
     const left = k.chats['chatTabs'](ws.id)
     expect(left).toHaveLength(1)
     expect(left[0]).toMatchObject({ title: 'New chat' })
     expect(left[0].id).not.toBe(brief.id)
   })
 
-  it('opens the Lead workspace with lead.open and adds no chat or thread', async () => {
+  it('finds nothing with lead.open, and adds no chat, thread or workspace', async () => {
     const s = await setup()
-    const { k, room, first } = s
+    const { k, room } = s
     await quiet(s)
-    const chats = k.store.chats(first.workspaceId).length
+    const workspaces = k.store.workspaces(room.id).length
     const threads = k.store.threads(room.id).length
-    expect((await k.handlers()['lead.open']({ roomId: room.id })).id).toBe(first.workspaceId)
-    expect(k.store.chats(first.workspaceId)).toHaveLength(chats)
+    expect(await k.handlers()['lead.open']({ roomId: room.id })).toBeNull()
+    expect(k.store.workspaces(room.id)).toHaveLength(workspaces)
     expect(k.store.threads(room.id)).toHaveLength(threads)
   })
 
-  it("delivers an update with no open tab into one new tab of the owner's Lead chat, which opens again", async () => {
+  it('delivers an update with no open chat into one new chat, once its setup passed, and never restores the archived one', async () => {
     const s = await setup()
     const { k, first, call, byTitle, tab } = s
     const sibling = await tab(first.threadId)
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     await call(sibling, 'create_workspace', { agent: 'kai', title: 'Composer tests', brief: 'Go' })
     const { posts, flush, open } = await quiet(s)
-    const pushed: string[] = []
-    const listen = (e: { type: string; chat?: Chat }) => { if (e.type === 'chat' && e.chat) pushed.push(e.chat.id) }
-    bus.on('push', listen)
-    onTestFinished(() => { bus.off('push', listen) })
-    // Two batches from two closed tabs of the same Lead chat, sent in one flush.
+    // Two batches from two tabs of the same archived chat, flushed twice while the new chat is made: one chat, one message.
     k.leadUpdates.crashed(byTitle('Drafts per chat'), 'Out of memory')
     k.leadUpdates.crashed(byTitle('Composer tests'), 'Out of memory')
     flush()
+    flush()
+    await vi.waitFor(() => expect(posts).toHaveLength(1), { timeout: 10_000 })
     const tabs = open()
     expect(tabs).toHaveLength(1)
-    expect(tabs[0]).toMatchObject({ threadId: first.threadId, title: 'New tab' })
-    expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
-    expect(pushed).toContain(tabs[0].id)
+    expect(tabs[0].threadId).not.toBe(first.threadId)
+    expect(k.store.workspace(tabs[0].workspaceId)?.status).toBe('ready')
+    expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
+    expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
     expect(posts.map((p) => p.chatId)).toEqual([tabs[0].id])
-    expect(posts[0].text).toContain(`From "${first.title}", a tab you closed.`)
-    expect(posts[0].text).toContain(`From "${sibling.title}", a tab you closed.`)
+    expect(posts[0].text).toContain(`From "${first.title}", a Lead chat that is now closed.`)
     expect(k.leadUpdates['pending'].size).toBe(0)
   })
 
-  it('starts a new Lead chat for work from a chat with no thread, and for work no chat handed off', async () => {
+  it('starts a new chat for work no chat handed off, and a room that was archived has nobody to tell', async () => {
     const s = await setup()
-    const { k, room, first, icons, call, byTitle } = s
-    expect(icons.threadId).toBeUndefined()
-    await call(icons, 'create_workspace', { agent: 'kai', title: 'Chat tab state icons', brief: 'Go' })
-    const { posts, flush, open } = await quiet(s)
-    k.leadUpdates.crashed(byTitle('Chat tab state icons'), 'Out of memory')
-    flush()
-    const [fresh] = open()
-    expect(open()).toHaveLength(1)
-    expect(fresh.threadId).not.toBe(first.threadId)
-    expect(k.store.thread(fresh.threadId!)).toMatchObject({ roomId: room.id, title: 'New tab' })
-    expect(posts.map((p) => p.chatId)).toEqual([fresh.id])
-    expect(posts[0].text).toContain(`From "${icons.title}", a Lead chat that is now closed.`)
-    // Work no Lead tab handed off gets a new Lead chat too.
-    k.chats.closeChat(fresh.id)
-    const unowned = k.lead.openUpdateTab(room.id)!
+    const { k, room } = s
+    const { open } = await quiet(s)
+    expect(k.lead.openUpdateTab(room.id)).toBe('opening')
+    expect(k.lead.openUpdateTab(room.id)).toBe('opening')
+    await vi.waitFor(() => expect(open()).toHaveLength(1), { timeout: 10_000 })
+    const unowned = k.lead.openUpdateTab(room.id) as { chat: Chat; from?: unknown }
     expect(unowned.from).toBeUndefined()
     expect(open().map((c) => c.id)).toEqual([unowned.chat.id])
-    expect(unowned.chat.threadId).not.toBe(fresh.threadId)
-    // A Lead workspace that was archived has nobody left to tell.
-    k.chats.closeChat(unowned.chat.id)
-    k.store.saveWorkspace({ ...k.store.workspace(first.workspaceId)!, status: 'archived' })
+    expect(k.lead.chatWorkspaces(room.id)).toHaveLength(1)
+    await setUp(k, unowned.chat.id)
+    await k.chats.closeChat(unowned.chat.id)
+    k.store.saveRoom({ ...k.store.room(room.id)!, archived: true })
     expect(k.lead.openUpdateTab(room.id)).toBeUndefined()
   })
 
-  it('opens no tab for an update that needs nothing from the Lead yet', async () => {
+  it('opens no chat for an update that needs nothing from the Lead yet', async () => {
     const s = await setup()
-    const { k, first, call, byTitle } = s
+    const { k, room, first, call, byTitle } = s
     await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
     const { posts, flush, open } = await quiet(s)
+    const before = k.store.workspaces(room.id).length
     k.leadUpdates.crashed(byTitle('Drafts per chat'), 'Out of memory', { resumed: true })
     flush()
     expect(open()).toEqual([])
     expect(posts).toEqual([])
-    expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
+    expect(k.store.workspaces(room.id)).toHaveLength(before)
   })
 })
 

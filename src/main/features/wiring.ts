@@ -76,7 +76,7 @@ export function listen(k: Kernel): () => void {
     if (e.type === 'workspace') k.sessions.pushReasons()
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k.nudges.reset(e.workspaceId, ...k.autoArchive.reviewsOf(e.workspaceId))
-    // Main moved, so the Lead's worktree follows it once the room fetches (KERNEL-181).
+    // Main moved, so each chat with Rowan's worktree follows it once the room fetches, once for them all (KERNEL-181, KERNEL-405).
     const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.roomId : undefined
     if (merged) void k.lead.syncLead(merged, { fetch: true })
     if (e.type === 'pr' && e.state === 'merged') bus.track({ name: 'pr.merged' })

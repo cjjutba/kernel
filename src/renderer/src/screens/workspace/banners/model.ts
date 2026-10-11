@@ -7,9 +7,9 @@ import { MODELS } from '@shared/types'
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive'
 
-export type BannerId = 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -82,6 +82,13 @@ export function setupCommand(lines: ScriptLine[] = []): string | undefined {
 /** The one banner this workspace shows, most pressing first, or null. */
 export function bannerFor(i: BannerInput): BannerView | null {
   const { ws, chat, agentName: name, now } = i
+
+  // A worktree deleted outside Kernel has nowhere to run anything, so it says so first, like a failed setup (KERNEL-291).
+  if (ws.folderGone) return {
+    id: 'folder', kind: 'setup', title: "This workspace's folder is gone",
+    sub: `${ws.path} was deleted outside Kernel. Archive it, then restore it from History to make the folder again.`,
+    actions: [{ id: 'archive', label: 'Archive', primary: true }], blocks: true
+  }
 
   if (i.account && !i.account.signedIn) return {
     id: 'signedOut', kind: 'auth', title: 'Claude Code is signed out', sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',

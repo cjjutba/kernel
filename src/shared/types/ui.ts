@@ -16,6 +16,8 @@ export type Route =
   | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'task'; roomId: string; taskId: string }
   | { name: 'team'; roomId: string } | { name: 'agent'; roomId: string; agentId: string }
   | { name: 'workspace'; workspaceId: string }
+  /** New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
+  | { name: 'leadNew'; roomId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   | { name: 'issues'; issueId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
@@ -45,6 +47,8 @@ export type Modal =
   | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
   /** Run this repo's scripts? The room's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
   | { name: 'confirm'; kind: 'trust'; roomId: string }
+  /** Archiving a chat with Rowan that would stop something: its row's Archive, or closing its last tab (KERNEL-405). */
+  | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
   /** The one-time question about usage data, after the first room (KERNEL-397). */

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { actions, canBack, getState, launchRoute, resetHistory, setState } from '../src/renderer/src/store'
-import { currentThread, hasTab, isChatTab, nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
+import { currentThread, hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, stillThere, tabOf } from '../src/renderer/src/nav'
 import type { AgentDef, Chat, Room, Route, SharedFile, Workspace } from '../src/shared/types'
 
 const room = (id: string, over: Partial<Room> = {}): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Room
@@ -15,7 +15,7 @@ function seed() {
   setState({
     rooms: [room('r1'), room('r2')],
     agents: { r1: [lead] },
-    workspaces: [ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', mode: 'current', lead: true })],
+    workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {} } }))
@@ -178,9 +178,25 @@ describe('stillThere and nearest', () => {
     expect(stillThere(at('other'), getState())).toBe(false)
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
   })
-  it('sends an archived Lead workspace to the room’s Team page', () => {
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan', status: 'archived' }))
+  it('sends an archived chat with Rowan to New chat with Rowan when no other chat is open, and a room with no Lead to Team (KERNEL-405)', () => {
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', status: 'archived' }))
+    expect(nearest(at('lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
+    setState((s) => ({ agents: { ...s.agents, r1: [] } }))
     expect(nearest(at('lead'), getState())).toEqual({ name: 'team', roomId: 'r1' })
+  })
+  it("sends a chat whose workspace closed to the room's newest open chat (KERNEL-405)", () => {
+    actions.workspaces.upsert(ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'rowan', createdAt: 5 }))
+    setState((s) => ({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } }))
+    expect(roomHome('r1', getState())).toEqual(at('newer'))
+    actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
+    expect(nearest(at('other'), getState())).toEqual(at('newer'))
+  })
+  it("treats a workspace whose folder was deleted outside Kernel as gone, so reopening and Back skip it (KERNEL-291)", () => {
+    actions.workspaces.upsert(ws('other', 'r1', { folderGone: true }))
+    expect(stillThere(at('other'), getState())).toBe(false)
+    expect(nearest(at('other'), getState())).toEqual(at('lead'))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', folderGone: true }))
+    expect(roomHome('r1', getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
   it('sends a removed room, and a hidden or archived one, Home', () => {
     actions.rooms.upsert(room('r2', { archived: true }))
@@ -359,8 +375,8 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
   })
   it('opens the nearest place that is still there when the saved workspace was archived', () => {
     openTo('lastPlace')
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan', status: 'archived' }))
-    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', status: 'archived' }))
+    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', lead: true, threadId: 't2', agentId: 'rowan' }))
     continueFromChecks()
     expect(route()).toEqual(at('lead2'))
   })

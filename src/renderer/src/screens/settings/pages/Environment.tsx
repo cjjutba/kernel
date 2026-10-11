@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
-import { KERNEL_VARS, SCRIPT_VARS } from '@shared/kernelVars'
+import { KERNEL_VARS, SCRIPT_VARS, SETUP_VARS } from '@shared/kernelVars'
 import type { Room, RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
@@ -190,7 +190,7 @@ function KernelVars({ startOpen }: { startOpen: boolean }) {
   const [open, setOpen] = useState(startOpen)
   const id = useId()
   const label = `${open ? 'Hide' : 'Show'} Kernel's variables`
-  const rows = [...Object.entries(KERNEL_VARS), ...Object.entries(SCRIPT_VARS).map(([n, d]) => [n, `${d} Scripts only.`] as const)]
+  const rows = [...Object.entries(KERNEL_VARS), ...Object.entries(SCRIPT_VARS).map(([n, d]) => [n, `${d} Scripts only.`] as const), ...Object.entries(SETUP_VARS).map(([n, d]) => [n, `${d} Setup only.`] as const)]
   return (
     <section className="set-section">
       <h2>Kernel's variables</h2>

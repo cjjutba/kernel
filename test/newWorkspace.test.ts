@@ -13,6 +13,9 @@ import { kernelTools } from '../src/main/services/kernelMcp'
 import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
 import type { AgentDef, ChatPart } from '../src/shared/types'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 /** While `on`, every `git fetch` times out, the way exec reports it when its timer kills git (KERNEL-179). */
 const fetchTimesOut = vi.hoisted(() => ({ on: false, fetches: 0 }))
 vi.mock('../src/main/services/exec', async (importOriginal) => {
@@ -333,7 +336,8 @@ describe('New chat message (KERNEL-147)', () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    // The message goes at once, while setup runs (KERNEL-405).
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: ChatPart[][] = []

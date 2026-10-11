@@ -96,11 +96,11 @@ describe('closeChats in the Lead\'s workspace (KERNEL-338)', () => {
     expect(tabOf(getState(), 'lead')).toBe('b1')
   })
 
-  it('opens the room\'s Lead when no chat is left', async () => {
+  it('opens New chat with Rowan when no chat is left, since the shared Lead workspace hosts none (KERNEL-405)', async () => {
     seed([tab('only', 't1')])
     actions.ui.go({ name: 'workspace', workspaceId: 'elsewhere' })
     await closeChats('lead', ['only'], 'only', select)
-    expect(route()).toEqual({ name: 'workspace', workspaceId: 'lead' })
+    expect(route()).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
 
   it('picks the next tab of the same chat when a tab that is not the last closes', async () => {

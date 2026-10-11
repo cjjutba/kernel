@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,9 @@ import { bus } from '../src/main/bus'
 import { decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
 import { UPDATE_HEADER } from '../src/main/services/handoff'
 import { capText } from '../src/main/services/text'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-72: Kernel tells the Lead what its teammates did, batched, only when the Lead can take it.
 // KERNEL-105: each Lead chat hears about the work it handed off, and a closed chat's work goes to the first one.

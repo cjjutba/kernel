@@ -13,5 +13,11 @@ export async function archiveByHand(req: KernelApi['workspaces.archive']['req'])
   try { await call('workspaces.archive', req) } catch (e) { marked.delete(req.workspaceId); throw e }
 }
 
+/** Archive a chat with Rowan because the user asked (KERNEL-405): its workspaces are marked like `archiveByHand` marks one. */
+export async function archiveChatByHand(threadId: string, workspaceIds: string[]) {
+  for (const id of workspaceIds) marked.add(id)
+  try { await call('threads.archive', { threadId }) } catch (e) { for (const id of workspaceIds) marked.delete(id); throw e }
+}
+
 /** The workspace is back from History, so its next archive starts unmarked. */
 export const restoredFromHistory = (workspaceId: string) => void marked.delete(workspaceId)

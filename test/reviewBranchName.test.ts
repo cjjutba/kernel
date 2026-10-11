@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { chmod, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -6,6 +6,9 @@ import { Kernel } from '../src/main/kernel'
 import { branchExists, createWorktree } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-265: a review of work on a long branch starts in its own folder, and takes the branch the Lead names.
 

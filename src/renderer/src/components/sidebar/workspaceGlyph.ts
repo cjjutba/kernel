@@ -28,6 +28,9 @@ const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
     ? { icon: 'plan', tone: 'needs', label: 'Plan to review' }
     : { icon: 'question', tone: 'needs', label: 'Needs you' }
 
+/** A worktree deleted outside Kernel (KERNEL-291). It waits on you to archive it. */
+const FOLDER_GONE: WorkspaceGlyph = { icon: 'warning', tone: 'del', label: 'Folder missing' }
+
 /** A workspace held in `trust` waits on you as much as an approval does, until you trust the room's scripts (KERNEL-209, KERNEL-342). */
 const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'Trust scripts' }
 
@@ -37,6 +40,8 @@ const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'T
  */
 export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
+  // Nothing can run in a worktree deleted outside Kernel (KERNEL-291).
+  if (ws.folderGone) return FOLDER_GONE
   if (ws.status === 'trust') return TRUST_GLYPH
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
@@ -83,9 +88,13 @@ export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGl
  * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree. `trust` is set when a workspace
  * the chat started is held for script trust and the row stands in for it, as an approval on that workspace would.
  */
-export function chatGlyph(o: { waiting: Approval[]; running: boolean; trust?: boolean }): WorkspaceGlyph {
+export function chatGlyph(o: { ws?: Workspace; waiting: Approval[]; running: boolean; trust?: boolean }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
-  if (o.trust) return TRUST_GLYPH
+  // The chat's own workspace sets up like a teammate's, and its row says so with the same icons (KERNEL-405).
+  if (o.ws?.folderGone) return FOLDER_GONE
+  if (o.ws?.status === 'trust' || o.trust) return TRUST_GLYPH
+  if (o.ws?.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
+  if (o.ws?.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
   return { icon: 'chat', tone: 'muted', label: '' }
 }

@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
@@ -176,7 +176,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
  * A Cleanup switch with the room's own value first (KERNEL-114, KERNEL-370). The room's file keeps the raw TOML value,
  * so only `true` or `false` counts, and anything else falls back to the app's.
  */
-export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive'): boolean {
+export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive' | 'leadWaitForSetup' | 'archiveChatWorkspaces'): boolean {
   const own = repo?.workspace[key]
   return typeof own === 'boolean' ? own : app[key]
 }

@@ -6,116 +6,72 @@ const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'ma
 const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 const kai: AgentDef = { ...rowan, id: 'kai', name: 'Kai', role: 'Frontend', lead: false }
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const home = ws('home', { name: 'lead', agentId: 'rowan', mode: 'current', lead: true })
 const chat = (id: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId: 'home', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, ...over })
+const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, roomId: 'a', title: id, createdAt: 1, ...over })
+const threadsOf = (...list: Thread[]) => Object.fromEntries(list.map((t) => [t.id, t]))
+/** A chat with Rowan's own workspace for the thread `t`, and its tabs (KERNEL-405). */
+const own = (t: string, over: Partial<Workspace> = {}) => ws(`ws-${t}`, { name: t, branch: `rowan/${t}`, agentId: 'rowan', lead: true, threadId: t, ...over })
+const tabsOf = (t: string, ...list: Chat[]) => ({ [`ws-${t}`]: list.length ? list : [chat(`${t}-tab`, { workspaceId: `ws-${t}`, threadId: t })] })
 const agents = { a: [rowan, kai] }
 const keys = (rows: ReturnType<typeof sidebarRows>) => rows.map(slotKey)
 
-describe('sidebar rows', () => {
-  it('lists each open chat followed by its workspaces, then the workspaces nobody owns', () => {
-    const workspaces = [home, ws('w1', { leadChatId: 'c2' }), ws('loose'), ws('w2', { leadChatId: 'c1' }), ws('w3', { leadChatId: 'c2' })]
-    const rows = sidebarRows(room, agents, workspaces, { home: [chat('c1'), chat('c2'), chat('c3')] })
-    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w2', 'chat:c2', 'workspace:w1', 'workspace:w3', 'chat:c3', 'workspace:loose'])
+describe('sidebar rows (KERNEL-405)', () => {
+  it('lists each open chat with Rowan, oldest first, followed by the workspaces it handed off, then the workspaces nobody owns', () => {
+    const workspaces = [own('t2'), ws('w1', { threadId: 't2' }), ws('loose'), own('t1'), ws('w2', { threadId: 't1' }), ws('w3', { threadId: 't2' }), own('t3')]
+    const threads = threadsOf(thread('t1', { createdAt: 1 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 3 }))
+    const rows = sidebarRows(room, agents, workspaces, { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3') }, threads)
+    expect(keys(rows)).toEqual(['chat:t1', 'workspace:w2', 'chat:t2', 'workspace:w1', 'workspace:w3', 'chat:t3', 'workspace:loose'])
     expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([true, true, true, false])
+    const first = rows[0]
+    expect(first.kind === 'chat' && first.ws?.id).toBe('ws-t1')
   })
 
-  it('leaves out closed chats and terminals, and moves their workspaces to the unowned rows', () => {
-    const workspaces = [home, ws('w1', { leadChatId: 'gone' }), ws('w2', { leadChatId: 'term' })]
-    const rows = sidebarRows(room, agents, workspaces, { home: [chat('c1'), chat('gone', { closed: true }), chat('term', { kind: 'terminal' })] })
-    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w1', 'workspace:w2'])
+  it("shows a chat's open chat tabs, not its terminals or closed tabs, and lists the chat before its list loads", () => {
+    const tabs = tabsOf('t1', chat('a1', { workspaceId: 'ws-t1', threadId: 't1' }), chat('a2', { workspaceId: 'ws-t1', threadId: 't1', closed: true }), chat('term', { workspaceId: 'ws-t1', kind: 'terminal' }))
+    const rows = sidebarRows(room, agents, [own('t1'), own('t2')], tabs, threadsOf(thread('t1'), thread('t2', { title: 'Plan wave 3' })))
+    expect(rows.map((r) => r.kind === 'chat' && { id: r.thread.id, tabs: r.tabs.map((c) => c.id), title: r.thread.title })).toEqual([
+      { id: 't1', tabs: ['a1'], title: 't1' },
+      { id: 't2', tabs: [], title: 'Plan wave 3' }
+    ])
   })
 
-  it('keeps the Lead row while the Lead has no open chat, and lists only workspaces when the room has no Lead', () => {
+  it("titles a row by its first tab while the thread hasn't reached the store, else by its workspace", () => {
+    const rows = sidebarRows(room, agents, [own('t1'), own('t2', { title: 'Look at the flaky test' })], tabsOf('t1', chat('a1', { workspaceId: 'ws-t1', threadId: 't1', title: 'Tab one' })))
+    expect(rows.map((r) => r.kind === 'chat' && r.thread.title)).toEqual(['Tab one', 'Look at the flaky test'])
+  })
+
+  it('keeps the Lead row while no chat is open, and lists only workspaces when the room has no Lead', () => {
     expect(keys(sidebarRows(room, agents, [ws('w1')], {}))).toEqual(['lead', 'workspace:w1'])
-    expect(keys(sidebarRows(room, agents, [home, ws('w1')], { home: [chat('c1', { closed: true })] }))).toEqual(['lead', 'workspace:w1'])
+    expect(keys(sidebarRows(room, agents, [own('t1', { status: 'archived' }), ws('w1', { threadId: 't1' })], {}))).toEqual(['lead', 'workspace:w1'])
     expect(keys(sidebarRows(room, { a: [kai] }, [ws('w1')], {}))).toEqual(['workspace:w1'])
   })
 
-  it('does not list archived workspaces or another room\'s', () => {
-    const rows = sidebarRows(room, agents, [home, ws('old', { status: 'archived' }), ws('other', { roomId: 'b' })], { home: [chat('c1')] })
-    expect(keys(rows)).toEqual(['chat:c1'])
+  it("never lists the shared Lead workspace from before, or archived workspaces, or another room's", () => {
+    const shared = ws('home', { name: 'lead', agentId: 'rowan', mode: 'current', lead: true })
+    const rows = sidebarRows(room, agents, [shared, own('t1'), ws('old', { status: 'archived' }), ws('other', { roomId: 'b' })], tabsOf('t1'))
+    expect(keys(rows)).toEqual(['chat:t1'])
   })
 
-  it('numbers only the chats, in sidebar order, whatever workspaces sit between them', () => {
-    const workspaces = [home, ws('w1', { leadChatId: 'c1' }), ws('w2', { leadChatId: 'c1' }), ws('w3', { leadChatId: 'c2' }), ws('loose')]
-    const chats = { home: [chat('c1'), chat('c2'), chat('c3')] }
-    expect(keys(slotsFor(room, agents, workspaces, chats))).toEqual(['chat:c1', 'chat:c2', 'chat:c3'])
-  })
-
-  it('numbers nine of ten open chats', () => {
-    const chats = { home: Array.from({ length: 10 }, (_, i) => chat(`c${i}`)) }
-    expect(keys(slotsFor(room, agents, [home], chats))).toEqual(Array.from({ length: 9 }, (_, i) => `chat:c${i}`))
-  })
-
-  it('numbers the Lead row when no chat is open, and nothing when the room has no Lead', () => {
-    expect(keys(slotsFor(room, agents, [], {}))).toEqual(['lead'])
-    expect(keys(slotsFor(room, agents, [home, ws('w1')], { home: [chat('c1', { closed: true })] }))).toEqual(['lead'])
-    expect(slotsFor(room, { a: [kai] }, [ws('w1')], {})).toEqual([])
-  })
-
-  it('draws a workspace as unowned when its chat is archived with it or no chat is open', () => {
-    const rows = sidebarRows(room, agents, [home, ws('w1', { leadChatId: 'c1', status: 'archived' }), ws('w2', { leadChatId: 'c1' })], { home: [chat('c1')] })
-    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w2'])
-    const noChat = sidebarRows(room, agents, [ws('w3', { leadChatId: 'c1' })], {})
-    expect(noChat.map((r) => r.kind === 'workspace' && r.nested)).toEqual([false, false])
-  })
-})
-
-const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, roomId: 'a', title: id, createdAt: 1, ...over })
-const threadsOf = (...list: Thread[]) => Object.fromEntries(list.map((t) => [t.id, t]))
-
-describe('sidebar rows with threads (KERNEL-338)', () => {
-  it('lists two tabs of one thread as one row, at the first tab, titled by the thread', () => {
-    const chats = { home: [chat('a1', { threadId: 't1', title: 'Tab one' }), chat('b1', { threadId: 't2' }), chat('a2', { threadId: 't1' })] }
-    const rows = sidebarRows(room, agents, [home], chats, threadsOf(thread('t1', { title: 'Client portal login' }), thread('t2')))
-    expect(keys(rows)).toEqual(['chat:t1', 'chat:t2'])
-    const first = rows[0]
-    expect(first.kind === 'chat' && { title: first.thread.title, tabs: first.tabs.map((c) => c.id) }).toEqual({ title: 'Client portal login', tabs: ['a1', 'a2'] })
-  })
-
-  it('titles a row by its first tab while the thread has not reached the store', () => {
-    const rows = sidebarRows(room, agents, [home], { home: [chat('a1', { threadId: 't1', title: 'Tab one' })] })
-    expect(rows[0].kind === 'chat' && rows[0].thread.title).toBe('Tab one')
-  })
-
-  it('groups workspaces by the thread that handed them off, not by the tab, so a closed tab keeps its workspace under its chat', () => {
-    const chats = { home: [chat('a1', { threadId: 't1' }), chat('a2', { threadId: 't1' }), chat('a3', { threadId: 't1', closed: true }), chat('b1', { threadId: 't2' })] }
-    const workspaces = [home, ws('w1', { threadId: 't1', leadChatId: 'a3' }), ws('w2', { threadId: 't2', leadChatId: 'b1' }), ws('w3', { threadId: 't1', leadChatId: 'a2' })]
-    const rows = sidebarRows(room, agents, workspaces, chats, threadsOf(thread('t1'), thread('t2')))
-    expect(keys(rows)).toEqual(['chat:t1', 'workspace:w1', 'workspace:w3', 'chat:t2', 'workspace:w2'])
-  })
-
-  it('moves the workspaces of a closed thread to chat level', () => {
-    const chats = { home: [chat('a1', { threadId: 't1', closed: true }), chat('b1', { threadId: 't2' })] }
-    const workspaces = [home, ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't2' })]
-    const rows = sidebarRows(room, agents, workspaces, chats, threadsOf(thread('t1', { closedAt: 5 }), thread('t2')))
+  it('draws the workspaces of an archived chat at room level', () => {
+    const workspaces = [own('t1', { status: 'archived' }), own('t2'), ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't2' })]
+    const rows = sidebarRows(room, agents, workspaces, tabsOf('t2'), threadsOf(thread('t1', { closedAt: 5 }), thread('t2')))
     expect(keys(rows)).toEqual(['chat:t2', 'workspace:w2', 'workspace:w1'])
     expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([true, false])
   })
 
-  it('falls back to the chat a workspace names when it has no thread of its own', () => {
-    const chats = { home: [chat('a1', { threadId: 't1' })] }
-    expect(keys(sidebarRows(room, agents, [home, ws('w1', { leadChatId: 'a1' })], chats))).toEqual(['chat:t1', 'workspace:w1'])
+  it('numbers only the chats, in sidebar order, nine of ten, whatever workspaces sit between them', () => {
+    const ten = Array.from({ length: 10 }, (_, i) => `t${i}`)
+    const workspaces = [...ten.map((t) => own(t)), ws('w1', { threadId: 't0' }), ws('loose')]
+    const threads = threadsOf(...ten.map((t, i) => thread(t, { createdAt: i })))
+    expect(keys(slotsFor(room, agents, workspaces, {}, threads))).toEqual(ten.slice(0, 9).map((t) => `chat:${t}`))
   })
 
-  it('folds by thread id, and numbers ⌘1 to ⌘9 over the chats, so tabs and workspaces add no numbers', () => {
-    const chats = { home: [chat('a1', { threadId: 't1' }), chat('a2', { threadId: 't1' }), chat('a3', { threadId: 't1' }), chat('b1', { threadId: 't2' })] }
-    const workspaces = [home, ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't1' })]
-    const threads = threadsOf(thread('t1'), thread('t2'))
-    expect(keys(sidebarRows(room, agents, workspaces, chats, threads))).toEqual(['chat:t1', 'workspace:w1', 'workspace:w2', 'chat:t2'])
-    expect(keys(sidebarRows(room, agents, workspaces, chats, threads, ['t1']))).toEqual(['chat:t1', 'chat:t2'])
-    expect(keys(slotsFor(room, agents, workspaces, chats, threads))).toEqual(['chat:t1', 'chat:t2'])
+  it('numbers the Lead row when no chat is open, and nothing when the room has no Lead', () => {
+    expect(keys(slotsFor(room, agents, [], {}))).toEqual(['lead'])
+    expect(slotsFor(room, { a: [kai] }, [ws('w1')], {})).toEqual([])
   })
 
-  it('keeps a fold saved under a chat id from before threads, which migration 5 turned into a thread of its own', () => {
-    const chats = { home: [chat('c1', { threadId: 'new-uuid-1' }), chat('c2', { threadId: 'new-uuid-1' }), chat('c3', { threadId: 'new-uuid-2' })] }
-    const workspaces = [home, ws('w1', { threadId: 'new-uuid-1' }), ws('w2', { threadId: 'new-uuid-2' })]
-    const threads = threadsOf(thread('new-uuid-1'), thread('new-uuid-2'))
-    expect(keys(sidebarRows(room, agents, workspaces, chats, threads, ['c2']))).toEqual(['chat:new-uuid-1', 'chat:new-uuid-2', 'workspace:w2'])
-    expect(keys(sidebarRows(room, agents, workspaces, chats, threads))).toEqual(['chat:new-uuid-1', 'workspace:w1', 'chat:new-uuid-2', 'workspace:w2'])
-  })
-
-  it('opens a thread on the tab last shown in it, else its first tab', () => {
+  it('opens a chat on the tab last shown in it, else its first tab', () => {
     const tabs = [chat('a1'), chat('a2'), chat('a3')]
     expect(threadTab(tabs, { t1: 'a2' }, 't1')?.id).toBe('a2')
     expect(threadTab(tabs, { t1: 'gone' }, 't1')?.id).toBe('a1')
@@ -125,50 +81,28 @@ describe('sidebar rows with threads (KERNEL-338)', () => {
 })
 
 describe('folded chats', () => {
-  const workspaces = [home, ws('w1', { leadChatId: 'c1' }), ws('w2', { leadChatId: 'c1' }), ws('loose'), ws('w3', { leadChatId: 'c2' })]
-  const lists = { home: [chat('c1'), chat('c2'), chat('c3')] }
+  const workspaces = [own('t1'), own('t2'), own('t3'), ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't1' }), ws('loose'), ws('w3', { threadId: 't2' })]
+  const threads = threadsOf(thread('t1', { createdAt: 1 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 3 }))
+  const lists = { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3') }
 
   it('hides the workspaces of a folded chat, and the chat carries them with its folded flag', () => {
-    const rows = sidebarRows(room, agents, workspaces, lists, {}, ['c1'])
-    expect(keys(rows)).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
-    const c1 = rows[0]
-    expect(c1.kind === 'chat' && { folded: c1.folded, owned: c1.owned.map((w) => w.id) }).toEqual({ folded: true, owned: ['w1', 'w2'] })
-    const c2 = rows[1]
-    expect(c2.kind === 'chat' && { folded: c2.folded, owned: c2.owned.map((w) => w.id) }).toEqual({ folded: false, owned: ['w3'] })
+    const rows = sidebarRows(room, agents, workspaces, lists, threads, ['t1'])
+    expect(keys(rows)).toEqual(['chat:t1', 'chat:t2', 'workspace:w3', 'chat:t3', 'workspace:loose'])
+    const t1 = rows[0]
+    expect(t1.kind === 'chat' && { folded: t1.folded, owned: t1.owned.map((w) => w.id) }).toEqual({ folded: true, owned: ['w1', 'w2'] })
   })
 
-  it('still reports the owned workspaces of a chat that is not folded', () => {
-    const rows = sidebarRows(room, agents, workspaces, lists)
-    const c1 = rows[0]
-    expect(c1.kind === 'chat' && c1.owned.map((w) => w.id)).toEqual(['w1', 'w2'])
-    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w1', 'workspace:w2', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
-  })
-
-  it('lists a folded chat with no workspaces like an unfolded one', () => {
-    const rows = sidebarRows(room, agents, workspaces, lists, {}, ['c3'])
-    expect(keys(rows)).toEqual(keys(sidebarRows(room, agents, workspaces, lists)))
-    const c3 = rows.find((r) => r.kind === 'chat' && r.thread.id === 'c3')
-    expect(c3?.kind === 'chat' && { folded: c3.folded, owned: c3.owned }).toEqual({ folded: false, owned: [] })
-  })
-
-  it('leaves unowned workspaces alone, and ignores ids that are not open chats', () => {
-    const rows = sidebarRows(room, agents, workspaces, lists, {}, ['c1', 'c2', 'gone'])
-    expect(keys(rows)).toEqual(['chat:c1', 'chat:c2', 'chat:c3', 'workspace:loose'])
-    expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([false])
+  it('keeps a fold saved under a tab id, and lists a folded chat with no workspaces like an unfolded one', () => {
+    expect(keys(sidebarRows(room, agents, workspaces, lists, threads, ['t1-tab']))).toEqual(['chat:t1', 'chat:t2', 'workspace:w3', 'chat:t3', 'workspace:loose'])
+    expect(keys(sidebarRows(room, agents, workspaces, lists, threads, ['t3']))).toEqual(keys(sidebarRows(room, agents, workspaces, lists, threads)))
   })
 
   it('keeps every number when a chat is folded', () => {
-    expect(keys(slotsFor(room, agents, workspaces, lists))).toEqual(['chat:c1', 'chat:c2', 'chat:c3'])
-    expect(keys(sidebarRows(room, agents, workspaces, lists, {}, ['c1']))).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
+    expect(keys(slotsFor(room, agents, workspaces, lists, threads))).toEqual(['chat:t1', 'chat:t2', 'chat:t3'])
   })
 })
 
 describe('chat lists that arrive while a push already made one', () => {
-  it('holds the Lead row back until the Lead\'s list has loaded', () => {
-    expect(keys(sidebarRows(room, agents, [home, ws('w1')], {}))).toEqual(['workspace:w1'])
-    expect(keys(sidebarRows(room, agents, [home, ws('w1')], { home: [] }))).toEqual(['lead', 'workspace:w1'])
-  })
-
   it('returns the fetched list when nothing was pushed', () => {
     const fetched = [chat('c1'), chat('c2')]
     expect(mergeChatList(fetched, undefined)).toBe(fetched)

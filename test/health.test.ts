@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, setUp } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
@@ -78,6 +78,7 @@ const usageAt = (percent: number, resetsAt: number) => ({
 async function limited() {
   const { k, room } = await kernel()
   const chat = await k.leadChat(room.id)
+  await setUp(k, chat.id)
   await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
   const call = sdk.calls[sdk.calls.length - 1]
   const resetsAt = S(Date.now() + 3600_000)
@@ -358,6 +359,8 @@ describe('kernel recovery paths', () => {
   it('keeps a held brief, and the Lead\'s message behind it, across a restart, and Run again sends them in order (KERNEL-128)', async () => {
     const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
+    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     expect(ws.status).toBe('failed')
     await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
@@ -368,8 +371,8 @@ describe('kernel recovery paths', () => {
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing is held any more, so nothing comes back after another restart.
-    expect(k2.store.meta('held')).toEqual({})
+    // Nothing of Kai's is held any more, so nothing comes back after another restart. Rowan's chat still waits for its own setup.
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([lead.id])
     sdk.calls[sdk.calls.length - 1].feed(result('r1'))
     await flush()
     const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
@@ -381,6 +384,8 @@ describe('kernel recovery paths', () => {
   it('marks a workspace that waits for nothing ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
     const { k, room } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
+    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
     expect(ws.waitsFor).toBeUndefined()
@@ -397,6 +402,8 @@ describe('kernel recovery paths', () => {
   it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
     const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
+    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const other = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
     await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
@@ -406,7 +413,7 @@ describe('kernel recovery paths', () => {
     await k.stop()
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([chat.id])
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {}).sort()).toEqual([lead.id, chat.id].sort())
     await k2.stop()
   })
 
@@ -440,6 +447,8 @@ describe('kernel recovery paths', () => {
   it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
+    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    await setUp(k, lead.id, 'failed')
     // Rowan's turn waits on create_workspace, so its result tells Rowan.
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => id === lead.id
@@ -459,6 +468,8 @@ describe('kernel recovery paths', () => {
   it("doesn't tell the Lead setup failed when the user archived the workspace during Run again (KERNEL-126)", async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 1 && false)"\n' })
     const lead = await k.leadChat(room.id)
+    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
     const before = waiting()
@@ -473,6 +484,7 @@ describe('kernel recovery paths', () => {
   it("tells the Lead when a teammate's session dies partway through a turn (KERNEL-124)", async () => {
     const { k, room } = await kernel()
     const lead = await k.leadChat(room.id)
+    await setUp(k, lead.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const call = sdk.calls[sdk.calls.length - 1]
     await flush()
@@ -486,6 +498,7 @@ describe('kernel recovery paths', () => {
   it("Retry now sends a Kernel update first, as Kernel's, and leaves a pending hand-off alone (KERNEL-116)", async () => {
     const { k, room } = await kernel()
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     const call = sdk.calls[sdk.calls.length - 1]
     call.feed(result())
@@ -537,6 +550,7 @@ describe('kernel recovery paths', () => {
   it('pauses every room on a 5-hour rejection and resumes them when it lifts', async () => {
     const { k, room } = await kernel()
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     const call = sdk.calls[sdk.calls.length - 1]
     const resetsAt = S(Date.now() + 3600_000)
@@ -645,6 +659,7 @@ describe('kernel recovery paths', () => {
   it("leaves the rooms running on Fable's own limit, and carries the chat on when it switches model", async () => {
     const { k, room } = await kernel()
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.handlers()['chats.configure']({ chatId: chat.id, model: 'claude-fable-5-1' })
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     const call = sdk.calls[sdk.calls.length - 1]
@@ -663,6 +678,7 @@ describe('kernel recovery paths', () => {
     const { k, room } = await kernel()
     const { pushes, off } = listen()
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 's' })
     await flush()
@@ -712,6 +728,7 @@ describe('kernel recovery paths', () => {
     let signedIn = false
     k.accountReader = async () => (signedIn ? { signedIn: true, name: 'Sam Rivera' } : { signedIn: false })
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 's' })
     await flush()

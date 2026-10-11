@@ -11,6 +11,9 @@ import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, revie
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
 function leadTools(answer: Decision | null, plan = { on: true }) {
   const planApproved = vi.fn()

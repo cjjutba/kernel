@@ -1,6 +1,7 @@
 import type { Chat, ChatItem, Effort, ModelId, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
 import { titleText } from '../services/titles'
@@ -158,18 +159,21 @@ export class Chats extends Feature {
   }
 
   /**
-   * The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab of a Lead chat closes
-   * the chat (KERNEL-337). In a teammate's workspace the last open tab is replaced by a fresh chat. The Lead's workspace is
-   * left with none, since only the user starts a chat with the Lead (KERNEL-365).
+   * The tab leaves the strip, its transcript stays. A big terminal's process ends. Closing the last open tab of a chat with
+   * Rowan archives the chat with its workspace, the way its row's Archive does, and the window asks first when that would stop
+   * something (KERNEL-405). In a teammate's workspace the last open tab is replaced by a fresh chat. The shared Lead workspace
+   * from before is left with none, since only the user starts a chat with the Lead (KERNEL-365).
    */
-  closeChat(chatId: string) {
+  async closeChat(chatId: string): Promise<void> {
     const chat = this.mustChat(chatId)
+    const ws = this.mustWs(chat.workspaceId)
+    const last = chat.kind !== 'terminal' && !chat.closed && !this.chatTabs(ws.id).some((c) => c.id !== chat.id && c.kind !== 'terminal')
+    if (last && isLeadChatWorkspace(ws) && ws.status !== 'archived') return this.k.lead.archiveLeadChat(ws.threadId!)
     this.sessions.stop(chatId)
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
-    this.k.lead.tabClosed(chat)
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
-    if (this.isLeadWorkspace(this.mustWs(chat.workspaceId))) return
+    if (this.isLeadWorkspace(ws)) return
     this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
   }
 
@@ -207,8 +211,9 @@ export class Chats extends Feature {
     let sessionId: string | undefined
     if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
     const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => undefined); throw e }) : chat.workspaceId
-    // A fork of a Lead tab is another tab of its Lead chat (KERNEL-337). Fork into new workspace refuses the Lead's workspace.
-    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan, threadId: chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    // A fork of a Lead tab is another tab of its Lead chat (KERNEL-337), the one its workspace hosts (KERNEL-405). Fork into new
+    // workspace refuses the Lead's workspace.
+    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan, threadId: into ? chat.threadId : ws.threadId ?? chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
     for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
     return fork
   }
@@ -250,7 +255,7 @@ export class Chats extends Feature {
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
       'chats.list': async ({ workspaceId }) => this.chatTabs(workspaceId),
       'chats.rename': async ({ chatId, title }) => this.renameChat(chatId, title),
-      'chats.close': async ({ chatId }) => { this.closeChat(chatId); return { ok: true } },
+      'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
@@ -262,7 +267,8 @@ export class Chats extends Feature {
         if (!this.k.team.agentCache.has(ws.roomId)) await this.k.team.agents(ws.roomId)
         const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
         const pick = { model, effort: this.openedEffort(workspaceId, model), plan: false }
-        // A Lead tab joins the Lead chat `threadId`, or starts one (KERNEL-337). A big terminal belongs to no Lead chat.
+        // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat
+        // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat.
         if (!term && this.isLeadWorkspace(ws)) return this.k.lead.leadTab(ws, NEW_TAB, pick, threadId)
         return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { ...pick, kind, terminal: term?.terminal })
       },

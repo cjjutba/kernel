@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrBlocked, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -183,14 +183,24 @@ export interface KernelApi {
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
   /** Ask Rowan from anywhere (QuickAsk.png). The answer streams into the returned chat. */
   'lead.ask': { req: { roomId: string; text: string; threadId?: string }; res: { chatId: string } }
-  /** The Lead's workspace, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Created on the main checkout the first time. */
-  'lead.open': { req: { roomId: string }; res: Workspace }
-  /** The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }; res: Chat }
+  /**
+   * The workspace of the room's newest open chat with Rowan, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Null when no chat
+   * is open: it never starts one (KERNEL-405).
+   */
+  'lead.open': { req: { roomId: string }; res: Workspace | null }
+  /**
+   * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
+   * chat gets its own worktree, on a branch from `baseRef` or the latest default branch, and the prompt waits for setup (KERNEL-405).
+   */
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; baseRef?: string }; res: Chat }
   /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
   'threads.rename': { req: { threadId: string; title: string }; res: Thread }
+  /** What archiving a chat with Rowan would stop, per workspace, its own last (KERNEL-405). */
+  'threads.archivePreview': { req: { threadId: string }; res: ChatArchivePreview }
+  /** Archives a chat with Rowan: the workspaces it handed off, unless Settings says otherwise, then its own (KERNEL-405). */
+  'threads.archive': { req: { threadId: string }; res: Ok }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }

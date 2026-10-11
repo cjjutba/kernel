@@ -37,7 +37,10 @@ export interface Workspace {
   path: string
   mode: WorkspaceMode
   agentId: string
-  /** The Lead's own workspace, the one its chats live in (KERNEL-353). Read it through `isLeadWorkspace`. */
+  /**
+   * One of the Lead's own workspaces (KERNEL-353). Since KERNEL-405 each chat with Rowan has one, with the chat in `threadId`.
+   * One with no `threadId` is the shared workspace every chat lived in before. Read it through `isLeadChatWorkspace`.
+   */
   lead?: true
   port: number
   status: WorkspaceStatus
@@ -48,8 +51,13 @@ export interface Workspace {
   taskId?: string
   /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
   leadChatId?: string
-  /** The Lead chat that `leadChatId` belongs to, kept so the workspace stays with it after that tab closes (KERNEL-337). */
+  /**
+   * The chat with Rowan this workspace belongs to: the one that handed it off, kept after that tab closes (KERNEL-337), or, on a
+   * `lead` workspace, the chat it hosts (KERNEL-405).
+   */
   threadId?: string
+  /** The worktree's folder was deleted outside Kernel. Checked at launch and when the workspace is opened (KERNEL-291). */
+  folderGone?: true
   /** On a review workspace: the workspace whose work it reviews. */
   reviewOf?: string
   /** Reviewers' verdicts on this workspace's PR, one per review workspace. */

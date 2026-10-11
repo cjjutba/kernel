@@ -3,6 +3,7 @@ import { bus } from '../bus'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
 import { copyLocalFiles, replayScripts, runScript, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
+import { readSetupEnv, resetSetupEnv, setupEnvPath } from '../services/env'
 import { waitMet } from '../services/waits'
 import { head } from './shared'
 import type { Handlers } from '../kernel'
@@ -21,14 +22,17 @@ export class Setup extends Feature {
   /** How a workspace's last failed setup ended: its exit code, null when it was stopped, or `timeout`. Cleared when setup passes. */
   readonly setupFailures = new Map<string, ScriptEnd>()
 
-  /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
-  async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
+  /**
+   * Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its
+   * prompt. A restored workspace's chat started long ago, so it takes no checkpoint (`checkpoint: false`, KERNEL-77).
+   */
+  async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>, o: { checkpoint?: boolean } = {}) {
     const repo = await loadRepoSettings(room.path)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The start of chat: reverting to it undoes everything the agent did. Taken before the workspace counts as ready, so
     // ready and the brief going out happen together: a quit between them would leave a ready workspace whose held brief
     // Kernel no longer restores.
-    const start0 = await snapshot(ws, { chatId: chat.id, title: prompt, start: true }).catch(() => undefined)
+    const start0 = o.checkpoint === false ? undefined : await snapshot(ws, { chatId: chat.id, title: prompt, start: true }).catch(() => undefined)
     const done = this.updateWs(ws.id, { status: 'ready' })
     if (done.status === 'archived') return done
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
@@ -50,6 +54,11 @@ export class Setup extends Feature {
 
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
   readonly settingUp = new Set<string>()
+  /**
+   * Workspaces whose setup started in this run before `recoverSetups` ran, as the chats with Rowan that move at startup do
+   * (KERNEL-405). Their setup is still going, so it didn't stop when Kernel quit.
+   */
+  readonly fresh = new Set<string>()
 
   /** "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. */
   async retrySetup(workspaceId: string): Promise<Workspace> {
@@ -66,7 +75,7 @@ export class Setup extends Feature {
     // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
     if (await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (repo.scripts.setup) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
@@ -104,7 +113,7 @@ export class Setup extends Feature {
     // and trusting runs setup and sends it (KERNEL-209).
     if (script && await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (script) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
         if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
@@ -118,7 +127,26 @@ export class Setup extends Feature {
     }
     if (!chat) { settle(); return this.updateWs(ws.id, { status: 'ready' }) }
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
-    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.sessions.release(chat.id) })
+    // A chat that already had a turn, as a restored workspace's has, starts nothing new, so it takes no start checkpoint (KERNEL-77).
+    const begun = this.store.items(chat.id).some((i) => i.kind === 'user')
+    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun })
+  }
+
+  /**
+   * Lets every chat tab of the workspace held for setup go, `first` first. A new workspace has one, but a restored one or a
+   * chat with Rowan can have several (KERNEL-405).
+   */
+  releaseTabs(workspaceId: string, first?: string) {
+    const tabs = this.chatTabs(workspaceId).filter((c) => c.kind !== 'terminal')
+    for (const c of [...tabs.filter((c) => c.id === first), ...tabs.filter((c) => c.id !== first)]) this.sessions.release(c.id)
+  }
+
+  /**
+   * What the setup script runs with: the workspace's variables and `$KERNEL_ENV`, a file emptied first, for NAME=value lines the
+   * workspace's agents, run scripts and terminals get once setup passes (KERNEL-405).
+   */
+  setupEnv(ws: Workspace): Record<string, string> {
+    return { ...this.k.env.envFor(ws, { script: true }), KERNEL_ENV: resetSetupEnv(this.o.dataDir, ws.id) }
   }
 
   /** Copy the local files into a new worktree, then run setup. Only for text the user trusted (KERNEL-209). */
@@ -174,17 +202,27 @@ export class Setup extends Feature {
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
-    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
+    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
     return this.setupPassed(ws, code)
   }
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
   private setupPassed(ws: Workspace, code: ScriptEnd) {
-    if (code === 0) { this.setupFailures.delete(ws.id); return true }
+    if (code === 0) { this.setupFailures.delete(ws.id); this.sayLoaded(ws); return true }
     this.setupFailures.set(ws.id, code)
     const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
     bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line, stream: 'stderr' }] })
     return false
+  }
+
+  /** One line in the setup log naming what setup handed the workspace through `$KERNEL_ENV`, never the values (KERNEL-405). */
+  private sayLoaded(ws: Workspace) {
+    const { vars, dropped } = readSetupEnv(setupEnvPath(this.o.dataDir, ws.id))
+    const names = Object.keys(vars)
+    if (!names.length && !dropped.length) return
+    const got = names.length ? `Setup set ${names.join(', ')} for this workspace's agents, run scripts and terminals.` : ''
+    const skipped = dropped.length ? `Skipped ${dropped.join(', ')}: ${dropped.length === 1 ? "it isn't a name" : "they aren't names"} Kernel passes on.` : ''
+    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: [got, skipped].filter(Boolean).join(' '), stream: 'stdout' }] })
   }
 
   setSetup(id: string, hold: SetupHold | undefined) {
@@ -203,6 +241,7 @@ export class Setup extends Feature {
   recoverSetups() {
     const saved = this.store.meta<Record<string, SetupHold>>('setups') ?? {}
     for (const ws of this.store.workspaces()) {
+      if (this.fresh.has(ws.id)) continue
       const hold = saved[ws.id]
       const chat = (hold?.chatId && this.store.chat(hold.chatId)) || this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
       const unsent = ws.status === 'ready' && !!hold?.brief && !!chat && !this.store.items(chat.id).some((i) => i.kind === 'user')
@@ -231,6 +270,8 @@ export class Setup extends Feature {
         // Trusted since it was held: it sets up the way trusting releases it, brief and all.
         if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
+        // Setup run by hand writes `$KERNEL_ENV` again, and the agents get what it wrote once it passes (KERNEL-405).
+        if (kind === 'setup') { void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) }).then((code) => { if (code === 0) this.sayLoaded(this.mustWs(workspaceId)) }); return { ok: true } }
         void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
         return { ok: true }
       },

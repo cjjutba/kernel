@@ -39,7 +39,12 @@ const noCanvas = [
   'NavMemory',
   'SidebarLeadChats',
   'SidebarTrustHeld', // a workspace held for script trust next to an idle one, and a folded chat hiding another (KERNEL-342)
-  'LeadNoChats', // the Lead's workspace with no chat: New chat with Rowan in place of a chat, no chat row in the sidebar, no chat tab (KERNEL-366)
+  'LeadNoChats', // a room with no open chat: New chat with Rowan with no workspace yet, no chat row in the sidebar (KERNEL-366, KERNEL-405)
+  'GroupedChatArchive', // a chat row's hover Archive, like a workspace row's (KERNEL-405)
+  'ConfirmArchiveChat', // archiving a chat that would stop an open PR and uncommitted changes, laid out like ConfirmArchive (KERNEL-405)
+  'WorkspaceLeadSetup', // a chat with Rowan setting up, its first message in the queue (KERNEL-405)
+  'WorkspaceLeadSetupFailed', // the same chat once its setup failed, with Run again (KERNEL-405)
+  'WorkspaceFolderMissing', // a worktree deleted outside Kernel, with Archive (KERNEL-291)
   'WhatsNewCurrent', // What's new with no update ready, showing the running version's notes (KERNEL-154)
   'UpdateReadyLight', // the update card in the light theme (KERNEL-164)
   'HistoryConfirmDelete', // the Delete confirm in History for every archived row, with two branches that hold unpushed commits (KERNEL-333)
@@ -125,6 +130,13 @@ describe('fixture handlers', () => {
     const withThreads = fixtureHandlers({ ...f, threads })
     expect(await withThreads['threads.list']({})).toEqual(threads)
     expect(await withThreads['threads.list']({ roomId: 'room-b' })).toEqual([threads[1]])
-    expect(await h['threads.list']({})).toEqual([])
+    expect(await h['threads.list']({})).toEqual(f.threads)
+  })
+
+  it("opens a room's newest chat with Rowan, or none, and previews what archiving a chat stops (KERNEL-405)", async () => {
+    expect((await h['lead.open']({ roomId: f.rooms[0].id }))?.id).toBe('ws-lead')
+    const none = fixtureHandlers({ ...f, workspaces: f.workspaces.filter((w) => !w.lead) })
+    expect(await none['lead.open']({ roomId: f.rooms[0].id })).toBeNull()
+    expect(await h['threads.archivePreview']({ threadId: 't-lead' })).toEqual({ threadId: 't-lead', title: 'Lead', workspaces: [{ id: 'ws-lead', name: 'lead', own: true, running: false, dirty: 0, unpushed: 0 }] })
   })
 })

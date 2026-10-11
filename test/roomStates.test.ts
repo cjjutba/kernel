@@ -12,7 +12,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { HOLD_TIMEOUT_SEC, RESTART_NUDGE, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
-import { tempRepo } from './helpers'
+import { setUp, tempRepo } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts, plus `fail` to end a session the way a crashed process does.
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: any; feed: (m: unknown) => void; fail: (e: Error) => void }[] }))
@@ -383,6 +383,7 @@ describe('room pause and team templates', () => {
     const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
     await k.agents(room.id)
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     await k.sessions.configure(chat.id, { plan: true })
     const seen: Record<string, string> = {}
     const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
@@ -402,6 +403,7 @@ describe('room pause and team templates', () => {
     const h = k.handlers()
     const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
     const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
     const before = sdk.calls.length
     expect(await h['chats.restart']({ chatId: chat.id })).toEqual({ ok: true })
     expect(sdk.calls.length).toBe(before + 1)

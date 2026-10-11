@@ -722,9 +722,17 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
 const groupedThread = (id: string, title: string, m: number): Thread => ({ id, roomId: ids.roomA, title, createdAt: at(9, m) })
-/** A tab of the Lead's workspace in the Lead chat `threadId`. */
+/** Each chat with Rowan's own workspace (KERNEL-405). The export chat's is the seed's Lead workspace. */
+const CHAT_WS: Record<string, string> = { [GROUPED.export]: ids.lead, [GROUPED.table]: 'ws-chat-table', [GROUPED.login]: 'ws-chat-login', [GROUPED.demo]: 'ws-chat-demo', [GROUPED.csv]: 'ws-chat-csv' }
+/** A tab of the Lead chat `threadId`, in that chat's workspace. */
 const leadTab = (id: string, threadId: string, title: string, m: number, over: Partial<Chat> = {}): Chat =>
-  ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: at(9, m), ...over })
+  ({ id, workspaceId: CHAT_WS[threadId] ?? ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: at(9, m), ...over })
+const chatSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+/** A chat with Rowan's own worktree on `rowan/<a few words>` (KERNEL-405). Archived with its chat. */
+const chatWorkspace = (t: Thread, port: number, over: Partial<Workspace> = {}): Workspace => ({
+  id: CHAT_WS[t.id] ?? `ws-chat-${t.id}`, roomId: ids.roomA, name: chatSlug(t.title), branch: `rowan/${chatSlug(t.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/rowan-${chatSlug(t.title)}`,
+  mode: 'worktree', agentId: 'rowan', lead: true, threadId: t.id, port, status: t.closedAt ? 'archived' : 'ready', prState: 'none', createdAt: t.createdAt, ...(t.closedAt ? { archivedAt: t.closedAt } : {}), ...over
+})
 /** A workspace the Lead's chat `threadId` handed off, from its first tab. */
 const handedOff = (id: string, name: string, task: string, agentId: string, port: number, over: Partial<Workspace> = {}): Workspace =>
   ({ id, roomId: ids.roomA, name, branch: `feat/${task}-${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), threadId: GROUPED.export, leadChatId: ids.leadChat, ...over })
@@ -769,22 +777,28 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'kai', 4321, prFields(PDF_BUTTON_PR)),
     handedOff('ws-pdf-tests', 'invoice-pdf-tests', 't-15c', 'ivy', 4322, { stat: { files: 2, added: 138, removed: 9 } })
   ]
+  const allThreads = (o.threads ?? ((t) => t))(threads)
+  const allChats = (o.chats ?? ((c) => c))(chats)
+  // Each chat has its own workspace, so the one on screen is the open tab's (KERNEL-405).
+  const own = allThreads.map((t, i) => chatWorkspace(t, 4300 + i * 10))
+  const shown = allChats.find((c) => c.id === tab)?.workspaceId ?? ids.lead
+  const tree = (f.tree?.[ids.table] ?? []).map(({ status: _s, ...e }) => e)
   return {
-    threads: (o.threads ?? ((t) => t))(threads),
+    threads: allThreads,
     // The seed's single Lead chat gives way to the tabs above. The table and schema workspaces were handed off by the table chat.
-    chats: [...(o.chats ?? ((c) => c))(chats), ...f.chats.filter((c) => c.workspaceId !== ids.lead)],
-    workspaces: [...handed, ...withWorkspace(f, ids.table, { threadId: T.table }).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w.id === ids.invites ? { ...w, ...prFields(INVITES_PR) } : w))],
+    chats: [...allChats, ...f.chats.filter((c) => c.workspaceId !== ids.lead)],
+    workspaces: [...own, ...handed, ...withWorkspace(f, ids.table, { threadId: T.table }).filter((w) => w.id !== ids.lead).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w.id === ids.invites ? { ...w, ...prFields(INVITES_PR) } : w))],
     // Kai's two PRs are ready and approved, which the tab and the header count (KERNEL-354).
     prs: { 'ws-pdf-button': openPrInfo(PDF_BUTTON_PR), [ids.invites]: openPrInfo(INVITES_PR) },
     items: { [ids.leadChat]: exportItems(), [ids.tableChat]: [], ...o.items },
     approvals: [plan, ...f.approvals],
     push: [...f.push, ...(o.running ?? ['chat-table']).map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true }))],
-    // The Lead's worktree sits at the base, so no file differs from it.
-    tree: { ...f.tree, [ids.lead]: (f.tree?.[ids.table] ?? []).map(({ status: _s, ...e }) => e) },
-    fileText: { ...f.fileText, [ids.lead]: f.fileText?.[ids.table] ?? {} },
+    // Each chat's worktree sits at the base, so no file differs from it.
+    tree: { ...f.tree, ...Object.fromEntries(own.map((w) => [w.id, tree])) },
+    fileText: { ...f.fileText, ...Object.fromEntries(own.map((w) => [w.id, f.fileText?.[ids.table] ?? {}])) },
     ui: {
-      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
-      tabs: { [ids.lead]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
+      route: { name: 'workspace', workspaceId: shown }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
+      tabs: { [shown]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
     }
   }
 }
@@ -797,8 +811,8 @@ function leadWaiting(f: Fixture): Partial<Fixture> {
   return {
     ...g,
     chats: [leadTab(ids.leadChat, GROUPED.export, 'Export invoices as PDF', 5, { plan: true }), ...g.chats!],
-    // The schema workspace has no changes yet, as the PNG draws it.
-    workspaces: g.workspaces!.filter((w) => w.threadId !== GROUPED.export).map((w) => (w.id === ids.lead ? lead : w.id === ids.schema ? { ...w, stat: undefined } : w)),
+    // The schema workspace has no changes yet, as the PNG draws it. The export chat's own workspace keeps its branch (KERNEL-405).
+    workspaces: g.workspaces!.filter((w) => w.threadId !== GROUPED.export || w.lead).map((w) => (w.id === ids.lead ? { ...lead, name: w.name, branch: w.branch, path: w.path, threadId: w.threadId } : w.id === ids.schema ? { ...w, stat: undefined } : w)),
     items: { ...g.items, ...plan.items },
     approvals: plan.approvals,
     changes: plan.changes
@@ -1080,7 +1094,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Chat rows say what waits on you and what is running: the login chat has a question open in its second tab, the table chat is working.
   GroupedRowStatus: scene((f) => {
     const g = grouped(f)
-    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: ids.lead, chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
+    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: CHAT_WS[GROUPED.login], chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
     return { ...g, approvals: [ask, ...(g.approvals ?? [])] }
   }),
   // Ask Rowan from inside the chat: the answer is a fifth tab of Export invoices as PDF and the sidebar gains no row (KERNEL-339).
@@ -1098,21 +1112,32 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ] }
     })
   }),
-  // The last tab of a chat that is still running asks first. Closing it leaves the chat's two workspaces in the sidebar.
+  // The last tab of a chat that is still running asks first, since closing it archives the chat and its two workspaces (KERNEL-405).
   GroupedCloseLastTab: scene((f) => {
     const g = grouped(f, { tab: 'chat-table', chats: (c) => c.filter((x) => x.id !== 'chat-table-copy') })
-    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'closeChats', workspaceId: ids.lead, chatIds: ['chat-table'] } } }
+    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'archiveChat', threadId: GROUPED.table } } }
   }),
-  GroupedCloseLastTabAfter: scene((f) => grouped(f, {
-    running: [], chats: (c) => c.filter((x) => x.id !== 'chat-table-copy').map((x) => (x.id === 'chat-table' ? { ...x, closed: true } : x)),
-    threads: (t) => t.map((x) => (x.id === GROUPED.table ? { ...x, closedAt: at(10, 50) } : x))
-  })),
-  // A room whose last chat was closed (KERNEL-365): the Lead's workspace opens on New chat with Rowan and the sidebar has no chat row (KERNEL-366).
-  // The three workspaces the closed chat handed off stay as unowned rows.
+  // Hovering a chat row shows Archive, like a workspace row's (KERNEL-405). The shot hovers the table chat (scripts/shots.ts).
+  GroupedChatArchive: scene((f) => grouped(f, { running: [] })),
+  // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
+  ConfirmArchiveChat: scene((f) => {
+    const g = grouped(f, { running: [] })
+    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'archiveChat', threadId: GROUPED.export } } }
+  }),
+  // The chat is archived with the two workspaces it handed off, which leave the sidebar for History (KERNEL-405).
+  GroupedCloseLastTabAfter: scene((f) => {
+    const g = grouped(f, {
+      running: [], chats: (c) => c.filter((x) => x.id !== 'chat-table-copy'),
+      threads: (t) => t.map((x) => (x.id === GROUPED.table ? { ...x, closedAt: at(10, 50) } : x))
+    })
+    return { ...g, workspaces: g.workspaces!.map((w) => (w.threadId === GROUPED.table ? { ...w, status: 'archived' as const, archivedAt: at(10, 50) } : w)) }
+  }),
+  // A room with no open chat (KERNEL-365): New chat with Rowan, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
+  // The workspaces the archived chats handed off stay as unowned rows when Archive a chat's workspaces is off.
   LeadNoChats: scene((f) => {
-    const g = grouped(f, { running: [], chats: (c) => c.map((x) => ({ ...x, closed: true })), threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
-    // Nothing is open, so no tab is stored and the closed chats keep no transcript.
-    return { ...g, items: {}, ui: { ...g.ui!, tabs: {} } }
+    const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
+    // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
+    return { ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', roomId: ids.roomA }, tabs: {} } }
   }),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).

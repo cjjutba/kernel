@@ -8,6 +8,9 @@ import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
 import type { Approval, Chat, Room, SharedFile, Workspace } from '@shared/types'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
 const TABLES = ['rooms', 'workspaces', 'chats', 'chat_items', 'approvals', 'notifications', 'activity', 'tasks', 'meta', 'overlaps', 'shared_files']

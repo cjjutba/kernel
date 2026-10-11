@@ -10,6 +10,9 @@ import { saveLinearToken } from '../src/main/services/integrations'
 import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
 import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 interface Call { query: string; variables: Record<string, unknown>; auth: string }
 
 /** A Linear that answers each GraphQL call with `answer`, and keeps the calls. */
@@ -334,7 +337,12 @@ describe('Linear in the kernel', () => {
     const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', roomId: room.id })
     const chat = k.store.chat(out.chatId)!
     expect(out.chatId).not.toBe(before.id)
-    expect(out.workspaceId).toBe(before.workspaceId)
+    // A chat of its own has a workspace of its own (KERNEL-405), and its brief waits for setup.
+    expect(out.workspaceId).not.toBe(before.workspaceId)
+    expect(k.sessions.queued(out.chatId)).toHaveLength(1)
+    const queued = k.sessions.queued(out.chatId).map((q) => ({ chatId: out.chatId, parts: q.parts }))
+    expect(sent).toEqual([])
+    sent.push(...queued)
     expect(chat.plan).toBe(true)
     // In a Lead chat of its own (KERNEL-337).
     expect(chat.threadId).toBeTruthy()

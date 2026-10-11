@@ -324,6 +324,9 @@ export class Sessions {
     this.setQueue(chatId, parts ? [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }] : this.queued(chatId))
   }
 
+  /** The chat is held for its workspace's setup or a merge (`hold`), whatever its queue holds. */
+  isHeld(chatId: string): boolean { return this.waiting.has(chatId) }
+
   release(chatId: string) {
     this.waiting.delete(chatId)
     this.saveHeld()
@@ -452,6 +455,7 @@ export class Sessions {
    */
   async send(chatId: string, parts: ChatPart[], o: Sender = {}): Promise<{ queued: boolean; why?: QueueReason }> {
     const chat = this.mustChat(chatId)
+    this.mustHaveFolder(chat)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
     if (o.from !== 'kernel') this.handoffs.done(chatId)
     // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
@@ -474,7 +478,7 @@ export class Sessions {
    * `send`'s message does, and `why` says what for.
    */
   async sendAll(chatId: string, messages: (Sender & { parts: ChatPart[] })[]): Promise<{ queued: boolean; why?: QueueReason }> {
-    this.mustChat(chatId)
+    this.mustHaveFolder(this.mustChat(chatId))
     // One message with nothing ahead of it is an ordinary send.
     if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
     if (messages.some((m) => m.from !== 'kernel')) this.handoffs.done(chatId)
@@ -484,6 +488,12 @@ export class Sessions {
     if (why) return { queued: true, why }
     this.drain(chatId)
     return { queued: false }
+  }
+
+  /** A workspace whose folder was deleted outside Kernel has nowhere to run a turn, so nothing is sent or queued there (KERNEL-291). */
+  private mustHaveFolder(chat: Chat) {
+    const ws = this.d.store.workspace(chat.workspaceId)
+    if (ws?.folderGone) throw new Error(`${ws.name}'s folder is gone, so nothing can run there. Archive it, then restore it from History to make the folder again.`)
   }
 
   /** The row that started the chat's running turn, or its last one. With a batched first turn it is the first message's, not the last row's. */
@@ -509,7 +519,7 @@ export class Sessions {
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
     // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
@@ -1015,7 +1025,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, root ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude(),
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
@@ -1505,10 +1515,11 @@ function toolDetail(name: string, input: any): string {
 }
 
 export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
-  const where = ws.lead && ws.mode === 'worktree'
+  // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each chat with Rowan now has a branch of its own.
+  const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
     : ws.mode === 'worktree'
-    ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}. Stay inside it.`
+    ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   return [agent?.prompt, agent?.lead && LEAD_RULE, rule, where, port].filter(Boolean).join('\n\n')

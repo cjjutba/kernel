@@ -109,7 +109,14 @@ async function commentAt(page: Page, spot: { x: number; y: number }, note: strin
   }
 }
 
+// GroupedChatArchive is the table chat's row hovered, which shows its Archive button (KERNEL-405).
+async function hoverChatRow(page: Page) {
+  await page.getByRole('button', { name: 'Invoice table and empty states', exact: true }).hover()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  GroupedChatArchive: hoverChatRow,
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),

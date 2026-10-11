@@ -7,6 +7,8 @@ import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
+import { archiveChatFromSidebar } from './archiveChat'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
@@ -60,7 +62,11 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   // since that closes the chat (KERNEL-338); another tab closes at once.
   const close = (ids: string[]) => {
     closeMenu()
-    const asks = !threadId || !!closesThread(getState(), workspaceId, ids)
+    // Closing a chat with Rowan's last tab archives the chat, the way its row's Archive does, and asks first when that would stop something (KERNEL-405).
+    const whole = closesThread(getState(), workspaceId, ids)
+    const ws = getState().workspaces.find((w) => w.id === workspaceId)
+    if (whole && ws && isLeadChatWorkspace(ws)) return attempt('Could not archive the chat', () => archiveChatFromSidebar(whole))
+    const asks = !threadId || !!whole
     if (asks && ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
     return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect))
   }
