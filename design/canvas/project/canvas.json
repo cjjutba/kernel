@@ -1712,6 +1712,22 @@
       "x": 9120,
       "y": 1300
     },
+    "RoomSetupGitHub.dc.html": {
+      "h": 900,
+      "radius": 12,
+      "title": "Setting up a room on GitHub, code host shown",
+      "w": 1440,
+      "x": 10640,
+      "y": 1300
+    },
+    "RoomSetupLocal.dc.html": {
+      "h": 900,
+      "radius": 12,
+      "title": "Setting up a room with no GitHub remote, code host shown",
+      "w": 1440,
+      "x": 12160,
+      "y": 1300
+    },
     "SettingsPrivacy.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2057,6 +2073,8 @@
     "RoomSetup.dc.html",
     "RoomSetupTeam.dc.html",
     "RoomSetupWarnings.dc.html",
+    "RoomSetupGitHub.dc.html",
+    "RoomSetupLocal.dc.html",
     "Home.dc.html",
     "Inbox.dc.html",
     "InboxEmpty.dc.html",

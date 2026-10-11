@@ -260,6 +260,12 @@ for n,k in [
     ('RoomSetup','room'),
     ('RoomSetupWarnings','roomwarn'),
 ]: emit(n, su.replace('%%CASE%%',k), None)
+# KERNEL-441: Room setup says which code host the repo has: GitHub (owner/repo), or Local when it has no GitHub remote.
+rh=rd('RoomSetupHost.dc.html')
+for n,k in [
+    ('RoomSetupGitHub','github'),
+    ('RoomSetupLocal','local'),
+]: emit(n, rh.replace('%%HOST%%',k), None)
 se=rd('Settings.dc.html')
 # KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
 # KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
