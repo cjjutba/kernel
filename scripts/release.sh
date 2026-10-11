@@ -41,6 +41,9 @@ trap 'rm -rf "$tmp"' EXIT
 # What's new reads the notes from latest-mac.yml, which electron-builder fills from releaseNotesFile.
 node scripts/release-notes.ts --app "$version" > "$tmp/app-notes.md"
 
+# Usage data's key is read here, at build time, and never committed (KERNEL-397). A build without it never sends anything.
+[[ -n "${KERNEL_TELEMETRY_KEY:-}" ]] || echo "release: KERNEL_TELEMETRY_KEY is not set, so this build won't send usage data, even to users who turn it on."
+
 echo "release: building Kernel $version"
 rm -rf dist
 pnpm exec electron-vite build

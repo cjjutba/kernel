@@ -24,6 +24,14 @@ You need an active Apple Developer Program membership, Xcode command line tools,
 
 3. **GitHub.** `gh auth login`. The release script publishes with `gh`; there's no token to configure.
 
+4. **Usage data (KERNEL-397).** Usage data is opt-in and goes to a PostHog project. In that project, turn on "Discard client IP data" under Project settings. Then put its project API key in your shell before releasing:
+
+   ```sh
+   export KERNEL_TELEMETRY_KEY=phc_...
+   ```
+
+   `KERNEL_TELEMETRY_HOST` picks the PostHog region, and the default is `https://us.i.posthog.com`. The build reads both and never commits them. Without the key the release still builds, the script warns, and the build sends nothing even when a user turns sharing on. Dev builds, fixture runs, headless runs and the smoke test never send, and neither does a Mac with `DO_NOT_TRACK=1` or `KERNEL_TELEMETRY=0`.
+
 ## Release notes
 
 Every PR that changes the app adds a fragment in `.changes/unreleased/`: one sentence about what users will notice, with a type (new, improved, fixed or internal) and an optional Linear key. The Release note check in CI fails a PR that changes app files without one. `.changes/README.md` has the format and the writing rules.
