@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
-import { actions, go, useStore } from '../../../store'
+import { go, useStore } from '../../../store'
 import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { parseBlocks } from '../mdParse'
-import { attempt } from '../MessageActions'
+import { attempt, useCopy } from '../MessageActions'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
@@ -22,16 +22,6 @@ export const stepLine = (s: PlanStep, agents: AgentDef[]) => {
 /** What Copy puts on the clipboard: the plan's markdown, or the Lead's task list as numbered lines. */
 export function planCopyText(a: Approval, agents: AgentDef[]): string {
   return planText(a) || [`# ${a.title}`, '', ...planSteps(a).map((s, i) => `${i + 1}. ${stepLine(s, agents)}`)].join('\n')
-}
-
-/** Copies `text` and says "Copied" for 1.5s. */
-export function useCopy(text: string): [boolean, () => void] {
-  const [copied, setCopied] = useState(false)
-  const copy = () => void navigator.clipboard.writeText(text).then(
-    () => { setCopied(true); setTimeout(() => setCopied(false), 1500) },
-    () => actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' })
-  )
-  return [copied, copy]
 }
 
 const openPlanFile = (a: Approval) =>
