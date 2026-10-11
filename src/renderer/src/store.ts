@@ -5,7 +5,7 @@ import type {
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
-import { call, onPush } from './api'
+import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
@@ -357,6 +357,7 @@ export const actions = {
     clearBanner: () => setUi({ banner: null }),
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
+    setStartError: (startError: string | undefined) => setUi({ startError }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
@@ -581,8 +582,16 @@ export function apply(e: PushEvent) {
  * Load everything once, then stay live on push events. Only built channels load here; a lane that builds
  * a channel adds its first load (for example `tasks.list` in loadRoom) in the same PR.
  */
+let listening = false
+
 export async function boot() {
-  onPush(apply)
+  if (!listening) { listening = true; onPush(apply) }
+  actions.ui.setStartError(undefined)
+  try { await start() } catch (e) { actions.ui.setStartError(cleanError(e)) }
+}
+
+/** Loads what the first screen needs and picks it. A failure here leaves `booted` unset and lands in `boot`'s catch, which Loading shows. */
+async function start() {
   const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
@@ -595,9 +604,6 @@ export async function boot() {
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
   const update = call('update.get', undefined).then((u) => { actions.system.setUpdate(u); return u }).catch(() => null)
-  // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
-  const checks = await call('preflight.run', undefined).catch(() => null)
-  if (checks) actions.system.setPreflight(checks)
   // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
   // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.
   const opening = launchRoute()
@@ -605,11 +611,17 @@ export async function boot() {
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
-  else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' }, replace)
   else go(opening, replace)
-  for (const r of rooms) void loadRoom(r.id)
+  for (const r of rooms) void loadRoom(r.id).catch(() => undefined)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
+  // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
+  // Only a blocking failure takes the screen (KERNEL-27, KERNEL-213), and only if nothing has moved you since the route above.
+  const shown = state.ui.route
+  void call('preflight.run', undefined).then((checks) => {
+    actions.system.setPreflight(checks)
+    if (rooms.length && state.ui.route === shown && checks.some((c) => !c.ok && c.blocking)) go({ name: 'onboarding', step: 'checks' }, replace)
+  }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.
   void update.then((u) => { if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u }) })

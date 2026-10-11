@@ -1129,6 +1129,8 @@ export interface UiState {
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /** Why the app could not start. Set when `boot` fails, so Loading shows the error and Try again instead of "Starting Kernel" forever (KERNEL-217). */
+  startError?: string
 }
 
 /** One room's Ask Rowan popover (QuickAsk.png). It outlasts the popover, which unmounts when it closes. */
