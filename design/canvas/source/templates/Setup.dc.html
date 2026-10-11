@@ -23,13 +23,14 @@
 <div style="display: flex; flex-direction: column; border-radius: 12px; border: 1px solid #1f2024; background: #0f1011">
 <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
 <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: {{ r.border }}">
-<div style="display: flex; align-items: center; gap: 12px">
-<sc-if value="{{ r.ok }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if>
-<sc-if value="{{ r.fail }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg></sc-if>
+<div style="display: flex; align-items: {{ r.align }}; gap: 12px">
+<sc-if value="{{ r.ok }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: {{ r.icoTop }}"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if>
+<sc-if value="{{ r.fail }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0; margin-top: {{ r.icoTop }}"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg></sc-if>
+<sc-if value="{{ r.warn }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f2c55c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: {{ r.icoTop }}"><path d="M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1"></path></svg></sc-if>
 <sc-if value="{{ r.run }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 13px; height: 13px; flex-shrink: 0; margin: 0 1px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>
 <sc-if value="{{ r.wait }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0"><path d="M4.5 8h7"></path></svg></sc-if>
-<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500; color: {{ r.titleColor }}">{{ r.title }}</span><span style="font-size: 12.5px; color: #8a8f98">{{ r.detail }}</span></span>
-<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ r.meta }}</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500; color: {{ r.titleColor }}">{{ r.title }}</span><span style="font-size: 12.5px; color: #8a8f98"><sc-for list="{{ r.detailParts }}" as="d" hint-placeholder-count="2"><span style="{{ d.style }}">{{ d.t }}</span></sc-for></span><sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-top: 6px; font-size: 12.5px; color: #8a8f98"><sc-for list="{{ r.noteParts }}" as="d" hint-placeholder-count="2"><span style="{{ d.style }}">{{ d.t }}</span></sc-for></span></sc-if></span>
+<span style="flex-shrink: 0; margin-top: {{ r.icoTop }}; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ r.meta }}</span>
 </div>
 <sc-if value="{{ r.hasFix }}" hint-placeholder-val="{{ false }}">
 <div style="display: flex; flex-direction: column; gap: 10px; margin-left: 27px">
@@ -59,7 +60,7 @@ class Component extends DCLogic {
   componentDidMount() {
     var self = this;
     if (this.state.kind === 'room') {
-      var tick = function () { if (self.state.step < 6) { self.setState({ step: self.state.step + 1 }); self.timers.push(setTimeout(tick, 1700)); } };
+      var tick = function () { if (self.state.step < 7) { self.setState({ step: self.state.step + 1 }); self.timers.push(setTimeout(tick, 1700)); } };
       this.timers.push(setTimeout(tick, 1700));
     }
   }
@@ -69,6 +70,9 @@ class Component extends DCLogic {
   renderVals() {
     var self = this;
     var s = this.state;
+    // KERNEL-437: a detail or note is plain text, or an array where a pair is mono (a variable, a file, a command).
+    var MONO = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0; white-space: nowrap";
+    var parts = function (x) { x = typeof x === 'string' ? [x] : (x || []); return x.map(function (p) { return typeof p === 'string' ? { t: p, style: '' } : { t: p[0], style: MONO }; }); };
     var base = [
       { id: 'claude', title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' },
       { id: 'auth', title: 'Signed in', detail: 'Claude Max', meta: '' },
@@ -81,39 +85,71 @@ class Component extends DCLogic {
       old: { id: 'claude', title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later.', cmd: 'claude update', fixTo: 'Updated to v2.1.284' },
       teams: { id: 'teams', title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', button: 'Turn on for Kernel', fixTo: 'Enabled for Kernel sessions' },
       gh: { id: 'gh', title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', cmd: 'gh auth login', fixTo: 'Signed in as cjjutba' },
-      port: { id: 'hooks', title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', button: 'Use 7421', alt: 'Show process', fixTo: 'Listening on localhost:7421' }
+      port: { id: 'hooks', title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', button: 'Use 7421', alt: 'Show process', fixTo: 'Listening on localhost:7421' },
+      // KERNEL-437. Reading the login shell took too long. A warning, so Continue stays on and the fix is a quiet button.
+      shell: { id: 'shell', insert: true, warn: true, title: 'Reading your shell timed out', detail: ['Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in ', ['.zshrc'], ', may be missing until it can.'], button: 'Check again', fixTo: 'Read from your login shell' }
+    };
+    // KERNEL-437. Lines that pass with more to say: which gh login Kernel uses and where it comes from, and a Claude sign-in that Bedrock replaces.
+    // The source reads "from the keyring", "from GH_TOKEN in your shell" or "from GITHUB_TOKEN in your shell". Vertex reads the same as Bedrock.
+    var passes = {
+      ghkeyring: { id: 'gh', detail: 'Signed in as cjjutba, from the keyring', note: [['GH_TOKEN'], ' is set in your shell. Kernel leaves it out, because gh would use it instead of this login.'] },
+      ghtoken: { id: 'gh', detail: ['Signed in as cjjutba-bot, from ', ['GH_TOKEN'], ' in your shell'], note: 'Kernel passes it on because gh has no stored login.' },
+      bedrock: { id: 'auth', title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: [['CLAUDE_CODE_USE_BEDROCK'], ' is set in your shell.'], meta: 'us-east-1' }
+    };
+    var row = function (o) {
+      return Object.assign({ ok: false, fail: false, warn: false, run: false, wait: false, hasFix: false, hasNote: false, noteParts: [], titleColor: '#f7f8f8', meta: '', align: 'center', icoTop: '0', hasCmd: false, cmd: '', copyLabel: 'Copy', copy: function () {}, actions: [] }, o, { detailParts: parts(o.detail), noteParts: parts(o.note), hasNote: !!o.note });
     };
     var rows, title, sub, foot, nextLabel, nextHref, ready;
-    if (s.kind === 'room') {
-      var steps = [['Clone cjjutba/client-c', '~/Projects/client-c', '4s'], ['Create the worktree folder', '~/kernel/worktrees/client-c', ''], ['Install dependencies', 'pnpm install', '12s'], ['Copy local files', '.env.local, .env.test', ''], ['Install hooks', '10 events to localhost:7420', ''], ['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']];
+    if (s.kind === 'room' || s.kind === 'roomwarn') {
+      // KERNEL-437: Check push access runs once the repo is cloned and tells the user before an agent needs to push. A warning never stops the room opening.
+      var steps = [['Clone cjjutba/client-c', '~/Projects/client-c', '4s'], ['Create the worktree folder', '~/kernel/worktrees/client-c', ''], ['Install dependencies', 'pnpm install', '12s'], ['Copy local files', '.env.local, .env.test', ''], ['Install hooks', '10 events to localhost:7420', ''], ['Check push access', 'cjjutba can push to cjjutba/client-c', ''], ['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']];
+      var warned = s.kind === 'roomwarn';
+      var step = warned ? steps.length : s.step;
       rows = steps.map(function (x, i) {
-        var st = i < s.step ? 'ok' : (i === s.step ? 'run' : 'wait');
-        return { title: x[0], detail: x[1], meta: st === 'ok' ? x[2] : (st === 'run' ? 'running' : ''), ok: st === 'ok', run: st === 'run', wait: st === 'wait', fail: false, hasFix: false, titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8' };
+        var st = i < step ? 'ok' : (i === step ? 'run' : 'wait');
+        return row({ title: x[0], detail: x[1], meta: st === 'ok' ? x[2] : (st === 'run' ? 'running' : ''), ok: st === 'ok', run: st === 'run', wait: st === 'wait', titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8' });
       });
+      if (warned) {
+        var quiet = function (label) { return [{ label: label, act: function () {}, bg: 'transparent', color: '#f7f8f8', border: '#2a2b30' }]; };
+        // The files that look like production, by name. Their values never show.
+        rows[3] = row({ title: 'Copy local files', detail: '.env, .env.local, .env.production', note: ['2 look like production: ', ['.env'], ' and ', ['.env.production'], '. Agents run commands in each worktree, so a migration there could reach a live database.'], warn: true, align: 'flex-start', icoTop: '2px', hasFix: true, actions: quiet('Review files') });
+        rows[5] = row({ title: 'Git can\'t push to cjjutba/client-c', detail: 'gh is signed in as cjjutba, but git isn\'t using that login, so agents can\'t push yet.', warn: true, align: 'flex-start', icoTop: '2px', hasFix: true, hasCmd: true, cmd: 'gh auth setup-git', actions: quiet('Check again') });
+      }
       title = 'Setting up Client C'; sub = 'This takes a minute. Your team is ready when it finishes.';
-      ready = s.step >= 6; foot = ready ? 'Done. Rowan is waiting for a brief.' : 'You can leave this screen. Kernel keeps going.';
+      ready = step >= steps.length; foot = warned ? '2 things need your attention. Rowan is waiting for a brief.' : (ready ? 'Done. Rowan is waiting for a brief.' : 'You can leave this screen. Kernel keeps going.');
       nextLabel = 'Open the room'; nextHref = 'WorkspaceLead.dc.html';
+    } else if (passes[s.kind]) {
+      var V = passes[s.kind];
+      rows = base.map(function (b) { var tall = b.id === V.id && !!V.note; return row(Object.assign({}, b, b.id === V.id ? V : {}, { ok: true }, tall ? { align: 'flex-start', icoTop: '2px' } : {})); });
+      ready = true;
+      title = 'Getting Kernel ready'; sub = 'Kernel checks your Mac before it starts any agents.';
+      foot = 'Everything checks out.'; nextLabel = 'Continue'; nextHref = 'HomeEmpty.dc.html';
     } else {
       var F = fails[s.kind];
       var fixed = !!s.fixed[F.id];
-      rows = base.map(function (b) {
-        if (b.id !== F.id) return { title: b.title, detail: b.detail, meta: b.meta, ok: true, fail: false, run: false, wait: false, hasFix: false, titleColor: '#f7f8f8' };
-        if (fixed) return { title: b.title, detail: F.fixTo, meta: '', ok: true, fail: false, run: false, wait: false, hasFix: false, titleColor: '#f7f8f8' };
-        var fix = function () { var n = Object.assign({}, s.fixed); n[F.id] = true; self.setState({ fixed: n }); };
+      var fix = function () { var n = Object.assign({}, s.fixed); n[F.id] = true; self.setState({ fixed: n }); };
+      var failing = function () {
         var acts = [];
-        if (F.button) acts.push({ label: F.button, primary: true, act: fix });
-        if (F.cmd) acts.push({ label: 'Check again', primary: true, act: fix });
+        if (F.button) acts.push({ label: F.button, primary: !F.warn, act: fix });
+        if (F.cmd) acts.push({ label: 'Check again', primary: !F.warn, act: fix });
         if (F.alt) acts.push({ label: F.alt, primary: false, act: function () {} });
-        return { title: F.title, detail: F.detail, meta: '', ok: false, fail: true, run: false, wait: false, hasFix: true, titleColor: '#f7f8f8',
+        return row({ title: F.title, detail: F.detail, fail: !F.warn, warn: !!F.warn, hasFix: true,
+          align: F.warn ? 'flex-start' : 'center', icoTop: F.warn ? '2px' : '0',
           hasCmd: !!F.cmd, cmd: F.cmd || '', copyLabel: s.copied === F.id ? 'Copied' : 'Copy', copy: function () { self.setState({ copied: F.id }); },
-          actions: acts.map(function (a) { return { label: a.label, act: a.act, bg: a.primary ? '#f7f8f8' : 'transparent', color: a.primary ? '#08090a' : '#f7f8f8', border: a.primary ? '#f7f8f8' : '#2a2b30' }; }) };
+          actions: acts.map(function (a) { return { label: a.label, act: a.act, bg: a.primary ? '#f7f8f8' : 'transparent', color: a.primary ? '#08090a' : '#f7f8f8', border: a.primary ? '#f7f8f8' : '#2a2b30' }; }) });
+      };
+      rows = base.map(function (b) {
+        if (b.id !== F.id) return row(Object.assign({}, b, { ok: true }));
+        if (fixed) return row({ title: b.title, detail: F.fixTo, ok: true });
+        return failing();
       });
-      ready = fixed;
+      if (F.insert) rows = [fixed ? row({ title: 'Your shell', detail: F.fixTo, ok: true }) : failing()].concat(rows);
+      ready = fixed || !!F.warn;
       title = 'Getting Kernel ready'; sub = 'Kernel checks your Mac before it starts any agents.';
-      foot = ready ? 'Everything checks out.' : '1 thing needs your attention.';
+      foot = fixed ? 'Everything checks out.' : '1 thing needs your attention.';
       nextLabel = 'Continue'; nextHref = 'HomeEmpty.dc.html';
     }
-    rows = rows.map(function (r, i) { r.border = i === 0 ? '0' : '1px solid #1a1b1e'; r.actions = r.actions || []; r.hasCmd = !!r.hasCmd; r.cmd = r.cmd || ''; r.copyLabel = r.copyLabel || 'Copy'; r.copy = r.copy || function () {}; return r; });
+    rows = rows.map(function (r, i) { r.border = i === 0 ? '0' : '1px solid #1a1b1e'; return r; });
     return {
       title: title, sub: sub, rows: rows, foot: foot, nextLabel: nextLabel, nextHref: nextHref,
       notReady: ready ? 'false' : 'true', nextBg: ready ? '#f7f8f8' : '#1c1d21', nextColor: ready ? '#08090a' : '#62666d', nextEvents: ready ? 'auto' : 'none'
