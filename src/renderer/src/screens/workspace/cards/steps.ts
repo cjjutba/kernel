@@ -43,6 +43,16 @@ export function planTitle(a: PlanSource & Pick<Approval, 'title'>): string {
 
 export const isPlanApproval = (a: Pick<Approval, 'kind' | 'toolName'>) => a.kind === 'plan' || a.toolName === 'ExitPlanMode'
 
+/** "Plan for T-15 is ready", or "Plan ready: Export invoices" when the title doesn't start with Plan. The Home list and the chat hover card say it this way. */
+export const planReadyLine = (a: Pick<Approval, 'title'>): string => (/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`)
+
+/** What a tool permission asks, by the agent who asks: "Noor wants to run a command", "wants to edit a file" or "wants to use WebFetch". The approval card and the chat hover card say it this way. */
+export function permissionTitle(a: Pick<Approval, 'toolName' | 'input'>, who: string): string {
+  const input = (a.input ?? {}) as Record<string, unknown>
+  if (a.toolName === 'Bash') return `${who} wants to run a command`
+  return String(input.file_path ?? input.path ?? '') ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`
+}
+
 /** The plan waiting on you in this chat, if any. Its Copy and Approve go on the composer. */
 export function waitingPlan(approvals: Approval[], chat: { id: string; workspaceId: string }): Approval | undefined {
   return approvals.find((a) => a.status === 'pending' && isPlanApproval(a) && (a.chatId ? a.chatId === chat.id : a.workspaceId === chat.workspaceId))

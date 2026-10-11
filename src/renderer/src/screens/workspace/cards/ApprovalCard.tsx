@@ -7,7 +7,7 @@ import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { PlanInline, planCopyText, stepLine } from './plan'
-import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, isStepped, nextUnanswered, outcome, pickReady, planSteps, planText, type Picked } from './steps'
+import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, isStepped, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -24,7 +24,7 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
   const input = (a.input ?? {}) as Record<string, unknown>
   const bash = a.toolName === 'Bash'
   const path = String(input.file_path ?? input.path ?? '')
-  const title = bash ? `${who} wants to run a command` : path ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`
+  const title = permissionTitle(a, who)
   const code = bash ? `$ ${String(input.command ?? '')}` : path || (a.input ? JSON.stringify(a.input, null, 2) : '')
   return (
     <section aria-label={title} className="card tcard">

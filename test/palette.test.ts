@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildItems, fuzzyScore, rank, visibleItems } from '../src/renderer/src/screens/search/model'
 import { groupOf, inTab, matches, prLabel } from '../src/renderer/src/screens/history/model'
-import type { AgentDef, Room, SharedFile, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, Room, SharedFile, Thread, Workspace } from '../src/shared/types'
 
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
+const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
 const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 
 describe('command palette', () => {
@@ -187,5 +187,46 @@ describe('history', () => {
     expect(prLabel(ws('x'))).toBe('No PR')
     expect(matches(merged, 'feat client noor', 'Client A', 'Kai')).toBe(false)
     expect(matches(merged, 'feat client kai', 'Client A', 'Kai')).toBe(true)
+  })
+})
+
+describe('command palette chats (KERNEL-339)', () => {
+  const rooms = [room('a', 'Client A'), room('b', 'Client B')]
+  const lead = ws('lead', { name: 'lead', agentId: 'rowan', mode: 'current' })
+  const tab = (id: string, threadId: string): Chat => ({ id, workspaceId: 'lead', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: 1 })
+  const thread = (id: string, title: string): Thread => ({ id, roomId: 'a', title, createdAt: 1 })
+  const chats = [
+    { thread: thread('t1', 'Export invoices as PDF'), tabs: [tab('c1', 't1'), tab('c2', 't1'), tab('c3', 't1')] },
+    { thread: thread('t2', 'Seed demo data'), tabs: [tab('c4', 't2')] }
+  ]
+  const input = { rooms, workspaces: [lead], approvals: [], shared: [], agents: { a: [rowan] }, chats, act }
+
+  it('lists the room\'s open chats under "Chats in Client A" with their tab counts, between Suggested and Go to', () => {
+    const { items } = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'lead' } })
+    const groups = visibleItems(items, [], '')
+    expect(groups.map((g) => g.title)).toEqual(['Suggested', 'Chats in Client A', 'Go to', 'Rooms'])
+    expect(groups[1].list.map((i) => [i.label, i.meta])).toEqual([['Export invoices as PDF', '3 tabs'], ['Seed demo data', '1 tab']])
+  })
+
+  it('opens the chat that was picked, with its tabs', () => {
+    const opened: unknown[] = []
+    const { items } = buildItems({ ...input, route: { name: 'home' }, act: { ...act, openChat: (roomId, t, tabs) => opened.push([roomId, t.id, tabs.length]) } })
+    items.find((i) => i.id === 'chat-t1')!.run()
+    expect(opened).toEqual([['a', 't1', 3]])
+  })
+
+  it('finds a chat by typing, even when two chats share a name', () => {
+    const twin = [...chats, { thread: thread('t3', 'Seed demo data'), tabs: [tab('c5', 't3')] }]
+    const { items, more } = buildItems({ ...input, chats: twin, route: { name: 'home' } })
+    expect(visibleItems(items, more, 'seed')[0].list.filter((i) => i.section === 'Chats').map((i) => i.id)).toEqual(['chat-t2', 'chat-t3'])
+  })
+
+  it('leaves the group out when the room has no open chat, and calls the tab item New tab', () => {
+    const { items } = buildItems({ ...input, chats: [], route: { name: 'workspace', workspaceId: 'lead' } })
+    expect(visibleItems(items, [], '').map((g) => g.section)).not.toContain('Chats')
+    const tabItem = items.find((i) => i.id === 'new-tab')!
+    expect([tabItem.label, tabItem.keys]).toEqual(['New tab', ['⌘', 'T']])
+    // ⌘N keeps starting a chat.
+    expect(items.find((i) => i.id === 'new-ws')?.label).toBe('New chat in Client A')
   })
 })
