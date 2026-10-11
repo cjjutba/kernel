@@ -65,8 +65,7 @@
 .pick-row { height: 36px; padding: 0 10px; gap: 9px; font-size: 13.5px; }
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
-.pick-glyph { display: inline-flex; color: var(--muted); }
-.pick-row .pick-glyph svg { color: var(--muted); }
+.pick-glyph { display: inline-flex; }
 .pick-name { flex-shrink: 0; font-weight: 500; color: var(--ink); }
 .pick-effort { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
 .pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--faint); }
