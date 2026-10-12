@@ -1,4 +1,4 @@
-import type { MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrState, Workspace } from '@shared/types'
+import type { MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrPending, PrState, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
@@ -16,6 +16,16 @@ const MOVING: PrState[] = ['creating', 'checks', 'merging', 'resolving']
 /** How the chat says a local merge landed: "Squashed into main as 4e1b9c2." (KERNEL-467). */
 const LANDED_HERE: Record<MergeMethod, string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
 
+/** Why a second PR action is refused, by the action already running. `what` is "branch" for a room with no GitHub (KERNEL-519). */
+const BUSY: Record<PrPending, (what: string) => string> = {
+  create: () => 'Kernel is already creating this pull request.',
+  resolve: (what) => `Kernel is already asking the agent to fix this ${what}.`,
+  merge: (what) => `Kernel is already merging this ${what}.`,
+  ready: () => 'Kernel is already marking this pull request ready.',
+  reopen: () => 'Kernel is already reopening this pull request.',
+  update: () => 'Kernel is already asking the agent to update this branch.'
+}
+
 /** Each workspace's pull request: opening, reading, merging and following its branch (KERNEL-330). */
 export class Prs extends Feature {
 
@@ -23,6 +33,29 @@ export class Prs extends Feature {
   private merging = new Set<string>()
   /** The method of a merge Kernel ran, until the PR is seen merged, so the note says how it landed. */
   private mergedWith = new Map<string, AppSettings['pr']['mergeMethod']>()
+  /** The PR action running on each workspace, from whichever button or tool started it (KERNEL-519). */
+  private pending = new Map<string, PrPending>()
+
+  /**
+   * Runs one PR action with the workspace marked pending, so every place showing the PR spins from the press, not from the
+   * first state the action reaches seconds later (KERNEL-519). The push goes out before anything is awaited, and the clear
+   * after the action's last `pr` push, so no place shows the old button in between. One action at a time per PR.
+   */
+  private async running<T>(id: string, action: PrPending, fn: () => Promise<T>): Promise<T> {
+    const now = this.pending.get(id)
+    if (now) {
+      const ws = this.store.workspace(id)
+      throw new Error(BUSY[now](ws && this.isLocal(ws) ? 'branch' : 'pull request'))
+    }
+    this.pending.set(id, action)
+    bus.push({ type: 'pr.pending', workspaceId: id, action })
+    try {
+      return await fn()
+    } finally {
+      this.pending.delete(id)
+      bus.push({ type: 'pr.pending', workspaceId: id })
+    }
+  }
 
   private setPrState(ws: Workspace, prState: PrState) {
     const before = this.mustWs(ws.id).prState
@@ -40,7 +73,9 @@ export class Prs extends Feature {
    * Sends `create-pr.md` (the room's or Settings > PRs, Kernel's own fitted to the repo's conventions, KERNEL-468) to the
    * agent. The header shows Creating until its turn ends.
    */
-  async createPr(id: string, draft = false) {
+  createPr(id: string, draft = false) { return this.running(id, 'create', () => this.create(id, draft)) }
+
+  private async create(id: string, draft: boolean) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
     if (this.isLocal(ws)) throw new Error('This room merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
@@ -101,7 +136,9 @@ export class Prs extends Feature {
   }
 
   /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
-  async resolvePr(id: string) {
+  resolvePr(id: string) { return this.running(id, 'resolve', () => this.resolve(id)) }
+
+  private async resolve(id: string) {
     const ws = await this.syncBranch(id)
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
@@ -120,7 +157,9 @@ export class Prs extends Feature {
    * onto it and re-run the tests. GitHub has its own button for a PR, so a room on GitHub refuses. Nothing changes state, so the
    * band keeps reading Behind until the next read finds the branch caught up.
    */
-  async updateBranch(id: string) {
+  updateBranch(id: string) { return this.running(id, 'update', () => this.update(id)) }
+
+  private async update(id: string) {
     const ws = this.mustWs(id)
     if (!this.isLocal(ws)) throw new Error('Only a branch that merges on this Mac updates this way. GitHub updates a pull request.')
     const chat = this.prChat(id)
@@ -301,7 +340,9 @@ export class Prs extends Feature {
    * and no blockers on it. `override` is a person's Merge anyway past those blockers; Rowan and Merge all never pass it
    * (KERNEL-497).
    */
-  async mergePr(id: string, o: { override?: boolean } = {}) {
+  mergePr(id: string, o: { override?: boolean } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
+
+  private async merge(id: string, o: { override?: boolean }) {
     let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
@@ -386,14 +427,19 @@ export class Prs extends Feature {
       for (const id of ids) {
         step(id)
         const ws = this.store.workspace(id)
+        let now: Workspace | undefined
         try {
           if (!ws || ws.roomId !== roomId) throw new Error('It is not an open workspace in this room.')
-          const after = await this.mergePr(id)
+          // A PR that can't merge is read again, so its row moves to where it now stands and the reason names it: a merge just
+          // before often leaves the next PR conflicting. The read comes before its pending clears, so no place shows Merge in
+          // between (KERNEL-519).
+          const after = await this.running(id, 'merge', () => this.merge(id, {}).catch(async (e: unknown) => {
+            now = await this.k.refreshPr(id).catch(() => undefined)
+            throw e
+          }))
           if (after.prNumber) result.merged.push(after.prNumber)
         } catch (e) {
-          // The PR is read again, so its row moves to where it now stands and the reason names it: a merge just before often
-          // leaves the next PR conflicting. Otherwise mergeBlock's sentence, or the first line of gh's output.
-          const now = ws ? await this.k.refreshPr(id).catch(() => undefined) : undefined
+          // The state that read found, else mergeBlock's sentence or the first line of gh's output.
           const state = now ? notMergeable[now.prState] : undefined
           const why = state ? `${state.charAt(0).toUpperCase()}${state.slice(1)}` : (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
           result.stopped = { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` }
@@ -408,8 +454,12 @@ export class Prs extends Feature {
     }
   }
 
-  private async readyPr(id: string) { const ws = await this.syncBranch(id); await this.host(ws.roomId).ready(ws.path, ws.branch); return this.k.refreshPr(id) }
-  private async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.host(ws.roomId).reopen(ws.path, ws.branch); return this.k.refreshPr(id) }
+  private readyPr(id: string) {
+    return this.running(id, 'ready', async () => { const ws = await this.syncBranch(id); await this.host(ws.roomId).ready(ws.path, ws.branch); return this.k.refreshPr(id) })
+  }
+  private reopenPr(id: string) {
+    return this.running(id, 'reopen', async () => { const ws = await this.syncBranch(id); await this.host(ws.roomId).reopen(ws.path, ws.branch); return this.k.refreshPr(id) })
+  }
 
   /**
    * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, for
@@ -718,7 +768,8 @@ export class Prs extends Feature {
       'github.status': async () => this.cadence.status(),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
-      'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId)
+      'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
+      'pr.pendingAll': async () => Object.fromEntries(this.pending)
     } satisfies Partial<Handlers>
   }
 }

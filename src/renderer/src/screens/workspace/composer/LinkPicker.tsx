@@ -4,7 +4,7 @@ import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
-import { chooseTracker } from '../../issues/parts'
+import { chooseTracker, JIRA_NOT_BROWSABLE } from '../../issues/parts'
 import { useRoomTracker } from '../../issues/useRoomTracker'
 
 // + > Link issue and Link workspaces (D-093). Each adds chips the agent reads as a line of context.
@@ -13,6 +13,7 @@ type Source = 'linear' | 'github'
 type Load = { state: 'loading' } | { state: 'ready'; rows: IssueSummary[] } | { state: 'error'; message: string }
 
 const SOURCES = [{ id: 'linear', label: 'Linear' }, { id: 'github', label: 'GitHub' }]
+const SOURCE_NAME: Record<Source, string> = { linear: 'Linear', github: 'GitHub' }
 const TAB_KEY = 'kernel.issueSource'
 
 /** The shell both pickers share: a search field over a list, anchored above the composer's + button. */
@@ -34,24 +35,27 @@ function Panel({ label, query, onQuery, placeholder, onKey, anchorRef, onClose, 
 
 /**
  * The room's issues: its tracker's (Linear with the token in Settings, Integrations, or GitHub Issues through gh). A Linear room can
- * also link one of its repo's GitHub issues, so it keeps the second tab. A room with no tracker says so. Enter links the active one.
+ * also link one of its repo's GitHub issues, so it keeps the second tab. A room with no tracker says so, and so does a Jira room,
+ * whose issues can't be browsed yet (KERNEL-503). The stored tab only ever applies to a Linear room. Enter links the active one.
  */
 export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roomId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
   const { read } = useRoomTracker(roomId)
   const kind = read.kind === 'ready' ? read.tracker.kind : undefined
   const roomName = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
   const [tab, setTab] = useState<Source>(() => (localStorage.getItem(TAB_KEY) === 'github' ? 'github' : 'linear'))
-  // A GitHub room has the one source. Only a Linear room chooses between the two.
-  const source: Source = kind === 'github' ? 'github' : tab
+  // A GitHub room has the one source and only a Linear room chooses between the two. A Jira room or one with no tracker lists
+  // nothing, so a tab stored from another room never lists that tracker's issues here.
+  const source: Source | undefined = kind === 'github' ? 'github' : kind === 'linear' ? tab : undefined
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const [load, setLoad] = useState<Load>({ state: 'loading' })
   const none = kind === 'none'
+  const jira = kind === 'jira'
 
   useEffect(() => {
     if (read.kind === 'error') { setLoad({ state: 'error', message: read.message }); return }
     if (!kind) { setLoad({ state: 'loading' }); return }
-    if (none) { setLoad({ state: 'ready', rows: [] }); return }
+    if (!source) { setLoad({ state: 'ready', rows: [] }); return }
     let stale = false
     setLoad({ state: 'loading' })
     const t = setTimeout(() => {
@@ -60,11 +64,11 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
       req.then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
     }, q ? 200 : 0)
     return () => { stale = true; clearTimeout(t) }
-  }, [source, q, roomId, kind, none, read])
+  }, [source, q, roomId, kind, read])
   useEffect(() => { setAt(0) }, [source, q])
 
   const rows = load.state === 'ready' ? load.rows : []
-  const pick = (i: IssueSummary) => onPick({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? source })
+  const pick = (i: IssueSummary) => { if (source) onPick({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? source }) }
   const switchTo = (s: Source) => { setTab(s); try { localStorage.setItem(TAB_KEY, s) } catch { /* nothing to keep */ } }
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
@@ -74,8 +78,8 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
 
   return (
     <Panel label="Link issue" placeholder="Search issues" query={q} onQuery={setQ} onKey={onKey} anchorRef={anchorRef} onClose={onClose} style={style}>
-      {kind === 'linear' && <div className="link-tabs"><Tabs label="Issue source" tabs={SOURCES} value={source} onChange={(id) => switchTo(id as Source)} /></div>}
-      <div className="link-rows" role="listbox" aria-label={source === 'linear' ? 'Linear issues' : 'GitHub issues'}>
+      {kind === 'linear' && <div className="link-tabs"><Tabs label="Issue source" tabs={SOURCES} value={tab} onChange={(id) => switchTo(id as Source)} /></div>}
+      <div className="link-rows" role="listbox" aria-label={source ? `${SOURCE_NAME[source]} issues` : jira ? 'Jira issues' : 'Issues'}>
         {rows.map((r, i) => (
           <button key={r.id} type="button" role="option" aria-selected={i === at} tabIndex={-1} className="menu-item link-row" data-active={i === at}
             onMouseEnter={() => setAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(r)}>
@@ -91,7 +95,13 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
             <Button onClick={() => { onClose(); chooseTracker(roomId) }}>Choose a tracker</Button>
           </div>
         )}
-        {load.state === 'ready' && !none && !rows.length && <p className="link-note">{q.trim() ? 'No open issues match.' : 'No open issues.'}</p>}
+        {jira && (
+          <div className="link-none">
+            <p className="link-note">{JIRA_NOT_BROWSABLE}. To list issues here, choose Linear or GitHub Issues in {roomName ? `${roomName}'s` : "this room's"} settings.</p>
+            <Button onClick={() => { onClose(); chooseTracker(roomId) }}>Choose a tracker</Button>
+          </div>
+        )}
+        {load.state === 'ready' && source && !rows.length && <p className="link-note">{q.trim() ? 'No open issues match.' : 'No open issues.'}</p>}
       </div>
     </Panel>
   )

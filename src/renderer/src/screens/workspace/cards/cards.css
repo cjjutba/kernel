@@ -16,7 +16,7 @@
 .hire-servers-pills .srv-warn { display: inline-flex; flex-shrink: 0; color: var(--needs); }
 .hire-servers-pills .srv-why { color: var(--muted); }
 .hire-servers-notes { display: flex; flex-direction: column; gap: 4px; }
-.hire-servers-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.hire-servers-note, .hire-scope { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--code-bg); color: var(--ink); font-size: 13px; }
 .tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
 .tcard .grow-input:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }

@@ -497,6 +497,106 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     }
   })
 
+  describe('a PR action says when it starts and ends (KERNEL-519)', () => {
+    /** The `pr.pending` and `pr` pushes, in order: "pending merge", a state, or "clear". */
+    function watch(name: (id: string) => string | undefined) {
+      const seen: string[] = []
+      const onPush = (e: PushEvent) => {
+        const who = 'workspaceId' in e ? name(e.workspaceId) : undefined
+        if (e.type === 'pr.pending' && who !== undefined) seen.push(`${who}${e.action ? `pending ${e.action}` : 'clear'}`)
+        if (e.type === 'pr' && who !== undefined) seen.push(`${who}${e.state}`)
+        if (e.type === 'pr.queue') seen.push(e.queue ? `queue ${name(e.queue.current ?? '')}` : 'queue ends')
+      }
+      bus.on('push', onPush)
+      return { seen, off: () => bus.off('push', onPush) }
+    }
+
+    it('pushes pending before anything is read, then merging, merged and the clear, in that order', async () => {
+      const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      const w = watch((id) => (id === ws.id ? '' : undefined))
+      try {
+        const merging = k.prs.mergePr(ws.id)
+        // Out before the branch sync and GitHub's read, which take seconds.
+        expect(w.seen).toEqual(['pending merge'])
+        expect(await k.prs.handlers()['pr.pendingAll']()).toEqual({ [ws.id]: 'merge' })
+        expect(await merging).toMatchObject({ prState: 'merged' })
+        expect(w.seen).toEqual(['pending merge', 'merging', 'merged', 'clear'])
+        expect(await k.prs.handlers()['pr.pendingAll']()).toEqual({})
+      } finally {
+        w.off()
+        await k.stop()
+      }
+    })
+
+    it('clears a merge the rules refuse and leaves the PR mergeable', async () => {
+      const { k, ws, gh } = await setup()
+      gh.pr = info({ state: 'ready', checks: [{ name: 'e2e', state: 'running' }] })
+      await k.prs.refreshPr(ws.id)
+      const w = watch((id) => (id === ws.id ? '' : undefined))
+      try {
+        await expect(k.prs.mergePr(ws.id)).rejects.toThrow('Checks have not passed yet')
+        expect(w.seen).toEqual(['pending merge', 'clear'])
+        expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+        expect(await k.prs.handlers()['pr.pendingAll']()).toEqual({})
+        // Nothing is left holding it: once the checks pass, the next press merges.
+        gh.pr = info({ state: 'ready', checks: [{ name: 'e2e', state: 'pass' }] })
+        expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+      } finally {
+        w.off()
+        await k.stop()
+      }
+    })
+
+    it('refuses a second action on a PR while one runs, and lets the first finish', async () => {
+      const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      const w = watch((id) => (id === ws.id ? '' : undefined))
+      try {
+        const first = k.prs.mergePr(ws.id)
+        await expect(k.prs.mergePr(ws.id)).rejects.toThrow('Kernel is already merging this pull request.')
+        await expect(k.prs.handlers()['pr.ready']({ workspaceId: ws.id })).rejects.toThrow('Kernel is already merging this pull request.')
+        expect(await first).toMatchObject({ prState: 'merged' })
+        expect(gh.merged).toEqual(['squash'])
+        // The refusals push nothing, so the first merge's pending holds until it ends.
+        expect(w.seen).toEqual(['pending merge', 'merging', 'merged', 'clear'])
+      } finally {
+        w.off()
+        await k.stop()
+      }
+    })
+
+    it('marks each PR pending as its Merge all turn starts, and reads one that cannot merge before clearing it', async () => {
+      const { k, ws } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+      const other = await k.createWorkspace(ws.roomId, { prompt: 'Build the chart', agentId: 'kai', title: 'Revenue chart' })
+      const states: Record<string, PrState> = { [ws.id]: 'ready', [other.id]: 'ready' }
+      k.github = {
+        ...k.github,
+        info: async (_cwd, _ref, workspaceId) => ({ ...info({ number: workspaceId === ws.id ? 42 : 43 }), workspaceId, state: states[workspaceId] }),
+        // The first merge moves main, and the second PR now conflicts with it.
+        merge: async () => { states[ws.id] = 'merged'; states[other.id] = 'conflict' }
+      }
+      await k.prs.refreshPr(ws.id)
+      await k.prs.refreshPr(other.id)
+      const w = watch((id) => (id === ws.id ? 'a ' : id === other.id ? 'b ' : undefined))
+      try {
+        const result = await k.prs.mergeAll(ws.roomId, [ws.id, other.id])
+        expect(result).toEqual({ merged: [42], stopped: { workspaceId: other.id, prNumber: 43, reason: 'It has merge conflicts.' } })
+        expect(w.seen).toEqual([
+          'queue a ', 'a pending merge', 'a merging', 'a merged', 'a clear',
+          // The read that finds the conflict comes before the clear, so the PR never shows Merge again in between.
+          'queue b ', 'b pending merge', 'b conflict', 'b clear',
+          'queue ends'
+        ])
+      } finally {
+        w.off()
+        await k.stop()
+      }
+    })
+  })
+
   it('drops the quick read on stop (KERNEL-283)', async () => {
     const { k, ws, gh } = await setup()
     let reads = 0

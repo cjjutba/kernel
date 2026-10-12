@@ -16,8 +16,8 @@ export const sidebarDefault = () => SIDEBAR_DEFAULT
 const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDEBAR_DEFAULT
 
 /**
- * The width the sidebar and the Settings nav share (KERNEL-419). It is read from `kernel.sidebarWidth` once, when the column mounts; the two are never
- * on screen together, so each picks up what the other saved. The window's room for it is state only so a resize that changes the limit re-renders; one that doesn't bails out.
+ * The width of the sidebar frame, in the app and in Settings (KERNEL-419, KERNEL-509). It is read from `kernel.sidebarWidth` once, when the frame mounts, and
+ * the frame stays mounted as the list inside it changes. The window's room for it is state only so a resize that changes the limit re-renders; one that doesn't bails out.
  */
 export function useSidebarWidth() {
   const [saved, setSaved] = useState(readSaved)

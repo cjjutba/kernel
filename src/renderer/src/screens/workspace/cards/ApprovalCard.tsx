@@ -390,7 +390,7 @@ function HireCard({ a, lead }: { a: Approval; lead: string }) {
       <h3><FileLabel path={file.path} size={16} /></h3>
       <div className="code">{file.text}</div>
       <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
-      {/* Where "Just for me" and "For the team" go once the engine behind them lands (D9, WorkspaceHireServers.png). */}
+      <p className="hire-scope">{file.scope === 'team' ? 'Proposed to the team as a pull request' : 'Saved just for you'}</p>
       {a.status !== 'pending' ? <Result a={a} /> : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (

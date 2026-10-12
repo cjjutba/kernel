@@ -5,12 +5,17 @@ import { kindFile, latestOf, sinceShort, useOpenShared, useSharer } from './shar
 import './shared.css'
 
 /**
- * The files shared in a workspace, newest first. The Lead's workspace lists every file shared in the room, since the Lead hears about all of
- * them (D-104). Used by the count on the panel's tab as well.
+ * The files shared in a workspace, newest first. A chat with Rowan lists its own and those of the teammates that chat handed work to
+ * (KERNEL-511). The Lead workspace from before KERNEL-405 has no chat of its own and lists the whole room. Used by the count on the
+ * panel's tab as well.
  */
-export function sharedHere(s: Pick<State, 'shared' | 'agents'>, ws: Workspace): SharedFile[] {
-  const room = s.agents[ws.roomId]?.some((a) => a.lead && a.id === ws.agentId)
-  return Object.values(s.shared).filter((f) => (room ? f.roomId === ws.roomId : f.workspaceId === ws.id)).sort((a, b) => b.updatedAt - a.updatedAt)
+export function sharedHere(s: Pick<State, 'shared' | 'agents' | 'workspaces'>, ws: Workspace): SharedFile[] {
+  const lead = s.agents[ws.roomId]?.some((a) => a.lead && a.id === ws.agentId)
+  const chat = lead ? ws.threadId : undefined
+  const mine = new Set([ws.id])
+  if (chat) for (const w of s.workspaces) if (w.threadId === chat) mine.add(w.id)
+  const wanted = (f: SharedFile) => (lead && !chat ? f.roomId === ws.roomId : mine.has(f.workspaceId))
+  return Object.values(s.shared).filter(wanted).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 function Row({ file, open }: { file: SharedFile; open: boolean }) {
