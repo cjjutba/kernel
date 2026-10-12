@@ -1,11 +1,11 @@
 import { basename, dirname, join } from 'node:path'
-import type { ClaudePlan, DeepPartial, Workspace } from '@shared/types'
+import type { ClaudePlan, DeepPartial, ProductionHint, Room, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { kernelHooksPresent } from '../services/hooksInstaller'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
 import { discoverSkills } from '../services/files'
-import { resolveFilesToCopy } from '../services/filesToCopy'
+import { productionInCopy, resolveFilesToCopy } from '../services/filesToCopy'
 import { listBranches } from '../services/worktrees'
 import { deepMerge } from '../services/settings'
 import { Feature } from './feature'
@@ -17,6 +17,9 @@ function picked(after: any, patch: any): any {
 }
 
 const dotted = (o: unknown, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
+
+/** How `Room.keepCopying` names a file and variable (KERNEL-449). */
+const keepKey = (h: Pick<ProductionHint, 'path' | 'name'>) => `${h.path}:${h.name}`
 
 /** The app's settings, each room's settings file, and the git remote they name (KERNEL-325). */
 export class Config extends Feature {
@@ -94,6 +97,18 @@ export class Config extends Feature {
     }
   }
 
+  /**
+   * The room's files to copy that look like production, one hint per file: its strongest variable the user hasn't chosen
+   * Keep copying for. Names only (KERNEL-449).
+   */
+  async production(room: Room): Promise<ProductionHint[]> {
+    const { files } = await loadRepoSettings(room.path)
+    const kept = new Set(room.keepCopying ?? [])
+    const out = new Map<string, ProductionHint>()
+    for (const h of await productionInCopy(room.path, files.copy, files.exclude)) if (!out.has(h.path) && !kept.has(keepKey(h))) out.set(h.path, h)
+    return [...out.values()]
+  }
+
   handlers() {
     return {
       'git.branches': async ({ roomId }) => {
@@ -128,7 +143,20 @@ export class Config extends Feature {
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
       'files.preview': async ({ roomId, patterns }) => {
         const { path } = this.mustRoom(roomId)
-        return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
+        const { files } = await loadRepoSettings(path)
+        return resolveFilesToCopy(path, patterns ?? files.copy, [], files.exclude)
+      },
+      'files.production': async ({ roomId }) => this.production(this.mustRoom(roomId)),
+      'files.keepCopying': async ({ roomId, hints }) => {
+        const room = this.mustRoom(roomId)
+        // Each file is kept whole: every variable in it that looks like production now, not only the one the banner names.
+        // A variable added later warns again.
+        const paths = new Set(hints.map((h) => h.path))
+        const { files } = await loadRepoSettings(room.path)
+        const now = (await productionInCopy(room.path, files.copy, files.exclude)).filter((h) => paths.has(h.path))
+        const next = this.store.saveRoom({ ...room, keepCopying: [...new Set([...(room.keepCopying ?? []), ...hints.map(keepKey), ...now.map(keepKey)])] })
+        bus.push({ type: 'room', room: next })
+        return next
       }
     } satisfies Partial<Handlers>
   }

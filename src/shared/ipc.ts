@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -288,6 +288,13 @@ export interface KernelApi {
   'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  /**
+   * The files to copy that look like production, one hint per file, without the ones the room chose Keep copying for. Names
+   * only, never values (KERNEL-449).
+   */
+  'files.production': { req: { roomId: string }; res: ProductionHint[] }
+  /** Keep copying: the room stops warning about these files until another variable in them looks like production (KERNEL-449). */
+  'files.keepCopying': { req: { roomId: string; hints: ProductionHint[] }; res: Room }
   // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
   // main through `env.reveal`.
   'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
