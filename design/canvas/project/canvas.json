@@ -1226,6 +1226,15 @@
       "x": 9120,
       "y": 3900
     },
+    "SidebarChatGroups.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Your rooms, chats grouped with a tree guide",
+      "w": 1440,
+      "x": 10640,
+      "y": 3900
+    },
     "SearchShared.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2208,6 +2217,7 @@
     "UpdateReady.dc.html",
     "HomeRoomIcon.dc.html",
     "SidebarChatFolded.dc.html",
+    "SidebarChatGroups.dc.html",
     "Team.dc.html",
     "TeamOwnAgents.dc.html",
     "AgentProfile.dc.html",

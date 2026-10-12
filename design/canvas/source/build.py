@@ -22,13 +22,14 @@ def fold_rooms(r):
     # KERNEL-205: a chat that started workspaces folds like a room. Its workspaces are hidden and it shows the question icon,
     # because the hidden invoice-schema needs you.
     lines=r.split('\n')
-    keep=[l for l in lines if 'class="row"' not in l or not ('>invoice-table<' in l or '>invoice-schema<' in l)]
+    keep=[l for l in lines if 'data-tree="guide"' not in l and ('class="row"' not in l or not ('>invoice-table<' in l or '>invoice-schema<' in l))]
     ask=re.search(r'<svg[^>]*>(?:(?!</svg>).)*M13\.5 8a5\.5 5\.5 0 1 1-11 0.*?</svg>', next(l for l in lines if 'aria-label="invoice-schema, Needs you"' in l)).group(0)
     out=[]
     for l in keep:
         if 'aria-label="Invoice table and empty states, Working"' in l:
             l=l.replace('aria-label="Invoice table and empty states, Working"','aria-label="Invoice table and empty states, Needs you"')
-            l,n=re.subn(r'<span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0;.*?</span></span>', lambda m: ask, l, count=1)
+            # KERNEL-600: running is the trailing spinner now, so the folded chat keeps it and swaps only its icon.
+            l,n=re.subn(r'<svg[^>]*>(?:(?!</svg>).)*</svg>', lambda m: ask, l, count=1)
             assert n==1
         out.append(l)
     return '\n'.join(out)
@@ -60,6 +61,8 @@ def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=No
         on=k==active
         s=s.replace('%%'+k+'C%%',' aria-current="page"' if on else '')
         s=s.replace('%%'+k+'S%%','#d0d6e0' if on else '#8a8f98')
+        # KERNEL-600: the guide beside a chat's workspaces is line-2, and line-4 in the group that holds the open row.
+        s=s.replace('%%'+k+'G%%','#3a3c42' if on else '#26272b')
         s=s.replace('%%'+k+'%%','background: #1c1d21; color: #f7f8f8;' if on else 'color: #d0d6e0;')
     assert '%%' not in s, s[s.index('%%')-60:s.index('%%')+40]
     return s
@@ -367,31 +370,35 @@ def gsub(s, a, b):
     assert a in s, 'Template changed, missing: '+a[:80]
     return s.replace(a,b)
 rl=rooms.split('\n')
-g_first=next(i for i,l in enumerate(rl) if l.startswith('<a href="WorkspaceLead.dc.html"%%leadC%%'))
+g_first=next(i for i,l in enumerate(rl) if 'data-tree="group"' in l)
 g_b=next(i for i,l in enumerate(rl) if '>Client B</span>' in l)-1
 g_head=rl[:g_first]; g_tail=rl[g_b:]
 def g_line(needle): return next(l for l in rl if needle in l)
 def g_svg(l): return re.search(r'<svg[\s\S]*?</svg>', l).group(0)
-G_SPIN=re.search(r'<span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0;[\s\S]*?</span></span>', g_line('aria-label="Invoice table and empty states, Working"')).group(0)
+# KERNEL-600: a running row keeps its own icon and shows this spinner at its right end.
+G_SPIN=re.search(r'<span aria-hidden="true" class="spin"[^>]*></span>', g_line('aria-label="Invoice table and empty states, Working"')).group(0)
 G_MONO="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px"
 G_ICON={
     'chat': lambda on: g_svg(g_line('aria-label="Client portal login"')).replace('stroke="#8a8f98"','stroke="%s"'%('#d0d6e0' if on else '#8a8f98')),
     'ask': lambda on: g_svg(g_line('aria-label="invoice-schema, Needs you"')),
-    'spin': lambda on: G_SPIN,
     'branch': lambda on: g_svg(g_line('>invoice-table<')).replace('stroke="%%wsS%%"','stroke="%s"'%('#d0d6e0' if on else '#8a8f98')),
     'pr': lambda on: g_svg(g_line('aria-label="org-invites, pull request open"')),
 }
 G_WORD={'chat':'', 'ask':', Needs you', 'spin':', Working'}
-def g_row(label, aria, icon, right, pad, on, hover=False, title=False, href='Workspace.dc.html'):
+# run puts the spinner at the row's right end, unread bolds the title, and gap opens the 7px a group starts with (1px row gap and 7px make 8).
+def g_row(label, aria, icon, right, pad, on, hover=False, title=False, href='Workspace.dc.html', run=False, unread=False, gap=False):
     bg='background: #1c1d21; color: #f7f8f8;' if on else 'background: #141518; color: #d0d6e0;' if hover else 'color: #d0d6e0;'
-    return ('<a href="%s"%s class="row" aria-label="%s"%s style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 %dpx; border-radius: 6px; text-decoration: none; %s">%s<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">%s</span>%s</a>'
-        %(href, ' aria-current="page"' if on else '', aria, ' title="%s"'%label if title else '', pad, bg, icon, label, right))
-def g_ws(w, pad, on):
-    if w.get('pr'): right='<span style="%s; color: #8a8f98">%s</span>'%(G_MONO, w['pr'])
-    else:
-        n,d=w['stat']
-        right='<span style="%s"><span style="color: #4cb782">+%d</span>%s</span>'%(G_MONO, n, ' <span style="color: #eb5757">-%d</span>'%d if d else '')
-    return g_row(w['name'], w['name']+(', pull request open' if w.get('pr') else ''), G_ICON[w['icon']](on), right, pad, on)
+    bold='; font-weight: 600; color: #f7f8f8' if unread else ''
+    return ('<a href="%s"%s class="row" aria-label="%s"%s style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 %dpx; border-radius: 6px; text-decoration: none; %s%s">%s<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap%s">%s</span>%s%s</a>'
+        %(href, ' aria-current="page"' if on else '', aria, ' title="%s"'%label if title else '', pad, 'margin-top: 7px; ' if gap else '', bg, icon, bold, label, right, G_SPIN if run else ''))
+# KERNEL-600: the diff counts wait for a sidebar of 300px or more, so a 236px sidebar shows only a PR number.
+def g_ws(w, pad, on, run=False, unread=False, gap=False):
+    right='<span style="%s; color: #8a8f98">%s</span>'%(G_MONO, w['pr']) if w.get('pr') else ''
+    return g_row(w['name'], w['name']+(', pull request open' if w.get('pr') else ''), G_ICON[w['icon']](on), right, pad, on, run=run, unread=unread, gap=gap)
+# A chat and the workspaces it started, as one block with a 1px guide from under the chat's icon to the last workspace's centre.
+def g_group(rows, here=False):
+    guide='<div aria-hidden="true" style="position: absolute; z-index: 1; left: 28px; top: 24px; bottom: 15px; width: 1px; background: %s"></div>\n'%('#3a3c42' if here else '#26272b') if len(rows)>1 else ''
+    return '<div style="position: relative; display: flex; flex-direction: column; gap: 1px; margin-top: 7px">\n'+guide+'\n'.join(rows)+'\n</div>'
 G_W={
     'renderer':{'name':'invoice-pdf-renderer','icon':'branch','stat':(188,0)},
     'button':{'name':'invoice-pdf-button','icon':'pr','pr':'#43'},
@@ -403,16 +410,24 @@ G_W={
 G_TABS={'a1':'Export invoices as PDF','a2':"How is Kai's PR going?",'a3':'One PDF per client','b1':'Invoice table and empty states','b2':'Empty state copy','c1':'Client portal login','c2':'Fix the login redirect','d1':'Seed realistic demo data','n2':'Add CSV export','n3':'New tab','q1':"What's the status of T-15? Who is blocked?",'q2':'Which tests cover the PDF fonts?'}
 G_CHATS={'a':('Export invoices as PDF',['renderer','button','tests']),'b':('Invoice table and empty states',['table','schema']),'c':('Client portal login',[]),'d':('Seed realistic demo data',[]),'e':('Add CSV export',[])}
 # One row per chat, then the workspaces its tabs handed off, then the unowned ones. glyph: chat id -> 'spin' | 'ask'. on: a chat id or a workspace key. hover: a chat id.
+class GIds(list):
+    # Ids in row order. starts holds the ids that open a block, each with 7px above it.
+    starts=()
 def g_rows(chats=('a','b','c','d'), glyph=None, on=None, hover=None, unowned=('org',)):
-    items=[]; ids=[]
+    items=[]; ids=GIds(); ids.starts=set()
     for c in chats:
-        title,wss=G_CHATS[c]; gl=(glyph or {}).get(c,'chat')
-        items.append(g_row(title, title+G_WORD[gl], G_ICON[gl](on==c), '', 20, on==c, hover==c, True, 'WorkspaceLead.dc.html')); ids.append(c)
-        for k in wss: items.append(g_ws(G_W[k],32,on==k)); ids.append(k)
-    for k in unowned: items.append(g_ws(G_W[k],20,on==k)); ids.append(k)
+        title,wss=G_CHATS[c]; gl=(glyph or {}).get(c,'chat'); run=gl=='spin'
+        rows=[g_row(title, title+G_WORD[gl], G_ICON['chat' if run else gl](on==c), '', 20, on==c, hover==c, True, 'WorkspaceLead.dc.html', run=run)]; ids.append(c); ids.starts.add(c)
+        for k in wss: rows.append(g_ws(G_W[k],38,on==k)); ids.append(k)
+        items.append(g_group(rows, on==c or on in wss))
+    for i,k in enumerate(unowned):
+        items.append(g_ws(G_W[k],20,on==k,gap=i==0)); ids.append(k)
+        if i==0: ids.starts.add(k)
     return '\n'.join(g_head+items+g_tail), ids
-# The first row under the Client A header sits 290 + 31px from the top: the same 30px row and 1px gap the template draws.
-def g_top(ids, k): return 290+31*(ids.index(k)+1)
+# The first row under the Client A header sits 290 + 31px from the top: the same 30px row and 1px gap the template draws, plus 7px above each block.
+def g_top(ids, k):
+    n=ids.index(k)+1
+    return 290+31*n+7*sum(1 for i in ids[:n] if i in ids.starts)
 def g_tab(i, **x): return dict(id=i, kind='chat', title=G_TABS[i], **x)
 G_FILE={'id':'f1','kind':'file','title':'table.tsx'}
 def U(t): return {'kind':'user','parts':[{'t':t}]}
@@ -510,7 +525,7 @@ def lead_workspace(t, rows=L_PRS):
     t=gsub(t,"var rtabs = [['files', 'All files', ''],","var rtabs = [['prs', 'PRs', '%d'], ['files', 'All files', ''],"%len(rows))
     t=gsub(t,"rt: { files: s.right === 'files',","rt: { prs: s.right === 'prs', files: s.right === 'files',")
     return t
-def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
+def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False, prs=L_PRS):
     t=gsub(ws.replace('%%SCENARIO%%','lead'), 'width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;', 'position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;')
     # The canvas row never shrinks its tabs, but the app does (workspace.css: .ws-tab has min-width 0 and an ellipsis).
     t=gsub(t,'height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ t.line }};','height: 40px; min-width: 0; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ t.line }};')
@@ -539,7 +554,7 @@ def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
     if extra: t=gsub(t,'</div>\n</x-dc>',extra+'</div>\n</x-dc>')
     S=dict(agent='rowan', model='opus', effort='high', plan=False, wsName='lead', badge=LEAD_BADGE, filesKey='rowan', tabs=tabs, tab=tab, chats=chats, right='prs')
     S.update(state or {})
-    t=lead_workspace(t)
+    t=lead_workspace(t, prs)
     return g_patch(t, '''
 var __S = %s;
 var __seed = Component.prototype.seed;
@@ -633,6 +648,46 @@ var __seed = Component.prototype.seed;
 Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
 '''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
 emit('WorkspaceQuestionLong', t, 'lead')
+# KERNEL-600: direction B, drawn with the sidebar CJ had open: the Kernel room, five Lead chats and the workspaces they started.
+# Each chat and its workspaces are one block with a guide, and the icons stay put: running is the spinner at the row's right end.
+K_PLAN=g_svg(g_line('aria-label="Export invoices as PDF, Plan to review"')).replace('stroke="#f7f8f8"','stroke="#f2c55c"')
+K_CHATS=[
+    dict(title='Chat archive screen jitter', run=True),
+    dict(title='Popup closure in composer menus', unread=True, ws=[dict(title='Limit banners: close control and retry', run=True)]),
+    dict(title='Changed indicator not clearing after commit', plan=True),
+    dict(title='Multi-account switching when a limit hits', ws=[
+        dict(title='Accounts sign-in and the picker', run=True),
+        dict(title='Switch accounts at a limit, keep the chat going'),
+        dict(title='One-button Add account, no terminal'),
+        dict(title='Auto-switch toggle, a warning on switch'),
+        dict(title='End-to-end check of seamless account switching')]),
+    dict(title='Kernel review pipeline rollout', on=True, ws=[
+        dict(title='End-to-end check of the review pipeline'),
+        dict(title='Land KERNEL-557 review states', run=True, unread=True),
+        dict(title='Reviews page: required and optional reviews', run=True, unread=True)]),
+]
+def k_word(x): return (', Plan to review' if x.get('plan') else '')+(', Working' if x.get('run') else '')+(', Unread' if x.get('unread') else '')
+def k_rows():
+    items=[]
+    for c in K_CHATS:
+        on=c.get('on',False)
+        rows=[g_row(c['title'], c['title']+k_word(c), K_PLAN if c.get('plan') else G_ICON['chat'](on), '', 20, on, False, True, 'WorkspaceLead.dc.html', run=c.get('run',False), unread=c.get('unread',False))]
+        for w in c.get('ws',[]):
+            rows.append(g_row(w['title'], w['title']+k_word(w), G_ICON['branch'](False), '', 38, False, run=w.get('run',False), unread=w.get('unread',False)))
+        items.append(g_group(rows, on))
+    head='\n'.join(g_head)
+    for a,b in [('>A</span><span style="flex: 1">Client A</span>','>K</span><span style="flex: 1">Kernel</span>'),('Client A options','Kernel options'),('New workspace in Client A','New workspace in Kernel')]: head=gsub(head,a,b)
+    return head+'\n'+'\n'.join(items)+'\n</div>'
+K_PRS=[('Kai','KERNEL-557','#524','Reviews page and the review states',110,10),('Ivy','KERNEL-590','#522','Room setup says No reviewer when review is off',23,4)]
+K_CHAT=[U('Roll out the review pipeline. Check it end to end once the review states land.'),
+    {'kind':'thinking','text':'Two workspaces are running. The end-to-end check needs both.'},
+    {'kind':'tool','text':"List this chat's workspaces",'cmd':'kernel workspaces'},
+    {'kind':'ai','text':'Land KERNEL-557 review states and Reviews page are both running. The end-to-end check of the review pipeline starts when they open pull requests.'},
+    {'kind':'meta','text':'7s · 10:42'}]
+t=g_workspace(tabs=[{'id':'k5','kind':'chat','title':'Kernel review pipeline rollout'}], tab='k5', chats={'k5':K_CHAT}, post=G_NO_CHANGES, prs=K_PRS)
+t=gsub(t,'font-size: 10px; font-weight: 600">A</span>\n<a href="WorkspaceLead.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>','font-size: 10px; font-weight: 600">K</span>\n<a href="WorkspaceLead.dc.html" style="color: #d0d6e0; text-decoration: none">Kernel</a>')
+t=gsub(t,"L('  Next.js ready on http://localhost:4312'), L('  Compiled /invoices'), L('  GET /invoices 200 in 84ms')","L('  Local: http://localhost:4400'), L('  Built main and preload in 0.9s'), L('  Renderer ready')")
+emit('SidebarChatGroups', t, None, rows_html=k_rows())
 # KERNEL-440 (D13): the team and agent surfaces D14, D15 and D16 build. capabilities.py draws them.
 import sys
 sys.path.insert(0,HERE)
