@@ -29,6 +29,9 @@ export function groupLabel(tools: number, messages: number): string {
 
 const work = (i: ChatItem) => i.kind === 'tool' || i.kind === 'thinking' || i.kind === 'text'
 
+/** The tools whose call is a question to the user: Claude's, and the Lead's through Claude or Codex. Their card shows the question, so a row of raw JSON would say it twice. */
+const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
+
 /**
  * Split items into turns at each user message. A turn that finished well (it has an ok `result`) shows
  * its reply, the files it changed and how long it took, and folds everything before the reply into one group.
@@ -77,6 +80,7 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
     turn = []
   }
   for (const item of items) {
+    if (item.kind === 'tool' && QUESTION_TOOLS.has(item.name)) continue
     if (item.kind === 'user') { finish(); blocks.push({ kind: 'item', item }) } else turn.push(item)
   }
   finish()

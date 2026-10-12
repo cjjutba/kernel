@@ -1,7 +1,7 @@
 .tcard { display: flex; flex-direction: column; gap: 10px; padding: 14px; margin: 6px 0 0; }
 .tcard h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .tcard h3 .err { color: var(--del); display: inline-flex; }
-.tcard .sub { color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+.tcard .sub { color: var(--ink-3); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .tcard .code { font-size: 12px; line-height: 19.5px; padding: 10px 11px; max-height: 220px; overflow: auto; }
 .tcard .reason { margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
 .tcard .reason svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
@@ -45,16 +45,16 @@
 .qother .qbox { margin-top: 9px; padding: 0; cursor: pointer; }
 .qother textarea { flex: 1; min-width: 0; box-sizing: border-box; max-height: 94px; padding: 7px 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; color: var(--ink-2); font-family: inherit; font-size: 13px; line-height: 20px; }
 .qother textarea::placeholder { color: var(--muted); }
-.qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .qlabel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 1px solid var(--line-3); border-radius: 5px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1; }
 .qdesc { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .qans { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .qans li { display: flex; gap: 10px; }
 .qans .n { flex-shrink: 0; width: 16px; color: var(--muted); font-size: 12px; line-height: 19.5px; }
-.qans .qans-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.qans .qans-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: anywhere; }
 .qans .qans-q { color: var(--muted); font-size: 12.5px; }
-.tcard .done-line { color: var(--muted); font-size: 12.5px; }
+.tcard .done-line { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
 .pcard-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pcard-row h3 { flex: 1; min-width: 0; }
 .pcard-row .pcard-tools { margin: -6px -6px -6px 0; }

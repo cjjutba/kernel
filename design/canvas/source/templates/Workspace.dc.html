@@ -245,6 +245,7 @@
 <sc-if value="{{ banner.icon }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="{{ banner.path }}"></path></svg></sc-if>
 <span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500">{{ banner.title }}</span><span style="font-size: 12.5px; color: #8a8f98">{{ banner.sub }}</span></span>
 <sc-for list="{{ banner.actions }}" as="ac" hint-placeholder-count="2"><button type="button" onClick="{{ ac.act }}" style="flex-shrink: 0; height: 30px; padding: 0 12px; border: 1px solid {{ ac.border }}; border-radius: 7px; background: {{ ac.bg }}; color: {{ ac.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ ac.label }}</button></sc-for>
+<sc-if value="{{ banner.dismiss }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="Dismiss" style="flex-shrink: 0; width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button></sc-if>
 </div>
 </sc-if>
 
@@ -509,6 +510,10 @@ class Component extends DCLogic {
     if (sc === 'providerlimit') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work', primary: true }]);
     // KERNEL-522: when the account on offer is an API key, the banner says it is billed per token, since the button starts paid use.
     if (sc === 'providerlimitkey') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Work key is billed per token.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work key', primary: true }]);
+    if (sc === 'nearlimit') { B('limit', 'Work is at 90% of its 5-hour limit', 'Personal has room.', [{ id: 'switchacct', label: 'Switch to Personal', primary: true }]); s.banner.dismiss = true; }
+    var accountNote = function (text) { s.msgs = base.concat([U('Also add a loading skeleton.'), { kind: 'note', text: text }, { kind: 'tools', text: '3 tool calls' }, { kind: 'ai', text: 'Added a loading skeleton to the invoice table and held it for 200ms. The tests still pass.' }, { kind: 'meta', text: '38s \u00b7 10:44' }]); };
+    if (sc === 'accountnote') accountNote('Now on Personal');
+    if (sc === 'accountnotelimit') accountNote('Now on Personal (Work hit its 5-hour limit)');
     if (sc === 'picker') Object.assign(s, { menu: 'model', providers: true });
     if (sc === 'model') B('limit', "You've reached your Fable 5.1 limit", 'It resets in 3 days. Opus 5.5 can pick up where this left off.', [{ id: 'wait', label: 'Wait' }, { id: 'switch', label: 'Switch to Opus 5.5', primary: true }], { model: 'fable' });
     if (sc === 'context') B('context', 'Context is almost full', 'Compacting keeps a summary and frees space. A new chat starts clean on this branch.', [{ id: 'newchat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], { ctx: 92 });
@@ -935,12 +940,12 @@ class Component extends DCLogic {
       setup: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM6 6l4 4M10 6l-4 4',
       hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14'
     };
-    var banner = { title: '', sub: '', actions: [], spin: false, icon: false, path: '' };
+    var banner = { title: '', sub: '', actions: [], spin: false, icon: false, path: '', dismiss: false };
     if (s.banner) {
       var b = s.banner;
       banner = {
         title: b.title, sub: b.sub === 'RETRY' ? 'Retrying in ' + s.countdown + 's, attempt ' + s.attempt + ' of 5. Your message is safe.' : b.sub,
-        spin: b.kind === 'retry', icon: b.kind !== 'retry', path: paths[b.kind] || paths.limit,
+        spin: b.kind === 'retry', icon: b.kind !== 'retry', path: paths[b.kind] || paths.limit, dismiss: !!b.dismiss,
         actions: (b.actions || []).map(function (a) { return { label: a.label, bg: a.primary ? '#f7f8f8' : 'transparent', color: a.primary ? '#08090a' : '#f7f8f8', border: a.primary ? '#f7f8f8' : '#2a2b30', act: function () { self.bannerAction(a.id); } }; })
       };
     }

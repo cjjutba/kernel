@@ -112,10 +112,12 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ r.isPreset }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" style="width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; margin-top: {{ r.ringTop }}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid {{ r.ringBorder }}; opacity: {{ r.ringOpacity }}; background: {{ r.ringBg }}; color: #08090a; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer">{{ r.mark }}</button></sc-if>
 <div style="flex: 1 1 {{ r.basis }}; min-width: 0; display: flex; flex-direction: column; gap: 2px">
 <sc-if value="{{ r.isRule }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.labelAct }}" aria-expanded="{{ r.expanded }}" style="{{ r.labelStyle }}">{{ r.label }}</button></sc-if>
+<sc-if value="{{ r.isEdit }}" hint-placeholder-val="{{ false }}"><input type="text" aria-label="Name for {{ r.label }}" autocomplete="off" spellcheck="false" value="{{ r.label }}" placeholder="{{ r.placeholder }}" style="height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: 7px; border: 1px solid #3a3c42; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13.5px; font-weight: 500; outline: none"></sc-if>
 <sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}<sc-if value="{{ r.hasTail }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 400; color: #d0d6e0"> {{ r.tail }}</span></sc-if></span></sc-if>
 <sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
 <sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.note }}</span></sc-if>
+<sc-if value="{{ r.hasStack }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ r.stack }}" as="sl" hint-placeholder-count="3"><span style="font-size: 12.5px; color: #8a8f98">{{ sl }}</span></sc-for></sc-if>
 <sc-if value="{{ r.hasAvail }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #b7bcc4"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1"></path></svg>{{ r.avail }}</span></sc-if>
 <sc-if value="{{ r.hasMono }}" hint-placeholder-val="{{ false }}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #b7bcc4; {{ r.monoStyle }}">{{ r.mono }}</span></sc-if>
 </div>
@@ -142,8 +144,9 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: {{ r.codeColor }}"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre">{{ ln }}</span></sc-for></div></sc-if>
 <sc-if value="{{ r.isCommand }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">{{ r.value }}</span></sc-if>
 <sc-if value="{{ r.isNote }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-size: 12.5px; color: #8a8f98">{{ r.value }}</span></sc-if>
-<sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ r.tag }}</span></sc-if>
-<sc-if value="{{ r.hasActions }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; margin-right: -10px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" aria-label="{{ a.label }} {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div></sc-if>
+<sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; margin-top: {{ r.tagMt }}; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ r.tag }}</span></sc-if>
+<sc-if value="{{ r.hasActions }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; margin-top: {{ r.actMt }}; margin-right: -10px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" aria-label="{{ a.label }} {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div></sc-if>
+<sc-if value="{{ r.isEdit }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; align-items: center; gap: 4px"><button type="button" aria-label="Cancel renaming {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button><button type="button" aria-label="Save the name for {{ r.label }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Save</button></div></sc-if>
 <sc-if value="{{ r.isIcon }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 10px">
 <span aria-hidden="true" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 7px; border: 1px solid #2a2b30; font-size: 12px; font-weight: 600; color: #f7f8f8">{{ r.tileLetter }}<sc-if value="{{ r.tileAvatar }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg></sc-if></span>
 <button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
@@ -205,15 +208,20 @@ details.dd>summary::-webkit-details-marker{display:none}
 <button type="button" aria-label="Close" style="width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button>
 </div>
 <sc-if value="{{ modal.isAccount }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
-<div role="radiogroup" aria-label="Account type" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
-<button type="button" role="radio" aria-checked="false" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
-<button type="button" role="radio" aria-checked="true" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #24252a; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
-</div>
+<sc-if value="{{ modal.hasKinds }}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="Account type" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
+<button type="button" role="radio" aria-checked="{{ modal.subChecked }}" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ modal.subBg }}; color: {{ modal.subColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
+<button type="button" role="radio" aria-checked="{{ modal.keyChecked }}" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ modal.keyBg }}; color: {{ modal.keyColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
+</div></sc-if>
+<sc-if value="{{ modal.isSub }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 12.5px; color: #8a8f98">{{ modal.help }}</p></sc-if>
+<sc-if value="{{ modal.isWait }}" hint-placeholder-val="{{ false }}"><p role="status" style="margin: 0; font-size: 12.5px; color: #8a8f98">Finish signing in in your browser. <button type="button" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer">Open the page again</button></p></sc-if>
+<sc-if value="{{ modal.hasCode }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-code" style="font-size: 12px; font-weight: 500; color: #8a8f98">Code, if the sign-in page shows one</label><input id="acct-code" type="text" autocomplete="off" spellcheck="false" value="" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div></sc-if>
+<sc-if value="{{ modal.isKey }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px">
 <div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-label" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="acct-label" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="Work key" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div>
 <div style="display: flex; flex-direction: column; gap: 6px">
 <div style="display: flex; align-items: baseline; justify-content: space-between"><label for="acct-key" style="font-size: 12px; font-weight: 500; color: #8a8f98">API key</label><button type="button" aria-label="Get a key at console.anthropic.com" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer">Get key</button></div>
 <input id="acct-key" type="password" autocomplete="off" spellcheck="false" value="{{ modal.key }}" placeholder="sk-ant-" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none">
 <span style="font-size: 12.5px; color: #8a8f98">{{ modal.hint }}</span></div>
+</div></sc-if>
 </div></sc-if>
 <sc-if value="{{ modal.isForm }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
 <p style="margin: 0; color: #8a8f98">{{ modal.intro }}</p>
@@ -223,7 +231,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
 <span style="flex: 1"></span>
 <button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button>
-<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ modal.confirm }}</button>
+<sc-if value="{{ modal.hasConfirm }}" hint-placeholder-val="{{ true }}"><button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; opacity: {{ modal.confirmOpacity }}; cursor: pointer">{{ modal.confirm }}</button></sc-if>
 </div>
 </section></sc-if>
 </div>
@@ -293,7 +301,8 @@ class Component extends DCLogic {
     var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
     // KERNEL-406. A role row picks provider, model and effort. An account row says which one is active in words, never a dot.
     var role = function (label, provider, model, effort) { return { label: label, type: 'role', sels: [[provider, label + ' provider'], [model, label + ' model'], [effort, label + ' effort']] }; };
-    var account = function (label, desc, active, actions) { return { label: label, desc: desc, type: 'account', tag: active ? 'Active' : '', actions: actions }; };
+    var account = function (label, stack, active, actions, extra) { return Object.assign({ label: label, stack: stack, type: 'account', tag: active ? 'Active' : '', actions: actions }, extra || {}); };
+    var usage = function (five, fiveAt, week, weekAt) { return ['5-hour ' + five + '% used \u00b7 resets ' + fiveAt, 'Weekly ' + week + '% used \u00b7 resets ' + weekAt]; };
     var path = function (label, mono, desc, actions) { return { label: label, desc: desc, mono: mono, type: 'path', actions: actions }; };
     var providerTabs = function (on) { return ['Claude Code', 'Codex'].map(function (t, i) { return [t, i === on]; }); };
     // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
@@ -348,6 +357,15 @@ class Component extends DCLogic {
     };
     // KERNEL-437. A copied .env that looks like production: the files and why, never the values. Don't copy adds them to the room's exclusions, Keep copying remembers the choice.
     var prodBanner = { banner: { title: '2 files look like production', detail: 'Agents run commands in every worktree, so a migration or seed script there could reach a live database.', primary: 'Don\u2019t copy these files', secondary: 'Keep copying', files: [['.env', [['DATABASE_URL'], ' points to a remote database']], ['.env.production', [['STRIPE_SECRET_KEY'], ' is a live key']]] }, rows: [] };
+    var claudeWork = function (on) { return account('Work', ['cj@example.com \u00b7 Claude Max \u00b7 Claude Code\u2019s own login'].concat(usage(62, 'at 3:40 PM', 38, 'Monday at 9:00 AM')), on, on ? ['Rename', 'Sign out'] : ['Switch to', 'Rename', 'Sign out']); };
+    var claudePersonal = function (extra) { return account('Personal', ['cj@jutba.example \u00b7 Claude Pro'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], extra); };
+    var codexOwn = function (on) { return account('cj@example.com', ['ChatGPT Plus \u00b7 Codex\u2019s own login'].concat(usage(7, 'at 4:15 PM', 21, 'Thursday at 8:00 AM')), on, on ? ['Rename', 'Sign out'] : ['Switch to', 'Rename', 'Sign out']); };
+    var codexPersonal = function () { return account('Personal', ['cj@jutba.example \u00b7 ChatGPT Pro'].concat(usage(3, 'at 6:20 PM', 9, 'Friday at 8:00 AM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove']); };
+    var keyRow = function (on) { return account('Work key', ['API key \u00b7 billed per token'], on, on ? ['Rename', 'Remove'] : ['Switch to', 'Rename', 'Remove']); };
+    var AUTO = { claude: 'Kernel moves agents to the Claude Code account with the most room and says so in the chat. It never moves to an API key.', codex: 'Kernel moves agents to the Codex account with the most room and says so in the chat. It never moves to an API key.' };
+    var accountsSection = function (provider, rows) {
+      return { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: rows.concat([tog('autoswitch', 'At a limit, switch to another account', false, AUTO[provider])]) };
+    };
     var ROOMS = {
       a: { letter: 'A', repo: 'cjjutba/client-a', path: '~/Projects/client-a', team: 'Lead, Frontend, Backend, QA, Reviewer' },
       b: { letter: 'B', repo: 'cjjutba/client-b', path: '~/Projects/client-b', team: 'Lead, Backend, Reviewer' },
@@ -412,25 +430,21 @@ class Component extends DCLogic {
       ] },
       // KERNEL-406: Claude Code and Codex side by side. Kernel already calls teammates agents, so the page is Providers.
       providers: { title: 'Providers', tabs: providerTabs(0), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cj@example.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
-          account('Work', 'Claude Team \u00b7 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM', false, ['Use', 'Sign out', 'Remove'])
-        ] },
+        accountsSection('claude', [claudeWork(true), claudePersonal(), keyRow()]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
         { title: 'Executable', rows: [path('Claude Code', 'Bundled with Kernel', 'Agents run on this copy of Claude Code', ['Choose', 'Use system Claude']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.claude/settings.json' })] }
       ] },
       'providers-codex': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cj@example.com', 'ChatGPT Plus \u00b7 Codex\u2019s own login \u00b7 7% of the 5-hour limit used', true, ['Sign out'])
-        ] },
+        accountsSection('codex', [codexOwn(true), codexPersonal(), keyRow()]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'ChatGPT'), val('Plan', 'ChatGPT Plus'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser, for the active account')] },
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
       ] },
       'providers-codex-out': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Sign in with your ChatGPT plan to run agents on Codex.', rows: [
-          account('Codex\u2019s own login', 'Not signed in', false, ['Sign in'])
-        ] },
+        accountsSection('codex', [
+          account('cj@example.com', ['Signed out \u00b7 Codex\u2019s own login'], false, ['Sign in', 'Rename']),
+          codexPersonal()
+        ]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'Not signed in'), btn('Sign in', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser')] },
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
@@ -584,21 +598,24 @@ class Component extends DCLogic {
     // KERNEL-435: the room's mode menu: Use app default, then the four modes.
     all['r-permissions-mode'] = Object.assign({}, all['r-permissions'], { nav: 'r-permissions' });
     all['r-permissions-mode'].sections = all['r-permissions'].sections.map(function (sec, i) { return i !== 0 ? sec : Object.assign({}, sec, { rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, true)] }); });
-    // KERNEL-522: an API key is another account in the same list. Where a login row says its plan and usage, the key row says how it is billed.
-    // It has no Sign out and no meters of its own. The Add account sheet opens over the Claude Code tab, with Subscription and API key as its two steps.
-    var keyRow = account('Work key', 'API key · billed per token', false, ['Use', 'Remove']);
-    var withKey = function (page) { return Object.assign({}, page, { sections: page.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: sec.rows.slice(0, 1).concat([keyRow]) }); }) }); };
-    all['providers-apikey'] = Object.assign(withKey(all.providers), { nav: 'providers' });
-    all['providers-codex-apikey'] = withKey(all['providers-codex']);
-    all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
-    // A key in use changes nothing about the subscription behind it: its meters, plan and controls stay, with one line above them saying where agents are running.
+    var rest = function (page) { return page.sections.slice(1); };
+    all['providers-apikey'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), keyRow()])].concat(rest(all.providers)) });
+    all['providers-codex-apikey'] = Object.assign({}, all['providers-codex'], { sections: [accountsSection('codex', [codexOwn(true), keyRow()])].concat(rest(all['providers-codex'])) });
+    var HELP = {
+      claude: 'Kernel opens Claude\u2019s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.',
+      codex: 'Kernel opens ChatGPT\u2019s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.'
+    };
+    all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'key', title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
+    all['providers-add'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'sub', title: 'Add a Claude account', help: HELP.claude, confirm: 'Sign in with Claude' } });
+    all['providers-add-wait'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'wait', code: true, title: 'Add a Claude account', confirm: 'Send code' } });
+    all['providers-codex-add'] = Object.assign({}, all['providers-codex'], { modal: { account: true, step: 'sub', title: 'Add a Codex account', help: HELP.codex, confirm: 'Sign in with ChatGPT' } });
+    all['providers-codex-add-wait'] = Object.assign({}, all['providers-codex'], { modal: { account: true, step: 'wait', code: false, title: 'Add a Codex account' } });
+    all['providers-rename'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), claudePersonal({ renaming: true, placeholder: 'cj@jutba.example', actions: null }), keyRow()])].concat(rest(all.providers)) });
+    var legacy = account('Personal', ['Sign in again to show email and plan'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM'), ['As of its last turn at 2:10 PM']), false, ['Switch to', 'Rename', 'Sign in again', 'Remove']);
+    all['providers-legacy'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), legacy, keyRow()])].concat(rest(all.providers)) });
     all['account-apikey'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: [text('Agents are on Work key, billed per token.')].concat(sec.rows) }); }) });
-    // The key is the active account. Status reads the key: its login method, and no plan or email. Sign in again becomes Replace key, which opens Add account to paste a new key.
     all['providers-apikey-active'] = Object.assign({}, all.providers, { nav: 'providers', sections: [
-      Object.assign({}, all.providers.sections[0], { rows: [
-        account('cj@example.com', 'Claude Max · Claude Code’s own login · 62% of the 5-hour limit used', false, ['Use', 'Sign out']),
-        account('Work key', 'API key · billed per token', true, ['Remove'])
-      ] }),
+      accountsSection('claude', [claudeWork(false), keyRow(true)]),
       { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'API key'), btn('Replace key', 'Replace key', 'Opens Add account, where you paste a new key for the active account')] },
       all.providers.sections[2]
     ] });
@@ -627,6 +644,17 @@ class Component extends DCLogic {
       });
       return { title: g.title, items: items, show: items.length > 0 };
     });
+    var modalVals = function (m) {
+      if (!m.account) return Object.assign({ isAccount: false, isForm: true, hasConfirm: true, confirmOpacity: '1' }, m);
+      var step = m.step || 'key', on = '#24252a', off = 'transparent';
+      return Object.assign({
+        isAccount: true, isForm: false, hasKinds: step !== 'wait',
+        subChecked: step === 'sub' ? 'true' : 'false', subBg: step === 'sub' ? on : off, subColor: step === 'sub' ? '#f7f8f8' : '#8a8f98',
+        keyChecked: step === 'key' ? 'true' : 'false', keyBg: step === 'key' ? on : off, keyColor: step === 'key' ? '#f7f8f8' : '#8a8f98',
+        isSub: step === 'sub', isWait: step === 'wait', hasCode: !!m.code, isKey: step === 'key',
+        hasConfirm: step !== 'wait' || !!m.code, confirmOpacity: step === 'wait' ? '0.55' : '1'
+      }, m);
+    };
     var setVal = function (id, v) { var n = Object.assign({}, self.state.vals); n[id] = v; self.setState({ vals: n }); };
     var P = pageMap[s.page];
     var LABEL = 'font-size: 13.5px; font-weight: 500';
@@ -646,7 +674,7 @@ class Component extends DCLogic {
           border: i === 0 ? '0' : '1px solid #1d1e22', labelStyle: LABEL, labelAct: function () {},
           isSelect: r.type === 'select', isToggle: r.type === 'toggle', isSegment: r.type === 'segment', isButton: r.type === 'button',
           isValue: r.type === 'value', isCode: r.type === 'code', isKbd: r.type === 'kbd', isMeter: r.type === 'meter',
-          isRule: r.type === 'rule', notRule: r.type !== 'rule', isDisclose: r.type === 'instr' || r.type === 'kdisc', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
+          isRule: r.type === 'rule', notRule: r.type !== 'rule' && !r.renaming, isDisclose: r.type === 'instr' || r.type === 'kdisc', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
           pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
@@ -656,7 +684,8 @@ class Component extends DCLogic {
           hasStat: !!r.stat, stat: r.stat ? r.stat[0] : '', statOk: !!r.stat && r.stat[1] === 'ok', statFail: !!r.stat && r.stat[1] === 'fail', statBusy: !!r.stat && r.stat[1] === 'busy',
           statColor: r.stat ? { ok: '#d0d6e0', fail: '#f7f8f8', busy: '#b7bcc4', none: '#8a8f98' }[r.stat[1]] : '#d0d6e0',
           hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || '',
-          align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || ''
+          align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || '',
+          hasStack: !!r.stack, stack: r.stack || [], isEdit: !!r.renaming, placeholder: r.placeholder || '', actMt: '0', tagMt: '0'
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
@@ -713,6 +742,8 @@ class Component extends DCLogic {
         }
         if (r.type === 'role') { o.isMulti = true; o.sels = r.sels.map(function (x) { return { value: x[0], aria: x[1] }; }); o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'account' || r.type === 'path') { o.wrap = 'nowrap'; o.basis = '120px'; }
+        if (r.type === 'account') { o.align = 'flex-start'; o.tagMt = '-1px'; o.actMt = '-5px'; }
+        if (r.renaming) { o.notRule = false; o.actMt = '0'; }
         if (r.type === 'preview') { o.isPreview = true; o.isButton = true; o.wrap = 'wrap'; }
         if (r.type === 'icon') {
           var avatar = r.kind === 'avatar';
@@ -773,7 +804,7 @@ class Component extends DCLogic {
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       groups: groups,
       navShift: inRoom ? '-170px' : '0',
-      modal: P.modal ? Object.assign({ isAccount: !!P.modal.account, isForm: !P.modal.account }, P.modal) : {},
+      modal: P.modal ? modalVals(P.modal) : {},
       page: {
         title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
         hasTabs: !!P.tabs, tabs: (P.tabs || []).map(function (t) { return { label: t[0], selected: t[1] ? 'true' : 'false', bg: t[1] ? '#1c1d21' : 'transparent', color: t[1] ? '#f7f8f8' : '#8a8f98' }; }),

@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, TeamConfig, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
@@ -554,6 +554,19 @@ const ASK_HISTORY = [
   { roomId: ids.roomB, chatId: ids.leadChat, question: 'Is anyone working on the onboarding docs?', at: minutesAgo(60 * 24 * 9) }
 ]
 
+/** Room setup done in a repo that brought its own agents (RoomSetupTeam.png). `team` is the repo's `[team]` table, if it has one. */
+const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
+  const r = roomsScene(f)
+  return {
+    ...r,
+    rooms: [...f.rooms, shop],
+    agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew.filter((a) => a.id !== 'kernel-reviewer') },
+    ...(team ? { roomSettings: { ...f.roomSettings, [shop.id]: { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {}, team } } } : {}),
+    push: [{ type: 'room.setup', roomId: shop.id, steps: shopSteps }],
+    ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } }
+  }
+}
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
@@ -687,10 +700,9 @@ export const teamFixtures: Record<string, Fixture> = {
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the room opens.
   // KERNEL-555: Rowan is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
-  RoomSetupTeam: scene((f) => {
-    const r = roomsScene(f)
-    return { ...r, rooms: [...f.rooms, shop], agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew.filter((a) => a.id !== 'kernel-reviewer') }, push: [{ type: 'room.setup', roomId: shop.id, steps: shopSteps }], ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } } }
-  }),
+  RoomSetupTeam: scene((f) => roomSetupTeam(f)),
+  // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
+  RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),
   Issues: scene((f) => issuesScene(f)),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),
