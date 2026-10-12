@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
-import { actions, getState, go, useStore } from '../../../store'
+import { actions, getState, go, mcpRoute, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
 import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
 import { noteCodexStatus } from '../../workspace/composer/providerModels'
@@ -131,10 +131,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   )
                   : <span className="set-label">{a.label}</span>}
                 {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
-                {a.signedIn && !a.keychainWait && (!!a.mcpSignIns?.length || !!all.runs[a.id]) && (
+                {a.signedIn && !a.keychainWait && (!!a.mcpSignIns?.length || !!all.of(a.provider, a.id).run) && (
                   <SignInLine
-                    label={a.label} servers={(a.mcpSignIns ?? []).map((m) => m.server)} run={all.runs[a.id]} running={all.active === a.id} canceling={all.canceling}
-                    disabled={busy !== null || sheetOpen || all.active !== null} onStart={() => void all.start(a.id, a.label)} onCancel={() => void all.cancel()}
+                    label={a.label} servers={(a.mcpSignIns ?? []).map((m) => m.server)} {...all.of(a.provider, a.id)} canceling={all.canceling}
+                    disabled={busy !== null || sheetOpen || all.active !== null} onStart={() => void all.start(a.provider, a.id, a.label)}
+                    onOpen={mcpRoute(a.provider, a.id) ? () => go(mcpRoute(a.provider, a.id)!) : undefined} onCancel={() => void all.cancel(a.provider)}
                   />
                 )}
                 {a.keychainWait && (
