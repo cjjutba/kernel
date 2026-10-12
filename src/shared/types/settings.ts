@@ -195,9 +195,10 @@ export interface RoomSettings {
   /**
    * The `[agents]` table (KERNEL-432). `unlistedTools` (`unlisted_tools`) is `ask` when unset. `allow` is each agent's
    * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this room though its file doesn't list them.
-   * Both files merge agent by agent.
+   * Both files merge agent by agent. `openWorkspaces` (`open_workspaces`) is how many teammate workspaces the Lead may have
+   * open in the room, 0 to 12, and 0 is no limit. Unset, the room follows Settings, Models' `agentLimit` (KERNEL-492).
    */
-  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]> }
+  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number }
   /**
    * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
@@ -257,7 +258,7 @@ export type RoomSettingsPatch = {
 } & {
   runScripts?: Record<string, string | null>
   mcp?: { aliases?: Record<string, string | null> }
-  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null> }
+  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null }
 }
 
 /** Recursive partial for settings patches. */
