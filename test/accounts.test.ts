@@ -1105,10 +1105,10 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     const on = (list: McpAccount[], provider: string, id: string) => list.find((a) => a.provider === provider && a.accountId === id)
     expect(states(on(all, 'claude', 'cli'))).toEqual([['claude.ai Gmail', 'ready', 'connector'], ['claude.ai Google Drive', 'needs-sign-in', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
     // The connectors are the CLI login's own, so the added login doesn't have them.
-    expect(states(on(all, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-installed', 'connector'], ['claude.ai Google Drive', 'not-installed', 'connector'], ['linear', 'needs-sign-in'], ['neon', 'failed', 'spawn neon ENOENT']])
-    // Codex leaves out a server config.toml switches off.
-    expect(states(on(all, 'codex', 'cli'))).toEqual([['figma', 'not-installed'], ['github', 'ready'], ['vercel', 'needs-sign-in']])
-    expect(states(on(all, 'codex', work.id))).toEqual([['figma', 'failed', 'Codex could not list its tools.'], ['github', 'ready'], ['vercel', 'needs-sign-in']])
+    expect(states(on(all, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-set-up', 'connector'], ['claude.ai Google Drive', 'not-set-up', 'connector'], ['linear', 'needs-sign-in'], ['neon', 'failed', 'spawn neon ENOENT']])
+    // A server config.toml switches off is not set up on every Codex account, since they share the file (KERNEL-646).
+    expect(states(on(all, 'codex', 'cli'))).toEqual([['figma', 'not-set-up'], ['github', 'ready'], ['vapi', 'not-set-up'], ['vercel', 'needs-sign-in']])
+    expect(states(on(all, 'codex', work.id))).toEqual([['figma', 'failed', 'Codex listed no tools for it and didn\u2019t start it.'], ['github', 'ready'], ['vapi', 'not-set-up'], ['vercel', 'needs-sign-in']])
     expect(all.every((a) => typeof a.checkedAt === 'number' && !a.error)).toBe(true)
     expect(views.at(-1)).toEqual(all)
     // The Claude check also fills the account's row, as accounts.checkMcp does.
@@ -1123,7 +1123,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }]
     const again = await h['mcp.accounts']({ refresh: true, accountId: side.id })
     expect(spy.mock.calls).toEqual([['claude', side.id]])
-    expect(states(on(again, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-installed', 'connector'], ['claude.ai Google Drive', 'not-installed', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
+    expect(states(on(again, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-set-up', 'connector'], ['claude.ai Google Drive', 'not-set-up', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
     spy.mockRestore()
     await k.stop()
   })
@@ -1189,5 +1189,175 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     await new Promise((r) => setTimeout(r, 200))
     expect(needed).toHaveLength(1)
     await k.stop()
+  })
+})
+
+describe('Every server on every account, Codex sign-in, failure reasons and ignore (KERNEL-646)', () => {
+  const keys = ['FAKE_EMAIL', 'FAKE_MCP_FAIL', 'FAKE_CODEX_MCP_STATUS', 'FAKE_CODEX_MCP_STARTUP', 'FAKE_CODEX_MCP_LOGIN', 'FAKE_CODEX_MCP_NO_OAUTH', 'FAKE_CODEX_LOGIN_EMAIL'] as const
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  afterEach(() => { for (const key of keys) { if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key] } })
+
+  /** A Kernel whose Claude is a fake CLI with its own login, with the pushes `mcp.accounts` sends. */
+  async function setUp(o: Partial<KernelOptions> = {}) {
+    const t = await kernel(o)
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    const runs: McpSignInAll[] = []
+    const needed: McpNeeded[] = []
+    const steps: McpSignInStep[] = []
+    bus.on('push', (e: PushEvent) => {
+      if (e.type === 'account.mcpSignInAll') runs.push(e.run)
+      if (e.type === 'account.mcpNeeded') needed.push(e.needed)
+      if (e.type === 'account.mcpSignIn') steps.push(e.signIn)
+    })
+    const h = t.k.handlers()
+    const on = (list: McpAccount[], provider: string, id: string) => list.find((a) => a.provider === provider && a.accountId === id)
+    return { ...t, claude, h, runs, needed, steps, on }
+  }
+
+  const codexServer = (name: string, authStatus: string, tools: string[] = [], pluginId: string | null = null) => ({ name, authStatus, runtimeStatus: null, pluginId, tools: Object.fromEntries(tools.map((t) => [t, {}])) })
+  const STATES = ['ready', 'needs-sign-in', 'failed', 'not-set-up', 'ignored']
+
+  it('gives every account every server of its provider with a kind, one of five states and a one-line reason', async () => {
+    const { k, h, root, on } = await setUp()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    sdk.mcp = {
+      // Claude Code leaves out the vercel plugin's server on the CLI login, whose claude.ai Vercel connector points to the same place.
+      '': [{ name: 'claude.ai Gmail', status: 'connected', scope: 'claudeai' }, { name: 'claude.ai Vercel', status: 'connected', scope: 'claudeai' }, { name: 'linear', status: 'connected', scope: 'user' },
+        { name: 'neon', status: 'failed', scope: 'user', error: '\x1b[31mError: spawn neon ENOENT\x1b[0m\n    at ChildProcess._handle.onexit (node:internal/child_process:286:19)' } as { name: string; status: string; scope: string }],
+      [folder]: [{ name: 'plugin:vercel:vercel', status: 'connected', source: 'plugin' } as { name: string; status: string }, { name: 'plugin:figma:figma', status: 'connected', source: 'plugin' } as { name: string; status: string },
+        { name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'failed', scope: 'user' }]
+    }
+    await writeFile(join(root, 'config.toml'), '[mcp_servers.vapi]\ncommand = "vapi"\nenabled = false\n')
+    process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({
+      '': [codexServer('github', 'bearerToken', ['search']), codexServer('supabase', 'notLoggedIn'), codexServer('code-review', 'unsupported', [], 'code-review@openai-bundled'), codexServer('broken', 'unsupported'), codexServer('vapi', 'unsupported')]
+    })
+    process.env.FAKE_CODEX_MCP_STARTUP = JSON.stringify({ '': { github: { status: 'ready' }, broken: { status: 'failed', error: 'MCP client for `broken` failed to start: handshake timed out\nCaused by: deadline has elapsed' } } })
+    const all = await h['mcp.accounts'](undefined)
+    const rows = (a: McpAccount | undefined) => a?.servers.map((s) => [s.name, s.kind, s.state, ...(s.error ? [s.error] : []), ...(s.note ? [s.note] : []), ...(s.connectUrl ? [s.connectUrl] : [])])
+    expect(rows(on(all, 'claude', 'cli'))).toEqual([
+      ['claude.ai Gmail', 'connector', 'ready'], ['claude.ai Vercel', 'connector', 'ready'], ['linear', 'user', 'ready'], ['neon', 'user', 'failed', 'Error: spawn neon ENOENT'],
+      ['plugin:figma:figma', 'plugin', 'not-set-up', 'Claude Code didn’t load its plugin on this account.'],
+      ['plugin:vercel:vercel', 'plugin', 'ready', 'Covered by claude.ai Vercel on this account.']
+    ])
+    // The connectors are the CLI login's own: the added login gets claude.ai's connector settings and its email, to sign in there as.
+    const added = on(all, 'claude', side.id)
+    expect(added?.email).toBe('side@example.com')
+    expect(rows(added)).toEqual([
+      ['claude.ai Gmail', 'connector', 'not-set-up', 'claude.ai connectors are set up on claude.ai, for each account.', 'https://claude.ai/settings/connectors'],
+      ['claude.ai Vercel', 'connector', 'not-set-up', 'claude.ai connectors are set up on claude.ai, for each account.', 'https://claude.ai/settings/connectors'],
+      ['linear', 'user', 'needs-sign-in'], ['neon', 'user', 'failed', 'It failed to start, and Claude Code gave no reason.'],
+      ['plugin:figma:figma', 'plugin', 'ready'], ['plugin:vercel:vercel', 'plugin', 'ready']
+    ])
+    // Codex's reasons come from how each server started on a thread, and a server it never started says so.
+    expect(rows(on(all, 'codex', 'cli'))).toEqual([
+      ['broken', 'user', 'failed', 'MCP client for `broken` failed to start: handshake timed out'],
+      ['code-review', 'plugin', 'failed', 'Codex lists it from the code-review plugin but didn’t start it.'],
+      ['github', 'user', 'ready'], ['supabase', 'user', 'needs-sign-in'], ['vapi', 'user', 'not-set-up', 'Switched off in Codex’s config.toml.']
+    ])
+    expect(all.flatMap((a) => a.servers).every((s) => STATES.includes(s.state) && s.connector === (s.kind === 'connector'))).toBe(true)
+    expect((await fake.messages()).some((m) => m.method === 'thread/start' && m.params?.ephemeral === true)).toBe(true)
+    await k.stop()
+  })
+
+  it('signs a Codex server in through Codex, ready on every Codex account, and Sign in to all goes through the rest', async () => {
+    const { k, h, opened, steps, runs, on } = await setUp()
+    process.env.FAKE_CODEX_LOGIN_EMAIL = 'work@example.com'
+    const work = await h['accounts.add']({ provider: 'codex' })
+    const workHome = k.providers.codexHome(work.id)!
+    const list = [codexServer('github', 'bearerToken', ['search']), codexServer('supabase', 'notLoggedIn'), codexServer('linear', 'notLoggedIn'), codexServer('mobbin', 'notLoggedIn')]
+    process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({ '': list, [workHome]: list })
+    await h['mcp.accounts'](undefined)
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
+    opened.length = 0
+    await h['accounts.mcpSignIn']({ provider: 'codex', accountId: work.id, server: 'supabase' })
+    expect(opened).toEqual(['https://supabase.example.com/authorize?client=codex'])
+    expect(steps).toEqual([
+      { provider: 'codex', accountId: work.id, server: 'supabase', step: 'browser', url: 'https://supabase.example.com/authorize?client=codex' },
+      { provider: 'codex', accountId: work.id, server: 'supabase', step: 'done' }
+    ])
+    // The login ran in the account's own home.
+    const messages = await fake.messages()
+    const login = messages.findIndex((m) => m.method === 'mcpServer/oauth/login')
+    expect(messages[login].params.name).toBe('supabase')
+    expect(messages.slice(0, login).filter((m) => 'started' in m).at(-1)?.started).toBe(workHome)
+    // Codex keeps the token where every Codex account reads it, so it is ready on both without another check.
+    const after = await h['mcp.accounts'](undefined)
+    for (const id of ['cli', work.id]) expect(on(after, 'codex', id)?.servers.find((s) => s.name === 'supabase')?.state).toBe('ready')
+    // Sign in to all skips what is ready, and a failure carries Codex's reason.
+    process.env.FAKE_MCP_FAIL = 'linear'
+    const run = await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })
+    expect(run).toEqual({ provider: 'codex', accountId: 'cli', servers: ['linear', 'mobbin'], done: ['mobbin'], failed: [{ server: 'linear', error: 'Codex said: access denied' }], finished: true })
+    expect(runs.at(-1)).toEqual(run)
+    // A server Codex can't sign in to says why, and Cancel stops a sign-in waiting in the browser.
+    process.env.FAKE_CODEX_MCP_NO_OAUTH = 'github'
+    await expect(h['accounts.mcpSignIn']({ provider: 'codex', accountId: 'cli', server: 'github' })).rejects.toThrow('Codex said: OAuth login is only supported for streamable HTTP servers.')
+    process.env.FAKE_CODEX_MCP_LOGIN = 'wait'
+    const waiting = h['accounts.mcpSignIn']({ provider: 'codex', accountId: 'cli', server: 'linear' })
+    await until(() => steps.some((s) => s.server === 'linear' && s.step === 'browser' && s.accountId === 'cli' && steps.indexOf(s) > 3))
+    await h['accounts.cancelAdd']({ provider: 'codex' })
+    await expect(waiting).rejects.toThrow('Sign-in canceled.')
+    for (const spy of logs) {
+      for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/token|access_token|refresh/i)
+      spy.mockRestore()
+    }
+    await k.stop()
+  })
+
+  it('shares a plugin installed on an added account with the CLI login before either starts Claude again', async () => {
+    const { k, h, home } = await setUp()
+    const root = join(home, '.claude')
+    await mkdir(join(root, 'plugins'), { recursive: true })
+    await writeFile(join(root, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {} }))
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    k.providers.claudeEnv(side.id)
+    const own = join(folder, 'plugins', 'installed_plugins.json')
+    expect((await lstat(own)).isSymbolicLink()).toBe(true)
+    // Claude Code on the account installs vercel, writing a file of its own over the link.
+    await rm(own)
+    await writeFile(own, JSON.stringify({ version: 2, plugins: { 'vercel@official': [{ scope: 'user', installPath: join(folder, 'plugins', 'cache', 'official', 'vercel', '0.50.0'), version: '0.50.0' }] } }))
+    k.providers.claudeEnv(side.id)
+    expect(JSON.parse(await readFile(join(root, 'plugins', 'installed_plugins.json'), 'utf8')).plugins['vercel@official'][0].installPath).toBe(join(root, 'plugins', 'cache', 'official', 'vercel', '0.50.0'))
+    expect((await lstat(own)).isSymbolicLink()).toBe(true)
+    await k.stop()
+  })
+
+  it('keeps an ignored server across a restart and leaves it, and one off in every room, out of every warning', async () => {
+    const { k, h, home, needed, logins } = await (async () => {
+      const t = await setUp({ checkMcpOnAdd: true })
+      return { ...t, logins: async () => (await t.claude.calls()).filter((c) => c.args.startsWith('mcp login')).map((c) => c.args.slice('mcp login '.length)) }
+    })()
+    sdk.mcp = { '*': [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'needs-auth', scope: 'user' }] }
+    const repo = await tempRepo()
+    await k.addRoom(repo)
+    await mkdir(join(repo, '.kernel'), { recursive: true })
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["neon"]\n')
+    const side = await h['accounts.add']({ provider: 'claude' })
+    // The notice after adding leaves out neon, which the only room switches off.
+    await until(() => needed.length)
+    expect(needed[0].servers).toEqual(['figma', 'linear'])
+    const out = await h['accounts.mcpIgnore']({ provider: 'claude', accountId: side.id, server: 'figma', ignored: true })
+    const servers = (list: McpAccount[]) => list.find((a) => a.accountId === side.id)?.servers.map((s) => [s.name, s.state, ...(s.roomOff ? ['roomOff'] : [])])
+    expect(servers(out)).toEqual([['figma', 'ignored'], ['linear', 'needs-sign-in'], ['neon', 'needs-sign-in', 'roomOff']])
+    // The row's warning counts only linear.
+    expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }])
+    // Sign in to all signs in linear alone.
+    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    expect(run.servers).toEqual(['linear'])
+    expect(await logins()).toEqual(['linear'])
+    // Ignore is kept in accounts.json, so a new Kernel on the same data folder still ignores it.
+    const dataDir = (k.o as KernelOptions).dataDir
+    await k.stop()
+    const again = new Kernel({ dataDir, home, cipher })
+    await again.start()
+    expect(again.providers.mcpIgnored('claude', side.id)).toEqual(['figma'])
+    // Stop ignoring takes it out of accounts.json.
+    await again.providers.setMcpIgnored('claude', side.id, 'figma', false)
+    expect(again.providers.mcpIgnored('claude', side.id)).toEqual([])
+    expect(JSON.parse(await readFile(join(dataDir, 'accounts.json'), 'utf8')).claude.accounts[0].mcpIgnored).toBeUndefined()
+    await again.stop()
   })
 })

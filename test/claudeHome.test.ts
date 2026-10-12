@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, 
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig } from '../src/main/services/providers/claudeHome'
+import { credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins } from '../src/main/services/providers/claudeHome'
 import { fakeClaude, MCP_LINK } from './helpers/fakeClaude'
 import { fakeKeychain } from './helpers/fakeKeychain'
 
@@ -215,6 +215,89 @@ describe('syncClaudeConfig', () => {
 
 // MCP sign-ins (KERNEL-616): Claude Code keeps a login and its MCP servers' OAuth sign-ins in one Keychain item, so Kernel
 // copies the sign-ins of the servers the user added between logins. No real Keychain is touched.
+
+describe('syncClaudePlugins (KERNEL-646)', () => {
+  /** Plugin `name` installed at `version`, from `at`'s plugin cache, as Claude Code 2.1.292 writes it. */
+  const entry = (at: string, name: string, version: string) => [{ scope: 'user', installPath: join(at, 'plugins', 'cache', 'official', name, version), version }]
+  const installed = (plugins: Record<string, unknown>) => JSON.stringify({ version: 2, plugins })
+  const read = async (path: string) => JSON.parse(await readFile(path, 'utf8'))
+
+  /** `~/.claude` with the vercel plugin installed, an account folder linked to it, and Claude Code's rename on the account. */
+  async function linked() {
+    const s = await setUp()
+    await writeFile(join(s.root, 'plugins', 'installed_plugins.json'), installed({ 'vercel@official': entry(s.root, 'vercel', '0.43.0') }))
+    await writeFile(join(s.root, 'plugins', 'known_marketplaces.json'), JSON.stringify({ official: { installLocation: join(s.root, 'plugins', 'marketplaces', 'official'), lastUpdated: '1' } }))
+    linkClaudeHome(s.home, s.root)
+    const own = join(s.home, 'plugins', 'installed_plugins.json')
+    /** What Claude Code does on the account: a new file in place of the link. */
+    const write = async (plugins: Record<string, unknown>) => { await rm(own); await writeFile(own, installed(plugins)) }
+    return { ...s, own, write }
+  }
+
+  it('brings a plugin installed on the account to ~/.claude with its path there, and links the file again', async () => {
+    const { root, home, own, write } = await linked()
+    await write({ 'vercel@official': entry(root, 'vercel', '0.43.0'), 'figma@official': entry(home, 'figma', '1.0.0') })
+    syncClaudePlugins(home, root)
+    const shared = await read(join(root, 'plugins', 'installed_plugins.json'))
+    expect(shared.version).toBe(2)
+    expect(shared.plugins['figma@official']).toEqual(entry(root, 'figma', '1.0.0'))
+    expect(shared.plugins['vercel@official']).toEqual(entry(root, 'vercel', '0.43.0'))
+    expect(await readlink(own)).toBe(join(root, 'plugins', 'installed_plugins.json'))
+    // The marketplaces file is still a link, so nothing changed there.
+    expect(await isLink(join(home, 'plugins', 'known_marketplaces.json'))).toBe(true)
+  })
+
+  it('takes a plugin removed or updated on either login to the other, and the CLI login wins when both changed one', async () => {
+    const { root, home, own, write } = await linked()
+    await write({ 'vercel@official': entry(home, 'vercel', '0.50.0'), 'figma@official': entry(home, 'figma', '1.0.0') })
+    syncClaudePlugins(home, root)
+    // The CLI login removes figma: the account reads it through the link at once.
+    const sharedFile = join(root, 'plugins', 'installed_plugins.json')
+    await writeFile(sharedFile, installed({ 'vercel@official': entry(root, 'vercel', '0.50.0') }))
+    expect(Object.keys((await read(own)).plugins)).toEqual(['vercel@official'])
+    // The account removes vercel and adds context7, while the CLI login updates vercel: the CLI login's update stays.
+    await write({ 'context7@official': entry(home, 'context7', '2.0.0') })
+    await writeFile(sharedFile, installed({ 'vercel@official': entry(root, 'vercel', '0.51.0') }))
+    syncClaudePlugins(home, root)
+    expect((await read(sharedFile)).plugins).toEqual({ 'vercel@official': entry(root, 'vercel', '0.51.0'), 'context7@official': entry(root, 'context7', '2.0.0') })
+    // An account that removed a plugin nobody else touched removes it on the CLI login too.
+    await write({ 'vercel@official': entry(root, 'vercel', '0.51.0') })
+    syncClaudePlugins(home, root)
+    expect(Object.keys((await read(sharedFile)).plugins)).toEqual(['vercel@official'])
+    expect(await isLink(own)).toBe(true)
+  })
+
+  it("keeps the CLI login's plugin on a first sync when both have it, and merges marketplaces the same way", async () => {
+    const { root, home, write } = await linked()
+    await write({ 'vercel@official': entry(home, 'vercel', '0.50.0') })
+    const markets = join(home, 'plugins', 'known_marketplaces.json')
+    await rm(markets)
+    await writeFile(markets, JSON.stringify({ official: { installLocation: join(home, 'plugins', 'marketplaces', 'official'), lastUpdated: '2' }, vercel: { installLocation: join(home, 'plugins', 'marketplaces', 'vercel'), lastUpdated: '2' } }))
+    syncClaudePlugins(home, root)
+    expect((await read(join(root, 'plugins', 'installed_plugins.json'))).plugins['vercel@official']).toEqual(entry(root, 'vercel', '0.43.0'))
+    expect(await read(join(root, 'plugins', 'known_marketplaces.json'))).toEqual({
+      official: { installLocation: join(root, 'plugins', 'marketplaces', 'official'), lastUpdated: '1' },
+      vercel: { installLocation: join(root, 'plugins', 'marketplaces', 'vercel'), lastUpdated: '2' }
+    })
+    expect(await isLink(markets)).toBe(true)
+  })
+
+  it("changes nothing while Claude Code holds a lock or the account's file can't be read whole", async () => {
+    const { root, home, own, write } = await linked()
+    const sharedFile = join(root, 'plugins', 'installed_plugins.json')
+    const before = await readFile(sharedFile, 'utf8')
+    await write({ 'figma@official': entry(home, 'figma', '1.0.0') })
+    await mkdir(`${sharedFile}.lock`)
+    syncClaudePlugins(home, root)
+    expect(await readFile(sharedFile, 'utf8')).toBe(before)
+    expect(await isLink(own)).toBe(false)
+    await rm(`${sharedFile}.lock`, { recursive: true })
+    await writeFile(own, '{"plugins":')
+    syncClaudePlugins(home, root)
+    expect(await readFile(sharedFile, 'utf8')).toBe(before)
+    expect(await isLink(own)).toBe(false)
+  })
+})
 
 describe("naming a login's Keychain item", () => {
   it('names it the way Claude Code 2.1.292 does, from CLAUDE_SECURESTORAGE_CONFIG_DIR or else CLAUDE_CONFIG_DIR', () => {

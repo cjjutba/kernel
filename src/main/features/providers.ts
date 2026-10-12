@@ -17,10 +17,10 @@ import type { UsageRead } from '../services/sessions'
 import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
 import { claudeExecutable, resolveBinary } from '../services/providers/binary'
-import { claudeStatus, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, type ClaudeLogin } from '../services/providers/claudeHome'
+import { claudeStatus, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
 import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
-import { codexPlan, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
+import { codexPlan, loginCodexMcp, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
 import { codexLimits } from '../services/providers/codex/runner'
 import type { Rpc } from '../services/providers/codex/rpc'
 import type { AccountLoginCompletedNotification } from '../services/providers/codex/protocol/v2/AccountLoginCompletedNotification'
@@ -50,13 +50,15 @@ interface StoredAccount {
   signedIn?: boolean
   /** A Claude login's claude.ai organization, which tells two plans on one email apart (KERNEL-616). */
   orgId?: string
+  /** The MCP servers the user ignores on this account (`accounts.mcpIgnore`, KERNEL-646). */
+  mcpIgnored?: string[]
   createdAt: number
 }
 /**
  * The CLI's own login as `accounts.json` keeps it: its nickname, its last email, what Kernel last read of its sign-in
- * (KERNEL-567), and on Claude its claude.ai organization (KERNEL-618).
+ * (KERNEL-567), on Claude its claude.ai organization (KERNEL-618), and the MCP servers ignored on it (KERNEL-646).
  */
-interface StoredCli { label?: string; email?: string; signedIn?: boolean; orgId?: string }
+interface StoredCli { label?: string; email?: string; signedIn?: boolean; orgId?: string; mcpIgnored?: string[] }
 /** Each provider's added accounts, the one it runs on, and its CLI login. No `active` is the CLI's own login. */
 type AccountsFile = Record<Provider, { active?: string; accounts: StoredAccount[]; cli?: StoredCli }>
 
@@ -292,25 +294,28 @@ export class Providers extends Feature {
   private moved(a: StoredAccount) { return !!a.home && a.home !== this.claudeHome(a.id) }
 
   /**
-   * Before each Claude process on an added login: what `~/.claude` gained since is linked in, and its MCP servers are synced
-   * with the CLI login's, which then gives it the shared `.claude.json` keys (KERNEL-560, KERNEL-618). A failure leaves the
-   * folder as it was, and the login still runs.
+   * Before each Claude process on an added login: what `~/.claude` gained since is linked in, its plugins are merged with the
+   * CLI login's and linked again (KERNEL-646), and its MCP servers are synced with the CLI login's, which then gives it the
+   * shared `.claude.json` keys (KERNEL-560, KERNEL-618). A failure leaves the folder as it was, and the login still runs.
    */
   private readyClaudeHome(home: string) {
     try { linkClaudeHome(home, this.claudeRoot()) } catch { /* ~/.claude can't be read: the account runs on what it has */ }
+    try { syncClaudePlugins(home, this.claudeRoot()) } catch { /* the same */ }
     try { syncClaudeConfig(home, this.claudeConfig()) } catch { /* the same */ }
   }
 
   /**
    * Brings the MCP servers added, changed or removed on each added login to the CLI login's `.claude.json`, and from there to
    * the others (`syncClaudeConfig`), so one added on any account is on every account from its next process, the CLI's own
-   * included (KERNEL-618). At most once every SHARE_EVERY_MS. A folder that moved is left alone.
+   * included (KERNEL-618). Plugins go the same way through `~/.claude/plugins` (`syncClaudePlugins`, KERNEL-646). At most
+   * once every SHARE_EVERY_MS. A folder that moved is left alone.
    */
   private syncConfigs() {
     if (this.stopped || Date.now() - this.syncedAt < SHARE_EVERY_MS) return
     this.syncedAt = Date.now()
     for (const a of this.load().claude.accounts) {
       if (!a.home || this.moved(a)) continue
+      try { syncClaudePlugins(a.home, this.claudeRoot()) } catch { /* the next process tries again */ }
       try { syncClaudeConfig(a.home, this.claudeConfig()) } catch { /* the next process tries again */ }
     }
   }
@@ -510,11 +515,12 @@ export class Providers extends Feature {
   }
 
   /**
-   * What a row adds: the MCP servers that need a sign-in, as last checked, and the models it lacks, as last read (KERNEL-616).
+   * What a row adds: the MCP servers that need a sign-in, as last checked, less the quiet ones (`loudSignIns`), and the models
+   * it lacks, as last read (KERNEL-616).
    * On Claude, the accounts in its organization and a wait on a Keychain prompt (KERNEL-618).
    */
   private extras(provider: Provider, id: string): Pick<AccountProfile, 'mcpSignIns' | 'missingModels' | 'sameOrg' | 'keychainWait'> {
-    const signIns = provider === 'claude' ? this.mcpSignIns.get(id) : undefined
+    const signIns = provider === 'claude' ? this.loudSignIns(id) : undefined
     const missing = this.missing(provider, id)
     const peers = this.sameOrg(provider, id)
     return { ...(signIns ? { mcpSignIns: signIns } : {}), ...(missing ? { missingModels: missing } : {}), ...(peers ? { sameOrg: peers } : {}), ...(provider === 'claude' && this.keychain.has(id) ? { keychainWait: true } : {}) }
@@ -782,7 +788,7 @@ export class Providers extends Feature {
   /** Closes the Add account sheet: the sign-in stops and nothing is added. */
   cancelAdd(provider: Provider) {
     // Sign in to all stops before the sign-in it is running, so it doesn't go on to the next server (KERNEL-626).
-    if (provider === 'claude') this.k.mcp.cancelSignInAll()
+    this.k.mcp.cancelSignInAll(provider)
     this.adding.get(provider)?.cancel()
   }
 
@@ -1086,26 +1092,66 @@ export class Providers extends Feature {
       this.mcpSignIns.set(accountId, list.filter((s) => s.status === 'needs-auth').map((s) => ({ server: s.name, connector: isConnector(s.name) || (s.source ?? s.scope) === 'claudeai' })))
       return claudeAccountServers(list)
     }
+    const home = this.codexMcpHome(accountId)
+    const off = (await codexServers(home ?? this.codexRoot())).filter((s) => !s.on).map((s) => s.name)
+    const { servers, startup } = await readCodexMcp(this.mustBinary('codex'), home, { cwd: this.home })
+    return codexAccountServers(servers, off, startup)
+  }
+
+  /** A Codex account's home for its MCP servers: undefined for the CLI's own, which is `~/.codex`. */
+  private codexMcpHome(accountId: string): string | undefined {
     const id = accountId === CLI_ACCOUNT ? undefined : accountId
     if (id && !this.stored('codex', id)) throw new Error('That account is no longer in Kernel.')
-    const home = id ? this.codexHome(id) : undefined
-    const off = (await codexServers(home ?? this.codexRoot())).filter((s) => !s.on).map((s) => s.name)
-    return codexAccountServers(await readCodexMcp(this.mustBinary('codex'), home), off)
+    return id ? this.codexHome(id) : undefined
   }
 
   /** The MCP servers that need a sign-in on a Claude login as Kernel knows now, after any sign-in since its check (KERNEL-626). */
   mcpSignInsOn(accountId: string): McpSignIn[] | undefined { return this.mcpSignIns.get(accountId) }
 
   /**
-   * Signs one MCP server in on a Claude login (`accounts.mcpSignIn`): `claude mcp login` in its folder, which opens the
-   * browser, one sign-in at a time like Add account. A user-added server's new sign-in is shared with every login at once.
-   * A claude.ai connector finishes on claude.ai and loads from the account's next session, so it stays listed until the
-   * next check.
+   * A Claude login's `mcpSignIns` for its row, without the servers that don't warn (KERNEL-646): ones ignored on it, and ones
+   * switched off in every room (`Mcp.roomOff`).
    */
-  async mcpSignIn(accountId: string, server: string): Promise<AccountProfile[]> {
-    const home = this.mcpHome(accountId)
+  private loudSignIns(accountId: string): McpSignIn[] | undefined {
+    const list = this.mcpSignIns.get(accountId)
+    if (!list) return undefined
+    const ignored = new Set(this.mcpIgnored('claude', accountId))
+    const roomOff = this.k.mcp.roomOff()
+    return list.filter((s) => !ignored.has(s.server) && !roomOff(s.server))
+  }
+
+  /** The MCP servers ignored on an account, `cli` for the CLI's own login (`accounts.mcpIgnore`, KERNEL-646). */
+  mcpIgnored(provider: Provider, accountId: string): string[] {
+    const file = this.load()[provider]
+    return (accountId === CLI_ACCOUNT ? file.cli?.mcpIgnored : this.stored(provider, accountId)?.mcpIgnored) ?? []
+  }
+
+  /** Ignores one MCP server on an account, or stops, in `accounts.json` (KERNEL-646). The rows are told, since their warning can change. */
+  async setMcpIgnored(provider: Provider, accountId: string, server: string, ignored: boolean) {
+    const name = server.trim()
+    if (!name) throw new Error('Name the MCP server to ignore.')
+    const file = this.load()
+    const at = accountId === CLI_ACCOUNT ? (file[provider].cli ??= {}) : this.stored(provider, accountId)
+    if (!at) throw new Error('That account is no longer in Kernel.')
+    const rest = (at.mcpIgnored ?? []).filter((s) => s !== name)
+    const next = ignored ? [...rest, name].sort() : rest
+    if (next.length) at.mcpIgnored = next
+    else delete at.mcpIgnored
+    await this.save()
+    void this.pushAccounts()
+  }
+
+  /**
+   * Signs one MCP server in on an account (`accounts.mcpSignIn`), one sign-in at a time per provider like Add account. On
+   * Claude: `claude mcp login` in its folder, which opens the browser. A user-added server's new sign-in is shared with every
+   * login at once. A claude.ai connector finishes on claude.ai and loads from the account's next session, so it stays listed
+   * until the next check. On Codex: `mcpCodexSignIn`.
+   */
+  async mcpSignIn(provider: Provider, accountId: string, server: string): Promise<AccountProfile[]> {
     const name = server.trim()
     if (!name) throw new Error('Name the MCP server to sign in to.')
+    if (provider === 'codex') return this.mcpCodexSignIn(accountId, name)
+    const home = this.mcpHome(accountId)
     if (this.adding.has('claude')) throw new Error('A sign-in is already open. Finish or cancel it first.')
     const bin = this.mustBinary('claude')
     const connector = isConnector(name)
@@ -1122,6 +1168,27 @@ export class Providers extends Feature {
       if (list) this.mcpSignIns.set(accountId, list.filter((s) => s.server !== name))
       this.shareMcp({ force: true })
     }
+    void this.k.mcp.pushAccounts()
+    return this.pushList()
+  }
+
+  /**
+   * Signs one MCP server in on a Codex account through Codex's own MCP OAuth in its home (`loginCodexMcp`, KERNEL-646). Kernel
+   * opens the page Codex gives. Codex keeps the token where every Codex account reads it (KERNEL-646.md), so the server is
+   * ready on each of them, which `Mcp.signedIn` records until their next check.
+   */
+  private async mcpCodexSignIn(accountId: string, name: string): Promise<AccountProfile[]> {
+    const home = this.codexMcpHome(accountId)
+    if (this.adding.has('codex')) throw new Error('A sign-in is already open. Finish or cancel it first.')
+    const step = (s: Pick<McpSignInStep, 'step' | 'url' | 'error'>) => { if (!this.stopped) bus.push({ type: 'account.mcpSignIn', signIn: { provider: 'codex', accountId, server: name, ...s } }) }
+    const run = loginCodexMcp(this.mustBinary('codex'), home, name, { timeoutMs: SIGN_IN_MS, onLink: (url) => { step({ step: 'browser', url }); void this.o.openExternal?.(url) } })
+    this.adding.set('codex', { cancel: run.cancel })
+    try { await run.done } catch (e) {
+      step({ step: 'failed', error: (e as Error).message })
+      throw e
+    } finally { this.adding.delete('codex') }
+    step({ step: 'done' })
+    this.k.mcp.signedIn('codex', name)
     void this.k.mcp.pushAccounts()
     return this.pushList()
   }
@@ -1307,7 +1374,7 @@ export class Providers extends Feature {
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
       'accounts.checkMcp': async ({ accountId }) => this.checkMcp(accountId),
-      'accounts.mcpSignIn': async ({ accountId, server }) => this.mcpSignIn(accountId, server),
+      'accounts.mcpSignIn': async ({ provider, accountId, server }) => this.mcpSignIn(provider, accountId, server),
       'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }
