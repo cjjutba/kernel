@@ -23,6 +23,8 @@ import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
+import { ChatRail } from './ChatRail'
+import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 
 const EMPTY: ChatItem[] = []
 /** The reader counts as following the chat while the end is this close. */
@@ -46,7 +48,7 @@ export function PartChip({ part }: { part: ChatPart }) {
 
 function UserMessage({ item, onEdit }: { item: Extract<ChatItem, { kind: 'user' }>; onEdit: (text: string) => void }) {
   return (
-    <div className="msg msg-user">
+    <div className="msg msg-user" data-jump={item.id}>
       <div className="bubble">
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}
       </div>
@@ -357,6 +359,10 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items), [items])
+  // What the chat rail lists. A streamed reply redraws the transcript but changes none of this, so the rail keeps its list.
+  const listed = useMemo(() => railEntries(items, isLead), [items, isLead])
+  const rail = useRef(listed)
+  if (!sameEntries(rail.current, listed)) rail.current = listed
   // A pending request shows even before the engine has placed a card for it in the transcript.
   const loose = useMemo(() => {
     const placed = new Set(items.flatMap((i) => (i.kind === 'approval' ? [i.approvalId] : [])))
@@ -442,7 +448,8 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const openDiff = useCallback((path: string) => diff.current(path), [])
 
   return (
-    <div className="ws-chat">
+    <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
+      <ChatRail key={chat.id} entries={rail.current} scroller={scroller} />
       <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onWheel={release} onTouchStart={release} onPointerDown={release} onKeyDown={release}>
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}

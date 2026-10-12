@@ -53,6 +53,24 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// ChatRail and ChatRailOpen are a long chat read from its 14th message, which sits 16px under the tab row, where a jump to it lands (KERNEL-599). The scroll position is the transcript's own, and rows far
+// above measure a frame after they show, so aim again until the message stays put.
+async function readFromMessage(page: Page, text: string) {
+  const box = page.locator('.ws-scroll')
+  const message = (await page.locator('.msg-user', { hasText: text }).elementHandle())!
+  for (let i = 0; i < 4; i++) {
+    await box.evaluate((el, m) => { el.scrollTop += m.getBoundingClientRect().top - el.getBoundingClientRect().top - 16 }, message)
+    await page.waitForTimeout(200)
+  }
+}
+
+// The list is open on hover, with the pointer on one of its rows. The pointer moves from the rail onto the row, as it would to reach it.
+async function openRail(page: Page, row: string) {
+  await page.getByRole('button', { name: 'Jump to message' }).hover()
+  await page.getByRole('option', { name: row, exact: true }).hover()
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
 async function stepToSecondQuestion(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
@@ -235,7 +253,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
-  WorkspaceScrolledUp: scrollUp
+  WorkspaceScrolledUp: scrollUp,
+  ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
+  ChatRailLead: (page) => openRail(page, 'Kai, opened PR #162')
 }
 
 async function capture(name: string): Promise<boolean> {
