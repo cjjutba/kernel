@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
-  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
+  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
@@ -723,6 +723,15 @@ export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled
   const read = (name: string) => readTomlSync(repoFile(repo, name))
   const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
   return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
+}
+
+/**
+ * The room's `[mcp.aliases]`, merged alias by alias as `loadRepoSettings` merges them, the personal file winning. Read as a
+ * session starts, like `disabledInRoom`, so a confirmed alias reaches the next session (KERNEL-464).
+ */
+export function aliasesInRoom(repo: string): Record<string, string> {
+  const read = (name: string) => (roomValues(readTomlSync(repoFile(repo, name))).mcp as { aliases?: Record<string, string> }).aliases
+  return { ...read('settings.toml'), ...read('settings.local.toml') }
 }
 
 /**
