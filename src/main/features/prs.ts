@@ -297,9 +297,11 @@ export class Prs extends Feature {
 
   /**
    * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
-   * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
+   * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
+   * and no blockers on it. `override` is a person's Merge anyway past those blockers; Rowan and Merge all never pass it
+   * (KERNEL-497).
    */
-  async mergePr(id: string) {
+  async mergePr(id: string, o: { override?: boolean } = {}) {
     let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
@@ -327,7 +329,7 @@ export class Prs extends Feature {
     if (info?.conflictsUnknown) throw new Error(`GitHub is still checking ${ws.prNumber ? `#${ws.prNumber}` : 'this pull request'} for conflicts. Try again in a moment.`)
     if (info) bus.push({ type: 'pr.info', info })
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
-    const block = mergeBlock(ws, info, rules, name)
+    const block = mergeBlock(ws, info, rules, name, { override: o.override })
     if (block) throw new Error(block)
     const method = await this.k.codeHost.methodFor(this.mustRoom(ws.roomId))
     this.merging.add(id)
@@ -708,7 +710,7 @@ export class Prs extends Feature {
     return {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
-      'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
+      'pr.merge': async ({ workspaceId, override }) => this.mergePr(workspaceId, { override }),
       'pr.mergeAll': async ({ roomId, workspaceIds }) => this.mergeAll(roomId, workspaceIds),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },

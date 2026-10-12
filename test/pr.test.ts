@@ -567,7 +567,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.prs.refreshPr(ws.id)
 
     review(verdict('blockers', 'b'.repeat(40), 1))
-    await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('Theo found 1 blocker on the latest commit. Merge anyway to go ahead.')
     // An approval of the commit before the latest push doesn't count.
     review(verdict('approved', 'a'.repeat(40), 2))
     await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
@@ -583,7 +583,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.stop()
   })
 
-  it('merges a PR nobody reviewed, and a reviewed one with the setting off (KERNEL-115)', async () => {
+  it('merges a PR nobody reviewed, and one with no approval of its latest commit with the setting off (KERNEL-115)', async () => {
     const { k, ws, gh } = await setup()
     gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }
     await k.prs.refreshPr(ws.id)
@@ -592,10 +592,66 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     const off = await setup({ pr: { requireReviewer: false } })
     off.gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }
     await off.k.prs.refreshPr(off.ws.id)
-    off.k.store.saveWorkspace({ ...off.k.store.workspace(off.ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'blockers', summary: '', sha: 'b'.repeat(40), prNumber: 42, ts: 1 }] })
+    off.k.store.saveWorkspace({ ...off.k.store.workspace(off.ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'approved', summary: '', sha: 'a'.repeat(40), prNumber: 42, ts: 1 }] })
     expect(await off.k.prs.mergePr(off.ws.id)).toMatchObject({ prState: 'merged' })
     await k.stop()
     await off.k.stop()
+  })
+
+  describe('blockers on the latest commit (KERNEL-497)', () => {
+    const B = 'b'.repeat(40)
+    const found = 'Theo found 1 blocker on the latest commit. Merge anyway to go ahead.'
+    /** A ready PR at head B, with the reviewer rule off and Theo's blockers on B. */
+    async function blocked() {
+      const t = await setup({ pr: { requireReviewer: false } })
+      t.gh.pr = { ...info({ state: 'ready' }), head: B }
+      await t.k.prs.refreshPr(t.ws.id)
+      t.k.store.saveWorkspace({ ...t.k.store.workspace(t.ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'blockers', summary: '', sha: B, prNumber: 42, ts: 1 }] })
+      return t
+    }
+
+    it('hold the merge with the reviewer rule off', async () => {
+      const { k, ws, gh } = await blocked()
+      try {
+        await expect(k.prs.mergePr(ws.id)).rejects.toThrow(found)
+        expect(gh.merged).toEqual([])
+      } finally {
+        await k.stop()
+      }
+    })
+
+    it("give way to a person's override, sent with pr.merge", async () => {
+      const { k, ws, gh } = await blocked()
+      try {
+        expect(await k.prs.handlers()['pr.merge']({ workspaceId: ws.id, override: true })).toMatchObject({ prState: 'merged' })
+        expect(gh.merged).toEqual(['squash'])
+      } finally {
+        await k.stop()
+      }
+    })
+
+    it('still refuse red checks and conflicts under the override', async () => {
+      const { k, ws, gh } = await blocked()
+      try {
+        gh.pr = { ...info({ state: 'ready', checks: [{ name: 'e2e', state: 'fail' }] }), head: B }
+        await expect(k.prs.mergePr(ws.id, { override: true })).rejects.toThrow('Checks have not passed yet')
+        gh.pr = { ...info({ state: 'conflict' }), head: B }
+        await expect(k.prs.mergePr(ws.id, { override: true })).rejects.toThrow('This pull request is not ready to merge.')
+        expect(gh.merged).toEqual([])
+      } finally {
+        await k.stop()
+      }
+    })
+
+    it('stop Merge all, which never overrides', async () => {
+      const { k, ws, gh } = await blocked()
+      try {
+        expect(await k.prs.mergeAll(ws.roomId, [ws.id])).toEqual({ merged: [], stopped: { workspaceId: ws.id, prNumber: 42, reason: found } })
+        expect(gh.merged).toEqual([])
+      } finally {
+        await k.stop()
+      }
+    })
   })
 
   it("describes the automatic review in the Lead's prompt only while auto review is on (KERNEL-115)", async () => {

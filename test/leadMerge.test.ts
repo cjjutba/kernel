@@ -47,7 +47,7 @@ function leadTools(list: Workspace[], o: { on?: boolean; userTurn?: boolean; blo
     return w
   })
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
+    roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace: async () => undefined, refreshPr, isRunning: () => false, unsaved: async () => false,
     mergeWorkspace, leadMerge: () => o.on ?? true, userTurn: () => o.userTurn ?? true
@@ -100,6 +100,22 @@ describe('merge_workspace (KERNEL-352)', () => {
       'Skipped #266: Checks have not passed yet. Merging needs green checks (Settings, Pull requests).',
       "Skipped #267: Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
     ].join('\n'))
+  })
+
+  it('skips a PR with blockers on its latest commit without trying to merge it, since only a person overrides them (KERNEL-497)', async () => {
+    const B = 'b'.repeat(40)
+    const blockers = (sha: string, n: number) => [{ workspaceId: 'rev', agentId: 'theo', verdict: 'blockers' as const, summary: '', sha, prNumber: 42, ts: 1, blockers: Array.from({ length: n }, (_, i) => ({ text: `b${i}` })) }]
+    const t = leadTools([
+      ws('one', { prNumber: 42, prHead: B, reviews: blockers(B, 1) }), ws('two', { prNumber: 42, prHead: B, reviews: blockers(B, 2) }),
+      ws('moved', { prNumber: 42, prHead: B, reviews: blockers('a'.repeat(40), 1) })
+    ])
+    expect(await t.merge(['one', 'two', 'moved'])).toBe([
+      'Skipped #42: Theo found 1 blocker. Merge it from its Merge anyway button if you want it in.',
+      'Skipped #42: Theo found 2 blockers. Merge it from its Merge anyway button if you want it in.',
+      'Merged #42.'
+    ].join('\n'))
+    // Blockers on an earlier commit don't hold the PR.
+    expect(t.mergeWorkspace.mock.calls).toEqual([['moved']])
   })
 
   it("keeps the first line of a failed merge's output", async () => {
