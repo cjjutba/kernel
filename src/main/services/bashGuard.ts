@@ -720,7 +720,6 @@ export function pushesTo(command: string, branches: string[]): boolean {
   return analyze(command.trim()).effective.some((s) => pushVerdict(s, branches) === 'deny')
 }
 
-export const NETWORK_OFF = 'Network access is off in Kernel (Settings, Permissions).'
 const NET_PROGRAMS = new Set(['curl', 'wget', 'nc', 'ncat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp', 'telnet', 'gh'])
 const NET_PACKAGE = new Set(['npm', 'pnpm', 'yarn', 'bun', 'pip', 'pip3', 'brew'])
 const NET_PACKAGE_COMMANDS = new Set(['install', 'i', 'add', 'update', 'upgrade', 'publish'])
