@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
-import type { AgentWarning, McpStatus } from '@shared/types'
+import type { AgentReach, AgentWarning, McpStatus } from '@shared/types'
 import { toolServerName } from './mcp'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
@@ -188,6 +188,24 @@ export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[],
     if (m.status) return [{ kind: kind[m.status], detail: m.name }]
     return o.complete ? [{ kind: 'mcp-missing', detail: m.server, ...(m.suggestion ? { suggestion: m.suggestion } : {}) }] : []
   })
+}
+
+/**
+ * The MCP servers an agent's tools line and disallowedTools reach in the room, and the ones the line names that it can't
+ * use, for the hire card and hire_agent's result (KERNEL-476). A server is reached when the agent may use any of its tools
+ * and nothing says it can't be used, so pending and unreported servers count, as in `missingServers`. A missing server is
+ * only named once `complete` says the list is whole, as in `mcpWarnings`. Kernel's own server is never listed.
+ */
+export function serverReach(tools: string[] | undefined, servers: KnownServer[], o: { disallowed?: string[]; aliases?: Record<string, string>; complete?: boolean } = {}): AgentReach {
+  const policy = toolPolicy(tools, { disallowed: o.disallowed, aliases: o.aliases })
+  // One entry per server, a later one winning, as `missingServers` reads them.
+  const known = new Map(servers.map((s) => [toolServerName(s.name), s]))
+  const reach = [...known.entries()].filter(([n, s]) => n !== 'kernel' && !unusable(s) && (policy?.server(n).on ?? true)).map(([, s]) => s.name)
+  const blocked = missingServers(tools, servers, o.aliases).flatMap((m): AgentReach['blocked'] => {
+    if (m.status) return [{ name: m.name ?? m.server, why: m.status }]
+    return o.complete ? [{ name: m.server, why: 'missing', ...(m.suggestion ? { suggestion: m.suggestion } : {}) }] : []
+  })
+  return { reach, blocked }
 }
 
 /** A tool as usage data names it: a built-in by name, any MCP tool as `mcp`, since server names are the user's own. */

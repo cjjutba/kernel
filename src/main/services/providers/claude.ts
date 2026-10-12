@@ -6,13 +6,13 @@ import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
-import { describeTool, needsUser } from '../approvals'
+import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
 import { IMAGE_DATA_URL } from '../plans'
-import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from '../bashGuard'
+import { decide, guardVerdict, NETWORK_OFF, rulesOf, saveAlwaysAllow, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Proc, Runner, RunnerHost } from './types'
@@ -102,7 +102,7 @@ export class ClaudeRunner implements Runner {
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
         ctx, commands: this.commands, tools,
-        verdict: (command) => bashVerdict(command, host.settings().permissions, host.roomAllow()),
+        verdict: (command) => guardVerdict(command, rulesOf(host)),
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
@@ -278,22 +278,17 @@ export class ClaudeRunner implements Runner {
   }
 
   /**
-   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
-   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then the user decides.
+   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask. Kernel's rules
+   * decide first (`decide`), and what they leave open goes to the user.
    */
   private canUseTool(): CanUseTool {
     const host = this.host
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
-      const ws = host.workspace
-      const p = host.settings().permissions
-      if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
-      if (p.network === false && (toolName === 'WebFetch' || toolName === 'WebSearch')) return { behavior: 'deny', message: NETWORK_OFF }
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      if (command && p.network === false && usesNetwork(command)) return { behavior: 'deny', message: NETWORK_OFF }
-      const verdict = command ? bashVerdict(command, p, host.roomAllow()) : undefined
-      if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
-      if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassPermissions' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      const step = { tool: toolName, command }
+      const verdict = decide(step, rulesOf(host))
+      if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
+      if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
@@ -304,7 +299,7 @@ export class ClaudeRunner implements Runner {
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title }, { signal })
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      if (result.behavior === 'allow' && result.always && command) host.allowInRoom(roomRule(command, suggestions, suppressAlwaysAllowRule))
+      saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
       // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
@@ -485,7 +480,7 @@ function toolDetail(name: string, input: any): string {
 function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
-  verdict: (command: string) => BashVerdict
+  verdict: (command: string) => Verdict
   held: () => Promise<void> | undefined
   networkAllowed?: () => boolean
   handoff?: LeadHandoff
@@ -502,9 +497,10 @@ function kernelHooks(o: {
     const { tool_use_id, tool_input } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
+    // A room's Always allow rule gives no opinion here. canUseTool allows the command if Claude Code asks about it.
     const v = verdict(command)
-    if (v === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${command}" in every room.` } }
-    if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
+    if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
+    if (v?.behavior === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: v.reason } }
     return {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
