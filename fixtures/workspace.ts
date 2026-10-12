@@ -1168,6 +1168,63 @@ const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) =>
   changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
 }))
 
+/**
+ * KERNEL-586: the turn files card as design/redesign/TurnFiles*.png draws it, in Noor's chat for KERNEL-155. A first answer, then a turn that ends in `reply` (or in
+ * its tool calls, with no reply) and the files it changed. The right panel lists everything PR #147 changed so far, which is `panel`.
+ */
+const tf = (path: string, status: ChangedFile['status'], added: number, removed: number): ChangedFile => ({ path, status, added, removed })
+const TF_NOTES = tf('.changes/unreleased/inbox-stale-rows.md', 'A', 5, 0)
+const TF_DECISION = tf('docs/decisions/KERNEL-155.md', 'A', 7, 0)
+const TF_DB = tf('src/main/db.ts', 'M', 24, 1)
+const TF_INBOX = tf('src/main/features/inbox.ts', 'M', 31, 12)
+const TF_WIRING = tf('src/main/features/wiring.ts', 'M', 6, 2)
+const TF_APPROVALS = tf('src/main/services/approvals.ts', 'M', 24, 9)
+const TF_POLL = tf('src/main/services/inboxPoll.ts', 'D', 0, 54)
+const TF_NOTIFY = tf('src/main/services/notifications.ts', 'M', 18, 6)
+const TF_HOME = tf('src/renderer/src/screens/home/Home.tsx', 'M', 9, 11)
+const TF_CSS = tf('src/renderer/src/screens/inbox/inbox.css', 'M', 4, 2)
+const TF_PAGE = tf('src/renderer/src/screens/inbox/Inbox.tsx', 'M', 22, 14)
+const TF_ROW = tf('src/renderer/src/screens/inbox/InboxRow.tsx', 'M', 8, 5)
+const TF_HOOK = tf('src/renderer/src/screens/inbox/useInboxRows.ts', 'A', 74, 0)
+const TF_STORE = tf('src/renderer/src/store.ts', 'M', 3, 41)
+const TF_SHARED = tf('src/shared/inbox.ts', 'M', 4, 0)
+const TF_IPC = tf('src/shared/ipc.ts', 'M', 2, 0)
+const TF_STALE = tf('test/inboxStale.test.ts', 'A', 68, 0)
+const TF_ROWS = tf('test/inboxRows.test.ts', 'A', 88, 0)
+const TF_NOTIFY_TEST = tf('test/notifications.test.ts', 'M', 0, 5)
+
+const turnFilesScene = (turn: ChatItem[], panel: ChangedFile[]) => {
+  const f = idleRun(headerScene('ready', [], { panel: true }))
+  const total = (key: 'added' | 'removed') => panel.reduce((n, c) => n + c[key], 0)
+  return {
+    ...f,
+    workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, port: 4303, stat: { files: panel.length, added: total('added'), removed: total('removed') } } : w)),
+    items: { [ids.tableChat]: [
+      userMsg('tf-u0', 'Does the Inbox drop a request once I have answered it?'),
+      { kind: 'text', id: 'tf-x0', ts: at(10, 19), text: 'Not yet. A row stays until the next refresh, which is why you still see approvals you already handled.' },
+      { kind: 'result', id: 'tf-r0', ts: at(10, 19), durationMs: 21_000, ok: true },
+      ...turn
+    ] },
+    changes: { ...f.changes, [ids.table]: panel }
+  } satisfies Fixture
+}
+
+const tfAsk = (text: string): ChatItem => ({ kind: 'user', id: 'tf-u1', ts: at(10, 27), parts: [{ type: 'text', text }] })
+const tfReply = (text: string): ChatItem => ({ kind: 'text', id: 'tf-x1', ts: at(10, 31), text })
+const tfEnd = (minutes: number, seconds: number, clock: [number, number], files: ChangedFile[]): ChatItem =>
+  ({ kind: 'result', id: 'tf-r1', ts: at(...clock), durationMs: (minutes * 60 + seconds) * 1000, ok: true, files })
+
+const TF_PANEL_SHORT = [TF_NOTES, TF_DECISION, TF_DB, TF_INBOX, TF_APPROVALS, TF_POLL, TF_NOTIFY, TF_STALE, TF_NOTIFY_TEST]
+const TF_PANEL_LONG = [TF_NOTES, TF_DECISION, TF_DB, TF_INBOX, TF_WIRING, TF_APPROVALS, TF_POLL, TF_NOTIFY, TF_HOME, TF_CSS, TF_PAGE, TF_ROW, TF_HOOK, TF_STORE, TF_SHARED, TF_IPC, TF_ROWS, TF_NOTIFY_TEST]
+const TF_LONG = [TF_INBOX, TF_WIRING, TF_POLL, TF_HOME, TF_PAGE, TF_CSS, TF_ROW, TF_HOOK, TF_STORE, TF_SHARED, TF_IPC, TF_ROWS]
+
+const turnFilesLong = () => turnFilesScene([
+  tfAsk('Split the inbox code out of the store so Home and the Inbox read the same rows, and move the tests along.'),
+  ...folded('tf1', 31, 4),
+  tfReply('Home and the Inbox now read their rows from one hook, and the store no longer holds any inbox code. I moved the polling helper out with it, since nothing calls it any more.\n\n`pnpm typecheck` and `pnpm test` both pass.'),
+  tfEnd(7, 40, [11, 8], TF_LONG)
+], TF_PANEL_LONG)
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -1260,6 +1317,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   // The "..." menu under Kai's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
   WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
+  // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
+  // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
+  TurnFiles: turnFilesScene([
+    tfAsk('Then drop it as soon as it resolves, and add a test for it.'),
+    ...folded('tf1', 9, 2),
+    tfReply('Answered requests now leave the Inbox right away. The row goes the moment the approval resolves, so nothing lingers until the next refresh.\n\nThe old polling helper had no callers left, so I deleted it. `pnpm typecheck` and `pnpm test` both pass.'),
+    tfEnd(4, 12, [10, 31], [TF_INBOX, TF_POLL, TF_STALE])
+  ], TF_PANEL_SHORT),
+  TurnFilesLong: turnFilesLong(),
+  TurnFilesNoReply: turnFilesScene([
+    tfAsk('Drop answered rows as soon as the request resolves, and add a test for it.'),
+    ...folded('tf1', 7, 0),
+    tfEnd(4, 12, [10, 31], [TF_INBOX, TF_POLL, TF_SHARED, TF_STALE])
+  ], [TF_NOTES, TF_DECISION, TF_DB, TF_INBOX, TF_APPROVALS, TF_POLL, TF_NOTIFY, TF_SHARED, TF_STALE, TF_NOTIFY_TEST]),
+  TurnFilesHover: turnFilesLong(),
   // No PNG draws a tab's state icon (D-098). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
   WorkspaceTabStates: scene((f) => ({
     chats: [

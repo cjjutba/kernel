@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { ChangedFile } from '../src/shared/types'
 import { tableItems } from '../fixtures/base'
-import { buildThread, fileChips, groupLabel } from '../src/renderer/src/screens/workspace/thread'
+import { buildThread, groupLabel, turnFiles } from '../src/renderer/src/screens/workspace/thread'
 import { parseDiff } from '../src/renderer/src/screens/workspace/diff'
 import { parseBlocks } from '../src/renderer/src/screens/workspace/mdParse'
 import { visibleRows } from '../src/renderer/src/screens/workspace/tree'
@@ -43,16 +44,43 @@ describe('transcript thread', () => {
     expect(blocks).toHaveLength(running.length)
   })
 
-  it('labels singular counts and chips the files', () => {
+  it('labels singular counts', () => {
     expect(groupLabel(1, 0)).toBe('1 tool call')
     expect(groupLabel(2, 1)).toBe('2 tool calls, 1 message')
-    const chips = fileChips([
-      { path: 'a/x.ts', status: 'M', added: 1, removed: 2 }, { path: 'b.ts', status: 'A', added: 3, removed: 0 },
-      { path: 'c.ts', status: 'M', added: 4, removed: 1 }, { path: 'd.ts', status: 'M', added: 5, removed: 1 }
+  })
+})
+
+describe('turn files card', () => {
+  const file = (path: string, status: ChangedFile['status'], added: number, removed: number): ChangedFile => ({ path, status, added, removed })
+
+  it('names a row by path, what happened and the counts, and marks new, deleted and renamed files', () => {
+    const v = turnFiles([
+      file('src/main/features/inbox.ts', 'M', 31, 12), file('test/inboxStale.test.ts', 'A', 68, 0), file('notes.md', '?', 3, 0),
+      file('src/main/services/inboxPoll.ts', 'D', 0, 54), { ...file('src/b.ts', 'R', 0, 0), from: 'src/a.ts' }
     ])
-    expect(chips.map((c) => c.name)).toEqual(['x.ts', 'b.ts', '+2 more'])
-    expect(chips.map((c) => c.path)).toEqual(['a/x.ts', 'b.ts', undefined])
-    expect(chips[2]).toMatchObject({ added: 9, removed: 2 })
+    expect(v.shown.map((r) => r.label)).toEqual([
+      'src/main/features/inbox.ts, edited, 31 added, 12 removed', 'test/inboxStale.test.ts, new, 68 added', 'notes.md, new, 3 added',
+      'src/main/services/inboxPoll.ts, deleted, 54 removed', 'src/b.ts, renamed'
+    ])
+    expect(v.shown.map((r) => r.marker)).toEqual([undefined, 'New', 'New', 'Deleted', 'Renamed'])
+    expect(v.shown.map((r) => r.deleted)).toEqual([false, false, false, true, false])
+    expect(v.shown.map((r) => [r.name, r.dir])).toEqual([['inbox.ts', 'src/main/features'], ['inboxStale.test.ts', 'test'], ['notes.md', ''], ['inboxPoll.ts', 'src/main/services'], ['b.ts', 'src']])
+  })
+
+  it('titles the card with the file count and totals every file', () => {
+    expect(turnFiles([file('a.ts', 'M', 1, 2)]).title).toBe('1 file changed')
+    const v = turnFiles([file('a.ts', 'M', 31, 12), file('b.ts', 'D', 0, 54), file('c.ts', 'A', 68, 0)])
+    expect(v.title).toBe('3 files changed')
+    expect(v).toMatchObject({ added: 99, removed: 66 })
+  })
+
+  it('shows up to 6 files in full and from 7 folds all but the first 5, with the hidden files totals', () => {
+    const files = Array.from({ length: 7 }, (_, i) => file(`f${i}.ts`, 'M', i + 1, 1))
+    expect(turnFiles(files.slice(0, 6))).toMatchObject({ hidden: [] })
+    const v = turnFiles(files)
+    expect(v.shown.map((r) => r.name)).toEqual(['f0.ts', 'f1.ts', 'f2.ts', 'f3.ts', 'f4.ts'])
+    expect(v.hidden.map((r) => r.name)).toEqual(['f5.ts', 'f6.ts'])
+    expect(v).toMatchObject({ hiddenAdded: 13, hiddenRemoved: 2, added: 28, removed: 7 })
   })
 })
 

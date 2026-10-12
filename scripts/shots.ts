@@ -132,6 +132,15 @@ async function hoverChatRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// TurnFilesHover is the card with wiring.ts hovered and Home.tsx focused from the keyboard: focus lands on the first row and Down moves it to the fourth,
+// which is what makes the ring a keyboard ring (KERNEL-586).
+async function hoverAndFocusRows(page: Page) {
+  await page.locator('.tf-r').first().focus()
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+  await page.locator('.tf-r').nth(1).hover()
+  await page.waitForTimeout(300)
+}
+
 // NewWorkspaceFromGitHub and NewWorkspaceFromNone are the From popover on its Issues tab. The tab is local to the modal (KERNEL-471).
 async function openIssuesTab(page: Page) {
   await page.getByRole('tab', { name: 'Issues' }).click()
@@ -207,6 +216,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAddAccountApiKey: typeApiKey,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
+  TurnFilesHover: hoverAndFocusRows,
   PanelResize: hoverSplitHandle,
   PanelTabsOverflow: narrowPanel,
   NewWorkspaceFromGitHub: openIssuesTab,
