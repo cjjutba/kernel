@@ -19,7 +19,8 @@ export interface Resolved {
  * - Reviewer: `[team] reviewer` (`none` for nobody), else the first other file whose role says review, else Kernel's Theo.
  * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request.
  * A file with a reserved id, or the same id as an earlier file, is left out with a warning. A file Kernel can't read stays
- * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). The Lead comes first, then by name.
+ * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent leads or reviews only
+ * when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first, then by name.
  */
 export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtins: Builtins }): Resolved {
   const cfg = o.config ?? {}
@@ -45,7 +46,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   if (cfg.lead === KERNEL_LEAD && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'setting' }
   else if (named(cfg.lead)) { lead = named(cfg.lead); leadFrom = 'setting' }
   else if (cfg.lead) warn('$lead', { kind: 'setting-missing', detail: `lead = "${cfg.lead}"` })
-  const marked = files.filter((a) => a.lead).sort(byName)
+  const marked = files.filter((a) => a.lead && a.origin !== 'plugin').sort(byName)
   if (!lead && marked.length) { lead = marked[0]; leadFrom = 'file' }
   if (!lead && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'builtin' }
   for (const a of marked) if (a !== lead) warn(a.id, { kind: 'second-lead', detail: lead?.name })
@@ -58,7 +59,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   else if (named(cfg.reviewer) && named(cfg.reviewer) !== lead) { reviewer = named(cfg.reviewer); reviewerFrom = 'setting' }
   else if (cfg.reviewer) warn('$reviewer', { kind: 'setting-missing', detail: `reviewer = "${cfg.reviewer}"` })
   if (!reviewer && cfg.reviewer !== NO_REVIEWER) {
-    reviewer = files.filter((a) => a !== lead && /\breview/i.test(a.role)).sort(byName)[0]
+    reviewer = files.filter((a) => a !== lead && a.origin !== 'plugin' && /\breview/i.test(a.role)).sort(byName)[0]
     if (reviewer) reviewerFrom = 'file'
     else if (o.builtins.reviewer) { reviewer = o.builtins.reviewer; reviewerFrom = 'builtin' }
   }
