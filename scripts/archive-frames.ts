@@ -804,7 +804,7 @@ export function table(): string {
     const find = (list: Result[]) => list.find((r) => r.id === id && r.where === where)
     return `| ${def?.name ?? id} | ${WHERE_WORDS[where]} | ${cell(find(before))} | ${cell(find(after))} |`
   })
-  return ['| Path | Window | Before (origin/main when the branch was cut) | After (this branch) |', '| --- | --- | --- | --- |', ...rows].join('\n')
+  return ['| Path | Window | Before (origin/main) | After (this branch) |', '| --- | --- | --- | --- |', ...rows].join('\n')
 }
 
 async function main() {
