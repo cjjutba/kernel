@@ -100,6 +100,7 @@ const subscription = (provider: Provider, id: string, label: string, email: stri
 // KERNEL-561: the accounts the canvas draws. Work is Claude Code's own login with a nickname, and Codex's own login has none, so its name is its email.
 const workClaude = subscription('claude', 'cli', 'Work', 'cj@example.com', 'Claude Max', { active: true })
 const personalClaude = subscription('claude', 'personal', 'Personal', 'cj@jutba.example', 'Claude Pro')
+const personalAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', email: 'cj@jutba.example', plan: 'Claude Pro' }
 const ownCodex = subscription('codex', 'cli', 'cj@example.com', 'cj@example.com', 'ChatGPT Plus', { active: true })
 const personalCodex = subscription('codex', 'personal', 'Personal', 'cj@jutba.example', 'ChatGPT Pro')
 const window5 = (provider: Provider, accountId: string, pct: number, resetsAt: number, readAt?: number): RateLimit => ({ type: 'five_hour', status: 'allowed', utilization: pct / 100, resetsAt: secs(resetsAt), ...(provider === 'codex' ? { provider } : {}), ...(accountId === 'cli' ? {} : { accountId }), ...(readAt ? { readAt } : {}) })
@@ -490,11 +491,13 @@ export const platformFixtures: Record<string, Fixture> = {
   })),
   // KERNEL-569: the chat after a switch to Personal, plain and after Work hit its 5-hour limit. The footer says Personal's plan.
   WorkspaceAccountNote: scene(() => ({
+    account: personalAccount,
     accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
     items: { [ids.tableChat]: afterSwitch('Now on Personal') },
     ui: open
   })),
   WorkspaceAccountNoteLimit: scene(() => ({
+    account: personalAccount,
     accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
     items: { [ids.tableChat]: afterSwitch('Now on Personal (Work hit its 5-hour limit)') },
     ui: open

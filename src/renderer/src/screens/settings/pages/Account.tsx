@@ -35,6 +35,10 @@ export function meterAccount(accounts: AccountProfile[], usage: RateLimit[]): Ac
   return claude.filter((a) => a.auth !== 'apiKey').sort((a, b) => read(b) - read(a))[0]
 }
 
+export function accountWindows(usage: RateLimit[], account: AccountProfile | undefined): RateLimit[] {
+  return usage.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === (account?.id ?? 'cli'))
+}
+
 /** "62% used · resets at 3:40 PM". */
 export function usageNote(l: RateLimit | undefined, now: number): string {
   if (l?.utilization === undefined) return 'No usage reported yet'
@@ -50,7 +54,7 @@ export function Account() {
   const account = useStore((s) => s.account)
   const keyInUse = accounts.find((a) => a.provider === 'claude' && a.active && a.auth === 'apiKey')
   const shown = useMemo(() => meterAccount(accounts, all), [accounts, all])
-  const usage = useMemo(() => all.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === (shown?.id ?? 'cli')), [all, shown])
+  const usage = useMemo(() => accountWindows(all, shown), [all, shown])
   const plan = keyInUse ? shown?.plan : account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')
   const s = useSettings()
   const [busy, run] = useBusy<'signOut' | 'usage'>()
