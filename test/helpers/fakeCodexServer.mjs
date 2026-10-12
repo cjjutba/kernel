@@ -6,6 +6,7 @@
 //   { "request": method, "params": {...} }  a request to Kernel, waiting for its answer
 //   { "complete": "completed" | "failed" | "interrupted", "error": {...} }   the turn's end
 //   { "wait": "interrupt" }                 waits for turn/interrupt, then ends the turn as interrupted
+// FAKE_CODEX_START_MS holds turn/start's answer that long, as a slow Codex does, so Stop can come before the turn has an id.
 // turn/interrupt ends the running turn at any step, as Codex 0.153.4 does: a request still waiting for Kernel's answer is
 // cleared with serverRequest/resolved, and the turn completes as interrupted (KERNEL-563).
 // Input that isn't a script ends the turn at once with a short reply.
@@ -69,11 +70,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (method === 'turn/start') {
     const turnId = `turn-${++turns}`
-    send({ id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } })
-    send({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } })
     let script
     try { script = JSON.parse(params.input?.[0]?.text ?? '') } catch { script = [{ notify: 'item/completed', params: { item: { type: 'agentMessage', id: `msg-${turnId}`, text: 'Done.', phase: 'final_answer' } } }] }
-    void play(params.threadId, turnId, Array.isArray(script) ? script : [])
+    const start = () => {
+      send({ id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } })
+      send({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } })
+      void play(params.threadId, turnId, Array.isArray(script) ? script : [])
+    }
+    const slow = Number(process.env.FAKE_CODEX_START_MS ?? 0)
+    if (slow) setTimeout(start, slow)
+    else start()
     return
   }
   if (method === 'turn/interrupt') {

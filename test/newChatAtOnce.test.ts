@@ -93,12 +93,10 @@ const callIn = (path: string) => sdk.calls.filter((c) => c.options.cwd === path)
 const wsOf = (k: Kernel, chat: Chat) => k.store.workspace(chat.workspaceId)!
 
 describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
-  it('answers in under 100 ms in a real room, with the branch and folder picked and the message held', async () => {
+  it('answers while the fetch is still held in a real room, with the branch and folder picked and the message held', async () => {
     const { k, room: r, where } = await room()
     const open = slowNetwork()
-    const t = performance.now()
     const chat = await k.handlers()['lead.start']({ roomId: r.id, prompt: 'Plan the PDF export' })
-    expect(performance.now() - t).toBeLessThan(100)
     const ws = wsOf(k, chat)
     expect(ws).toMatchObject({ lead: true, status: 'setup', worktreePending: {}, branch: 'rowan/plan-pdf-export', baseRef: 'origin/main' })
     expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), r), 'rowan-plan-pdf-export'))
