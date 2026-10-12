@@ -161,6 +161,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (!ws || !c) throw new Error('This fixture has no chat for the Lead.')
       return { chatId: c.id, workspaceId: ws.id }
     },
+    // No fixture shows Jira yet. KERNEL-480 adds the screens and their data.
+    'jira.connect': async ({ site, email, token }) => (token.trim() ? { site, email, name: email, accountId: 'fixture' } : null),
+    'jira.test': async () => null,
+    'jira.issues': async () => [],
+    'jira.transitions': async () => [],
+    'jira.saveTransition': async ({ roomId }) => roomSettings(roomId),
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
     'chats.create': async ({ workspaceId, kind, preset }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)

@@ -1,7 +1,7 @@
 import type {
-  AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
+  AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -69,13 +69,25 @@ export interface KernelApi {
   // agents (KERNEL-19, 22)
   'agents.list': { req: { roomId: string; retired?: boolean }; res: AgentDef[] }
   'agents.status': { req: { roomId: string }; res: Record<string, AgentStatus> }
-  'agents.save': { req: { roomId: string; agentId: string; patch: AgentEdit }; res: AgentDef }
+  /**
+   * AgentProfile > Save changes. `scope` says who gets the change (KERNEL-466): `me`, the default, keeps it on this Mac, and
+   * `team` opens a pull request that changes the file, returned as `pr`, and the agent stays as it is until that merges.
+   */
+  'agents.save': { req: { roomId: string; agentId: string; patch: AgentEdit; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
   /** New agent > Describe: write a draft file from a description. */
   'agents.draft': { req: { roomId: string; description: string; name?: string; model?: string }; res: AgentDraft }
-  'agents.create': { req: { roomId: string; draft: AgentDraft }; res: AgentDef }
-  /** Moves the file to .claude/retired-agents (D-003). Open workspaces go to `handoffTo`, or the Lead. */
-  'agents.retire': { req: { roomId: string; agentId: string; handoffTo?: string }; res: Ok }
-  'agents.restore': { req: { roomId: string; agentId: string }; res: AgentDef }
+  /** New agent > Create agent. `me`, the default, saves the file in ~/.claude/agents. `team` opens a pull request that adds it (KERNEL-466). */
+  'agents.create': { req: { roomId: string; draft: AgentDraft; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
+  /**
+   * The agent leaves the team on this Mac now, and its open workspaces go to `handoffTo`, or the Lead. `me`, the default,
+   * leaves the file as it is. `team` also opens a pull request that moves it to .claude/retired-agents (D-003, KERNEL-466).
+   */
+  'agents.retire': { req: { roomId: string; agentId: string; handoffTo?: string; scope?: AgentScope }; res: Ok & { pr?: AgentChangePr } }
+  /**
+   * Brings back an agent retired on this Mac. A file in .claude/retired-agents comes back to ~/.claude/agents for `me`, the
+   * default, or in a pull request that moves it back for `team` (KERNEL-466).
+   */
+  'agents.restore': { req: { roomId: string; agentId: string; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
   /** Empty floor: seat a starter team. */
   'agents.seed': { req: { roomId: string; template: TeamTemplate }; res: AgentDef[] }
   /**
@@ -145,6 +157,18 @@ export interface KernelApi {
   'linear.scope': { req: void; res: LinearScope }
   /** Plan with Rowan: a fresh Lead chat in plan mode, briefed with the issue. */
   'linear.plan': { req: { id: string; roomId: string }; res: { chatId: string; workspaceId: string } }
+
+  // Jira issues (KERNEL-474)
+  /** Checks the account with Jira, then saves it encrypted. An empty token disconnects and returns null. */
+  'jira.connect': { req: { site: string; email: string; token: string }; res: JiraAccount | null }
+  /** The saved account as Jira reads it now, or null when none is saved. Rejects with Jira's reason when it refuses. */
+  'jira.test': { req: void; res: JiraAccount | null }
+  /** The room's open Jira issues, last updated first, up to 100, from its `[jira] project` when it names one. */
+  'jira.issues': { req: { roomId: string; filter: JiraFilter }; res: JiraIssue[] }
+  /** The transitions Jira offers `issue`, else the room's latest To Do issue. Empty when the room has none. */
+  'jira.transitions': { req: { roomId: string; issue?: string }; res: JiraTransition[] }
+  /** Saves the room's `[jira] transition`, in the personal file unless `shared`. `null` removes it, so no issue moves. */
+  'jira.saveTransition': { req: { roomId: string; transition: string | null; shared?: boolean }; res: RoomSettings }
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }

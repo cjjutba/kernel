@@ -295,13 +295,16 @@ async function fileOf(repoPath: string, id: string, o: { retired?: boolean } = {
   return (await loadAgents(repoPath, o)).find((a) => a.id === id)?.file
 }
 
-/** Kernel's own agents and the files a room already has keep their names (KERNEL-397). */
-async function freeId(repoPath: string, id: string) {
+/**
+ * Kernel's own agents and the files a room already has keep their names (KERNEL-397). `repoPath` is any folder with a
+ * `.claude/agents`, the home folder too (KERNEL-466).
+ */
+export async function freeId(repoPath: string, id: string) {
   if (RESERVED_AGENT_IDS.includes(id)) throw new Error(`${id} is the name of Kernel's own ${id === KERNEL_LEAD ? 'Lead' : 'reviewer'}. Pick another name.`)
   if (await fileOf(repoPath, id) || await exists(agentPath(repoPath, id))) throw new Error(`${titleCase(id)} is already on the team. Pick another name or edit the file.`)
 }
 
-/** hire_agent's file. It never replaces an agent the room already has. */
+/** An agent file written from its fields. It never replaces an agent the folder already has. */
 export async function saveAgent(repoPath: string, agent: Parameters<typeof renderAgentFile>[0]): Promise<string> {
   await freeId(repoPath, agent.id)
   const dir = join(repoPath, '.claude', 'agents')
@@ -379,14 +382,23 @@ export function draftAgent(o: { description: string; name?: string; model?: stri
   return { id, name, description: sentence, model, tools, text, file: `.claude/agents/${id}.md` }
 }
 
-/** New agent > Create agent. Writes the reviewed text as it is, after checking Claude Code can read it. */
-export async function createAgent(repoPath: string, draft: AgentDraft): Promise<AgentDef> {
+/** The id a new agent's file gives it, after checking Claude Code can read the file and it has what Rowan needs. */
+export function draftId(draft: Pick<AgentDraft, 'id' | 'text'>): string {
   const { meta, body, error } = parseFrontmatter(draft.text)
   if (error) throw new Error(`Claude Code can't read this file: ${error}.`)
   const id = text(meta.name) || draft.id
   if (!ID.test(id)) throw new Error('The name in the file must be lowercase letters, numbers and dashes, starting with a letter.')
   if (!text(meta.description)) throw new Error('The file needs a description line so Rowan knows what to hand this agent.')
   if (!body.trim()) throw new Error('The file needs instructions under the second ---.')
+  return id
+}
+
+/**
+ * New agent > Create agent. Writes the reviewed text as it is, after checking Claude Code can read it. `repoPath` is any
+ * folder with a `.claude/agents`: a workspace's worktree, or the home folder for an agent of the user's own (KERNEL-466).
+ */
+export async function createAgent(repoPath: string, draft: Pick<AgentDraft, 'id' | 'text'>): Promise<AgentDef> {
+  const id = draftId(draft)
   await freeId(repoPath, id)
   const file = agentPath(repoPath, id)
   await mkdir(join(repoPath, '.claude', 'agents'), { recursive: true })

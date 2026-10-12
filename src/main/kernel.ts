@@ -49,6 +49,7 @@ import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
 import { Prs } from './features/prs'
 import { CodeHosts } from './features/codeHost'
+import { AgentChanges } from './features/agentChanges'
 import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
 import { Telemetry } from './features/telemetry'
@@ -110,6 +111,7 @@ export class Kernel {
   readonly account = new Account(this)
   readonly integrations = new Integrations(this)
   readonly team = new Team(this)
+  readonly agentChanges = new AgentChanges(this)
   readonly rooms = new Rooms(this)
   readonly setup = new Setup(this)
   readonly trust = new Trust(this)

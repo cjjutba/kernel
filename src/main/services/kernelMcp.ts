@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, AgentReach, Approval, AskedQuestion, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, notMergeable } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -52,7 +52,8 @@ export interface KernelToolDeps {
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407).
    */
   askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }) => Promise<Decision | null>
-  hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
+  /** Saves a hired agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
+  hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
    * The MCP servers an agent can reach in the room, and the ones its tools line names that it can't use. `wait` waits for
    * the room's first check. Left out, hire_agent says nothing about servers (KERNEL-476).
@@ -503,10 +504,11 @@ export function kernelTools(d: KernelToolDeps) {
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),
-    tool('hire_agent', 'Propose a new agent file for .claude/agents. The user approves before it is saved. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
+    tool('hire_agent', 'Propose a new agent file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
-      model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
-    }, async (a) => {
+      model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
+      scope: z.enum(['me', 'team']).optional()
+    }, async ({ scope: asked, ...a }) => {
       // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
       if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
       // With no tools line, a hire gets its role's, so one that should open PRs names Edit and Write. A line the Lead wrote
@@ -515,14 +517,21 @@ export function kernelTools(d: KernelToolDeps) {
       const path = `.claude/agents/${a.id}.md`
       const body = renderAgentFile(hire)
       const servers = await d.reach?.(agentFromFile(path, body)).catch(() => undefined)
-      const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile: { path, text: body, ...(servers ? { servers } : {}) } })
+      // The card starts on "Just for me" unless the Lead proposes the team, and the user's choice on it wins (KERNEL-466).
+      const proposed = asked ?? 'me'
+      const agentFile = { path: `${proposed === 'me' ? '~/' : ''}${path}`, text: body, scope: proposed, ...(servers ? { servers } : {}) }
+      const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
-      let file: string
-      try { file = await d.hireAgent(hire) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
+      let done: string | AgentChangePr
+      try { done = await d.hireAgent(hire, decision.scope ?? proposed) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
+      if (typeof done !== 'string') {
+        if (done.error) return text(`Committed ${path} in workspace ${done.workspaceId}, but the pull request didn't open: ${done.error} Tell the user to click Create PR there.`)
+        return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds ${path}, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)
+      }
       const joined = await d.agents().then((list) => list.find((x) => x.id === a.id), () => undefined)
       // Asked again, since the room's first check may have finished while the card was up.
       const reach = await d.reach?.(joined ?? agentFromFile(path, body), { wait: true }).catch(() => undefined)
-      return text([`Saved ${file}.`, joinedNote(joined, a.id), reach ? reachNote(joined?.name ?? a.id, reach) : ''].filter(Boolean).join(' '))
+      return text([`Saved ${done}, just for the user on this Mac.`, joinedNote(joined, a.id), reach ? reachNote(joined?.name ?? a.id, reach) : ''].filter(Boolean).join(' '))
     })
   ]
 }

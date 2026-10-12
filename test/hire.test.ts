@@ -55,7 +55,7 @@ describe('hire_agent', () => {
     expect(h.saved[0].tools).toEqual(['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'])
     expect(r).toEqual({
       isError: false,
-      text: 'Saved /repo/.claude/agents/lumi.md. Lumi joins the team and takes tasks. MCP servers Lumi can reach: figma. Lumi can\'t use a server its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. Don\'t hand Lumi work that needs it until the user fixes that.'
+      text: 'Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins the team and takes tasks. MCP servers Lumi can reach: figma. Lumi can\'t use a server its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. Don\'t hand Lumi work that needs it until the user fixes that.'
     })
     // Once for the card, and again after the save, waiting for the room's first check.
     expect(h.reach.mock.calls.map((c) => [c[0].id, c[1]])).toEqual([['lumi', undefined], ['lumi', { wait: true }]])
@@ -74,17 +74,17 @@ describe('hire_agent', () => {
     const h = hireTool({ answer: { behavior: 'allow' }, reach: { reach: [], blocked: [] }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] })
     const r = await h.run({ id: 'lumi', description: 'Designer.', prompt: 'x', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'] })
     expect(h.saved[0].tools).toEqual(['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'])
-    expect(r.text).toBe("Saved /repo/.claude/agents/lumi.md. Lumi joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on Lumi's profile in Team. Lumi can reach no MCP servers besides Kernel's own.")
+    expect(r.text).toBe("Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on Lumi's profile in Team. Lumi can reach no MCP servers besides Kernel's own.")
   })
 
   it('says when the hire reviews, or is a helper the room made one, and names every server it lacks', async () => {
     const reach: AgentReach = { reach: [], blocked: [{ name: 'neon', why: 'failed' }, { name: 'slack', why: 'missing' }, { name: 'lin', why: 'missing', suggestion: 'claude_ai_Linear' }] }
     const reviews = await hireTool({ answer: { behavior: 'allow' }, reach, team: (a) => [agent(a.id, { role: 'Reviewer', reviewer: true, member: false, tools: a.tools })] })
       .run({ id: 'sec', description: 'Reviews security.', prompt: 'x', role: 'Reviewer' })
-    expect(reviews.text).toBe("Saved /repo/.claude/agents/sec.md. Sec joins the team and reviews PRs. Sec can reach no MCP servers besides Kernel's own. Sec can't use 3 servers its file names. neon failed to connect. slack is not a server in this room. lin is not a server in this room, but claude_ai_Linear may be the one it means. Don't hand Sec work that needs those until the user fixes that.")
+    expect(reviews.text).toBe("Saved /repo/.claude/agents/sec.md, just for the user on this Mac. Sec joins the team and reviews PRs. Sec can reach no MCP servers besides Kernel's own. Sec can't use 3 servers its file names. neon failed to connect. slack is not a server in this room. lin is not a server in this room, but claude_ai_Linear may be the one it means. Don't hand Sec work that needs those until the user fixes that.")
     const helper = await hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] }).run({ id: 'kai', description: 'Frontend.', prompt: 'x' })
     // No `reach` in the deps: nothing about servers.
-    expect(helper.text).toBe("Saved /repo/.claude/agents/kai.md. Kai joins as a helper and doesn't take tasks.")
+    expect(helper.text).toBe("Saved /repo/.claude/agents/kai.md, just for the user on this Mac. Kai joins as a helper and doesn't take tasks.")
   })
 
   it('saves nothing when the user says no', async () => {
@@ -115,14 +115,15 @@ describe('hiring in a real room', () => {
     const hire = kernelTools(deps).find((t) => t.name === 'hire_agent')!
     const run = async (args: object) => ((await hire.handler(args as never, {})).content[0] as { text: string }).text
 
+    // Just for the user by default, so the file goes to ~/.claude/agents (KERNEL-466).
     expect(await run({ id: 'lumi', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Lumi. Open a PR with your fixes.' }))
-      .toBe(`Saved ${join(room.path, '.claude', 'agents', 'lumi.md')}. Lumi joins the team and takes tasks. Lumi can reach no MCP servers besides Kernel's own.`)
-    expect(await readFile(join(repo, '.claude', 'agents', 'lumi.md'), 'utf8')).toContain(PR_TOOLS)
+      .toBe(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}, just for the user on this Mac. Lumi joins the team and takes tasks. Lumi can reach no MCP servers besides Kernel's own.`)
+    expect(await readFile(join(home, '.claude', 'agents', 'lumi.md'), 'utf8')).toContain(PR_TOOLS)
     expect((await k.team.agents(room.id)).find((a) => a.id === 'lumi')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
     expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(
-      `Saved ${join(room.path, '.claude', 'agents', 'ivy.md')}. Ivy joins the team and takes tasks. MCP servers Ivy can reach: figma. Ivy can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this room. Don't hand Ivy work that needs those until the user fixes that.`
+      `Saved ${join(home, '.claude', 'agents', 'ivy.md')}, just for the user on this Mac. Ivy joins the team and takes tasks. MCP servers Ivy can reach: figma. Ivy can't use 3 servers its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. neon failed to connect. slack is not a server in this room. Don't hand Ivy work that needs those until the user fixes that.`
     )
     // The room was checked by then, so the second card knew every server.
     expect(cards[1]!.servers).toEqual({ reach: ['figma'], blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'slack', why: 'missing' }] })

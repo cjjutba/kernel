@@ -108,10 +108,11 @@ describe('[team] roster', () => {
     expect(await settings()).toContain('\n[team]\nroster = ["dev10", "dev11"]\n')
     expect(await k.team.rosterOf(room.id)).toEqual({ agents: 13, needed: false, suggested: DEVS })
 
-    // A new hire joins the roster instead of landing off the team.
+    // A new hire, just for the user, joins their team here instead of landing off it, and the team's roster stays as it was
+    // (KERNEL-466).
     await h['agents.create']({ roomId: room.id, draft: draftAgent({ description: 'Builds the billing service.', name: 'billing' }) })
     expect((await k.team.agents(room.id)).map((a) => a.id)).toContain('billing')
-    expect(await settings()).toContain('roster = ["dev10", "dev11", "billing"]\n')
+    expect(await settings()).toContain('\n[team]\nroster = ["dev10", "dev11"]\n')
 
     // An agent with open work stays on the team until the work is archived.
     await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'dev10', title: 'Cart' })
