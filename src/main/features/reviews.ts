@@ -7,7 +7,7 @@ import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
 import { reviewRule } from '../services/handoff'
-import { remoteOf, reviewPolicyOf, saveReviewSettings } from '../services/settings'
+import { remoteOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings } from '../services/settings'
 import { resolveBaseRef } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { isUnreadable } from '../services/agents'
@@ -336,7 +336,9 @@ export class Reviews extends Feature {
   handlers() {
     return {
       // Kai's Settings page for reviews writes through this (KERNEL-549).
-      'settings.setReview': async ({ roomId, review }) => saveReviewSettings(this.mustRoom(roomId).path, review)
+      'settings.setReview': async ({ roomId, review }) => saveReviewSettings(this.mustRoom(roomId).path, review),
+      // The Reviews page's always-review box writes through this (KERNEL-594).
+      'settings.setAlwaysReview': async ({ roomId, paths }) => saveAlwaysReview(this.mustRoom(roomId).path, paths)
     } satisfies Partial<Handlers>
   }
 }

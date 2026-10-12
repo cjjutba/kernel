@@ -233,6 +233,11 @@ export interface RoomSettings {
    */
   review?: ReviewConfig
   /**
+   * The shared file's `[merge] always_review`: paths a PR never merges by itself through, for everyone on the repo (KERNEL-594).
+   * The personal file's list is the user's own and isn't here. Written with `settings.setAlwaysReview`, not `settings.setRoom`.
+   */
+  merge?: { alwaysReview: string[] }
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */

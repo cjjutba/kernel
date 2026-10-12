@@ -44,3 +44,21 @@ export async function patchReview(roomId: string, patch: ReviewPatch) {
     actions.ui.toast({ title: 'Could not save the review settings', sub: cleanError(e) })
   }
 }
+
+/** The paths as main keeps them: trimmed, without blanks or repeats. */
+const cleanPaths = (paths: string[]) => [...new Set(paths.map((p) => p.trim()).filter(Boolean))]
+
+/**
+ * Save the repo's always-review paths, `[merge] always_review` in the shared settings.toml (KERNEL-594). The screen updates at once
+ * and main's answer replaces it. A failure puts the old list back and says why.
+ */
+export async function patchAlwaysReview(roomId: string, paths: string[]) {
+  const before = getState().roomSettings[roomId]
+  if (before) actions.settings.setRoom(roomId, { ...before, merge: { alwaysReview: cleanPaths(paths) } })
+  try {
+    actions.settings.setRoom(roomId, await call('settings.setAlwaysReview', { roomId, paths }))
+  } catch (e) {
+    if (before) actions.settings.setRoom(roomId, before)
+    actions.ui.toast({ title: 'Could not save the always-review paths', sub: cleanError(e) })
+  }
+}

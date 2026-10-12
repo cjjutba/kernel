@@ -360,6 +360,11 @@ export interface KernelApi {
    */
   'settings.setReview': { req: { roomId: string; review: ReviewPatch }; res: RoomSettings }
   /**
+   * Writes `[merge] always_review` in the shared .kernel/settings.toml, the rest of the file as it was written (KERNEL-594).
+   * `paths` is the whole list: an empty one removes the key. They add to Kernel's own list, never replace it.
+   */
+  'settings.setAlwaysReview': { req: { roomId: string; paths: string[] }; res: RoomSettings }
+  /**
    * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
    * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
    */
