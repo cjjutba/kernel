@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
 import type { ChatArchivePreview } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, useStore } from '../../store'
+import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { archiveChatNow, stopsSomething } from './archiveChat'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/** Closes this dialog and nothing else: the route change that archiving a chat on screen makes has closed it already. */
+function closeArchiveChatDialog(threadId: string) {
+  const modal = getState().ui.modal
+  if (modal?.name === 'confirm' && modal.kind === 'archiveChat' && modal.threadId === threadId) actions.ui.closeModal()
+}
 
 /** What archiving stops on one workspace, in one line: whether it runs, an open PR, uncommitted files and unpushed commits. */
 function stops(w: ChatArchivePreview['workspaces'][number]): string {
@@ -39,7 +45,7 @@ export function ConfirmArchiveChat({ threadId }: { threadId: string }) {
     setError(null)
     try {
       await archiveChatNow(thread ?? { id: threadId, roomId: '', title, createdAt: 0 }, preview?.workspaces.map((w) => w.id) ?? [])
-      actions.ui.closeModal()
+      closeArchiveChatDialog(threadId)
     } catch (e) { setError(cleanError(e)) }
   })
 

@@ -1,7 +1,7 @@
 import type { ChatArchivePreview, Thread } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { roomHome } from '../../nav'
-import { actions, getState, go } from '../../store'
+import { actions, getState, go, subscribe } from '../../store'
 import { openRow, sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { archiveChatByHand } from './byHand'
 
@@ -17,22 +17,40 @@ function chatRows(roomId: string) {
 
 /**
  * Archives the chat with Rowan and its workspaces (KERNEL-405). The row leaving the sidebar says so, so there is no toast (KERNEL-495).
- * When the chat was on screen, the chat row above it opens, or the one below when it was the first, or the room's front door when
- * no chat is left, as closing a chat did (KERNEL-338).
+ * When the chat is on screen, the chat row above it opens, or the one below when it was the first, or the room's front door when
+ * no chat is left, as closing a chat did (KERNEL-338). Main stops sessions and removes worktrees before it answers, so the move
+ * doesn't wait for that: the order of rows is read now, and the route leaves in the step that stores the archived workspace, before
+ * the browser paints the workspace stripped of its tabs (KERNEL-578, as KERNEL-547 did for PrHeader). A failed archive never reaches
+ * that step, so you stay on the chat.
  */
 export async function archiveChatNow(thread: Thread, workspaceIds: string[]): Promise<void> {
   const before = chatRows(thread.roomId)
   const order = before.map((r) => r.thread.id)
-  const own = before.find((r) => r.thread.id === thread.id)?.ws?.id
-  const route = getState().ui.route
-  const shown = route.name === 'workspace' && (route.workspaceId === own || workspaceIds.includes(route.workspaceId))
-  await archiveChatByHand(thread.id, workspaceIds)
-  if (!shown) return
-  const rows = chatRows(thread.roomId).filter((r) => r.thread.id !== thread.id)
   const at = order.indexOf(thread.id)
-  const next = [...order.slice(0, at).reverse(), ...order.slice(at + 1)].map((id) => rows.find((r) => r.thread.id === id)).find(Boolean) ?? rows[0]
-  if (next) openRow(thread.roomId, next)
-  else go(roomHome(thread.roomId, getState()))
+  const after = at < 0 ? order : [...order.slice(0, at).reverse(), ...order.slice(at + 1)]
+  const own = before[at]?.ws?.id
+  const mine = new Set(own ? [own, ...workspaceIds] : workspaceIds)
+  const onMine = () => {
+    const route = getState().ui.route
+    return route.name === 'workspace' && mine.has(route.workspaceId) ? route.workspaceId : undefined
+  }
+  let left = false
+  const leave = () => {
+    left = true
+    const rows = chatRows(thread.roomId).filter((r) => r.thread.id !== thread.id)
+    const next = after.map((id) => rows.find((r) => r.thread.id === id)).find(Boolean) ?? rows[0]
+    if (next) openRow(thread.roomId, next)
+    else go(roomHome(thread.roomId, getState()))
+  }
+  // A listener, not an effect: the archived status is applied and the route moves in one synchronous step, and no screen has to be
+  // mounted for it. `left` stops the moves it makes from running it again.
+  const stop = subscribe(() => {
+    if (left) return
+    const id = onMine()
+    if (id && getState().workspaces.find((w) => w.id === id)?.status === 'archived') leave()
+  })
+  try { await archiveChatByHand(thread.id, workspaceIds) } finally { stop() }
+  if (!left && onMine()) leave()
 }
 
 /**
