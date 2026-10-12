@@ -5,7 +5,6 @@ import { actions, getState, go, useStore } from '../../store'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Icon } from '../../ui'
 import { ROOM_PAGES } from './roomPages'
-import { useScrollIdle } from '../../components/sidebar/useScrollIdle'
 
 export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: string }[] }[] = [
   { title: 'Personal', items: [
@@ -40,7 +39,6 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
-  const scrolled = useScrollIdle(list)
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
@@ -83,7 +81,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         <Icon name="search" size={14} />
         <input id="set-q" type="text" autoComplete="off" placeholder="Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      <div ref={list} className="set-list sb-scroll" onScroll={scrolled}>
+      <div ref={list} className="set-list sb-scroll">
         {groups.map((g) => (
           <div key={g.title}>
             <p className="set-group">{g.title}</p>

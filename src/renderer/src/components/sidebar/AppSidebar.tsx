@@ -20,7 +20,6 @@ import { RoomsMenu } from './RoomsMenu'
 import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { useShown, type Fate } from './leaving'
-import { useScrollIdle } from './useScrollIdle'
 import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import { workspaceRowLabel } from './workspaceRowLabel'
@@ -327,7 +326,6 @@ export function AppSidebar() {
 
   // Arriving on a workspace or chat from anywhere but the list (Open in the PRs list, the Inbox, search, the palette, a notification) brings its row into view.
   const list = useRef<HTMLDivElement>(null)
-  const scrolled = useScrollIdle(list)
   const here = route.name === 'workspace' ? `workspace:${route.workspaceId}` : route.name === 'leadNew' ? `lead:${route.roomId}` : ''
   // Set by a click in the list until that click is handled: its row is already there, so it never moves the list, even when the row is cut off by an edge.
   const clicking = useRef(false)
@@ -383,7 +381,7 @@ export function AppSidebar() {
       </div>
       {/* A room's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
       <div
-        ref={list} className="nav-list sb-scroll" onScroll={() => { scrolled(); if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}
+        ref={list} className="nav-list sb-scroll" onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}
         onClickCapture={() => { clicking.current = true; window.setTimeout(() => { clicking.current = false }) }}
       >
         {rooms.map((r) => {
