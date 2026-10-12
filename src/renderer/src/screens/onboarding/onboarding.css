@@ -1,7 +1,7 @@
 /* First run screens (KERNEL-27): Welcome, Setup*, Check hooks, Loading. Tokens only. */
 .ob-center { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 0 40px; text-align: center; }
 .ob-mark { width: 72px; height: 72px; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; border: 1px solid var(--line-3); background: var(--surface); color: var(--ink); }
-.ob-title { margin: 28px 0 0; font-size: 36px; font-weight: 600; letter-spacing: -1px; line-height: 1.15; }
+.ob-title { margin: 28px 0 0; font-size: 36px; font-weight: 600; color: var(--ink); letter-spacing: -1px; line-height: 1.15; }
 .ob-lede { margin: 12px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: var(--muted); }
 .ob-cta { margin-top: 32px; width: 280px; height: 40px; font-size: 14px; border-radius: var(--r); }
 .ob-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 12px; color: var(--muted); }
@@ -10,7 +10,7 @@
 
 .ob-page { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; padding-top: 105px; }
 .ob-col { width: 560px; display: flex; flex-direction: column; }
-.ob-h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px; }
+.ob-h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--ink); letter-spacing: -0.4px; }
 .ob-sub { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
 .ob-list { margin-top: 24px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
 .ob-check { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; min-height: 66px; box-sizing: border-box; }
@@ -31,7 +31,7 @@
 .ob-bar .btn.lg { height: 32px; }
 
 .ob-cards { width: 640px; margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left; }
-.ob-card { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--panel); color: var(--ink); text-align: left; }
+.ob-card { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--panel); color: var(--ink-2); text-align: left; }
 .ob-card:hover { background: var(--surface); }
 .ob-card svg { color: var(--ink-2); }
 .ob-card-name { font-weight: 500; }
