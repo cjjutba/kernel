@@ -8,7 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import type { Cipher } from '../src/main/services/env'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
+import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -276,7 +276,7 @@ describe('the saved Linear token (KERNEL-445)', () => {
 
 describe('Linear in the kernel', () => {
   const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
-  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor.'
+  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.'
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 

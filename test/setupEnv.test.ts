@@ -128,7 +128,7 @@ describe('One database per workspace (KERNEL-449)', () => {
     for (const setup of ['pnpm install', undefined]) {
       const text = defaultRepoSettings(setup)
       expect(parseToml(text)).toEqual(setup ? { files: { copy: ['.env', '.env.local'] }, scripts: { setup } } : { files: { copy: ['.env', '.env.local'] } })
-      expect(text).toContain(`#   setup = "${setup ?? 'pnpm install'} && createdb $KERNEL_WORKSPACE_SLUG"`)
+      expect(text).toContain(`#   setup = "${setup ? `${setup} && ` : ''}createdb $KERNEL_WORKSPACE_SLUG"`)
       expect(text).toContain('#   archive = "dropdb --if-exists $KERNEL_WORKSPACE_SLUG"')
       expect(text).toContain('#   DATABASE_URL=postgres://localhost:5432/${KERNEL_WORKSPACE_SLUG}')
     }

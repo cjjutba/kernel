@@ -10,7 +10,6 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models.',
   paused: 'Queued. Sends when you resume the room.',
-  setup: 'Queued. Sends when setup passes.',
   merge: 'Queued. Sends when the work it waits for merges.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
@@ -20,7 +19,8 @@ const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
 
 /** Messages typed while the agent works, or held for another reason (`why`). They go out in order once nothing holds them. Edit one to pull it back into the box. */
 export function QueueList({ queue, why, held, onEdit, onNow, onRemove }: { queue: QueuedMessage[]; /** What the queue waits for (KERNEL-273). */ why?: QueueReason; /** For `merge`, the PRs still to merge, each opening its workspace. */ held?: WaitLine; onEdit: (q: QueuedMessage) => void; onNow: (q: QueuedMessage) => void; onRemove: (q: QueuedMessage) => void }) {
-  if (!queue.length) return null
+  // Messages waiting for setup are bubbles in the chat, with their own Edit and Cancel (SetupWait, KERNEL-430).
+  if (!queue.length || why === 'setup') return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
   return (
