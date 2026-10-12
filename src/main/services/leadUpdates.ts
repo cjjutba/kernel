@@ -782,9 +782,10 @@ export class LeadUpdates {
       return {
         workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
         ...(prNumber ? { prNumber } : {}),
-        // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411).
+        // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411). A review
+        // that holds it back makes the PR's own event grey too (KERNEL-635).
         events: b.events.flatMap((e) => [
-          { kind: e.kind, text: cardText(e, b.held), actionable: b.wake.has(e) },
+          { kind: e.kind, text: cardText(e, b.held), actionable: b.wake.has(e), ...(b.held && (e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? { held: true } : {}) },
           ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
           // Why auto-merge allowed it, grey after "Merged automatically" (KERNEL-556).
           ...(e.auto ? [{ kind: 'pr.review' as const, text: e.auto.card, actionable: false }] : []),
@@ -970,8 +971,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'pr.blocked': if (e.blocked) wake(blockedTodo(pr, name, at, e.blocked, ws.baseRef)); break
       case 'pr.unblocked': {
         const review = c.review
-        // A review still to come, or one that found blockers, says what's next itself.
-        if (review?.blockers || review?.inProgress) break
+        // A review still to come, or one that holds the PR back, says what's next itself (KERNEL-635).
+        if (reviewHolds(review) || review?.inProgress) break
         if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id))); break }
         if (review?.open || review?.stale) break
         wake(`GitHub no longer blocks ${pr}, so it is ready to merge. Tell the user.`)

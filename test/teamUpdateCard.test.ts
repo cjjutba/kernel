@@ -70,7 +70,7 @@ describe('reading an update from before KERNEL-117', () => {
   it('sets an issue key apart from the task, and colors only what failed, merged or passed (KERNEL-274)', () => {
     expect(taskParts('KERNEL-182 New chats focus the composer')).toEqual({ key: 'KERNEL-182', title: 'New chats focus the composer' })
     expect(taskParts('Remove the Try section')).toEqual({ title: 'Remove the Try section' })
-    const tone = (kind: TeamEventKind, text = '', actionable = false) => eventTone({ kind, text, actionable })
+    const tone = (kind: TeamEventKind, text = '', actionable = false, held?: boolean) => eventTone({ kind, text, actionable, ...(held ? { held } : {}) })
     expect([tone('pr.cifail'), tone('pr.conflict'), tone('crash'), tone('setup.failed')]).toEqual(['del', 'del', 'del', 'del'])
     expect([tone('pr.merged'), tone('pr.ready'), tone('setup.passed')]).toEqual(['merged', 'add', 'muted'])
     expect([tone('review', 'Approved PR #108'), tone('review', 'Found 2 blockers in PR #108')]).toEqual(['add', 'del'])
@@ -80,8 +80,9 @@ describe('reading an update from before KERNEL-117', () => {
     expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
     // GitHub lifting its block reads like the PR being ready; a block takes the grey of anything else (KERNEL-401).
     expect([tone('pr.unblocked'), tone('pr.blocked'), tone('pr.blocked', '', true)]).toEqual(['add', 'muted', 'ink2'])
-    // A ready PR its review holds back says its checks passed, in grey beside the review's red (KERNEL-608).
-    expect([tone('pr.ready', 'Ready to merge'), tone('pr.ready', 'Checks passed'), tone('pr.ready', 'Checks passed', true)]).toEqual(['add', 'muted', 'muted'])
+    // A ready PR its review holds back is grey beside the review's red (KERNEL-608), by its flag, whatever the words (KERNEL-635).
+    expect([tone('pr.ready', 'Ready to merge'), tone('pr.ready', 'Checks passed', false, true), tone('pr.ready', 'Checks passed', true, true)]).toEqual(['add', 'muted', 'muted'])
+    expect([tone('pr.unblocked', 'GitHub no longer blocks it', false, true), tone('pr.ready', 'Anything', false, true), tone('pr.ready', 'Checks passed')]).toEqual(['muted', 'muted', 'add'])
   })
 })
 

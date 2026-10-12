@@ -85,13 +85,13 @@ export function taskParts(task: string): { key?: string; title: string } {
  * The color an event's words take on the card (KERNEL-274): red for what needs fixing, violet for a merge, green for a PR
  * ready to merge or an approval. Everything else stays grey, and an event that needs the Lead without one of those is brighter.
  */
-export function eventTone(e: { kind: TeamEventKind; text: string; actionable: boolean }): 'del' | 'add' | 'merged' | 'ink2' | 'muted' {
+export function eventTone(e: { kind: TeamEventKind; text: string; actionable: boolean; held?: boolean }): 'del' | 'add' | 'merged' | 'ink2' | 'muted' {
   switch (e.kind) {
     case 'error': case 'crash': case 'setup.failed': case 'pr.cifail': case 'pr.changes': case 'pr.conflict': return 'del'
     case 'pr.merged': return 'merged'
     // GitHub no longer blocking a ready PR reads like the PR being ready (KERNEL-401). A block takes the default below.
-    // A ready PR its review holds back says "Checks passed" in grey, beside the review's red (KERNEL-608).
-    case 'pr.ready': case 'pr.unblocked': return e.text === 'Checks passed' ? 'muted' : 'add'
+    // A ready PR its review holds back is grey, beside the review's red (KERNEL-608, KERNEL-635).
+    case 'pr.ready': case 'pr.unblocked': return e.held ? 'muted' : 'add'
     // "Approved PR #7", or with the kind of review in front since KERNEL-549: "Code review approved PR #7". Blockers are red.
     case 'review': return /^(?:\S+ review )?approved\b/i.test(e.text) ? 'add' : 'del'
     // A ready PR's review in the PRs tab's colors: an approval green, blockers red, the rest grey (KERNEL-411). Still blocked after the review rounds is red too (KERNEL-557).
