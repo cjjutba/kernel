@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
@@ -15,8 +15,9 @@ const KEY_PAGE: Record<Provider, { host: string; url: string; placeholder: strin
 /**
  * Add account, Sign in again for an added account (`signIn`, KERNEL-406, with its `accountId` since KERNEL-567), or Replace key
  * for an API key account (`replaceKey`, KERNEL-524). Subscription: one button opens the provider's sign-in in the browser, and the
- * account is named after its email (KERNEL-561). Claude's login may ask for the code the page shows; only then does the sheet show a
- * field for it. A failed sign-in says why and offers Try again. API key: a name and the key, checked with the provider before it is
+ * account is named after its email (KERNEL-561). Claude's login asks for a code at once, though the browser usually hands the sign-in
+ * back by itself, so the sheet offers "The page shows a code?" and shows the field only after it is clicked (KERNEL-615). A failed
+ * sign-in says why and offers Try again. API key: a name and the key, checked with the provider before it is
  * kept, and a refused key shows the provider's reason in the sheet. No pasted token (D-018).
  */
 export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider: Provider; signIn?: { label: string; accountId?: string }; replaceKey?: { accountId: string; label: string }; onClose: () => void }) {
@@ -26,6 +27,8 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
   const [code, setCode] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [started, setStarted] = useState(false)
+  const [codeShown, setCodeShown] = useState(false)
+  const codeInput = useRef<HTMLInputElement>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [busy, run] = useBusy<'start' | 'code' | 'key'>()
   const claude = provider === 'claude'
@@ -34,9 +37,11 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
   const page = KEY_PAGE[provider]
   const keyReady = !!apiKey.trim() && (!!replaceKey || !!label.trim())
   useEffect(() => () => actions.accounts.adding(null), [])
+  useEffect(() => { if (codeShown) codeInput.current?.focus() }, [codeShown])
   const start = () => run('start', async () => {
     actions.accounts.adding(null)
     setFailed(null)
+    setCodeShown(false)
     setStarted(true)
     try {
       if (signIn) await call('providers.signIn', { provider, ...(signIn.accountId ? { accountId: signIn.accountId } : {}) })
@@ -74,7 +79,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
         <Button variant="ghost" size="lg" disabled={busy === 'key'} onClick={close}>Cancel</Button>
         {keyForm && <Button variant="primary" size="lg" busy={busy === 'key'} busyLabel="Checking key" disabled={!keyReady || busy !== null} onClick={() => void saveKey()}>{replaceKey ? 'Replace key' : 'Add key'}</Button>}
         {!keyForm && !started && <Button variant="primary" size="lg" busy={busy === 'start'} busyLabel="Opening" disabled={busy !== null} onClick={() => void start()}>{failed ? 'Try again' : `Sign in with ${name}`}</Button>}
-        {!keyForm && started && step?.step === 'code' && <Button variant="primary" size="lg" busy={busy === 'code'} busyLabel="Sending" disabled={!code.trim()} onClick={() => void sendCode()}>Send code</Button>}
+        {!keyForm && started && step?.step === 'code' && codeShown && <Button variant="primary" size="lg" busy={busy === 'code'} busyLabel="Sending" disabled={!code.trim()} onClick={() => void sendCode()}>Send code</Button>}
       </>
     }>
       <div className="modal-body set-form">
@@ -114,10 +119,13 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
         {!keyForm && started && (
           <p className="set-help" role="status">Finish signing in in your browser.{step?.url && <> <button type="button" className="set-link" onClick={() => void call('system.openExternal', { url: step.url! })}>Open the page again</button></>}</p>
         )}
-        {!keyForm && started && step?.step === 'code' && (
+        {!keyForm && started && step?.step === 'code' && !codeShown && (
+          <p className="set-help"><button type="button" className="set-link" onClick={() => setCodeShown(true)}>The page shows a code?</button></p>
+        )}
+        {!keyForm && started && step?.step === 'code' && codeShown && (
           <div className="set-field">
             <label htmlFor="acct-code">Code, if the sign-in page shows one</label>
-            <input id="acct-code" className="input" autoComplete="off" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && code.trim() && void sendCode()} />
+            <input id="acct-code" ref={codeInput} className="input" autoComplete="off" spellCheck={false} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && code.trim() && void sendCode()} />
           </div>
         )}
       </div>
