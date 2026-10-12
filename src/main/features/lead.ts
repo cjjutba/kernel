@@ -529,8 +529,9 @@ export class Lead extends Feature {
         if (o.kind === 'plan' && o.detail?.trim() && ws && existsSync(ws.path)) {
           void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
         }
-        // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125).
-        return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
+        // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125). It isn't a send, so
+        // the chat keeps its place in the sidebar (KERNEL-498).
+        return decision.then((d) => { if (d) this.steppedIn(chat.id); return d })
       },
       archiveWorkspace: (id) => this.k.archiveWorkspace(id),
       // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
@@ -608,10 +609,22 @@ export class Lead extends Feature {
   }
 
   /**
-   * The user wrote in a chat, so the loop guard starts over (KERNEL-125): for that workspace, or, in a Lead chat, for every
-   * workspace whose updates that chat gets, a closed chat's work included.
+   * The user sent a message in a chat. The loop guard starts over, and a chat with Rowan records the send, which puts it on top
+   * of the sidebar (KERNEL-498). Kernel's own messages call `sessions.send` or `sessions.post` directly and never come here.
    */
   userSpoke(chatId: string) {
+    this.steppedIn(chatId)
+    const chat = this.store.chat(chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    const thread = ws && isLeadChatWorkspace(ws) ? this.store.thread(ws.threadId!) : undefined
+    if (thread) this.pushThread({ ...thread, lastSentAt: Date.now() })
+  }
+
+  /**
+   * The user wrote in a chat or answered its card, so the loop guard starts over (KERNEL-125): for that workspace, or, in a Lead
+   * chat, for every workspace whose updates that chat gets, a closed chat's work included.
+   */
+  private steppedIn(chatId: string) {
     const chat = this.store.chat(chatId)
     const ws = chat && this.store.workspace(chat.workspaceId)
     if (!ws) return

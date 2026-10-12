@@ -34,8 +34,9 @@ export function threadTab(tabs: Chat[], lastTabs: Record<string, string>, thread
 }
 
 /**
- * The room's open chats with Rowan, oldest first, each with its workspace and open tabs (D-139, KERNEL-338, KERNEL-405). The title is
- * the thread's, or the first tab's while the thread hasn't reached the store.
+ * The room's open chats with Rowan, each with its workspace and open tabs (D-139, KERNEL-338, KERNEL-405). The chat the user last sent a
+ * message in comes first, and one with no send yet goes by when it started (KERNEL-498). The title is the thread's, or the first tab's
+ * while the thread hasn't reached the store.
  */
 export function openThreads(room: Room, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread>): { thread: Thread; ws: Workspace; tabs: Chat[] }[] {
   return chatWorkspaces(workspaces, threads, room.id).map((ws) => {
@@ -46,10 +47,11 @@ export function openThreads(room: Room, workspaces: Workspace[], chats: Record<s
 }
 
 /**
- * Every row under a room, top to bottom (D-139). Each open chat with Rowan is followed by the workspaces it handed off, then come the
- * workspaces no open chat owns (an archived chat's too). A room whose Lead has no open chat keeps one Lead row; a room with no Lead has only
- * workspaces. A chat in `folded` that handed off workspaces hides them; one with none never counts as folded. The sidebar draws these
- * and the shortcuts count them, so the two can't disagree. Workspaces group by `Workspace.threadId`.
+ * Every row under a room, top to bottom (D-139). Each open chat with Rowan, the one last sent in first (KERNEL-498), is followed by the
+ * workspaces it handed off, oldest first, then come the workspaces no open chat owns (an archived chat's too). A room whose Lead has no
+ * open chat keeps one Lead row; a room with no Lead has only workspaces. A chat in `folded` that handed off workspaces hides them; one
+ * with none never counts as folded. The sidebar draws these and the shortcuts count them, so the two can't disagree. Workspaces group
+ * by `Workspace.threadId`.
  */
 export function sidebarRows(
   room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread> = {}, folded: string[] = []
@@ -82,7 +84,8 @@ export function mergeChatList(fetched: Chat[], current: Chat[] | undefined): Cha
 }
 
 /**
- * The rows the ⌘1 to ⌘9 shortcuts reach: the Lead's open chats in sidebar order, or the Lead row while it has no open chat (KERNEL-357).
+ * The rows the ⌘1 to ⌘9 shortcuts reach: the Lead's open chats in sidebar order, so ⌘1 is the chat last sent in, or the Lead row while it
+ * has no open chat (KERNEL-357, KERNEL-498).
  * Workspace rows get no number, so a chat's number doesn't move when workspaces come and go or a chat is folded. A room with no Lead has none.
  */
 export const slotsFor = (
