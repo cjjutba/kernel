@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, writeFile, readdir } from 'node:fs/promises'
+import { mkdtemp, writeFile, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
+import { git } from '../src/main/services/exec'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -28,17 +29,20 @@ describe('team handlers (KERNEL-19)', () => {
       const room = await k.addRoom(repo)
       await k.agents(room.id)
 
-      // Save rewrites the file and pushes the reloaded team.
+      // Save, just for the user by default (KERNEL-466), pushes the reloaded team and leaves the repo's file as it is.
+      const kaiFile = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
       const saved = await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { effort: 'high', tools: ['Read', 'Edit'] } })
       expect(saved).toMatchObject({ id: 'kai', effort: 'high', tools: ['Read', 'Edit'], model: 'sonnet' })
       expect(pushed.find((e) => e.type === 'agents')).toBeTruthy()
+      expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(kaiFile)
 
-      // Hire from a draft: the file lands in .claude/agents and the agent takes a desk at the end of room.desks.
+      // Hire from a draft: the file lands in ~/.claude/agents and the agent takes a desk at the end of room.desks.
       await k.updateRoom(room.id, { desks: ['rowan', 'kai'] })
       const draft = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Lumi' })
       const lumi = await h['agents.create']({ roomId: room.id, draft })
-      expect(lumi.id).toBe('lumi')
-      expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'lumi.md', 'rowan.md'])
+      expect(lumi).toMatchObject({ id: 'lumi', origin: 'personal', file: join(home, '.claude', 'agents', 'lumi.md') })
+      expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['lumi.md'])
+      expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'rowan.md'])
       expect(k.store.room(room.id)?.desks).toEqual(['rowan', 'kai', 'lumi'])
 
       // The profile's model and effort reach the chat a new workspace starts with.
@@ -49,7 +53,7 @@ describe('team handlers (KERNEL-19)', () => {
       const sonnet = await k.createWorkspace(room.id, { prompt: 'Two', agentId: 'kai', title: 'Model two' })
       expect(k.store.chats(sonnet.id)[0].model).toBe('claude-sonnet-5-5')
 
-      // Retire moves the file, hands the open workspace to the Lead and frees the desk. The Lead cannot be retired.
+      // Retire hands the open workspace to the Lead and frees the desk, and the file stays. The Lead cannot be retired.
       const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
       await expect(h['agents.retire']({ roomId: room.id, agentId: 'rowan' })).rejects.toThrow(/leads this room/)
       await h['agents.retire']({ roomId: room.id, agentId: 'kai' })
@@ -58,6 +62,8 @@ describe('team handlers (KERNEL-19)', () => {
       expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['rowan', 'lumi'])
       expect((await h['agents.list']({ roomId: room.id, retired: true })).map((a) => a.id)).toEqual(['kai'])
       expect((await h['agents.restore']({ roomId: room.id, agentId: 'kai' })).id).toBe('kai')
+      // None of it touched the checkout.
+      expect(await git(repo, 'status', '--porcelain')).toBe('')
 
       // A file added by hand shows up through the folder watcher.
       pushed.length = 0

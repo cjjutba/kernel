@@ -239,11 +239,17 @@ describe('personal and plugin agents (KERNEL-463)', () => {
     expect((await call('list_agents', {})).text).toContain('scout: Scout')
     expect((await call('create_workspace', { agent: 'scout', title: 'Prior art', brief: 'Find prior art.' })).text).toMatch(/^Created \S+ on \S+ for scout\./)
 
-    // Its file is every room's, so this room's profile and retire leave it alone.
+    // Its file is the user's own: saved for them, the profile rewrites it in ~/.claude/agents, and the team, which doesn't have
+    // it, can't take a change. Retired for them, it leaves this room only, and its file stays (KERNEL-466).
+    expect(await h['agents.save']({ roomId: room.id, agentId: 'scout', patch: { model: 'opus' } })).toMatchObject({ id: 'scout', origin: 'personal', model: 'opus' })
+    expect(await readFile(join(home, '.claude', 'agents', 'scout.md'), 'utf8')).toContain('model: opus\n')
+    await expect(h['agents.save']({ roomId: room.id, agentId: 'scout', patch: { model: 'sonnet' }, scope: 'team' })).rejects.toThrow("Scout's file is in ~/.claude/agents, so the team doesn't have Scout. Save the change just for you.")
+    await expect(h['agents.retire']({ roomId: room.id, agentId: 'scout', scope: 'team' })).rejects.toThrow('Retire Scout just for you.')
     const before = await readFile(join(home, '.claude', 'agents', 'scout.md'), 'utf8')
-    await expect(h['agents.save']({ roomId: room.id, agentId: 'scout', patch: { model: 'opus' } })).rejects.toThrow("Scout's file is in ~/.claude/agents, which every room shares. Edit it there.")
-    await expect(h['agents.retire']({ roomId: room.id, agentId: 'scout' })).rejects.toThrow('Move it out of that folder to retire Scout in every room.')
+    await h['agents.retire']({ roomId: room.id, agentId: 'scout' })
+    expect((await k.agents(room.id)).map((a) => a.id)).not.toContain('scout')
     expect(await readFile(join(home, '.claude', 'agents', 'scout.md'), 'utf8')).toBe(before)
+    expect((await h['agents.restore']({ roomId: room.id, agentId: 'scout' })).id).toBe('scout')
     expect(await readdir(join(repo, '.claude', 'agents'))).not.toContain('scout.md')
 
     // The same team rules: [team] can make it a helper.
@@ -302,7 +308,10 @@ describe('personal and plugin agents (KERNEL-463)', () => {
     const file = join(home, KIT, 'agents', 'builder.md')
     const before = await readFile(file, 'utf8')
     await expect(h['agents.save']({ roomId: room.id, agentId: 'kit:builder', patch: { model: 'opus' } })).rejects.toThrow("Builder comes from the kit plugin, and Kernel doesn't change a plugin's files.")
-    await expect(h['agents.retire']({ roomId: room.id, agentId: 'kit:builder' })).rejects.toThrow('Turn the plugin off in Claude Code to remove it.')
+    await expect(h['agents.retire']({ roomId: room.id, agentId: 'kit:builder', scope: 'team' })).rejects.toThrow("Builder comes from the kit plugin, so the team's files don't have Builder.")
+    // Retired for the user, it leaves this room, and the plugin's file stays as it is (KERNEL-466).
+    await h['agents.retire']({ roomId: room.id, agentId: 'kit:builder' })
+    expect((await k.agents(room.id)).map((a) => a.id)).not.toContain('kit:builder')
     expect(await readFile(file, 'utf8')).toBe(before)
   })
 
