@@ -152,10 +152,27 @@ async function hoverSplitHandle(page: Page) {
   await page.waitForTimeout(400)
 }
 
+// PanelTabsOverflow is the right panel at its narrowest, 320px, where the tab strips run out of room (KERNEL-514). Home on the panel's handle takes it there, as it does from the keyboard.
+// The bottom strip has only Setup, Run and Terminal, which fit, so the canvas's two extra terminals are added here as stand-ins and the strip scrolled a little, to draw both arrows.
+async function narrowPanel(page: Page) {
+  const handle = page.getByRole('separator', { name: 'Resize panel' })
+  await handle.focus()
+  await page.keyboard.press('Home')
+  await handle.blur()
+  await page.getByRole('tablist', { name: 'Scripts' }).evaluate((list) => {
+    const terminal = list.lastElementChild!
+    for (const n of [3, 2]) { const more = terminal.cloneNode(true) as HTMLElement; more.textContent = `Terminal ${n}`; terminal.after(more) }
+    list.scrollLeft = 30
+  })
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   PanelResize: hoverSplitHandle,
+  PanelTabsOverflow: narrowPanel,
   NewWorkspaceFromGitHub: openIssuesTab,
   NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,

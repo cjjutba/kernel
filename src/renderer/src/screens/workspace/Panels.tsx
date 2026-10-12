@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
@@ -10,7 +10,6 @@ import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
 import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
 import { useLocalMerge } from './pr/useLocalMerge'
-import { useLeadPrs } from './pr/leadPrList'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
@@ -209,12 +208,67 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   )
 }
 
+// ---------- Tab strips
+
+/**
+ * A strip of tabs that scrolls sideways when they don't fit (KERNEL-489). A side with hidden tabs fades into the panel and shows an arrow that scrolls to the
+ * next one (KERNEL-514). Only the tablist scrolls, so what sits beside the strip stays pinned. The arrows are for the pointer: the tablist's arrow keys already
+ * reach every tab, so they stay out of the tab order, and one that goes away can't strand focus.
+ */
+function TabStrip(props: ComponentProps<typeof Tabs>) {
+  const wrap = useRef<HTMLDivElement>(null)
+  const [more, setMore] = useState({ left: false, right: false })
+  const ids = props.tabs.map((t) => t.id).join()
+  const list = () => wrap.current?.querySelector<HTMLElement>('[role="tablist"]') ?? null
+
+  // Which sides have tabs cut off, again when the strip scrolls, when the panel or a tab changes size and when tabs come and go.
+  useLayoutEffect(() => {
+    const el = list()
+    if (!el) return
+    const measure = () => {
+      const left = el.scrollLeft > 1
+      const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+      setMore((m) => (m.left === left && m.right === right ? m : { left, right }))
+    }
+    measure()
+    el.addEventListener('scroll', measure, { passive: true })
+    const resize = new ResizeObserver(measure)
+    resize.observe(el)
+    for (const tab of el.children) resize.observe(tab)
+    return () => { el.removeEventListener('scroll', measure); resize.disconnect() }
+  }, [ids])
+
+  // The tab shown scrolls into view when it changes, clear of the fade (KERNEL-489).
+  useLayoutEffect(() => { list()?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [props.value, ids])
+
+  // One tab over: the first tab the fade hides on that side comes fully into view, or the last one on that side when the fade only covers part of a tab.
+  const step = (dir: 1 | -1) => {
+    const el = list()
+    if (!el) return
+    const fade = parseFloat(getComputedStyle(el).scrollPaddingLeft) || 0
+    const box = el.getBoundingClientRect()
+    const tabs = [...el.children] as HTMLElement[]
+    const hidden = (dir > 0 ? tabs : [...tabs].reverse()).find((t) => {
+      const r = t.getBoundingClientRect()
+      return dir > 0 ? r.left >= box.right - fade : r.right <= box.left + fade
+    })
+    ;(hidden ?? tabs[dir > 0 ? tabs.length - 1 : 0])?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' })
+  }
+
+  return (
+    <div ref={wrap} className="tab-strip">
+      <Tabs {...props} />
+      {more.left && <IconButton icon="right" size={14} label="More tabs" className="tab-more" data-side="left" tabIndex={-1} onClick={() => step(-1)} />}
+      {more.right && <IconButton icon="right" size={14} label="More tabs" className="tab-more" data-side="right" tabIndex={-1} onClick={() => step(1)} />}
+    </div>
+  )
+}
+
 /** `filePath` and `diffPath` are the file and diff tabs showing in the center, drawn selected in All files and Changes. */
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diffPath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void; filePath?: string; diffPath?: string }) {
   // The Lead's workspace keeps its own tab, and PRs is the one only it has: elsewhere `prs` falls back to Changes, the way Shared does (KERNEL-354).
   const isLead = useStore((s) => isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
   const shown = useStore((s) => (isLead ? s.ui.workspace.leadRight ?? 'prs' : s.ui.workspace.right))
-  const ready = useLeadPrs(isLead ? ws.roomId : '').filter((r) => r.ready).length
   const shared = useStore((s) => sharedHere(s, ws).length)
   // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
   const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
@@ -222,15 +276,12 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
   const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
   const pick = (id: string) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })
-  // A narrow panel scrolls its tabs sideways, so the one shown scrolls into view when it changes (KERNEL-489).
-  const strip = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [right, isLead])
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <div ref={strip} className="panel-tabs" data-lead={isLead || undefined}>
-        <Tabs label="Workspace panel" value={right} onChange={pick} tabs={[
-          // No count with nothing ready, as LeadPrsEmpty and LeadPrsNoneReady draw it (KERNEL-411).
-          ...(isLead ? [{ id: 'prs', label: ready ? <>PRs {count(ready)}</> : 'PRs' }] : []),
+      <div className="panel-tabs" data-lead={isLead || undefined}>
+        <TabStrip label="Workspace panel" value={right} onChange={pick} tabs={[
+          // The PRs tab has no count: the band and the Ready to merge heading show it.
+          ...(isLead ? [{ id: 'prs', label: 'PRs' }] : []),
           { id: 'files', label: 'All files' },
           { id: 'changes', label: <>Changes {count(changes.length)}</> },
           { id: 'checks', label: 'Checks' },
@@ -342,8 +393,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
         <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
-        <Tabs label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
-        <span className="grow" />
+        <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
         {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
         {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}

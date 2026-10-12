@@ -653,6 +653,10 @@ const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both
 /** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
 const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
 
+/** What the Lead's run script has printed, under the Run tab (PanelTabsOverflow). */
+const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
+  .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
+
 /** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
@@ -1335,6 +1339,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
   PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
+  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The canvas draws the top strip beside the toolbar, which takes the room Checks needs; until the toolbar is built
+  // the Shared tab takes it instead. The bottom's two terminals past Run are stand-ins the shot adds.
+  PanelTabsOverflow: scene((f) => {
+    const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
+    return {
+      ...s,
+      settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
+      ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } }
+    }
+  }),
   PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
