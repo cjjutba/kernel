@@ -554,6 +554,64 @@ describe('kernel recovery paths', () => {
     await k.stop()
   })
 
+  it('stops setup from the Setup tab: failed with no exit code, the brief still held, and no word to the Lead (KERNEL-430)', async () => {
+    const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 2 && false)"\n' })
+    const lead = await k.leadChat(room.id)
+    await setUp(k, lead.id, 'failed')
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const chat = k.store.chats(ws.id)[0]
+    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string }[] }> }).pending.values()].flatMap((p) => p.events)
+    const before = waiting()
+    const rerun = k.setup.retrySetup(ws.id)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(k.store.workspace(ws.id)?.setupRun?.endedAt).toBeUndefined()
+    await k.setup.handlers()['scripts.stop']({ workspaceId: ws.id, kind: 'setup' })
+    const after = await rerun
+    expect(after.status).toBe('failed')
+    expect(after.setupRun?.end).toBeNull()
+    expect(after.setupRun?.endedAt).toBeGreaterThanOrEqual(after.setupRun!.startedAt)
+    expect(k.sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Build T-14'])
+    expect(waiting()).toEqual(before)
+    await k.stop()
+  })
+
+  it('sends a brief anyway after setup failed, once, with a note above it, and the Lead hears setup passed (KERNEL-430)', async () => {
+    const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "false"\n' })
+    const lead = await k.leadChat(room.id)
+    await setUp(k, lead.id, 'failed')
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const chat = k.store.chats(ws.id)[0]
+    expect(ws.status).toBe('failed')
+    // A second Send anyway while the first is on its way does nothing.
+    const [first, second] = await Promise.all([k.setup.skipSetup(ws.id), k.setup.skipSetup(ws.id)])
+    expect(first.status).toBe('ready')
+    expect(second.status).toBe('failed')
+    const notes = k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)
+    expect(notes.filter((n) => n === 'Setup failed, sent anyway')).toHaveLength(1)
+    expect(notes.some((n) => n.startsWith('Setup finished'))).toBe(false)
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    expect(k.store.items(chat.id).some((i) => i.kind === 'user')).toBe(true)
+    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string }[] }> }).pending.values()].flatMap((p) => p.events)
+    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
+    // A workspace that isn't failed has nothing to skip.
+    expect((await k.setup.skipSetup(ws.id)).status).toBe('ready')
+    await k.stop()
+  })
+
+  it('says how long setup took above the brief when Run again passes (KERNEL-430)', async () => {
+    const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const lead = await k.leadChat(room.id)
+    await setUp(k, lead.id, 'failed')
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const chat = k.store.chats(ws.id)[0]
+    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
+    expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
+    const notes = k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)
+    expect(notes).toContainEqual(expect.stringMatching(/^Setup finished in \d+:\d\d$/))
+    expect(k.store.workspace(ws.id)?.setupRun).toMatchObject({ end: 0 })
+    await k.stop()
+  })
+
   it("tells the Lead when a teammate's session dies partway through a turn (KERNEL-124)", async () => {
     const { k, room } = await kernel()
     const lead = await k.leadChat(room.id)
