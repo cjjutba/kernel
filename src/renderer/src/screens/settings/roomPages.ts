@@ -2,10 +2,10 @@ import type { RoomSettingsSection } from '@shared/types'
 
 /**
  * A room's pages in the Settings nav, in order. Environment (KERNEL-254) sits between Files to copy and Instructions.
- * `section` is the route's, and a route without one opens General.
+ * `section` is the route's, and a route without one opens General. `icon` is the page's glyph in the nav (KERNEL-534).
  */
-export const ROOM_PAGES: { section: RoomSettingsSection; label: string }[] = [
-  { section: 'general', label: 'General' }, { section: 'git', label: 'Git' }, { section: 'scripts', label: 'Scripts' },
-  { section: 'files', label: 'Files to copy' }, { section: 'environment', label: 'Environment' }, { section: 'instructions', label: 'Instructions' },
-  { section: 'permissions', label: 'Permissions' }, { section: 'agents', label: 'Agents' }, { section: 'skills', label: 'Skills and MCP' }
+export const ROOM_PAGES: { section: RoomSettingsSection; label: string; icon: string }[] = [
+  { section: 'general', label: 'General', icon: 'sliders' }, { section: 'git', label: 'Git', icon: 'branch' }, { section: 'scripts', label: 'Scripts', icon: 'term' },
+  { section: 'files', label: 'Files to copy', icon: 'copy' }, { section: 'environment', label: 'Environment', icon: 'env' }, { section: 'instructions', label: 'Instructions', icon: 'book' },
+  { section: 'permissions', label: 'Permissions', icon: 'shield' }, { section: 'agents', label: 'Agents', icon: 'team' }, { section: 'skills', label: 'Skills and MCP', icon: 'plug' }
 ]
