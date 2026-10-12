@@ -18,6 +18,17 @@ import { Feature } from './feature'
 /** An issue a workspace builds: its key and the tracker it came from. */
 type IssueRef = { id: string; tracker?: TrackerKind }
 
+/**
+ * Whether a room's tracker reads the key `key` (KERNEL-504): GitHub reads `#41` and `41`, Jira `PROJ-7`, and `7` when the
+ * room names its project, and Linear `KERNEL-31`. A key from another tracker isn't asked about, so `#41` is GitHub's only
+ * (KERNEL-462) and a Linear key in a GitHub room adds no failed check.
+ */
+function readsKey(kind: Tracker['kind'], key: string, jiraProject?: string): boolean {
+  if (kind === 'github') return !!githubKey(key)
+  if (kind === 'jira') return !!jiraKey(key, jiraProject)
+  return kind === 'linear' && /^[a-z][a-z0-9]*-\d+$/i.test(key)
+}
+
 /** Linear, GitHub and Jira, and the Integrations page that connects them (KERNEL-325). */
 export class Integrations extends Feature {
   /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY (KERNEL-445). */
@@ -97,8 +108,7 @@ export class Integrations extends Feature {
       // A GitHub room's tracker reads "41" as #41, the way create_workspace links it (`issueSource`).
       const id = (tracker.kind === 'github' ? githubKey(key) : undefined) ?? key.trim()
       const github = room.host !== 'local' && !!(room.repo ?? (await remoteRepo(room.path, remote)))
-      // A `#41` key is a GitHub issue, which only a GitHub room's tracker reads (KERNEL-462).
-      const reads = tracker.kind !== 'none' && (tracker.kind === 'github' || !id.startsWith('#'))
+      const reads = readsKey(tracker.kind, id, repo.jira?.project)
       const own = this.store.workspaces(roomId)
       return await issueTaken(id, {
         remote,
