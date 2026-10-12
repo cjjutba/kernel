@@ -1,4 +1,5 @@
-import type { Provider } from '@shared/types'
+import type { Provider, ReviewKind } from '@shared/types'
+import { reviewsText } from '@shared/merge'
 import { CODEX_TOOL_PREFIX } from './providers/codex/tools'
 
 /** What an agent on `provider` calls one of Kernel's tools: `mcp__kernel__<name>` on Claude, `kernel_<name>` on Codex (KERNEL-406). */
@@ -30,7 +31,7 @@ export const LEAD_RULE = [
   "When a teammate's reply asks a question or says it is blocked, answer from the approved plan if it covers the question. Otherwise ask the user with mcp__kernel__ask_user, then send the answer with mcp__kernel__message_agent. Never leave a teammate waiting.",
   "When checks fail, changes are requested or a PR has conflicts, tell that workspace's teammate with message_agent and pass on the details.",
   "When a review found blockers, pass on the blockers and nothing else. If the review's summary has notes, mention them to the user in one line and don't send them to the author.",
-  'When the user asks for a review, hand the PR to the team\'s reviewer with create_workspace and review_of set to that PR\'s workspace id. To have it reviewed again after fixes, message the reviewer\'s existing review workspace with message_agent instead of creating another.',
+  'Kernel starts the reviews each PR needs once it passes checks, and runs them again after a fix passes checks, so never start or repeat those yourself. When the user asks for a review Kernel didn\'t start, hand the PR to the team\'s reviewer with create_workspace and review_of set to that PR\'s workspace id. To have that one reviewed again after fixes, message its review workspace with message_agent instead of creating another.',
   'When a team update says a PR can merge, tell the user it is ready to merge. When every task you handed off in this chat has merged, tell the user in one line.',
   "If message_agent says it did not send, don't send the same message again: fix the workspace id if it was wrong, otherwise tell the user what is stuck.",
   'Write for the user, who reads this chat. Call teammates by name, not he or she. Reply to a team update in one or two short lines: what changed and what you did about it. Leave workspace ids out unless the user asks.',
@@ -38,28 +39,30 @@ export const LEAD_RULE = [
   "Other tabs in this chat may have approved plans, so call mcp__kernel__read_plans before answering about the chat's work."
 ].join('\n')
 
-/** Appended to the Lead's prompt after LEAD_RULE while auto review is on, which it is by default (`pr.autoReview`, KERNEL-115). */
-export const LEAD_REVIEW_RULE = "When a PR passed checks and nobody has reviewed it, hand it to the team's reviewer with create_workspace and review_of without asking the user."
-
 /** Appended to the Lead's prompt after LEAD_RULE while sharing is on, which it is by default (KERNEL-302, KERNEL-308). */
 export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'
 
 /**
- * What a reviewer may block on, in `reviewRule`, the submit_review description and both theo.md files (KERNEL-377). It
- * names no rule of Kernel's own repo, since Kernel's Theo reviews every repo (KERNEL-397). This repo's theo.md adds them.
+ * What a reviewer may block on, in `reviewRule`, the submit_review description, both theo.md files and the code review's
+ * `docs/lenses/code.md` (KERNEL-377, KERNEL-549). It names no rule of Kernel's own repo, since Kernel's reviews run in every
+ * repo (KERNEL-397). This repo's theo.md adds them. The security and UX reviews block on the same list, each only where it
+ * is their kind of problem.
  */
 export const BLOCKER_RULE = 'A blocker is one of these: an acceptance criterion fails, a user would hit a bug or regression, a rule in the repo\'s CLAUDE.md or AGENTS.md is broken (a committed secret, for one), or a check fails. Nothing else blocks: test strength, naming, style, doc wording, decision-file bookkeeping, refactors, "could also".'
 
 /**
- * Appended to a review workspace's prompt (KERNEL-130). The reviewer works in a worktree started from the author's branch,
+ * Appended to a review chat's prompt (KERNEL-130). The reviewer works in a worktree started from the author's branch,
  * reports its verdict with submit_review, and leaves GitHub's approve and request-changes alone, since the PR is the
- * user's own and GitHub won't let its author do either.
+ * user's own and GitHub won't let its author do either. `lens` is the kind of review the chat runs, when Kernel started it
+ * (KERNEL-549): the other kinds' chats share the worktree, so it only reads, and it blocks only on its own kind of problem.
  */
-export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string } }, remote = 'origin'): string {
+export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string }; lens?: ReviewKind; others?: ReviewKind[] }, remote = 'origin'): string {
   const to = r.resetTo ?? r.branch
   const pickUp = to.startsWith(`${remote}/`) ? `git fetch ${remote} ${r.branch} && git reset --hard ${to}` : `git reset --hard ${to}`
+  const kind = r.lens && reviewsText([r.lens]).replace(/^The/, 'the')
   return [
     `You are reviewing ${r.author}'s work on "${r.task}" (workspace ${r.workspaceId}) for the Lead.`,
+    ...(kind ? [`You run ${kind} of it.${r.others?.length ? ` ${reviewsText(r.others)} ${r.others.length === 1 ? 'runs' : 'run'} in other chats of this workspace, so block only on what ${kind} covers and leave the rest to them.` : ''}`] : []),
     `Your worktree started at ${r.author}'s branch ${r.branch}. Before each review, run \`${pickUp}\` to pick up ${r.author}'s latest commits, then read the change with \`git diff ${r.base}...HEAD\`.`,
     r.pr ? `It is PR #${r.pr.number}${r.pr.url ? `: ${r.pr.url}` : ''}.` : `It had no PR when this review started; \`gh pr view ${r.branch}\` shows one if it opened since.`,
     `Don't edit, commit or push. ${r.author} fixes what you find.`,

@@ -611,7 +611,9 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
   it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
     const [submit] = reviewTools({ submit: async () => '' })
     const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
-    for (const text of [rule, submit.description, ...theos]) expect(text).toContain(BLOCKER_RULE)
+    // Kernel's own code review too, which runs when a room has no reviewer (KERNEL-549).
+    const code = await readFile(join(__dirname, '..', 'docs', 'lenses', 'code.md'), 'utf8')
+    for (const text of [rule, submit.description, ...theos, code]) expect(text).toContain(BLOCKER_RULE)
     for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)
   })
 

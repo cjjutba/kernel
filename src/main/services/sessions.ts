@@ -95,7 +95,8 @@ export interface SessionDeps {
   store: Store
   approvals: Approvals
   settings: () => AppSettings
-  agentFor: (ws: Workspace) => AgentDef | undefined
+  /** The agent a workspace runs. With `chat`, the one that chat runs, which a review chat picks by its kind (KERNEL-549). */
+  agentFor: (ws: Workspace, chat?: Chat) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
   /**
@@ -116,7 +117,7 @@ export interface SessionDeps {
    */
   onMcp?: (ws: Workspace, provider: Provider, servers: McpReport[]) => McpReport[]
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
-  rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
+  rulesFor?: (ws: Workspace, agent: AgentDef | undefined, chat?: Chat) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
   /**
@@ -1141,13 +1142,13 @@ export class Sessions {
   }
 
   private start(chat: Chat, ws: Workspace): Live {
-    const agent = this.d.agentFor(ws)
+    const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
     const account = this.d.accountFor?.(chatProvider(chat))
     const live = { running: false, interrupted: false, tasks: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey' } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
-    const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
+    const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
     const { mode, bypass } = this.modes(chat, ws)
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)

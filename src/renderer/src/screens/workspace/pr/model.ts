@@ -1,5 +1,5 @@
 import type { AppSettings, ChatItem, ChatPart, PrInfo, PrPending, PrState, ReviewComment, Route, Toast, Workspace } from '@shared/types'
-import { headBlockers, mergeBlock, mergeableState } from '@shared/merge'
+import { headBlockers, kindsText, mergeBlock, mergeableState } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
 import { roomHome } from '../../../nav'
 import type { State } from '../../../store'
@@ -65,7 +65,8 @@ export const BLOCKERS_STATUS: PrStatus = { label: 'Blockers found', tone: 'fail'
 export function blockersHold(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name: (agentId: string) => string): { reviewer: string; count: number } | undefined {
   const found = headBlockers({ ...ws, prHead: pr?.head ?? ws.prHead })
   if (!found || mergeBlock(ws, pr, rules, name, { override: true })) return undefined
-  return { reviewer: name(found.agentId), count: found.count }
+  // Named by kind of review: "Security found 2 blockers" (KERNEL-549).
+  return { reviewer: kindsText(found.lenses), count: found.count }
 }
 
 /**

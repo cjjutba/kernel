@@ -37,7 +37,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     agentName: (roomId, agentId) => k.team.agentOf(roomId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
     reviewState: (ws) => k.reviews.reviewState(ws),
-    // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121): its own, or Kernel's Theo (KERNEL-397).
+    // The team's reviewer, for usage data and for telling its old workspaces from reviews (KERNEL-121, KERNEL-397).
     reviewer: (roomId) => k.team.reviewerOf(roomId),
     autoReview: () => k.settings.pr.autoReview !== false,
     // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
@@ -81,6 +81,8 @@ export function listen(k: Kernel): () => void {
     const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.roomId : undefined
     if (merged) void k.lead.syncLead(merged, { fetch: true })
     if (e.type === 'pr' && e.state === 'merged') bus.track({ name: 'pr.merged' })
+    // A PR that passed checks gets the reviews its base branch's `[review]` asks for, started by Kernel (KERNEL-549).
+    if (e.type === 'pr' && e.state === 'ready') void k.reviews.onReady(e.workspaceId).catch(() => undefined)
     // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
     const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? k.autoArchive.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
     if (e.type === 'pr' && !reviews) k.autoArchive.unmarkReviews(...k.autoArchive.reviewsOf(e.workspaceId), e.workspaceId)

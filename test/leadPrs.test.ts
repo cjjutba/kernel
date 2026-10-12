@@ -38,7 +38,7 @@ describe('the order', () => {
     const read = (id: string) => ({ [id]: info(id) })
     const [row] = list([ws('blocked', { reviews: [verdict('approved', { sha: 'old' })] })], read('blocked'))
     expect(row.ready).toBe(false)
-    expect(row.state).toMatchObject({ label: 'Waiting for approval', tone: 'idle', spin: false, why: expect.stringContaining("Theo hasn't approved") })
+    expect(row.state).toMatchObject({ label: 'Waiting for approval', tone: 'idle', spin: false, why: expect.stringContaining("The code review hasn't approved") })
     expect(list([ws('fine', { reviews: [verdict('approved')] })], read('fine'))[0].ready).toBe(true)
   })
 
@@ -64,21 +64,26 @@ describe('what a not ready row says it waits on', () => {
 })
 
 describe('the review line', () => {
-  const name = (id: string) => agents.find((a) => a.id === id)?.name ?? id
-  it('says Not reviewed with no verdict', () => expect(reviewLine(ws('a'), undefined, name)).toEqual({ text: 'Not reviewed', tone: 'faint' }))
-  it('names who approved the head commit', () => expect(reviewLine(ws('a', { reviews: [verdict('approved')] }), undefined, name)).toEqual({ text: 'Theo approved', tone: 'good' }))
+  it('says Not reviewed with no verdict', () => expect(reviewLine(ws('a'), undefined)).toEqual({ text: 'Not reviewed', tone: 'faint' }))
+  it('names the kind of review that approved the head commit (KERNEL-549)', () => {
+    // A verdict from before review kinds is the code review's.
+    expect(reviewLine(ws('a', { reviews: [verdict('approved')] }), undefined)).toEqual({ text: 'Code approved', tone: 'good' })
+    expect(reviewLine(ws('a', { reviews: [verdict('approved'), verdict('approved', { lens: 'security' })] }), undefined).text).toBe('Code and security approved')
+  })
   it('counts the blockers on the head commit', () => {
     const blockers = [{ text: 'a' }, { text: 'b' }]
-    expect(reviewLine(ws('a', { reviews: [verdict('blockers', { blockers })] }), undefined, name)).toEqual({ text: 'Theo found 2 blockers', tone: 'bad' })
-    expect(reviewLine(ws('a', { reviews: [verdict('blockers')] }), undefined, name).text).toBe('Theo found 1 blocker')
+    expect(reviewLine(ws('a', { reviews: [verdict('blockers', { blockers, lens: 'security' })] }), undefined)).toEqual({ text: 'Security found 2 blockers', tone: 'bad' })
+    expect(reviewLine(ws('a', { reviews: [verdict('blockers')] }), undefined).text).toBe('Code found 1 blocker')
+    // Blockers from one kind win over another kind's approval.
+    expect(reviewLine(ws('a', { reviews: [verdict('approved'), verdict('blockers', { lens: 'ux' })] }), undefined).text).toBe('UX found 1 blocker')
   })
   it('does not count a verdict on an earlier commit, nor on another PR', () => {
-    expect(reviewLine(ws('a', { reviews: [verdict('approved', { sha: 'old' })] }), undefined, name).text).toBe('Theo reviewed an earlier commit')
-    expect(reviewLine(ws('a', { reviews: [verdict('approved', { prNumber: 9 })] }), undefined, name).text).toBe('Not reviewed')
+    expect(reviewLine(ws('a', { reviews: [verdict('approved', { sha: 'old' })] }), undefined).text).toBe('Reviewed an earlier commit')
+    expect(reviewLine(ws('a', { reviews: [verdict('approved', { prNumber: 9 })] }), undefined).text).toBe('Not reviewed')
   })
   it('reads the head commit from GitHub when it is newer than the last poll', () => {
     const pr = { head: 'new' } as PrInfo
-    expect(reviewLine(ws('a', { reviews: [verdict('approved', { sha: 'new' })] }), pr, name).text).toBe('Theo approved')
+    expect(reviewLine(ws('a', { reviews: [verdict('approved', { sha: 'new' })] }), pr).text).toBe('Code approved')
   })
 })
 
@@ -98,12 +103,16 @@ describe('what the tab and the Team update share (KERNEL-411)', () => {
 
   it('words a review the same way in both places', async () => {
     const { reviewPhrase } = await import('@shared/merge')
-    expect(reviewPhrase({ reviewing: 'Theo' })).toEqual({ text: 'Theo is reviewing', tone: 'faint' })
-    expect(reviewPhrase({ blockers: { name: 'Theo', count: 2 } })).toEqual({ text: 'Theo found 2 blockers', tone: 'bad' })
-    expect(reviewPhrase({ blockers: { name: 'Theo' } })).toEqual({ text: 'Theo found blockers', tone: 'bad' })
-    expect(reviewPhrase({ approvedBy: ['Theo'] })).toEqual({ text: 'Theo approved', tone: 'good' })
-    expect(reviewPhrase({ stale: 'Lumi' })).toEqual({ text: 'Lumi reviewed an earlier commit', tone: 'faint' })
+    // By kind of review, never by agent (KERNEL-549).
+    expect(reviewPhrase({ reviewing: ['code'] })).toEqual({ text: 'Code review is running', tone: 'faint' })
+    expect(reviewPhrase({ reviewing: ['code', 'ux'] })).toEqual({ text: 'Code and UX reviews are running', tone: 'faint' })
+    expect(reviewPhrase({ blockers: { lenses: ['security'], count: 2 } })).toEqual({ text: 'Security found 2 blockers', tone: 'bad' })
+    expect(reviewPhrase({ blockers: { lenses: ['code', 'security'] } })).toEqual({ text: 'Code and security found blockers', tone: 'bad' })
+    expect(reviewPhrase({ approved: ['code', 'security', 'ux'] })).toEqual({ text: 'Code, security and UX approved', tone: 'good' })
+    expect(reviewPhrase({ stale: true })).toEqual({ text: 'Reviewed an earlier commit', tone: 'faint' })
     expect(reviewPhrase({})).toEqual({ text: 'Not reviewed', tone: 'faint' })
+    // Blockers win over a review still running.
+    expect(reviewPhrase({ reviewing: ['ux'], blockers: { lenses: ['code'], count: 1 } }).text).toBe('Code found 1 blocker')
   })
 
   it("counts open PRs that can't merge yet in the band, never as no open PRs", async () => {

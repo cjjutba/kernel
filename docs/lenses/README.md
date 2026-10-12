@@ -1,0 +1,3 @@
+# Review prompts
+
+Kernel's own prompt for each kind of review it runs on a pull request (KERNEL-549): `code.md`, `security.md` and `ux.md`. A review runs one of these when the room's `[review]` table names no agent for it, when the code review has no reviewer to run it, or when the agent named would review its own pull request. Kernel bundles them into the app. Each one blocks only on what its review covers, using the blocker list in `BLOCKER_RULE` (KERNEL-377). Kernel's own rules for a review, such as where the branch is and how to report, come from `reviewRule`, so these files describe only the job.

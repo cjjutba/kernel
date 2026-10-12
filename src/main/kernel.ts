@@ -294,7 +294,7 @@ export class Kernel {
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
-      this.permissions.handlers(), this.mcp.handlers())
+      this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)

@@ -1,12 +1,12 @@
 import { EFFORTS, isRunName, MODELS } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, ReviewKind, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf, reviewOf } from './services/settings'
 import { CODEX_AUTO } from './features/permissions'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
@@ -54,7 +54,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, review: rs.review ?? reviewOf(undefined), sources: rs.sources ?? {} }
   }
   /** A provider's status table: the fixture's, else Kernel's bundled copy, signed in (KERNEL-406). */
   const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }
@@ -331,6 +331,19 @@ export function fixtureHandlers(f: Fixture): Handlers {
       next.scripts = { ...(next.scripts as RoomSettings['scripts']), run }
       next.runScripts = [...(run ? [{ name: 'run', command: run }] : []), ...[...runs].filter(([n]) => n !== 'run').map(([name, command]) => ({ name, command }))]
       f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
+      return roomSettings(roomId)
+    },
+    // Keeps the change for the life of the fixture, as `settings.setRoom` does. `null` puts the default back.
+    'settings.setReview': async ({ roomId, review }) => {
+      const cur = roomSettings(roomId)
+      const defaults = reviewOf(undefined)
+      const next = structuredClone(cur.review ?? defaults)
+      if (review.rounds !== undefined) next.rounds = review.rounds ?? defaults.rounds
+      for (const [kind, own] of Object.entries(review.kinds ?? {}) as [ReviewKind, Record<string, unknown>][]) {
+        const k = next.kinds[kind] as unknown as Record<string, unknown>
+        for (const [key, v] of Object.entries(own)) if (v !== undefined) k[key] = v ?? (defaults.kinds[kind] as unknown as Record<string, unknown>)[key]
+      }
+      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...cur, review: next } }
       return roomSettings(roomId)
     },
     'files.preview': async ({ roomId, patterns }) => {

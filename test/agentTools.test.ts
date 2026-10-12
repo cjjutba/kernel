@@ -21,6 +21,19 @@ describe('agent tools', () => {
     expect(toolPolicy(undefined, { disallowed: [] })).toBeUndefined()
   })
 
+  // KERNEL-549: a review chat only reads, whatever its agent's file says. Bash stays for git and gh.
+  it('keeps a read-only session from writing any file, a plan included, whatever its tools line says', () => {
+    const plans = '/Users/you/.claude/plans'
+    for (const p of [toolPolicy(undefined, { readOnly: true, plans })!, toolPolicy(['Read', 'Edit', 'Write', 'NotebookEdit', 'Bash'], { readOnly: true, plans })!]) {
+      expect(p.hidden).toEqual(expect.arrayContaining(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']))
+      for (const t of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']) expect(p.allows(t, { file_path: `${plans}/plan.md` }), t).toBe(false)
+      expect(p.disallows('Edit')).toBe(true)
+      for (const t of ['Bash', 'Read', 'mcp__kernel__submit_review']) expect(p.allows(t), t).toBe(true)
+    }
+    // Without it, a plan file still takes a write.
+    expect(toolPolicy(['Read'], { plans })!.allows('Write', { file_path: `${plans}/plan.md` })).toBe(true)
+  })
+
   // KERNEL-451: an empty tools line is no tools in Claude Code, so the agent keeps only Kernel's tools and the session's.
   it('leaves an agent with an empty tools line only the tools every agent keeps', () => {
     const none = toolPolicy([])!

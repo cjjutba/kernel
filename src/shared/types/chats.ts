@@ -1,4 +1,4 @@
-import type { PermissionMode } from './settings'
+import type { PermissionMode, ReviewKind } from './settings'
 import type { TrackerKind } from './trackers'
 import type { ChangedFile } from './workspaces'
 
@@ -78,6 +78,12 @@ export interface Chat {
   unreadAt?: number
   /** Claude's guess at the user's next message, sent after a turn. The next turn to start clears it. Codex chats never get one (KERNEL-530). */
   suggestion?: string
+  /**
+   * The review this chat runs in a review workspace Kernel started (KERNEL-549), fixed when the review starts. `agent` is the
+   * room agent whose prompt it runs, absent when Kernel's own prompt for `kind` does. `optional`: the kind wasn't required
+   * for the PR, so its approval doesn't count toward a merge. A review chat from before has none and reads as the code review.
+   */
+  lens?: { kind: ReviewKind; agent?: string; optional?: true }
   createdAt: number
 }
 
@@ -243,7 +249,10 @@ export interface TeamUpdate {
   allMerged?: boolean
 }
 
-/** A reviewer's verdict from submit_review. `sha` is the review worktree's HEAD; a verdict for an older commit is stale. */
+/**
+ * A reviewer's verdict from submit_review. `sha` is the review worktree's HEAD; a verdict for an older commit is stale. A review
+ * workspace keeps one verdict per kind of review (KERNEL-549).
+ */
 export interface ReviewVerdict {
   /** The review workspace that sent it, and its agent. */
   workspaceId: string
@@ -254,6 +263,10 @@ export interface ReviewVerdict {
   sha?: string
   /** The PR it was about. A verdict for another number no longer counts. */
   prNumber?: number
+  /** The kind of review it is (KERNEL-549). A verdict from before has none and counts as the code review's. */
+  lens?: ReviewKind
+  /** Its kind wasn't required for the PR: its approval doesn't count toward a merge, and its blockers still hold one. */
+  optional?: true
   ts: number
 }
 

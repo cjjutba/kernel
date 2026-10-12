@@ -231,7 +231,7 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules, undefined, undefined, 'merge')).toEqual({ kind: 'merged' })
     expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
     const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
-    expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("Theo hasn't approved") })
+    expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("The code review hasn't approved") })
   })
 
   it('draws the button, the reason, the spinner and the merged label, and toasts a failed merge', async () => {

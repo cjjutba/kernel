@@ -2,7 +2,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
-import { blockedWhy, headBlockers, notMergeable } from '@shared/merge'
+import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
@@ -492,11 +492,10 @@ export function kernelTools(d: KernelToolDeps) {
         const pr = ws.prNumber ? `#${ws.prNumber}` : ws.name
         const not = NOT_MERGEABLE[ws.prState]
         if (not) { lines.push(`Skipped ${pr}: ${not}.`); continue }
-        // Only a person merges past a reviewer's blockers, so the Lead points the user at the button instead (KERNEL-497).
+        // Only a person merges past a review's blockers, so the Lead points the user at the button instead (KERNEL-497, KERNEL-549).
         const found = headBlockers(ws)
         if (found) {
-          const by = (await d.agents().catch(() => [])).find((a) => a.id === found.agentId)?.name ?? found.agentId
-          lines.push(`Skipped ${pr}: ${by} found ${found.count} ${found.count === 1 ? 'blocker' : 'blockers'}. Merge it from its Merge anyway button if you want it in.`)
+          lines.push(`Skipped ${pr}: ${reviewsText(found.lenses).replace(/^The/, 'the')} found ${found.count} ${found.count === 1 ? 'blocker' : 'blockers'}. Merge it from its Merge anyway button if you want it in.`)
           continue
         }
         try {

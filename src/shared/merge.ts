@@ -1,4 +1,4 @@
-import type { AppSettings, PrBlocked, PrCheck, PrInfo, PrState, ReviewVerdict, Workspace } from './types'
+import { REVIEW_KINDS, type AppSettings, type PrBlocked, type PrCheck, type PrInfo, type PrState, type ReviewKind, type ReviewVerdict, type Workspace } from './types'
 
 /**
  * Whether a PR may merge, one rule for every Merge button and the Lead's tools (KERNEL-115). Pure, so main and the
@@ -40,15 +40,66 @@ export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prH
   return { verdicts, current: verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead) }
 }
 
+/** A verdict's kind of review. One from before review kinds counts as the code review's (KERNEL-549). */
+export const lensOf = (v: Pick<ReviewVerdict, 'lens'>): ReviewKind => v.lens ?? 'code'
+
+/** Kinds in a sentence, in REVIEW_KINDS' order: "Code", "Security and UX", "Code, security and UX". */
+export function kindsText(kinds: readonly ReviewKind[]): string {
+  const words = REVIEW_KINDS.filter((k) => kinds.includes(k.id)).map((k) => (k.id === 'ux' ? k.label : k.label.toLowerCase()))
+  const list = words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}` : words[0] ?? ''
+  return list.charAt(0).toUpperCase() + list.slice(1)
+}
+
+/** "The code review", "The code and security reviews". */
+export function reviewsText(kinds: readonly ReviewKind[]): string {
+  const list = kindsText(kinds)
+  return `The ${list.startsWith('UX') ? list : list.charAt(0).toLowerCase() + list.slice(1)} ${kinds.length === 1 ? 'review' : 'reviews'}`
+}
+
+/** Where each kind of review stands on the PR's head commit (KERNEL-549). Kinds come in REVIEW_KINDS' order. */
+export interface KindStates {
+  /** Kinds with a verdict on this PR, on any commit. */
+  ran: ReviewKind[]
+  /** Kinds whose verdict on the head commit found blockers. */
+  blocking: ReviewKind[]
+  /** How many blockers they found: the latest blocking verdict of each kind, added up. */
+  count: number
+  /** The agent behind the latest of those verdicts. */
+  agentId?: string
+  /** Kinds that approved the head commit, where no verdict of the same kind found blockers on it. */
+  approved: ReviewKind[]
+  /** Required kinds that ran and haven't approved the head commit. A kind is required unless its latest verdict says optional. */
+  waiting: ReviewKind[]
+}
+
 /**
- * The reviewer who found blockers on the PR's head commit, by agent id, and how many that review found, or nothing. With
- * blockers from more than one review, the latest names them. Pass GitHub's head as `prHead` when there is a fresh read.
+ * The PR's verdicts read kind by kind (KERNEL-549). Verdicts of two kinds both count. Within a kind, blockers on the head
+ * commit from any review hold it, and an approval of the head commit stands only without them.
  */
-export function headBlockers(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { agentId: string; count: number } | undefined {
-  const blocking = reviewVerdicts(ws).current.filter((v) => v.verdict === 'blockers')
-  if (!blocking.length) return undefined
-  const v = blocking.reduce((a, b) => (b.ts > a.ts ? b : a))
-  return { agentId: v.agentId, count: v.blockers?.length || 1 }
+export function kindStates(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): KindStates {
+  const { verdicts, current } = reviewVerdicts(ws)
+  const latest = <T extends { ts: number }>(vs: T[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
+  const kinds = REVIEW_KINDS.map((k) => k.id)
+  const ran = kinds.filter((k) => verdicts.some((v) => lensOf(v) === k))
+  const blockingOf = (k: ReviewKind) => current.filter((v) => lensOf(v) === k && v.verdict === 'blockers')
+  const blocking = ran.filter((k) => blockingOf(k).length)
+  const all = current.filter((v) => v.verdict === 'blockers')
+  const approved = ran.filter((k) => !blocking.includes(k) && current.some((v) => lensOf(v) === k && v.verdict === 'approved'))
+  const required = (k: ReviewKind) => !latest(verdicts.filter((v) => lensOf(v) === k)).optional
+  return {
+    ran, blocking, count: blocking.reduce((n, k) => n + (latest(blockingOf(k)).blockers?.length || 1), 0),
+    ...(all.length ? { agentId: latest(all).agentId } : {}),
+    approved, waiting: ran.filter((k) => required(k) && !approved.includes(k))
+  }
+}
+
+/**
+ * The reviews that found blockers on the PR's head commit, how many they found, and the agent behind the latest of them, or
+ * nothing (KERNEL-497, read per kind since KERNEL-549). Pass GitHub's head as `prHead` when there is a fresh read.
+ */
+export function headBlockers(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { agentId: string; count: number; lenses: ReviewKind[] } | undefined {
+  const s = kindStates(ws)
+  return s.blocking.length && s.agentId ? { agentId: s.agentId, count: s.count, lenses: s.blocking } : undefined
 }
 
 /**
@@ -65,12 +116,12 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
  * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now: it has to be
  * ready or open, and settled on whether it conflicts, which GitHub works out again each time the base moves (KERNEL-376).
  * Only the checks that decide the PR count, and GitHub's own branch rules hold it too (KERNEL-388). Its head commit wins
- * over the one the last poll saw. Blockers on the head commit hold the merge whatever the settings say (KERNEL-497). With
- * "require Reviewer approval" on, a PR a reviewer looked at needs an approval of its head commit too; one nobody reviewed
- * merges as before. `override` is a person's Merge anyway: it skips the review, and only the review. `name` turns an agent
- * id into the reviewer's name.
+ * over the one the last poll saw. Blockers on the head commit, from any kind of review, hold the merge whatever the settings
+ * say (KERNEL-497, KERNEL-549). With "require Reviewer approval" on, every required kind of review that looked at the PR
+ * needs to have approved its head commit; a PR nobody reviewed merges as before. `override` is a person's Merge anyway: it
+ * skips the review, and only the review. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
  */
-export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
+export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, _name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
   if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
   if (rules.requireGreen && pr && !allGreen(gatingChecks(pr.checks))) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
@@ -79,32 +130,38 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
   if (pr && (pr.conflictsUnknown || !mergeableState(pr.state))) return 'This pull request is not ready to merge.'
   if (o.override) return undefined
-  const at = { ...ws, prHead: pr?.head ?? ws.prHead }
-  const found = headBlockers(at)
-  if (found) return `${name(found.agentId)} found ${found.count} ${found.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
-  if (!rules.requireReviewer) return undefined
-  // Nobody approved the head commit of a PR a reviewer looked at: whoever reviewed last holds it.
-  const { verdicts, current } = reviewVerdicts(at)
-  if (!verdicts.length || current.some((v) => v.verdict === 'approved')) return undefined
-  const holder = verdicts.reduce((a, b) => (b.ts > a.ts ? b : a))
-  return `${name(holder.agentId)} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`
+  const s = kindStates({ ...ws, prHead: pr?.head ?? ws.prHead })
+  if (s.blocking.length) return `${reviewsText(s.blocking)} found ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
+  if (!rules.requireReviewer || !s.waiting.length) return undefined
+  return `${reviewsText(s.waiting)} ${s.waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
 }
 
 /** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
 export interface ReviewPhrase { text: string; tone: 'good' | 'bad' | 'faint' }
 
 /**
- * One wording for a PR's review wherever it shows (KERNEL-411): "Theo is reviewing", "Theo found 2 blockers", "Theo approved",
- * "Lumi reviewed an earlier commit" or "Not reviewed". Names come resolved. A review in progress wins, then blockers on the
- * head commit, then approvals of it, then a review of an earlier commit.
+ * One wording for a PR's review wherever it shows (KERNEL-411), by kind of review (KERNEL-549): "Security found 2 blockers",
+ * "Code and security reviews are running", "Review is starting", "Code and security approved", "Reviewed an earlier commit" or
+ * "Not reviewed".
+ * Blockers on the head commit win, then reviews still running, then approvals of it, then a review of an earlier commit.
  */
-export function reviewPhrase(r: { reviewing?: string; blockers?: { name: string; count?: number }; approvedBy?: string[]; stale?: string | true }): ReviewPhrase {
-  if (r.reviewing) return { text: `${r.reviewing} is reviewing`, tone: 'faint' }
-  if (r.blockers) {
+export function reviewPhrase(r: { reviewing?: ReviewKind[]; blockers?: { lenses: ReviewKind[]; count?: number }; approved?: ReviewKind[]; stale?: boolean }): ReviewPhrase {
+  if (r.blockers?.lenses.length) {
     const n = r.blockers.count
-    return { text: `${r.blockers.name} found ${n ? `${n} ${n === 1 ? 'blocker' : 'blockers'}` : 'blockers'}`, tone: 'bad' }
+    return { text: `${kindsText(r.blockers.lenses)} found ${n ? `${n} ${n === 1 ? 'blocker' : 'blockers'}` : 'blockers'}`, tone: 'bad' }
   }
-  if (r.approvedBy?.length) return { text: `${r.approvedBy.join(' and ')} approved`, tone: 'good' }
-  if (r.stale) return { text: r.stale === true ? 'Reviewed an earlier commit' : `${r.stale} reviewed an earlier commit`, tone: 'faint' }
+  // No kinds yet: Kernel is still working out which reviews the PR gets.
+  if (r.reviewing) return { text: r.reviewing.length ? `${kindsText(r.reviewing)} ${r.reviewing.length === 1 ? 'review is' : 'reviews are'} running` : 'Review is starting', tone: 'faint' }
+  if (r.approved?.length) return { text: `${kindsText(r.approved)} approved`, tone: 'good' }
+  if (r.stale) return { text: 'Reviewed an earlier commit', tone: 'faint' }
   return { text: 'Not reviewed', tone: 'faint' }
+}
+
+/** The PR's review in those words from its verdicts alone, for the PRs tab, which doesn't know what is running. */
+export function verdictPhrase(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): ReviewPhrase {
+  const s = kindStates(ws)
+  if (!s.ran.length) return reviewPhrase({})
+  if (s.blocking.length) return reviewPhrase({ blockers: { lenses: s.blocking, count: s.count } })
+  if (s.approved.length) return reviewPhrase({ approved: s.approved })
+  return reviewPhrase({ stale: true })
 }
