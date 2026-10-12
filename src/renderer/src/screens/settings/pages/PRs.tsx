@@ -12,9 +12,9 @@ const setAuto = (patch: Partial<Pr['autoMerge']>) => void patchSettings({ pr: { 
 /** The paths Kernel always sends to the user, in words. A path this doesn't know shows as written. Files show in mono. */
 const BUILT_IN: Record<string, { text: string; mono?: boolean }> = {
   '.kernel/**': { text: 'Kernel settings' },
-  '.claude/agents/**': { text: 'Agent files' },
-  'CLAUDE.md': { text: 'CLAUDE.md', mono: true },
-  'AGENTS.md': { text: 'AGENTS.md', mono: true },
+  '**/.claude/agents/**': { text: 'Agent files' },
+  '**/CLAUDE.md': { text: 'CLAUDE.md', mono: true },
+  '**/AGENTS.md': { text: 'AGENTS.md', mono: true },
   '.github/workflows/**': { text: 'CI workflows' }
 }
 
