@@ -65,7 +65,11 @@
     "PanelToolbarChecks.dc.html": { "x": 4560, "y": 13320, "w": 1440, "h": 900, "title": "Panel toolbar: Checks" },
     "PanelFilter.dc.html": { "x": 6080, "y": 13320, "w": 1440, "h": 900, "title": "Panel: Changes with the filter open" },
     "PanelSetup.dc.html": { "x": 7600, "y": 13320, "w": 1440, "h": 900, "title": "Panel: waiting on setup" },
-    "PanelCompare.dc.html": { "x": 9120, "y": 13320, "w": 1440, "h": 900, "title": "Panel: Changes compare menu" }
+    "PanelCompare.dc.html": { "x": 9120, "y": 13320, "w": 1440, "h": 900, "title": "Panel: Changes compare menu" },
+    "ChatRail.dc.html": { "x": 1520, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: at rest" },
+    "ChatRailOpen.dc.html": { "x": 3040, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: list open" },
+    "ChatRailLead.dc.html": { "x": 4560, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: Rowan's chat with Team updates" },
+    "ChatRailNarrow.dc.html": { "x": 6080, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: right panel open" }
   },
   "order": [
     "Main.dc.html", "Proposed.dc.html", "ProposedSetup.dc.html", "ProposedTerminal.dc.html",
@@ -77,12 +81,14 @@
     "TeamUpdateMerge.dc.html", "LeadPrs.dc.html", "LeadPrsEmpty.dc.html", "PrReadyHidden.dc.html", "PrCiFailHidden.dc.html", "PrMergedOpen.dc.html", "PrMergedHidden.dc.html", "PrMergedHiddenLong.dc.html", "HeaderBranchTooltip.dc.html",
     "LeadPrsMerging.dc.html", "LeadPrsNoneReady.dc.html", "LeadPrsMergeAll.dc.html", "LeadPrsMergeAllRunning.dc.html", "LeadPrsMergeAllStopped.dc.html",
     "PrLocalReady.dc.html", "PrLocalBehind.dc.html", "PrLocalConflict.dc.html", "PrLocalMerging.dc.html", "PrLocalMerged.dc.html", "PrLocalDirty.dc.html",
-    "PanelSplit.dc.html", "PanelSplitLead.dc.html", "PanelCollapsed.dc.html", "PanelResize.dc.html", "PanelTabsOverflow.dc.html", "PanelToolbarPrs.dc.html", "PanelToolbarFiles.dc.html", "PanelToolbarChanges.dc.html", "PanelToolbarChecks.dc.html", "PanelFilter.dc.html", "PanelSetup.dc.html", "PanelCompare.dc.html"
+    "PanelSplit.dc.html", "PanelSplitLead.dc.html", "PanelCollapsed.dc.html", "PanelResize.dc.html", "PanelTabsOverflow.dc.html", "PanelToolbarPrs.dc.html", "PanelToolbarFiles.dc.html", "PanelToolbarChanges.dc.html", "PanelToolbarChecks.dc.html", "PanelFilter.dc.html", "PanelSetup.dc.html", "PanelCompare.dc.html",
+    "ChatRail.dc.html", "ChatRailOpen.dc.html", "ChatRailLead.dc.html", "ChatRailNarrow.dc.html"
   ],
   "notes": {
     "prstates": { "x": 1520, "y": 4080, "text": "PR states", "kind": "title1", "maxW": 7520 },
     "localmerge": { "x": 1520, "y": 10700, "text": "Local merge, for a repo with no GitHub remote", "kind": "title1", "maxW": 9040 },
-    "rightpanel": { "x": 1520, "y": 12000, "text": "Right panel: split, collapse, overflow and toolbar per tab", "kind": "title1", "maxW": 9040 }
+    "rightpanel": { "x": 1520, "y": 12000, "text": "Right panel: split, collapse, overflow and toolbar per tab", "kind": "title1", "maxW": 9040 },
+    "chatrail": { "x": 1520, "y": 14320, "text": "Chat rail: jump back to an earlier message", "kind": "title1", "maxW": 9040 }
   },
   "designSystems": []
 }

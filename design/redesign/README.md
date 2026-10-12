@@ -104,6 +104,10 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `PanelFilter` | Changes with the filter field open under the strip (KERNEL-512) | `screens/workspace/Panels.tsx` |
 | `PanelSetup` | A chat waiting on setup: the Setup tab open in the bottom third, the top tabs unchanged (KERNEL-512) | `screens/workspace/SetupWait.tsx`, `Panels.tsx` |
 | `PanelCompare` | The Changes ⋯ menu: Target branch, All changes (checked), Uncommitted changes, then one row per commit (KERNEL-512) | `screens/workspace/Panels.tsx` |
+| `ChatRail` | A teammate chat scrolled partway up a long transcript. The rail's marks sit in the right gutter with the message in view brighter, and the scroll to bottom button (KERNEL-532) sits above the composer (KERNEL-535) | `screens/workspace/Transcript.tsx`, `workspace.css` |
+| `ChatRailOpen` | The same chat with the list open and one row under the pointer. The row for the message in view is in full ink (KERNEL-535) | `screens/workspace/Transcript.tsx`, `workspace.css` |
+| `ChatRailLead` | Rowan's chat with the list open. The user's messages and Team update rows share it, and Team updates are quieter (KERNEL-535) | `screens/workspace/Transcript.tsx`, `cards/teamUpdate.ts`, `workspace.css` |
+| `ChatRailNarrow` | The right panel open at its default width, where the thread fills the column. The rail sits in the column's side padding, clear of the text (KERNEL-535) | `screens/workspace/Transcript.tsx`, `workspace.css` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
 
@@ -156,6 +160,20 @@ The `Panel*` screens draw the reworked right panel for KERNEL-510. They use the 
 - **Compare menu.** A 332px menu under the ⋯, in the menu look: `surface-2`, a `line-3` hairline, no shadow. The first row is Target branch with a picker showing `origin/main`. A hairline, then All changes (checked) and Uncommitted changes. A second hairline, then one row per commit: the subject on one line, then the short sha in mono, the author, and the age at the right. A check marks the one choice. `PanelCompare`.
 - **Run empty state.** The play icon, a Run button under it, and the port line. While this state shows, the strip has no Run of its own, so the button isn't on screen twice. The strip shows Stop while the script runs, and Run on the Terminal tab and on the collapsed bar.
 - **Setup wait.** The bottom opens on Setup and the top keeps its tabs, as the Setup wait section says. `PanelSetup`.
+
+## Chat rail (KERNEL-535)
+
+The `ChatRail` screens draw a rail on the chat's right edge for jumping back to an earlier message. The chats, messages and Team updates in them are sample content, not spec. They draw the window without the footer (KERNEL-527), as the app is now, and the sidebar's bottom row holds Ask Rowan.
+
+- **Marks.** One 2px line per message, right-aligned in a stack that starts 12px under the tab row, 8px apart. A message is 12px long. In Rowan's chat a Team update is 6px long. Marks rest in `--faint` and the message in view is `--ink`. That is the newest message whose top has passed the top edge of the view, or the last one when the view is at the bottom. The rail stays put while the transcript scrolls. When the stack would pass the transcript's height, the gap tightens to fit.
+- **Where it sits.** The rail is a 22px button, 6px in from the chat column's right edge, so it clears a scrollbar. The thread is 760px and centred, so with the right panel hidden at 1440 the rail sits in the empty gutter, about 190px from the thread. With the panel open the thread fills the column (726px at 1440) and the rail takes the column's 32px side padding. Its marks are 9px from the text and never cover it (`ChatRailNarrow`).
+- **Count.** The rail is hidden until the chat has two messages to list.
+- **The list.** Hover or keyboard focus opens it. It is a menu popover: `--surface-2`, a `--line-3` hairline, a 10px radius, 6px padding and no shadow. It is 320px wide, its right edge 8px left of the rail and its top level with the rail's top. While it is open the rail takes the `--surface-3` fill, as any button does while its menu is open. The list holds up to 15 rows and scrolls past that, with a half row showing at the bottom. It opens scrolled so the message in view shows.
+- **Rows.** 28px high, 13px, one line with an ellipsis, the first line of the message, oldest at the top. A row is `--ink-2`. The message in view is `--ink` at weight 500. The row under the pointer or the keyboard takes the `--hover` fill and `--ink`.
+- **Team updates.** In Rowan's chat they are listed too, in `--muted`, with the shorter mark. A row reads the teammate, a comma and the newest event in a few words: "Kai, PR ready", "Kai, checks failed", "Noor, opened PR #161", "Noor, merged PR #150", "Theo, approved". Never "Team update from Kernel". An update with several rows reads its first row and ends with the others as a faint count, "+1". Under the pointer it goes to `--ink-2`, one step quieter than a message.
+- **Keys.** The rail is a button with the label "Jump to message", `aria-haspopup="listbox"` and `aria-expanded`. Tab to it opens the list with the message in view as the active row. Up and Down move the active row, Home and End go to the ends, Enter jumps and Esc closes the list and keeps focus on the rail. The rows are `option`s.
+- **Jump.** A click or Enter closes the list and scrolls the transcript so the message's top sits 16px under the tab row, smoothly, or at once with reduced motion. The message then holds a 1px `--line-4` ring for 1.2s, fading out over its last 400ms. A still can't show this, so no screen draws it. The jumped-to message becomes the one in view.
+- **Scroll to bottom (KERNEL-532).** `ChatRail` and `ChatRailOpen` draw it beside the rail so the two read together. It is a 32px round button on `--surface` with a `--line-3` hairline and a 16px down arrow in `--ink-2`, centred on the thread 12px above the composer. It shows only while the transcript is scrolled up, so `ChatRailLead` and `ChatRailNarrow`, which are at the bottom, don't have it. KERNEL-532 owns the button, so its numbers here only show how the two sit together.
 
 ## Not built
 
