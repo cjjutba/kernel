@@ -613,6 +613,8 @@ export const teamFixtures: Record<string, Fixture> = {
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
+  // No PNG: Settings, Appearance, Density set to Compact, which tightens the inbox rows too (KERNEL-538).
+  InboxCompact: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, density: 'compact' } }, ui: { route: { name: 'inbox' } } })),
   // No PNG: two agents in the same file, which the floor showed until D-104. The newest row, so the detail pane opens on it.
   InboxOverlap: scene((f) => ({
     ...homeScene(f),

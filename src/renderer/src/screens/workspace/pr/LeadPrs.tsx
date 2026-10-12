@@ -1,8 +1,8 @@
-import type { ReactNode } from 'react'
 import type { MergeAllResult } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
+import { PanelTools, RefreshButton } from '../PanelTools'
 import { MergeButton, PrStatusTag } from './MergeButton'
 import { failTitle, prDisplayTitle } from './model'
 import { useLeadPrs, type LeadPr } from './leadPrList'
@@ -12,22 +12,32 @@ import './pr.css'
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
  * Ready ones come first with Merge, the rest follow muted with what they wait on, in the words every place uses (KERNEL-417). One
  * that only blockers hold back says Blockers found and offers Merge anyway, and never counts as ready (KERNEL-501).
- * Each row opens its workspace. Two or more ready PRs get Merge all, which merges them in order and stops at the first that
+ * Each row opens its workspace. The strip beside the tabs holds the tab's actions (PanelToolbarPrs.png, KERNEL-515): Refresh, which reads
+ * every listed PR again, and, with two or more ready PRs, Merge all, which merges them in order and stops at the first that
  * can't merge (KERNEL-411).
  */
 export function LeadPrs({ roomId }: { roomId: string }) {
   const rows = useLeadPrs(roomId)
   const stop = useStore((s) => s.mergeStops[roomId])
   const stopped = stop ? stoppedText(stop) : null
-  if (!rows.length && !stopped) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
   const ready = rows.filter((r) => r.ready)
   const rest = rows.filter((r) => !r.ready)
   return (
-    <div className="panel-scroll" aria-label="Pull requests">
-      {stopped && <p className="lp-notice" role="status">{stopped}</p>}
-      {ready.length > 0 && <Section title="Ready to merge" rows={ready} action={<MergeAll roomId={roomId} rows={ready} />} />}
-      {rest.length > 0 && <Section title="Still open" rows={rest} />}
-    </div>
+    <>
+      <PanelTools>
+        <MergeAll roomId={roomId} rows={ready} />
+        {rows.length > 0 && <RefreshButton ids={rows.map((r) => r.ws.id)} label="Refresh pull requests" failTitle="Could not refresh pull requests" />}
+      </PanelTools>
+      {!rows.length && !stopped
+        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
+        : (
+          <div className="panel-scroll" aria-label="Pull requests">
+            {stopped && <p className="lp-notice" role="status">{stopped}</p>}
+            {ready.length > 0 && <Section title="Ready to merge" rows={ready} />}
+            {rest.length > 0 && <Section title="Still open" rows={rest} />}
+          </div>
+        )}
+    </>
   )
 }
 
@@ -44,7 +54,7 @@ export function stoppedText(r: MergeAllResult): string | null {
 }
 
 /**
- * Merge all on the Ready to merge heading, with two or more PRs that can merge. While it runs, the button says which PR of how
+ * Merge all in the panel's strip, with two or more PRs that can merge. While it runs, the button says which PR of how
  * many is merging, from the run's `pr.queue` pushes. The row merging spins as every place showing it does (KERNEL-417), and the
  * rows still to come say Next. Where a run stopped comes back on the last push, so the tab shows it from the store. A PR with an
  * action pending, such as a Merge pressed in a Team update a moment ago, is left out of what it sends (KERNEL-520).
@@ -61,15 +71,15 @@ function MergeAll({ roomId, rows }: { roomId: string; rows: LeadPr[] }) {
   })
   return (
     <span className="pr-tone lp-all" data-tone="ready">
-      <Button className="pr-soft tucard-merge" busy={!!busy || !!queue} busyLabel={label} onClick={start}>Merge all</Button>
+      <Button className="pr-soft" aria-label={busy || queue ? undefined : 'Merge all ready pull requests'} busy={!!busy || !!queue} busyLabel={label} onClick={start}>Merge all</Button>
     </span>
   )
 }
 
-function Section({ title, rows, action }: { title: string; rows: LeadPr[]; action?: ReactNode }) {
+function Section({ title, rows }: { title: string; rows: LeadPr[] }) {
   return (
     <section>
-      <div className="lp-sec"><h3>{title}</h3><span className="mono">{rows.length}</span>{action}</div>
+      <div className="lp-sec"><h3>{title}</h3><span className="mono">{rows.length}</span></div>
       <ul className="lp-list">{rows.map((r) => <Row key={r.ws.id} row={r} />)}</ul>
     </section>
   )

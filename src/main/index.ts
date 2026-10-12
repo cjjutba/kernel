@@ -194,12 +194,14 @@ function createWindow() {
     // A hidden page counts as in the background, and Chromium would slow its timers and frames.
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless }
   })
-  // The default menu would close the window on Cmd+W. Kernel closes the open tab instead, so the page hears about it.
+  // The default menu would close the window on Cmd+W and reload it on Cmd+R. Kernel closes the open tab and runs the dev
+  // script instead, so the page hears about them (KERNEL-539). View, Reload stays in the menu.
   win.webContents.on('before-input-event', (e, input) => {
-    if (input.type === 'keyDown' && input.meta && !input.shift && !input.alt && !input.control && input.key.toLowerCase() === 'w') {
-      e.preventDefault()
-      void win?.webContents.executeJavaScript("window.dispatchEvent(new Event('kernel:close-tab'))")
-    }
+    if (input.type !== 'keyDown' || !input.meta || input.shift || input.alt || input.control) return
+    const event = { w: 'kernel:close-tab', r: 'kernel:run-script' }[input.key.toLowerCase()]
+    if (!event) return
+    e.preventDefault()
+    void win?.webContents.executeJavaScript(`window.dispatchEvent(new Event('${event}'))`)
   })
   if (!headless) win.once('ready-to-show', () => win?.show())
   win.on('closed', () => { preview?.closeAll(); win = null })
@@ -338,9 +340,9 @@ app.whenReady().then(async () => {
       currentNotes: app.isPackaged ? undefined : readNotes(join(app.getAppPath(), 'site', 'content', 'releases', `${app.getVersion()}.md`)),
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
       onSettings: (s) => { const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
-      showNotification: (n, { silent }) => {
+      showNotification: (n, { silent, sound }) => {
         if (!Notification.isSupported()) return
-        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
+        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent, ...(sound ? { sound } : {}) })
         banner.on('click', () => focusWindow())
         // macOS shows notifications only from a signed app (Electron 42), so an unsigned build says why here instead.
         banner.on('failed', (_e, error) => console.error(`[kernel] could not show a notification: ${error}`))

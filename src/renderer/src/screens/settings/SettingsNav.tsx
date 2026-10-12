@@ -30,9 +30,6 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
 const isTextField = (el: HTMLElement) =>
   el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !/^(checkbox|radio|button|submit|range|color|file)$/.test(el.type))
 
-/** The room whose pages were open last, so the room stays expanded when you move to an app page. */
-let lastRoomId: string | undefined
-
 /**
  * What the sidebar frame holds in Settings (KERNEL-509): back to the app, search, the app pages, and each room with its own pages under it.
  * Search filters the list by name. The top stays put; the list under it scrolls, and the open page scrolls into view there. The frame
@@ -42,7 +39,6 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
-  if (page === 'room' && roomId) lastRoomId = roomId
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
@@ -70,8 +66,8 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label)) })).filter((g) => g.items.length)
-  // The room you are in is expanded. On an app page, it is the one you were in last, or the first.
-  const open = rooms.find((r) => r.id === (page === 'room' ? roomId : lastRoomId))?.id ?? rooms[0]?.id
+  // Only the room whose page is open is expanded. On an app page every room is folded.
+  const open = page === 'room' ? rooms.find((r) => r.id === roomId)?.id : undefined
   const searching = !!q.trim()
   // A search that matches a room's name shows all its pages, and one that matches a page name shows that page.
   const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
@@ -105,14 +101,20 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
                 <div key={r.id}>
                   <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
                     // Another room opens on its General page. Its own row folds and unfolds its pages.
-                    if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
+                    if (open === r.id) setFolded(expanded ? r.id : null)
                     else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
                   }}>
-                    <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
+                    <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span>
                   </button>
-                  {expanded && pages.map((p, n) => (
-                    <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
-                  ))}
+                  {expanded && (
+                    <div className="set-pages" data-room-end={open === r.id ? '' : undefined}>
+                      {pages.map((p) => (
+                        <button key={p.section} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>
+                          <Icon name={p.icon} size={15} />{p.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
