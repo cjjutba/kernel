@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChatItem } from '@shared/types'
 
 const user = (o: Partial<Extract<ChatItem, { kind: 'user' }>> = {}): ChatItem => ({ kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build it' }], ...o })
@@ -108,5 +108,38 @@ describe('whether following may move the view (KERNEL-629)', () => {
     const { movesToEnd } = await load()
     expect(movesToEnd(view(300), true)).toBe(false)
     expect(movesToEnd(view(0), true)).toBe(false)
+  })
+})
+
+describe('the reader\'s input letting go when no scroll follows it (KERNEL-629)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ lapse: (ms: number, fn: () => void) => { (): void; cancel: () => void } }>
+
+  it('fires once after the wait, so a pull past the end does not block following for good', async () => {
+    vi.useFakeTimers()
+    const { lapse } = await load()
+    const fn = vi.fn()
+    const input = lapse(200, fn)
+    input()
+    vi.advanceTimersByTime(199)
+    expect(fn).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(fn).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('waits again while scroll events keep restarting it, and not at all once cancelled', async () => {
+    vi.useFakeTimers()
+    const { lapse } = await load()
+    const fn = vi.fn()
+    const input = lapse(200, fn)
+    input()
+    vi.advanceTimersByTime(150)
+    input()
+    vi.advanceTimersByTime(150)
+    expect(fn).not.toHaveBeenCalled()
+    input.cancel()
+    vi.advanceTimersByTime(500)
+    expect(fn).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
