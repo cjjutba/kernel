@@ -81,9 +81,8 @@ export interface AppSettings {
   /**
    * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, only on PRs a reviewer looked at.
    * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
-   * No page shows it yet.
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
-   * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). No page shows it yet.
+   * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). Settings, Pull requests has its switch, size limit and paths (KERNEL-557).
    */
   pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; autoMerge: AutoMerge } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
@@ -282,7 +281,7 @@ export interface PrInstructions { createInstructions: string; resolveInstruction
 export type RoomSettingSource = 'shared' | 'local' | 'override'
 
 /** The sections of a room's settings page. A route without one opens General. */
-export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
+export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'reviews' | 'skills'
 
 /** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
 export interface FileToCopy {
