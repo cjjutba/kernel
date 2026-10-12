@@ -76,8 +76,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .rail-opt[data-update][data-active] { color: var(--ink-2); }
 /* The jumped-to message holds a 1px ring for 1.2s, fading over the last 400ms. */
 @keyframes jump-ring { 0%, 66.6% { outline-color: var(--line-4); } 100% { outline-color: transparent; } }
-.msg-user[data-jumped] .bubble, .tucard-wrap[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring 1.2s linear forwards; }
-@media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .tucard-wrap[data-jumped] .tucard { animation: none; } }
+.msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { outline: 1px solid var(--line-4); animation: jump-ring 1.2s linear forwards; }
+@media (prefers-reduced-motion: reduce) { .msg-user[data-jumped] .bubble, .jump-anchor[data-jumped] .tucard { animation: none; } }
 .thread { width: 100%; max-width: 760px; margin: auto auto 0; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }

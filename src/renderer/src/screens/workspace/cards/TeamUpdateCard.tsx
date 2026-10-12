@@ -40,7 +40,7 @@ export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract
   // An update from before KERNEL-117 counted the lines it left out, not workspaces.
   const omitted = !data.omitted ? '' : item.update ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} left out` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
   return (
-    <div className="msg tucard-wrap" data-jump={item.id}>
+    <div className="msg tucard-wrap">
       <section className="card tcard tucard" aria-label="Team update from Kernel">
         <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>
         {sections(data.rows).map((s, i) => (
