@@ -120,8 +120,8 @@ export interface NewAgentPrefill {
 
 /** One line of the room setup progress (RoomSetup.png). */
 export interface RoomSetupStep {
-  /** `push` is there only when the room has a remote (KERNEL-460). */
-  id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
+  /** `push` is there only when the room has a remote (KERNEL-460). `host` is the code host read from the remote (KERNEL-477). */
+  id: 'clone' | 'host' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
   title: string
   detail: string
   /** `warn` finished with something to look at, which never blocks the room (KERNEL-437). */

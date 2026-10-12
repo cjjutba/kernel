@@ -80,12 +80,14 @@ export class Rooms extends Feature {
 
   /**
    * The steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no
-   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460).
+   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460). Code host follows the checkout
+   * (RoomSetupGitHub.png, RoomSetupLocal.png, KERNEL-477).
    */
   private async setupRoom(room: Room, req: NewRoomRequest) {
     const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
     const steps: RoomSetupStep[] = [
       { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(room.path, this.home), state: 'wait' },
+      { id: 'host', title: 'Code host', detail: '', state: 'wait' },
       { id: 'worktrees', title: 'Create the worktree folder', detail: tildify(worktrees, this.home), state: 'wait' },
       { id: 'install', title: 'Install dependencies', detail: 'Checking the lockfile', state: 'wait' },
       { id: 'copy', title: 'Copy local files', detail: '', state: 'wait' },
@@ -122,6 +124,13 @@ export class Rooms extends Feature {
       if (inited) return { detail: `Git initialized in ${tildify(room.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
+    // Read from the checkout's remote, so a folder with no GitHub remote merges on this Mac (KERNEL-477).
+    await step('host', async () => {
+      const { host } = await this.k.codeHost.detect(room.path)
+      const next = this.store.saveRoom({ ...this.mustRoom(room.id), host })
+      bus.push({ type: 'room', room: next })
+      return { detail: this.k.codeHost.line(next) }
+    })
     const remote = await this.k.config.remoteFor(room.path)
     if ((await exec('git', ['-C', room.path, 'remote', 'get-url', '--push', remote])).code === 0) {
       steps.splice(steps.findIndex((s) => s.id === 'agents'), 0, { id: 'push', title: 'Check push access', detail: '', state: 'wait' })
@@ -195,14 +204,14 @@ export class Rooms extends Feature {
     })
   }
 
-  /** Runs the room's push check, or waits for the one running, and keeps the result (KERNEL-460). */
+  /** Runs the room's push check, or waits for the one running, and keeps the result (KERNEL-460). A local room never asks gh (KERNEL-477). */
   private runPushCheck(roomId: string): Promise<PushCheck | null> {
     let running = this.checking.get(roomId)
     if (running) return running
     const room = this.mustRoom(roomId)
     running = (async () => {
       try {
-        const c = await checkPush(room.path, await this.k.config.remoteFor(room.path))
+        const c = await checkPush(room.path, await this.k.config.remoteFor(room.path), { gh: room.host !== 'local' })
         this.pushChecks.set(roomId, c)
         return c
       } finally { this.checking.delete(roomId) }

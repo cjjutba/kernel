@@ -68,9 +68,10 @@ export const MIN_GIT = '2.38'
  * The checks behind the "Getting Kernel ready" screens, in canvas order with git before the GitHub CLI. Only Claude sign-in,
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
  * `shell` is what `refreshPath` just read, and `env` the environment it left. `run`, `claude` and `env` are for tests: a
- * stubbed command runner, the session binary's path and the variables Bedrock and Vertex are read from.
+ * stubbed command runner, the session binary's path and the variables Bedrock and Vertex are read from. `gh: false` leaves
+ * the GitHub CLI out when no room's PRs go to GitHub (KERNEL-477).
  */
-export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string }; shell?: ShellRead; env?: NodeJS.ProcessEnv }): Promise<PreflightCheck[]> {
+export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string }; shell?: ShellRead; env?: NodeJS.ProcessEnv; gh?: boolean }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
   // First, since it explains anything below that's missing.
@@ -105,7 +106,7 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   // Only while a role in Settings, Models and effort runs on Codex, so a Claude-only setup sees the checks it always did.
   if (o.codex) checks.push(await codexCheck(o.codex.bin, run))
   checks.push(await gitCheck(run))
-  checks.push(await ghCheck(run, o.shell))
+  if (o.gh ?? true) checks.push(await ghCheck(run, o.shell))
 
   if (o.hookServerUp) checks.push({ id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: `localhost:${o.hookPort}` })
   else {
@@ -220,13 +221,15 @@ function transportOf(url: string): 'https' | 'ssh' | 'other' {
 /**
  * Whether git can push from `cwd` to `remote`, asked before an agent needs to (SettingsRoomGit*.png). Reach is
  * `git ls-remote`. Push is gh's permission on a GitHub repo and a dry-run push to a branch that doesn't exist, which logs in
- * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `run` is for tests.
+ * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `gh: false`, for a room
+ * that merges locally, reads a GitHub remote as any other, so only git answers and gh is never asked (KERNEL-477). `run`
+ * is for tests.
  */
-export async function checkPush(cwd: string, remote: string, o: { run?: typeof exec; now?: () => number } = {}): Promise<PushCheck | null> {
+export async function checkPush(cwd: string, remote: string, o: { run?: typeof exec; now?: () => number; gh?: boolean } = {}): Promise<PushCheck | null> {
   const run = o.run ?? exec
   const url = (await run('git', ['-C', cwd, 'remote', 'get-url', '--push', remote], { timeoutMs: 15000 })).stdout.trim()
   if (!url) return null
-  const repo = githubRepoOf(url)
+  const repo = (o.gh ?? true) ? githubRepoOf(url) : undefined
   const via = transportOf(url)
   const asked = `git ls-remote ${remote}`
   const done = (reach: PushCheckRow, push: PushCheckRow, login?: string): PushCheck => ({ remote, ...(repo ? { repo } : {}), ...(login ? { login } : {}), reach, push, at: (o.now ?? Date.now)() })
