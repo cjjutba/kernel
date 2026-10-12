@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -275,6 +275,8 @@ export interface KernelApi {
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */
   'pr.continue': { req: { workspaceId: string }; res: Workspace }
+  /** The PR action running on each workspace, by workspace id, for a window that loads while one runs (KERNEL-519). */
+  'pr.pendingAll': { req: {}; res: Record<string, PrPending> }
 
   // scripts
   /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
@@ -527,6 +529,8 @@ export type PushEvent =
   | { type: 'pr.blocked'; workspaceId: string; blocked?: PrBlocked }
   /** A room's Merge all run moved on to its next PR, or ended (no `queue`) with its `result` (KERNEL-411). */
   | { type: 'pr.queue'; roomId: string; queue?: MergeQueue; result?: MergeAllResult }
+  /** A PR action started on the workspace, from any button or tool, or ended (no `action`) after its last `pr` push (KERNEL-519). */
+  | { type: 'pr.pending'; workspaceId: string; action?: PrPending }
   | { type: 'github'; status: GitHubStatus }
   | { type: 'hooks'; status: HookStatus }
   | { type: 'update'; update: AppUpdate }
