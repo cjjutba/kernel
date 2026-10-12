@@ -41,17 +41,25 @@ export interface ScrollView { scrollTop: number; scrollHeight: number; clientHei
 
 const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
 
+const rangeOf = (v: ScrollView) => v.scrollHeight - v.clientHeight
+
+/** The keys that scroll the view. The rest (the number keys and Enter on a card, typing) arm nothing. */
+const SCROLL_KEYS = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '])
+
 /**
- * Whether the chat keeps following its end after a scroll event (KERNEL-605). `before` is where the view was at the last one, and `byHand` is
- * whether the reader's own input (wheel, touch, keys, the scrollbar, a jump from the chat rail) started this scroll.
+ * Whether the chat keeps following its end after a scroll event (KERNEL-605). `before` is the view at the last scroll event, and `byHand` is
+ * whether the reader's own input (wheel, touch, scrolling keys, the scrollbar, a jump from the chat rail) is behind this scroll.
  * - The view moving up unpins when the reader did it, even by a little, or the next streamed line would pull them straight back. A move nobody
  *   asked for unpins once it lands past PIN_PX, which is how the plan card opening a long plan at its top stops the following.
+ * - The reader's scrolling never changes the scroll range. When it changed, layout moved the view, so input that came first doesn't make it theirs:
+ *   a question answered by keyboard collapses its card and the browser clamps the view up, with `byHand` still set from the keys.
  * - Anything else only ever follows. The end within PIN_PX means following, and a thread that grew under a view at its end moves no scroll
  *   position, only the distance, which the thread's size observer closes. Our own scroll to the end and the browser clamping or anchoring
  *   the view after rows resize therefore never unpin.
  */
-export function followsAfterScroll(pinned: boolean, view: ScrollView, before: number, byHand: boolean): boolean {
-  if (view.scrollTop < before && (byHand || distFromEnd(view) > PIN_PX)) return false
+export function followsAfterScroll(pinned: boolean, view: ScrollView, before: ScrollView, byHand: boolean): boolean {
+  const own = byHand && rangeOf(view) === rangeOf(before)
+  if (view.scrollTop < before.scrollTop && (own || distFromEnd(view) > PIN_PX)) return false
   return distFromEnd(view) <= PIN_PX ? true : pinned
 }
 
@@ -399,13 +407,13 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const pin = (at: boolean) => { pinned.current = at; show(!at) }
   // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
   const byHand = useRef(false)
-  const lastTop = useRef(0)
+  const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
+  const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
   const onScroll = () => {
     const el = scroller.current
     if (!el) return
-    const before = lastTop.current
-    lastTop.current = el.scrollTop
-    pinned.current = followsAfterScroll(pinned.current, el, before, byHand.current)
+    pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
+    remember(el)
     show(!pinned.current && distFromEnd(el) > PIN_PX)
   }
   // A smooth scroll the page runs itself (the button's, or a jump from the chat rail) must not be cut short by following. It ends when the scroll
@@ -413,6 +421,10 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const gliding = useRef(false)
   const release = () => { gliding.current = false }
   const take = () => { release(); byHand.current = true }
+  const press = (e: KeyboardEvent) => {
+    if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
+    else release()
+  }
   const frame = useRef(0)
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
@@ -436,7 +448,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
   const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) byHand.current = true }, [])
   // A chat opens at its end.
-  useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); lastTop.current = scroller.current?.scrollTop ?? 0; return () => cancelAnimationFrame(frame.current) }, [chat.id])
+  useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); if (scroller.current) remember(scroller.current); return () => cancelAnimationFrame(frame.current) }, [chat.id])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
   // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
   const opening = useRef(false)
@@ -510,7 +522,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   return (
     <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
       <ChatRail key={chat.id} entries={rail.current} scroller={scroller} onGlide={jumping} />
-      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={take}>
+      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={press}>
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
