@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import * as pty from 'node-pty'
 import { appendFile, copyFile, lstat, mkdir, realpath, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -11,7 +11,7 @@ import type { Readable } from 'node:stream'
 import { PORT_BLOCK, type ScriptLine } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
-import { keepLines, scriptKey } from '@shared/scriptLog'
+import { keepData, keepLines, SCRIPT_COLS, SCRIPT_ROWS, scriptKey } from '@shared/scriptLog'
 
 const canBind = (p: number) => new Promise<boolean>((res) => {
   const srv = createServer()
@@ -102,41 +102,64 @@ export function loginShell(): string {
 export const MAX_LINE = 64 * 1024
 
 /**
- * Calls `onLine` with each whole line `stream` writes, however the chunks split it, and a character split across two
- * chunks stays whole. A line longer than `MAX_LINE` characters goes out in pieces of `MAX_LINE`, never splitting an emoji.
- * Returns the flush for when the process closes, which hands over a last line with no newline.
+ * Calls `onLine` with each whole line of the text `add` is given, however the chunks split it. A line longer than
+ * `MAX_LINE` characters goes out in pieces of `MAX_LINE`, never splitting an emoji. `flush` hands over a last line with no
+ * newline, for when the process closes.
  */
-export function pipeLines(stream: Readable | null, onLine: (line: string) => void): () => void {
+export function lineSplitter(onLine: (line: string) => void): { add: (d: string) => void; flush: () => void } {
   let buf = ''
+  return {
+    add: (d) => {
+      buf += d
+      const lines = buf.split(/\r?\n/)
+      buf = lines.pop()!
+      for (const line of lines) onLine(line)
+      while (buf.length >= MAX_LINE) {
+        // A high surrogate at the cut would leave half an emoji on each side.
+        const cut = /[\uD800-\uDBFF]/.test(buf[MAX_LINE - 1]) ? MAX_LINE - 1 : MAX_LINE
+        onLine(buf.slice(0, cut))
+        buf = buf.slice(cut)
+      }
+    },
+    flush: () => { if (buf) onLine(buf); buf = '' }
+  }
+}
+
+/** `lineSplitter` on a stream, and a character split across two chunks stays whole. Returns the flush. */
+export function pipeLines(stream: Readable | null, onLine: (line: string) => void): () => void {
+  const lines = lineSplitter(onLine)
   stream?.setEncoding('utf8')
-  stream?.on('data', (d: string) => {
-    buf += d
-    const lines = buf.split(/\r?\n/)
-    buf = lines.pop()!
-    for (const line of lines) onLine(line)
-    while (buf.length >= MAX_LINE) {
-      // A high surrogate at the cut would leave half an emoji on each side.
-      const cut = /[\uD800-\uDBFF]/.test(buf[MAX_LINE - 1]) ? MAX_LINE - 1 : MAX_LINE
-      onLine(buf.slice(0, cut))
-      buf = buf.slice(cut)
-    }
-  })
-  return () => { if (buf) onLine(buf); buf = '' }
+  stream?.on('data', lines.add)
+  return lines.flush
+}
+
+/** Escape sequences a terminal reads: CSI (colors, cursor moves), OSC (titles, links) and the two-character ones. */
+const ESCAPES = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[ -/]*[0-~]/g
+
+/**
+ * A line of terminal output as plain text: no escape sequences, and only what the last `\r` redraw left, the way a
+ * spinner or progress bar ends up on screen (KERNEL-655).
+ */
+export function plainLine(line: string): string {
+  const text = line.replace(ESCAPES, '').replace(/\r+$/, '')
+  return text.slice(text.lastIndexOf('\r') + 1).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
 }
 
 type Kind = 'setup' | 'run' | 'archive'
 /** Every script still running, by workspace, kind and run script name. Setup and archive have no name. */
-const running = new Map<string, { workspaceId: string; kind: Kind; name?: string; child: ChildProcess }>()
+const running = new Map<string, { workspaceId: string; kind: Kind; name?: string; proc: pty.IPty }>()
+/** The size each script's view last asked for, by `key`, so a script run again starts at it (KERNEL-655). */
+const sizes = new Map<string, { cols: number; rows: number }>()
 const key = (workspaceId: string, kind: Kind, name?: string) => JSON.stringify([workspaceId, kind, name ?? null])
 /** A run script is named, `run` when none is given. Setup and archive aren't. */
 const nameOf = (kind: Kind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
 
 /**
  * Each workspace's scripts as the window was told: their lines, trimmed as the window trims them, the exit code of each
- * script that stopped and the URL of each run script still running. A window that reloads or reopens gets them back from
- * `replayScripts`, since the lines only ever went out as pushes (KERNEL-340).
+ * script that stopped, the URL of each run script still running and each script's terminal output by `scriptKey`. A window
+ * that reloads or reopens gets them back from `replayScripts`, since they only ever went out as pushes (KERNEL-340).
  */
-const kept = new Map<string, { lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string> }>()
+const kept = new Map<string, { lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string>; data: Record<string, string> }>()
 /** Archived workspaces. Their scripts' last lines and exits come after the archive and aren't kept. */
 const archived = new Set<string>()
 
@@ -150,10 +173,11 @@ export function keepScript(e: PushEvent) {
     else { archived.add(e.workspace.id); kept.delete(e.workspace.id) }
     return
   }
-  if ((e.type !== 'script.output' && e.type !== 'script.exit' && e.type !== 'script.url') || archived.has(e.workspaceId)) return
+  if ((e.type !== 'script.output' && e.type !== 'script.data' && e.type !== 'script.exit' && e.type !== 'script.url') || archived.has(e.workspaceId)) return
   let k = kept.get(e.workspaceId)
-  if (!k) kept.set(e.workspaceId, (k = { lines: [], exit: {}, url: {} }))
+  if (!k) kept.set(e.workspaceId, (k = { lines: [], exit: {}, url: {}, data: {} }))
   if (e.type === 'script.output') k.lines = keepLines(k.lines, e.kind, e.name, e.lines)
+  else if (e.type === 'script.data') k.data[scriptKey(e.kind, e.name)] = keepData(k.data[scriptKey(e.kind, e.name)], e.data)
   else if (e.type === 'script.exit') k.exit[scriptKey(e.kind, e.name)] = e.code
   else if (e.url) k.url[e.name] = e.url
   else delete k.url[e.name]
@@ -162,17 +186,35 @@ export function keepScript(e: PushEvent) {
 /** Pushes everything kept for the workspace's scripts as one `script.state`, which takes the place of what the window has. */
 export function replayScripts(workspaceId: string) {
   const k = kept.get(workspaceId)
-  bus.push({ type: 'script.state', workspaceId, lines: k?.lines ?? [], exit: { ...k?.exit }, url: { ...k?.url } })
+  // What waits to go out is pushed first, so the state holds it and nothing comes after it twice.
+  for (const r of running.values()) if (r.workspaceId === workspaceId) flushScript(key(workspaceId, r.kind, r.name))
+  bus.push({ type: 'script.state', workspaceId, lines: k?.lines ?? [], exit: { ...k?.exit }, url: { ...k?.url }, data: { ...k?.data } })
 }
 
 /**
  * Each script's lines from the last 50 ms, pushed as one `script.output`, so `pnpm install` doesn't send the window a
  * message per line (KERNEL-216). Keyed by `key`.
  */
-const output = new Batcher<{ line: string; stream: 'stdout' | 'stderr' }>((k, lines) => {
+const tagOf = (k: string) => {
   const [workspaceId, kind, name] = JSON.parse(k) as [string, Kind, string | null]
-  bus.push({ type: 'script.output', workspaceId, kind, ...(name ? { name } : {}), lines })
-})
+  return { workspaceId, kind, ...(name ? { name } : {}) }
+}
+const output = new Batcher<{ line: string; stream: 'stdout' | 'stderr' }>((k, lines) => bus.push({ type: 'script.output', ...tagOf(k), lines }))
+/** Each script's terminal output from the last 50 ms, pushed as one `script.data`, the way `terminal.data` goes (KERNEL-655). */
+const data = new Batcher<string>((k, chunks) => bus.push({ type: 'script.data', ...tagOf(k), data: chunks.join('') }))
+/** Both, raw output first, so a view of either has everything printed before what comes next. */
+const flushScript = (k: string) => { data.flush(k); output.flush(k) }
+
+/**
+ * A line of Kernel's own in a script's log, like "Setup failed with exit code 1": a plain line in `script.output` and a
+ * line in its terminal output, after whatever the script printed (KERNEL-655).
+ */
+export function scriptNote(workspaceId: string, kind: 'setup' | 'archive', line: string, stream: 'stdout' | 'stderr' = 'stderr') {
+  flushScript(key(workspaceId, kind))
+  const tag = { workspaceId, kind }
+  bus.push({ type: 'script.data', ...tag, data: `${line}\r\n` })
+  bus.push({ type: 'script.output', ...tag, lines: [{ line, stream }] })
+}
 
 /** How long a setup or archive script may run, from Settings > Scripts. Run scripts are servers and have no limit (KERNEL-216). */
 export const scriptTimeout = (s: { scripts: { timeoutMinutes: number } }) => s.scripts.timeoutMinutes * 60_000
@@ -183,9 +225,11 @@ export const timeoutText = (s: { scripts: { timeoutMinutes: number } }) => `${s.
 export type ScriptEnd = number | null | 'timeout'
 
 /**
- * Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. `env` is the whole
- * environment, from `Kernel.envFor` (KERNEL-247). Its stdin is closed, so a script that asks a question gets no answer
- * instead of waiting for one, and `timeoutMs` stops its process group once that long has passed (KERNEL-216).
+ * Run a workspace script in a login shell, in a terminal of its own, so it prints colors and redraws its progress as it
+ * would in the user's terminal (KERNEL-655). Its output goes out twice: as it printed it in `script.data`, and as plain
+ * lines in `script.output`, which the URL check reads. Resolves with the exit code. `env` is the whole environment, from
+ * `Kernel.envFor` (KERNEL-247). Its stdin is /dev/null, so a script that asks a question gets no answer instead of
+ * waiting for one, and `timeoutMs` stops its process group once that long has passed (KERNEL-216).
  */
 export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; env: Record<string, string>; timeoutMs?: number }): Promise<ScriptEnd> {
   const name = nameOf(o.kind, o.name)
@@ -195,47 +239,68 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
   // Settings read from a repo are checked as text before they get here; anything else never reaches the shell (KERNEL-209).
   if (typeof o.script !== 'string') return Promise.resolve(null)
   return new Promise((resolve) => {
-    const child = spawn(loginShell(), ['-lc', o.script], {
-      cwd: o.cwd,
-      env: o.env,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })
+    const header = `$ ${o.script.split('\n').join(' && ')}`
+    output.add(k, { line: header, stream: 'stdout' })
+    data.add(k, `${header}\r\n`)
+    let proc: pty.IPty
+    try {
+      // The terminal's stdin is the script's, and nothing types into it. /dev/null ends every read at once, where an EOF
+      // typed in would echo `^D` and end only the first.
+      proc = pty.spawn(loginShell(), ['-lc', `exec </dev/null; ${o.script}`], {
+        name: 'xterm-256color', cwd: o.cwd, env: { ...o.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }, ...(sizes.get(k) ?? { cols: SCRIPT_COLS, rows: SCRIPT_ROWS })
+      })
+    } catch (err) {
+      output.add(k, { line: String(err), stream: 'stderr' })
+      data.add(k, `${String(err)}\r\n`)
+      flushScript(k)
+      bus.push({ type: 'script.exit', ...tag, code: null })
+      return resolve(null)
+    }
+    running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, proc })
     // Running again, so the last run's exit code no longer says it stopped.
     delete kept.get(o.workspaceId)?.exit[scriptKey(o.kind, name)]
-    const current = () => running.get(k)?.child === child
+    const current = () => running.get(k)?.proc === proc
     // A run script's URL starts empty. The first local URL it prints is its URL until it exits (KERNEL-246).
     let url: string | null = null
     if (name) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
-    const emit = (line: string, stream: 'stdout' | 'stderr') => {
+    const lines = lineSplitter((raw) => {
+      const line = plainLine(raw)
       if (!line) return
-      output.add(k, { line, stream })
+      output.add(k, { line, stream: 'stdout' })
       // A process a restart replaced may still be printing. Its URL isn't the new run's.
       if (name && !url && current()) {
         url = localUrlIn(line)
         // The URL goes out right after the line that printed it.
-        if (url) { output.flush(k); bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url }) }
+        if (url) { flushScript(k); bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url }) }
       }
-    }
-    output.add(k, { line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
-    const flushes = (['stdout', 'stderr'] as const).map((stream) => pipeLines(child[stream], (line) => emit(line, stream)))
-    child.on('error', (err) => { output.add(k, { line: String(err), stream: 'stderr' }) })
+    })
+    proc.onData((d) => { data.add(k, d); lines.add(d) })
     let timedOut = false
-    const timer = o.timeoutMs ? setTimeout(() => { timedOut = true; killGroup(child) }, o.timeoutMs) : undefined
-    child.on('close', (code) => {
+    const timer = o.timeoutMs ? setTimeout(() => { timedOut = true; killGroup(proc) }, o.timeoutMs) : undefined
+    proc.onExit(({ exitCode, signal }) => {
       clearTimeout(timer)
-      for (const flush of flushes) flush()
-      // Every line before the exit, so the window has the whole log when it reads the code.
-      output.flush(k)
+      lines.flush()
+      // Everything before the exit, so the window has the whole log when it reads the code.
+      flushScript(k)
       // A restart already holds the slot with the new process, and its URL.
       const replaced = running.has(k) && !current()
       if (current()) running.delete(k)
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
+      // A shell a signal ended has no exit code, as a stopped script had none before.
+      const code = signal ? null : exitCode
       bus.push({ type: 'script.exit', ...tag, code })
       resolve(timedOut ? 'timeout' : code)
     })
   })
+}
+
+/** Resizes a running script's terminal, and the next run of it starts at that size (KERNEL-655). */
+export function resizeScript(workspaceId: string, kind: Kind, name: string | undefined, cols: number, rows: number) {
+  if (!(cols >= 2 && rows >= 1)) return
+  const k = key(workspaceId, kind, nameOf(kind, name))
+  const size = { cols: Math.floor(cols), rows: Math.floor(rows) }
+  sizes.set(k, size)
+  try { running.get(k)?.proc.resize(size.cols, size.rows) } catch { /* the process is already gone */ }
 }
 
 /** How long a stopped script's processes get to exit on SIGTERM before they get SIGKILL. */
@@ -244,26 +309,25 @@ const STOP_GRACE_MS = 3000
 /** Kill the whole process group so dev servers started by the script die too. A run script without a name is `run`. */
 export function stopScript(workspaceId: string, kind: Kind, name?: string, o: { now?: boolean } = {}) {
   const k = key(workspaceId, kind, nameOf(kind, name))
-  const child = running.get(k)?.child
-  if (child?.pid && o.now) {
+  const proc = running.get(k)?.proc
+  if (proc && o.now) {
     // Kernel is quitting and no timer would outlive it, so the group dies now.
-    try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
-  } else if (child) killGroup(child)
+    try { process.kill(-proc.pid, 'SIGKILL') } catch { proc.kill('SIGKILL') }
+  } else if (proc) killGroup(proc)
   running.delete(k)
 }
 
 /**
- * SIGTERM to the script's process group, and SIGKILL if it hasn't closed `STOP_GRACE_MS` later. A server that ignores
- * SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the output open, so the
- * script would never report its exit.
+ * SIGTERM to the script's process group, and SIGKILL to whatever is left of it `STOP_GRACE_MS` later. A server that
+ * ignores SIGTERM, or a command the shell forked just as the signal came, would keep running. The terminal gives the
+ * script its own session, so its shell leads the group. The SIGKILL goes even when the shell already exited, since a
+ * process it started can outlive it in the group.
  */
-function killGroup(child: ChildProcess) {
-  if (!child.pid) return
-  const group = -child.pid
-  try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
+function killGroup(proc: pty.IPty) {
+  const group = -proc.pid
+  try { process.kill(group, 'SIGTERM') } catch { proc.kill('SIGTERM') }
   const force = setTimeout(() => { try { process.kill(group, 'SIGKILL') } catch { /* already gone */ } }, STOP_GRACE_MS)
   force.unref()
-  child.once('close', () => clearTimeout(force))
 }
 
 /** The names of the run scripts running in a workspace. */

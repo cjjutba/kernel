@@ -235,7 +235,7 @@ describe('Kernel env', () => {
     // The setup script writes what it saw. The room's variable wins over both files, and the missing file is skipped.
     const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
     expect(ws.status).toBe('ready')
-    expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`room-secret-42|app-value-77|one|room|${ws.id}|${ws.port}|0`)
+    expect((await readFile(join(ws.path, 'seen.txt'), 'utf8')).trim()).toBe(`room-secret-42|app-value-77|one|room|${ws.id}|${ws.port}|${process.env.FORCE_COLOR ?? ''}`)
 
     // Sessions get the same set as scripts, less the API key and the script-only variables.
     const session = sessionEnv(k.envFor(ws), {})
