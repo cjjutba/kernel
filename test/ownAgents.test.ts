@@ -10,6 +10,7 @@ import type { KernelOptions } from '../src/main/features/options'
 import { LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { claudeAgents } from '../src/main/services/pluginAgents'
+import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405). The stub's
@@ -20,8 +21,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => {
   return { ...await original<object>(), ...stub, query: (a: { options?: unknown }) => { sdk.options.push(a.options); return { ...stub.query(), supportedAgents: async () => sdk.agents } } }
 })
 
-// KERNEL-397: a repo that brings its own .claude/agents works as it is. Kernel's Rowan and Theo fill a missing Lead and
-// reviewer without writing a file, and [team] in .kernel/settings.toml holds what the user changes.
+// KERNEL-397: a repo that brings its own .claude/agents works as it is. Kernel's Rowan fills a missing Lead without writing
+// a file, Kernel's code review a missing reviewer (KERNEL-553), and [team] in .kernel/settings.toml holds what the user changes.
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
 const AGENTS = {
@@ -67,12 +68,12 @@ async function leadTools(k: Kernel, roomId: string) {
 }
 
 describe("a repo's own agents (KERNEL-397)", () => {
-  it("gets Kernel's Rowan and Theo, and the Lead only hands tasks to agents that can open a PR", async () => {
+  it("gets Kernel's Rowan and no reviewer agent, and the Lead only hands tasks to agents that can open a PR", async () => {
     const { k, repo, room, tracked } = await boot()
     const team = await k.agents(room.id)
     expect(team.map((a) => [a.id, a.name, a.lead, a.reviewer, a.member])).toEqual([
       ['kernel-lead', 'Rowan', true, false, false], ['api', 'Api', false, false, true], ['architect', 'Architect', false, false, false],
-      ['kernel-reviewer', 'Theo', false, true, false], ['web', 'Web', false, false, true]
+      ['web', 'Web', false, false, true]
     ])
     expect(team.find((a) => a.id === 'architect')?.description).toBe('Designs the system. Writes no code.')
     // Nothing was written to the repo.
@@ -88,22 +89,17 @@ describe("a repo's own agents (KERNEL-397)", () => {
     const list = (await call('list_agents', {})).text
     expect(list).toContain('kernel-lead: Rowan, Lead (the Lead, you).')
     expect(list).toContain("architect: Architect, Architect (helper, doesn't take tasks). Designs the system. Writes no code.")
-    expect(list).toContain('kernel-reviewer: Theo, Reviewer (reviews PRs).')
+    expect(list).not.toContain('kernel-reviewer')
     expect(await call('create_workspace', { agent: 'architect', title: 'Design', brief: 'Design it.' })).toEqual({
       isError: true, text: "Not created: Architect is a helper in this room and doesn't take tasks. Use an id from list_agents: api (Api, Backend), web (Web, Frontend)."
     })
-    expect(await call('create_workspace', { agent: 'kernel-reviewer', title: 'Build', brief: 'Build it.' })).toEqual({
-      isError: true, text: "Not created: Theo is a helper in this room and doesn't take tasks, only reviews with review_of. Use an id from list_agents: api (Api, Backend), web (Web, Frontend)."
-    })
     expect(tracked).toContainEqual({ name: 'handoff.refused', reason: 'helper' })
-    // Kernel's Theo takes a review of a teammate's work.
+    // Kernel's Theo is no agent the Lead can hand work to (KERNEL-553).
+    expect(await call('create_workspace', { agent: 'kernel-reviewer', title: 'Build', brief: 'Build it.' })).toMatchObject({ isError: true })
     const work = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'web', title: 'Cart' })
     // The repo's own agent, whose file says nothing about Kernel, gets Kernel's teammate and sharing rules.
     expect(k.tools.rulesFor(work, team.find((a) => a.id === 'web'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
-    const reviewed = await call('create_workspace', { agent: 'kernel-reviewer', title: 'Review the cart', brief: 'Review it.', review_of: work.id })
-    expect(reviewed).toMatchObject({ isError: false, text: expect.stringMatching(/^Created \S+ on \S+ for kernel-reviewer\./) })
-    const review = k.store.workspaces(room.id).find((w) => w.reviewOf === work.id)!
-    expect(k.sessions['d'].agentFor(review)).toMatchObject({ id: 'kernel-reviewer', tools: ['Read', 'Grep', 'Glob', 'Bash'] })
+    // No agent reviews, so Kernel's code review runs, and the reviewer comes from `builtin` as Theo did.
     expect(tracked.slice(0, 2)).toEqual([
       { name: 'team.resolved', leadFrom: 'builtin', reviewerFrom: 'builtin', agents: '1-5', helpers: '1-5', warnings: '1-5' },
       { name: 'agent.warning', kind: 'cant-open-pr' }
@@ -138,31 +134,34 @@ describe("a repo's own agents (KERNEL-397)", () => {
     await expect(h['agents.setTeam']({ roomId: room.id, team: { lead: 'web', reviewer: 'web' } })).rejects.toThrow("can't also review")
   })
 
-  it("customizes Kernel's Theo into theo.md, and the open reviews follow it", async () => {
+  it("customizes Kernel's Rowan into rowan.md, and the Lead's workspace follows it", async () => {
     const { k, h, repo, room, tracked } = await boot()
-    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'kernel-reviewer', title: 'Review' })
-    await expect(h['agents.save']({ roomId: room.id, agentId: 'kernel-reviewer', patch: { model: 'opus' } })).rejects.toThrow(/Customize it/)
-    await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-reviewer' })).rejects.toThrow(/Kernel's own reviewer/)
+    const { chat } = await leadTools(k, room.id)
+    await expect(h['agents.save']({ roomId: room.id, agentId: 'kernel-lead', patch: { model: 'opus' } })).rejects.toThrow(/Customize it/)
     await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/Kernel's own Lead/)
-    const theo = await h['agents.customize']({ roomId: room.id, agentId: 'kernel-reviewer' })
-    expect(theo).toMatchObject({ id: 'theo', name: 'Theo', reviewer: true, file: join(repo, '.claude', 'agents', 'theo.md') })
-    expect(theo.builtIn).toBeUndefined()
-    const text = await readFile(join(repo, '.claude', 'agents', 'theo.md'), 'utf8')
-    expect(text).toMatch(/^---\nname: theo\ndescription: Reviewer\./)
+    const rowan = await h['agents.customize']({ roomId: room.id, agentId: 'kernel-lead' })
+    expect(rowan).toMatchObject({ id: 'rowan', name: 'Rowan', lead: true, file: join(repo, '.claude', 'agents', 'rowan.md') })
+    expect(rowan.builtIn).toBeUndefined()
+    const text = await readFile(join(repo, '.claude', 'agents', 'rowan.md'), 'utf8')
+    expect(text).toMatch(/^---\nname: rowan\ndescription: Lead\./)
     expect(text).not.toContain('model:')
-    expect(text).toContain('submit_review')
-    expect(k.store.workspace(review.id)?.agentId).toBe('theo')
-    expect(tracked).toContainEqual({ name: 'builtin.customized', which: 'reviewer' })
-    await expect(h['agents.customize']({ roomId: room.id, agentId: 'theo' })).rejects.toThrow(/already has a file/)
+    expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('rowan')
+    expect(tracked).toContainEqual({ name: 'builtin.customized', which: 'lead' })
+    await expect(h['agents.customize']({ roomId: room.id, agentId: 'rowan' })).rejects.toThrow(/already has a file/)
   })
 
-  it('adds one starter teammate to a team that has agents', async () => {
+  it('adds one starter agent to a team that has agents, Theo as its reviewer (KERNEL-553)', async () => {
     const { k, h, repo, room } = await boot()
     expect((await h['agents.addStarter']({ roomId: room.id, id: 'ivy' })).id).toBe('ivy')
     expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['api.md', 'architect.md', 'ivy.md', 'web.md'])
     await expect(h['agents.addStarter']({ roomId: room.id, id: 'ivy' })).rejects.toThrow('Ivy is already on the team.')
     await expect(h['agents.addStarter']({ roomId: room.id, id: 'rowan' })).rejects.toThrow("isn't one of Kernel's starter agents")
     expect((await k.agents(room.id)).find((a) => a.id === 'ivy')).toMatchObject({ member: true })
+    // Theo's tools line can't edit, so Theo reviews and takes no tasks.
+    const theo = await h['agents.addStarter']({ roomId: room.id, id: 'theo' })
+    expect(theo).toMatchObject({ id: 'theo', name: 'Theo', reviewer: true, member: false, tools: ['Read', 'Grep', 'Glob', 'Bash'], file: join(repo, '.claude', 'agents', 'theo.md') })
+    expect(theo.builtIn).toBeUndefined()
+    expect(theo.warnings).toBeUndefined()
   })
 
   it("hands a retired reviewer's open reviews to the reviewer that takes over", async () => {
@@ -172,7 +171,7 @@ describe("a repo's own agents (KERNEL-397)", () => {
     const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'checker', title: 'Review', reviewOf: work.id })
     const chore = await k.createWorkspace(room.id, { prompt: 'Tidy the docs', agentId: 'checker', title: 'Docs' })
     await h['agents.retire']({ roomId: room.id, agentId: 'checker' })
-    // The review goes to the next reviewer, Kernel's read-only Theo, and anything else to the Lead.
+    // With no other reviewer, the review goes to Kernel's code review (KERNEL-553), and anything else to the Lead.
     expect(k.store.workspace(review.id)?.agentId).toBe('kernel-reviewer')
     expect(k.store.workspace(chore.id)?.agentId).toBe('kernel-lead')
     await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/Kernel's own Lead/)
@@ -186,12 +185,69 @@ describe("a repo's own agents (KERNEL-397)", () => {
     // Before KERNEL-397 a description that said Lead was enough. Now Kernel's Rowan leads, with the same chats.
     await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), rowan.replace('lead: true\n', ''))
     const team = await k.agents(room.id)
-    expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Lead', true], ['rowan', 'Rowan', false], ['kernel-reviewer', 'Theo', false], ['web', 'Web', false]])
+    expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Lead', true], ['rowan', 'Rowan', false], ['web', 'Web', false]])
     // Its prompt has no pull request workflow either, so it starts as a helper (KERNEL-465).
     expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-subagent' }, { kind: 'looks-like-lead' }])
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     await rm(join(repo, '.claude', 'agents', 'rowan.md'))
+  })
+})
+
+// KERNEL-553: Rowan is Kernel's only built-in agent, and Theo is a starter. Kernel's code review (KERNEL-549) covers a room
+// that has no reviewer, so a room whose reviewer was Kernel's Theo keeps a review on every PR.
+describe("a room whose reviewer was Kernel's Theo (KERNEL-553)", () => {
+  /** Web's work, committed in its own worktree, on a PR that passed checks. */
+  async function pr(k: Kernel, roomId: string, n: number) {
+    const ws = await k.createWorkspace(roomId, { prompt: 'Build it', agentId: 'web', title: `Task ${n}` })
+    await writeFile(join(ws.path, `task-${n}.txt`), 'done\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'work')
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 100 + n, prTitle: `Task ${n}`, prState: 'ready', prHead: (await git(ws.path, 'rev-parse', 'HEAD')).trim() })
+    return k.store.workspace(ws.id)!
+  }
+
+  // Before the upgrade, a room with no reviewer file had Kernel's Theo, and one that picked Theo in Settings saved its id.
+  for (const [what, settings] of [['no [team] reviewer', SETTINGS], ['[team] reviewer = "kernel-reviewer"', `${SETTINGS}\n[team]\nreviewer = "kernel-reviewer"\n`]]) {
+    it(`gets Kernel's code review on every PR with ${what}, and its old reviews still run Theo`, async () => {
+      const { k, h, room } = await boot({ ...AGENTS, '.kernel/settings.toml': settings })
+      const team = await k.agents(room.id)
+      expect(team.filter((a) => a.builtIn).map((a) => a.id)).toEqual(['kernel-lead'])
+      expect(team.some((a) => a.reviewer)).toBe(false)
+
+      // A review Kernel's Theo had open when the app upgraded: a workspace on its reserved id, with a chat from before review kinds.
+      const old = await pr(k, room.id, 1)
+      const made = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'web', title: 'Review PR #101', reviewOf: old.id })
+      const review = k.store.saveWorkspace({ ...made, agentId: 'kernel-reviewer' })
+      expect(k.sessions['d'].agentFor(review)).toMatchObject({ id: 'kernel-reviewer', name: 'Theo', tools: ['Read', 'Grep', 'Glob', 'Bash'], prompt: expect.stringMatching(/^You are Theo, the reviewer\./) })
+      expect(k.reviews.reviewState(old).open).toMatchObject({ workspaceId: review.id, name: 'Theo' })
+      await expect(h['agents.customize']({ roomId: room.id, agentId: 'kernel-reviewer' })).rejects.toThrow("Only Kernel's Rowan can be customized.")
+
+      // Each PR after it gets Kernel's code review.
+      for (const n of [2, 3]) {
+        const next = await pr(k, room.id, n)
+        await k.reviews.onReady(next.id)
+        const rws = k.store.workspaces(room.id).filter((w) => w.reviewOf === next.id)
+        expect(rws).toHaveLength(1)
+        const chat = k.store.chats(rws[0].id).find((c) => c.lens?.kind === 'code')!
+        expect(chat.lens).toEqual({ kind: 'code' })
+        expect(k.sessions['d'].agentFor(rws[0], chat)).toMatchObject({ id: 'kernel-reviewer', name: 'Code review', prompt: expect.stringMatching(/^You run the code review/) })
+      }
+    })
+  }
+
+  it('reviews no PR with [team] reviewer = "none", and keeps that choice when Settings saves it', async () => {
+    const { k, h, repo, room } = await boot()
+    // "No reviewer" differs from what Kernel does on its own now, so it is written. Kernel's code review is the default, so it isn't.
+    await h['agents.setTeam']({ roomId: room.id, team: { reviewer: 'none' } })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('\n[team]\nreviewer = "none"\n')
+    await h['agents.setTeam']({ roomId: room.id, team: { reviewer: 'kernel-reviewer' } })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe(SETTINGS)
+
+    const off = await boot({ ...AGENTS, '.kernel/settings.toml': `${SETTINGS}\n[team]\nreviewer = "none"\n` })
+    const ws = await pr(off.k, off.room.id, 1)
+    await off.k.reviews.onReady(ws.id)
+    expect(off.k.store.workspaces(off.room.id).filter((w) => w.reviewOf === ws.id)).toEqual([])
   })
 })
 
@@ -294,8 +350,8 @@ describe('personal and plugin agents (KERNEL-463)', () => {
     // They were there before Kernel heard of them, so nobody walks in.
     expect(activity.filter((e) => e.kind === 'agent.joined')).toEqual([])
 
-    // A plugin brings its agents to every room, so its reviewer doesn't take over from Theo unless [team] says so.
-    expect(team.find((a) => a.reviewer)?.id).toBe('kernel-reviewer')
+    // A plugin brings its agents to every room, so its reviewer doesn't review unless [team] says so.
+    expect(team.find((a) => a.reviewer)).toBeUndefined()
     const named = await h['agents.setTeam']({ roomId: room.id, team: { reviewer: 'kit:code-reviewer' } })
     expect(named.find((a) => a.reviewer)?.id).toBe('kit:code-reviewer')
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('reviewer = "kit:code-reviewer"')

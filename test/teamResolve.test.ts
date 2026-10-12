@@ -6,7 +6,8 @@ import { agentFromFile } from '../src/main/services/agents'
 import { loadBuiltins } from '../src/main/services/builtins'
 import { adviseRoster, resolveTeam, writtenAsSubagent } from '../src/main/services/teamResolve'
 
-// KERNEL-397: one team per room, whatever shape its .claude/agents folder has. Kernel's Rowan and Theo fill the gaps.
+// KERNEL-397: one team per room, whatever shape its .claude/agents folder has. Kernel's Rowan fills a missing Lead, and
+// since KERNEL-553 no built-in agent fills a missing reviewer: Kernel's code review runs instead (KERNEL-549).
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
 // The body mentions a pull request, so a file with no tools line reads as a teammate, not a subagent (KERNEL-465).
@@ -26,15 +27,37 @@ const ROWAN = file('rowan', 'name: rowan\ndescription: Lead. Plans.\nrole: Lead\
 const THEO = file('theo', 'name: theo\ndescription: Reviewer. Read-only.\nrole: Reviewer\ntools: Read, Grep, Glob, Bash')
 
 describe('resolveTeam', () => {
-  it('gives an empty room Kernel\'s Rowan and Theo, and no teammates', async () => {
+  it("gives an empty room Kernel's Rowan as its only built-in agent, and no reviewer agent", async () => {
     const r = await team([])
-    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
+    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin']])
+    // The reviewer is Kernel's code review, which is no agent (KERNEL-553).
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['builtin', 'builtin'])
-    const [lead, reviewer] = r.agents
+    const [lead] = r.agents
     expect(lead).toMatchObject({ file: '', role: 'Lead' })
     expect([lead.model, lead.effort]).toEqual([undefined, undefined])
     expect(lead.prompt).toMatch(/^You are Rowan, the lead/)
-    expect(reviewer).toMatchObject({ tools: ['Read', 'Grep', 'Glob', 'Bash'], member: false })
+  })
+
+  it("reviews with a file whose role says review, else with no agent, and reads kernel-reviewer as Kernel's code review", async () => {
+    const theo = await team([KAI, THEO])
+    expect(roles(theo.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['kai', 'Kai', 'member'], ['theo', 'Theo', 'reviewer']])
+    expect(theo.reviewerFrom).toBe('file')
+    // A room that picked Kernel's Theo before KERNEL-553 gets Kernel's code review, and "none" still means no review.
+    for (const reviewer of ['kernel-reviewer', 'none']) {
+      const r = await team([KAI, THEO], { reviewer })
+      expect(r.agents.filter((a) => a.reviewer || a.builtIn === 'reviewer')).toEqual([])
+      expect(r.reviewerFrom).toBe('setting')
+    }
+    // Neither names a missing agent, with the starter folder or without it.
+    expect(warningsOf((await team([KAI], { reviewer: 'kernel-reviewer' }, { starters: false })).agents)).toEqual({})
+  })
+
+  it("keeps Kernel's Theo off every team, named Theo for the review workspaces it ran", async () => {
+    const { theo } = await loadBuiltins(STARTERS, [THEO])
+    expect(theo).toMatchObject({ id: 'kernel-reviewer', name: 'Theo', role: 'Reviewer', file: '', lead: false, builtIn: 'reviewer', tools: ['Read', 'Grep', 'Glob', 'Bash'] })
+    expect(theo?.prompt).toMatch(/^You are Theo, the reviewer\./)
+    expect([theo?.model, theo?.effort]).toEqual([undefined, undefined])
+    expect((await team([THEO])).agents.map((a) => a.id)).toEqual(['kernel-lead', 'theo'])
   })
 
   it("keeps a Kernel starter team as it is, with no built-ins", async () => {
@@ -74,7 +97,7 @@ describe('resolveTeam', () => {
 
   it('lets one of two Leads lead, by name, and warns on the other', async () => {
     const r = await team([file('zed', 'name: zed\ndescription: Plans.\nlead: true'), file('ada', 'name: ada\ndescription: Plans too.\nrole: Lead'), KAI])
-    expect(roles(r.agents)).toEqual([['ada', 'Ada', 'lead'], ['kai', 'Kai', 'member'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin'], ['zed', 'Zed', 'member']])
+    expect(roles(r.agents)).toEqual([['ada', 'Ada', 'lead'], ['kai', 'Kai', 'member'], ['zed', 'Zed', 'member']])
     expect(warningsOf(r.agents)).toEqual({ zed: ['second-lead:Ada'] })
   })
 
@@ -85,38 +108,40 @@ describe('resolveTeam', () => {
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['setting', 'setting'])
     expect(warningsOf(r.agents)).toEqual({ rowan: ['second-lead:Noor'] })
     const builtins = await team([KAI, ROWAN], { lead: 'kernel-lead', reviewer: 'kernel-reviewer' })
-    expect(roles(builtins.agents)).toEqual([['kernel-lead', 'Lead', 'lead', 'builtin'], ['kai', 'Kai', 'member'], ['rowan', 'Rowan', 'member'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
+    expect(roles(builtins.agents)).toEqual([['kernel-lead', 'Lead', 'lead', 'builtin'], ['kai', 'Kai', 'member'], ['rowan', 'Rowan', 'member']])
+    expect([builtins.leadFrom, builtins.reviewerFrom]).toEqual(['setting', 'setting'])
   })
 
   it('flags a [team] setting that names nobody, and resolves as if it were not there', async () => {
     const r = await team([KAI, ROWAN], { lead: 'ghost', reviewer: 'rowan' })
-    expect(roles(r.agents)).toEqual([['rowan', 'Rowan', 'lead'], ['kai', 'Kai', 'member'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
-    expect(warningsOf(r.agents)).toEqual({ rowan: ['setting-missing:lead = "ghost"'], 'kernel-reviewer': ['setting-missing:reviewer = "rowan"'] })
+    expect(roles(r.agents)).toEqual([['rowan', 'Rowan', 'lead'], ['kai', 'Kai', 'member']])
+    // With no reviewer to hold it, the reviewer's warning goes to the Lead.
+    expect(warningsOf(r.agents)).toEqual({ rowan: ['setting-missing:lead = "ghost"', 'setting-missing:reviewer = "rowan"'] })
   })
 
-  it("names Kernel's agents apart from a repo's own Rowan and Theo", async () => {
+  it("names Kernel's Rowan apart from a repo's own Rowan", async () => {
     const r = await team([file('rowan', 'name: rowan\ndescription: Frontend engineer.\nrole: Frontend'), file('theo', 'name: theo\ndescription: Data engineer.\nrole: Data')])
-    expect(roles(r.agents)).toEqual([['kernel-lead', 'Lead', 'lead', 'builtin'], ['kernel-reviewer', 'Reviewer', 'reviewer', 'builtin'], ['rowan', 'Rowan', 'member'], ['theo', 'Theo', 'member']])
+    expect(roles(r.agents)).toEqual([['kernel-lead', 'Lead', 'lead', 'builtin'], ['rowan', 'Rowan', 'member'], ['theo', 'Theo', 'member']])
     expect(r.agents[0].prompt).toMatch(/^You are the Lead of this room's team in Kernel\./)
-    expect(r.agents[1].prompt).toMatch(/^You are the reviewer\./)
     const both = await team([file('rowan', 'name: rowan\ndescription: x\nrole: Frontend'), file('lead', 'name: lead\ndescription: x\nrole: Data')])
     expect(both.agents[0]).toMatchObject({ id: 'kernel-lead', name: 'Kernel Lead' })
   })
 
   it("skips a file that takes Kernel's ids or another file's name", async () => {
-    const r = await team([file('kernel-lead', 'name: kernel-lead\ndescription: Mine.\nlead: true'), file('a', 'name: kai\ndescription: First.'), file('b', 'name: kai\ndescription: Second.')])
-    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['kai', 'Kai', 'member'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
+    // kernel-reviewer stays reserved after KERNEL-553, so review workspaces Kernel's Theo ran never point at a repo's file.
+    const r = await team([file('kernel-lead', 'name: kernel-lead\ndescription: Mine.\nlead: true'), file('kernel-reviewer', 'name: kernel-reviewer\ndescription: Mine.\nrole: Reviewer'), file('a', 'name: kai\ndescription: First.'), file('b', 'name: kai\ndescription: Second.')])
+    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['kai', 'Kai', 'member']])
     expect(r.agents.find((a) => a.id === 'kai')?.description).toBe('First.')
-    expect(warningsOf(r.agents)).toEqual({ 'kernel-lead': ['reserved-id:kernel-lead.md'], kai: ['duplicate-id:b.md'] })
+    expect(warningsOf(r.agents)).toEqual({ 'kernel-lead': ['reserved-id:kernel-lead.md', 'reserved-id:kernel-reviewer.md'], kai: ['duplicate-id:b.md'] })
   })
 
   // KERNEL-451: a broken file shows on Team with its error and does nothing else.
   it("keeps a file Kernel can't read on the team with its error, never as the Lead, the reviewer or a teammate", async () => {
     const broken = (name: string, head: string) => agentFromFile(`/repo/.claude/agents/${name}.md`, `---\n${head}\n---\nBody`)
     const r = await team([broken('ada', 'name: ada\ndescription: "Plans.\nlead: true'), broken('rex', 'name: rex\ndescription: "Reviews.\nrole: Reviewer'), KAI], { reviewer: 'rex' })
-    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['ada', 'Ada', 'helper'], ['kai', 'Kai', 'member'], ['rex', 'Rex', 'helper'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
+    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['ada', 'Ada', 'helper'], ['kai', 'Kai', 'member'], ['rex', 'Rex', 'helper']])
     const kinds = Object.fromEntries(r.agents.map((a) => [a.id, a.warnings?.map((w) => w.kind) ?? []]))
-    expect(kinds).toEqual({ 'kernel-lead': [], ada: ['unreadable-file'], kai: [], rex: ['unreadable-file'], 'kernel-reviewer': ['setting-missing'] })
+    expect(kinds).toEqual({ 'kernel-lead': ['setting-missing'], ada: ['unreadable-file'], kai: [], rex: ['unreadable-file'] })
     // A file that reads keeps the name, even when the broken one comes first by file name.
     const twin = await team([broken('kai', 'name: kai\ndescription: "Frontend'), file('kai2', 'name: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Bash')])
     expect(twin.agents.find((a) => a.id === 'kai')).toMatchObject({ file: '/repo/.claude/agents/kai2.md', member: true, warnings: [{ kind: 'duplicate-id', detail: 'kai.md' }] })
@@ -136,7 +161,8 @@ describe('resolveTeam', () => {
       file('blank', 'name: blank\ndescription: ""')
     ], undefined, { starters: false })
     expect(roles(r.agents)).toEqual([['blank', 'Blank', 'member'], ['block', 'Block', 'member'], ['flow', 'Flow', 'member'], ['mcp', 'Mcp', 'helper']])
-    expect([r.leadFrom, r.reviewerFrom]).toEqual(['none', 'none'])
+    // No Lead without the starter folder. Kernel's code review is bundled into the app, so it needs none.
+    expect([r.leadFrom, r.reviewerFrom]).toEqual(['none', 'builtin'])
     expect(warningsOf(r.agents)).toEqual({ blank: ['no-description'], mcp: ['cant-open-pr'] })
   })
 
@@ -182,7 +208,7 @@ describe('resolveTeam', () => {
     const all = (await team([...teammates, ...helpers])).agents
     expect(adviseRoster(all)).toEqual({ agents: 13, needed: true, suggested: teammates.map((a) => a.id) })
     expect(adviseRoster(all, { roster: ['dev10'] })).toMatchObject({ agents: 13, needed: false })
-    // Kernel's own Rowan and Theo don't count.
+    // Kernel's own Rowan doesn't count.
     expect(adviseRoster((await team([...teammates, helpers[0]])).agents)).toEqual({ agents: 12, needed: false, suggested: teammates.map((a) => a.id) })
   })
 })

@@ -179,7 +179,8 @@ export class Rooms extends Feature {
       })
     }
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
-    // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
+    // the starter agents picked in New room. Kernel's own Rowan fills in a missing Lead either way, and Kernel's code review
+    // a missing reviewer (KERNEL-553).
     // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
       const brought = (await agentFiles(room.path)).length

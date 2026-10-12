@@ -351,12 +351,15 @@ describe('room pause and team templates', () => {
     const k = await kernel()
     const h = k.handlers()
     const a = await k.addRoom(await tempRepo()), b = await k.addRoom(await tempRepo()), c = await k.addRoom(await tempRepo())
-    // The templates seat teammates as files, and Kernel's own Rowan and Theo lead and review (KERNEL-397).
-    expect((await h['agents.seed']({ roomId: a.id, template: { kind: 'starter' } })).map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'kernel-lead', 'kernel-reviewer', 'noor'])
-    expect((await h['agents.seed']({ roomId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['kai', 'kernel-lead', 'kernel-reviewer'])
+    // The templates seat starter files, Theo among them, and Kernel's own Rowan leads (KERNEL-397, KERNEL-553).
+    const team = await h['agents.seed']({ roomId: a.id, template: { kind: 'starter' } })
+    expect(team.map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'kernel-lead', 'noor', 'theo'])
+    expect(team.find((x) => x.id === 'theo')).toMatchObject({ reviewer: true, member: false, file: join(a.path, '.claude', 'agents', 'theo.md') })
+    // The pair has no reviewer, so Kernel's code review covers it.
+    expect((await h['agents.seed']({ roomId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['kai', 'kernel-lead'])
     await expect(h['agents.seed']({ roomId: b.id, template: { kind: 'starter' } })).rejects.toThrow('already has agents')
     expect((await h['agents.seed']({ roomId: c.id, template: { kind: 'copy', fromRoomId: a.id } })).length).toBe(5)
-    expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(3)
+    expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(4)
     await k.stop()
   })
 

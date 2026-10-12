@@ -88,7 +88,7 @@ export interface NewRoomRequest {
   /** owner/repo for a repo, an absolute path for a folder, a template repo for scratch. */
   from: string
   baseBranch?: string
-  /** Starter agent ids to seat when the repo has no agents. Kernel's own Rowan and Theo lead and review (KERNEL-397). */
+  /** Starter agent ids to seat when the repo has no agents. Kernel's own Rowan leads (KERNEL-397, KERNEL-553). */
   team: string[]
   /** Brief the Lead as soon as setup finishes. */
   autostart: boolean
