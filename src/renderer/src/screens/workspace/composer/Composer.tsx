@@ -163,6 +163,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
+  // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
+  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -171,6 +173,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
+    if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
@@ -190,7 +193,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const model = modelLabelOf(chat.model, providerModels)
   const effort = effortLabel(chat.effort)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
+  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || `Ask ${name} to make changes, @mention files, run /skills`
 
   // ^⌘1 to 4 pick a model (at the effort it last ran at) and ⌘⇧/ cycles the effort, with the picker open or not.
   // The open picker handles them itself and marks the event handled. ⌘L puts the caret in the box. ⌘⇧L is the Lead chat (App.tsx).
