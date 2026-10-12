@@ -57,7 +57,7 @@ const placeOf = (box: HTMLElement, el: HTMLElement) => box.scrollTop + el.getBou
  * to one. It is hidden below two entries. Hover or keyboard focus opens the list; the keys move through it while focus stays on
  * the rail, so the rows are options named by `aria-activedescendant`.
  */
-export function ChatRail({ entries, scroller }: { entries: RailEntry[]; scroller: RefObject<HTMLElement | null> }) {
+export function ChatRail({ entries, scroller, onGlide }: { entries: RailEntry[]; scroller: RefObject<HTMLElement | null>; onGlide?: (on: boolean) => void }) {
   const id = useId()
   const count = entries.length
   const [current, setCurrent] = useState(count - 1)
@@ -73,6 +73,9 @@ export function ChatRail({ entries, scroller }: { entries: RailEntry[]; scroller
   const point = useRef({ x: 0, y: 0 })
   const entriesNow = useRef(entries)
   entriesNow.current = entries
+  // Tells the transcript a jump is scrolling its view, so it counts as the reader's own scroll and the chat doesn't follow its end back over it (KERNEL-605).
+  const glideNow = useRef(onGlide)
+  glideNow.current = onGlide
   // A jump holds the entry it went to as the one in view until the reader scrolls by hand, since a message near the end can't reach the top.
   const forced = useRef<string | undefined>(undefined)
   const glide = useRef<(() => void) | undefined>(undefined)
@@ -157,7 +160,8 @@ export function ChatRail({ entries, scroller }: { entries: RailEntry[]; scroller
     forced.current = entry.id
     setCurrent(i)
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-    const to = placeOf(box, el)
+    // A message near the end can't reach the top, so the view stops at the end. A jump that moves nothing lands at once.
+    const to = Math.max(0, Math.min(placeOf(box, el), box.scrollHeight - box.clientHeight))
     let done = false
     let timer = 0
     const stop = () => {
@@ -165,6 +169,7 @@ export function ChatRail({ entries, scroller }: { entries: RailEntry[]; scroller
       window.clearTimeout(timer)
       box.removeEventListener('scrollend', land)
       if (glide.current === stop) glide.current = undefined
+      glideNow.current?.(false)
     }
     const land = () => {
       if (done) return
@@ -175,6 +180,7 @@ export function ChatRail({ entries, scroller }: { entries: RailEntry[]; scroller
     }
     glide.current = stop
     if (Math.abs(to - box.scrollTop) < 1) { land(); return }
+    glideNow.current?.(true)
     box.scrollTo({ top: to, behavior: smooth ? 'smooth' : 'auto' })
     if (smooth) { box.addEventListener('scrollend', land); timer = window.setTimeout(land, GLIDE_MS) }
     else requestAnimationFrame(() => requestAnimationFrame(land))
