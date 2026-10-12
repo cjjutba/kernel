@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef } from '../src/shared/types'
-import { LOOKS, lookFor, seating } from '../src/renderer/src/floor/layout'
-import { roomSeating } from '../src/renderer/src/floor/useSeating'
+import { LOOKS, lookFor, overflowShirt, seating } from '../src/renderer/src/screens/team/looks'
 import { shirtOf } from '../src/renderer/src/screens/team/model'
 
 const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', description: '', lead, prompt: '', file: `${id}.md` })
@@ -9,8 +8,8 @@ const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', 
 describe('Team shirts follow file order (KERNEL-102)', () => {
   const team = [a('rowan', true), a('kai'), a('noor'), a('ivy')]
 
-  it('wears the look of the agent\'s place in the file, as the floor does', () => {
-    // Desks run backwards from the file, so a seat index would hand every agent the wrong look.
+  it('wears the look of the agent\'s place in the file', () => {
+    // The room's order runs backwards from the file, so a place in it would hand every agent the wrong look.
     const room = { desks: ['ivy', 'noor', 'kai', 'rowan'] }
     team.forEach((x, i) => expect(shirtOf(x, team, room)).toBe(LOOKS[i].shirt))
   })
@@ -36,35 +35,26 @@ describe('Team shirts follow file order (KERNEL-102)', () => {
   })
 })
 
-describe('New agent and the floor agree on desks (KERNEL-102)', () => {
-  // Nine agents so three have no desk, and the context decides which three.
-  const ids = ['rowan', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
-  const team = ids.map((id) => a(id, id === 'rowan'))
-  const deskOf = (seats: ReturnType<typeof roomSeating>, id: string) => seats.seated.some((x) => x.id === id)
-
-  it('takes the same workspaces, status and activity, so the answers match for a late joiner', () => {
-    const ctx = {
-      workspaces: [{ agentId: 'h', status: 'ready' as const }],
-      status: { g: 'working' as const },
-      activity: [{ agentId: 'f', ts: 50 }, { agentId: 'e', ts: 40 }]
-    }
-    const floor = roomSeating(team, undefined, ctx)
-    // Without the context h and g would have no desk. With it they do, and the floor and New agent say so alike.
-    expect(deskOf(roomSeating(team, undefined, {}), 'h')).toBe(false)
-    expect(deskOf(floor, 'h')).toBe(true)
-    expect(deskOf(floor, 'g')).toBe(true)
-    expect(floor).toEqual(seating(team, { desks: undefined }, ctx))
+describe('Team puts six agents in a room\'s order and the rest in the overflow', () => {
+  it('puts the lead first and sends agents past the sixth to the overflow, in the overflow shirts', () => {
+    const team = [a('kai'), a('rowan', true), ...['b', 'c', 'd', 'e', 'f', 'g'].map((x) => a(x))]
+    const { seated, overflow } = seating(team)
+    expect(seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'b', 'c', 'd', 'e'])
+    expect(overflow.map((x) => x.id)).toEqual(['f', 'g'])
+    expect(shirtOf(team[6], team)).toBe(overflowShirt(0))
+    expect(shirtOf(team[7], team)).toBe(overflowShirt(1))
   })
 
-  it('follows room.desks the same way', () => {
-    const room = { desks: ['rowan', 'h'] }
-    const seats = roomSeating(team, room, { status: { g: 'working' } })
-    expect(seats.seated.map((x) => x.id)).toEqual(['rowan', 'h'])
-    expect(deskOf(seats, 'g')).toBe(false)
+  it('follows room.desks when it is set', () => {
+    const team = [a('rowan', true), a('kai'), a('sol')]
+    const { seated, overflow } = seating(team, { desks: ['rowan', 'kai'] })
+    expect(seated.map((x) => x.id)).toEqual(['rowan', 'kai'])
+    expect(overflow.map((x) => x.id)).toEqual(['sol'])
   })
 
-  it('leaves retired agents out of the desks', () => {
-    const seats = roomSeating([a('rowan', true), { ...a('old'), retired: true }], undefined, {})
-    expect(seats.seated.map((x) => x.id)).toEqual(['rowan'])
+  it('leaves retired agents out', () => {
+    const { seated, overflow } = seating([a('rowan', true), { ...a('old'), retired: true }])
+    expect(seated.map((x) => x.id)).toEqual(['rowan'])
+    expect(overflow).toEqual([])
   })
 })

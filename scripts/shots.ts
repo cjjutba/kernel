@@ -255,7 +255,7 @@ async function capture(name: string): Promise<boolean> {
     await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: HEIGHT })
     await page.waitForSelector('html[data-fixture="ready"]', { state: 'attached', timeout: 15_000 })
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
-    // Settings, Floor and Board are lazy chunks. App shows the boot shell with data-lazy until the chunk has loaded, and their data
+    // Settings is a lazy chunk. App shows the boot shell with data-lazy until the chunk has loaded, and its data
     // loads on mount, so wait for the chunk first and for the screen's data after.
     const lazyLoaded = () => page.waitForSelector('[data-lazy="pending"]', { state: 'detached', timeout: 15_000 })
     await lazyLoaded()
