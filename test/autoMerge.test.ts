@@ -74,6 +74,9 @@ describe('which PRs merge by themselves', () => {
     ['a PR over the line limit', { files: { 'big.txt': lines(401) } }, 'It changes 401 lines, more than the 400 auto-merge allows.'],
     ["a PR that touches the room's settings file", { files: { '.kernel/settings.toml': '[merge]\nauto = true\n' } }, "It changes .kernel/settings.toml, which always needs a person's review."],
     ['a PR that touches it in another case, as the Mac reads it', { files: { '.KERNEL/settings.toml': '[merge]\nauto = true\n' } }, "It changes .KERNEL/settings.toml, which always needs a person's review."],
+    // KERNEL-632: the agents' files and instructions count at the root and in any folder below it.
+    ...['CLAUDE.md', 'AGENTS.md', '.claude/agents/x.md', 'src/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/web/.claude/agents/x.md'].map((f): Row =>
+      [`a PR that touches ${f}`, { files: { [f]: 'You are Kai.\n' } }, `It changes ${f}, which always needs a person's review.`]),
     ["a path the base branch's [merge] always_review adds", { main: { '.kernel/settings.toml': '[merge]\nalways_review = ["migrations/**"]\n' }, files: { 'migrations/001.sql': 'select 1;\n' } }, "It changes migrations/001.sql, which always needs a person's review."],
     ['a shared settings file that turns it on', { app: OFF, main: { '.kernel/settings.toml': '[merge]\nauto = true\nmax_lines = 5000\n' } }, 'Auto-merge is off.'],
     ['a personal settings file the repo committed', { app: OFF, main: { '.kernel/settings.local.toml': '[merge]\nauto = true\n' } }, 'Auto-merge is off.'],
@@ -190,7 +193,7 @@ describe('the rule', () => {
   })
 
   it("keeps Kernel's own always-review paths", () => {
-    expect(ALWAYS_REVIEW).toEqual(['.kernel/**', '.claude/agents/**', 'CLAUDE.md', 'AGENTS.md', '.github/workflows/**'])
+    expect(ALWAYS_REVIEW).toEqual(['.kernel/**', '**/.claude/agents/**', '**/CLAUDE.md', '**/AGENTS.md', '.github/workflows/**'])
   })
 })
 
