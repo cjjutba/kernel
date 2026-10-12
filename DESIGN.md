@@ -17,12 +17,14 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | surface-3 | #1e1e1e | selected rows, hover fills |
 | hover | #242424 | menu item hover |
 | line | #1c1c1c | dividers |
-| line-2 | #262626 | input borders |
+| line-2 | #262626 | hairlines on cards, tables and chips |
 | line-3 | #2e2e2e | buttons, menus |
-| ink | #f5f5f5 | primary text |
-| ink-2 | #e0e0e0 | secondary text |
-| muted | #9c9c9c | labels, meta |
-| faint | #7a7a7a | tertiary |
+| input-line | #6a6a6a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #f5f5f5 | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #c8c8c8 | default text: rows, body, the transcript |
+| ink-3 | #aaaaaa | secondary text |
+| muted | #8e8e8e | labels, meta, placeholders |
+| faint | #727272 | icons, disabled, decoration. Never body text |
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
@@ -51,12 +53,14 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | surface-3 | #eaeaed | selected rows, hover fills |
 | hover | #e6e6e9 | menu item hover |
 | line | #e8e8eb | dividers |
-| line-2 | #dedee2 | input borders |
+| line-2 | #dedee2 | hairlines on cards, tables and chips |
 | line-3 | #d6d6db | buttons, menus |
-| ink | #18191b | primary text |
-| ink-2 | #3a3d44 | secondary text |
-| muted | #62666d | labels, meta |
-| faint | #636770 | tertiary (4.5:1, so close to muted) |
+| input-line | #82848a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #18191b | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #35383f | default text: rows, body, the transcript |
+| ink-3 | #4c4f56 | secondary text |
+| muted | #62666d | labels, meta, placeholders |
+| faint | #7b7f88 | icons, disabled, decoration. Never body text |
 | add | #166a45 | diff additions, passing checks |
 | del | #b32e2e | diff deletions, errors, the context ring from 90% |
 | mod | #895503 | a modified file's name and letter (KERNEL-399) |
@@ -71,6 +75,23 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | pr-fail-* | band #fcf0f0, line #f3d6d6, soft #f8e5e5, edge #e0a3a3, fg #8f2222, text #b32e2e | PR header band: checks failed, changes requested, conflicts |
 
 The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, made by `scripts/floor-light.mjs`) follow the theme. Colors live in `tokens.css` and the floor art only; `test/theme.test.ts` fails on a hex or rgb value anywhere else in the renderer.
+
+## Text ladder
+
+Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so the same text reads the same everywhere.
+
+| Role | Token | Dark on panel | Light on panel | Use |
+|---|---|---|---|---|
+| Emphasis | ink | 17.6:1 | 17.6:1 | titles, the current row, unread, the primary button |
+| Default | ink-2 | 11.5:1 | 11.7:1 | rows, body, the transcript |
+| Secondary | ink-3 | 8.3:1 | 8.2:1 | secondary text |
+| Meta | muted | 5.9:1 | 5.8:1 | labels, meta, placeholders |
+| Decoration | faint | 4.0:1 | 4.0:1 | icons, disabled, decoration. Never body text |
+
+- Each tier has at least 1.35x the contrast of the next, so emphasis, default and meta read as three steps and not one.
+- ink, ink-2, ink-3, muted and the status text colors reach 4.5:1 on every surface, hover and surface-3 included. Faint is not text and reaches 3:1.
+- Light text keeps the slight cool cast it had, which matches the light surfaces. Only the dark neutrals are pure grey (KERNEL-431).
+- Token values win over the PNGs in `design/screens/` on text color: the PNGs still draw the old greys. The PNGs stay the spec for layout and copy.
 
 ## Type
 
@@ -153,4 +174,10 @@ A button that waits on the main process shows it is working until the call retur
 
 ## Accessibility
 
-Real `<button>`, `<a>`, `<input>` with labels; focus rings visible; every icon-only control has `aria-label`; text contrast 4.5:1 (3:1 at 24px and up).
+Real `<button>`, `<a>`, `<input>` with labels; focus rings visible; every icon-only control has `aria-label`.
+
+- Text contrast is 4.5:1 for every text tier and status color on every surface (see Text ladder). Faint is for icons, disabled controls and decoration, at 3:1 (WCAG 1.4.11). It never carries body text.
+- Input borders use `--input-line`, which reaches 3:1 on every surface an input sits on (WCAG 1.4.11). Dividers, cards and chips keep their hairlines (`--line`, `--line-2`, `--line-3`). The focus ring (`--focus`) reaches 3:1 on every surface.
+- Unread is bold plus a step up the ladder, never color alone.
+- Increase contrast: `@media (prefers-contrast: more)` in `tokens.css` follows macOS. Each text tier takes the value of the tier above it, ink goes to full black or white, dividers reach 2:1 and every other line 3:1 (line-4 and the input border 4.5:1), and the focus ring is near solid.
+- `test/theme.test.ts` checks every pair above in both themes and in the Increase contrast block.
