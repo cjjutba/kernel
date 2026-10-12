@@ -15,7 +15,7 @@ import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
-import { DEFAULT_OPEN_CAP, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
 import { fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, roomWorktreeRoot, slugify, worktreeFolder } from '../services/worktrees'
@@ -497,8 +497,13 @@ export class Lead extends Feature {
       },
       // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
       issueTaken: (key) => this.k.integrations.issueTaken(roomId, key),
-      // Settings, Models' agent limit, or three when it is 0 (KERNEL-220).
-      agentCap: () => this.settings.models.agentLimit || DEFAULT_OPEN_CAP,
+      // The room's `[agents] open_workspaces` when it sets one, else Settings, Models' agent limit. 0 from either is no cap,
+      // with no hidden default (KERNEL-492, amends KERNEL-220).
+      agentCap: async () => {
+        const room = this.store.room(roomId)
+        const own = room ? (await loadRepoSettings(room.path)).agents?.openWorkspaces : undefined
+        return { cap: own ?? this.settings.models.agentLimit, own: own !== undefined, room: room?.name ?? 'this room' }
+      },
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.

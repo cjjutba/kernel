@@ -33,10 +33,10 @@ export interface KernelToolDeps {
    */
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
-   * How many teammate workspaces may be open in the room at once: Settings, Models' agent limit, or `DEFAULT_OPEN_CAP` when it
-   * is 0 for no limit. Read on each call. Left out, create_workspace has no cap (KERNEL-220).
+   * How many teammate workspaces may be open in the room at once, read on each call: the room's own limit when it sets one,
+   * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
    */
-  agentCap?: () => number
+  agentCap?: () => Promise<OpenCap>
   /**
    * Whether someone else may already be on the issue: a branch on the remote, an open PR, another assignee (KERNEL-479).
    * Never rejects: a check that can't answer is a note. Left out, create_workspace doesn't check.
@@ -85,13 +85,17 @@ export interface KernelToolDeps {
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
-/** How many teammate workspaces create_workspace allows open in a room when Settings, Models sets no agent limit (KERNEL-220). */
-export const DEFAULT_OPEN_CAP = 3
+/**
+ * The open-workspace cap create_workspace checks, 0 for none. `own` is true when the room's `[agents] open_workspaces` sets
+ * it, and `room` is the room's name, so the refusal can say where to change it (KERNEL-492).
+ */
+export interface OpenCap { cap: number; own: boolean; room: string }
 
-/** create_workspace's refusal at the cap. `user_asked` is the way past it, for a user who asked for more. */
-export function capRefusal(open: number, cap: number): string {
+/** create_workspace's refusal at the cap, naming the setting that gave it. `user_asked` is the way past it, for a user who asked for more. */
+export function capRefusal(open: number, { cap, own, room }: OpenCap): string {
   const count = `${open} teammate ${open === 1 ? 'workspace is' : 'workspaces are'} open in this room`
-  return `${count}${open === cap ? ', the limit' : `, over the limit of ${cap}`}. Archive one, or the user can raise the limit in Settings, Models.`
+  const where = own ? `change it in Settings, ${room}, Agents` : `raise Agents working at once in Settings, Models, or set this room's own limit in Settings, ${room}, Agents`
+  return `${count}${open === cap ? ', the limit' : `, over the limit of ${cap}`}. Archive one, or the user can ${where}.`
 }
 
 /** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
@@ -348,11 +352,11 @@ export function kernelTools(d: KernelToolDeps) {
         }
       }
       // A room keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
-      // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220).
-      const cap = d.agentCap?.()
-      if (!review_of && !user_asked && cap) {
+      // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220). A cap of 0 is none (KERNEL-492).
+      const limit = !review_of && !user_asked ? await d.agentCap?.() : undefined
+      if (limit?.cap) {
         const open = d.workspaces().filter((w) => w.status !== 'archived' && !w.reviewOf && !isLeadWorkspace(w, d.lead?.id) && w.prState !== 'merged' && w.prState !== 'closed').length
-        if (open >= cap) return refuse(capRefusal(open, cap))
+        if (open >= limit.cap) return refuse(capRefusal(open, limit))
       }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {

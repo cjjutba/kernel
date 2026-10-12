@@ -16,7 +16,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, DEFAULT_OPEN_CAP, kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -92,23 +92,31 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   const rowan = { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true } as AgentDef
   const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
   const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
-  function tools(workspaces: Workspace[], cap?: number) {
+  const APP = "Archive one, or the user can raise Agents working at once in Settings, Models, or set this room's own limit in Settings, app, Agents."
+  const ROOM = 'Archive one, or the user can change it in Settings, app, Agents.'
+  /** create_workspace with `cap` from Settings, Models, or from the room's own limit when `own`. */
+  function tools(workspaces: Workspace[], cap?: number, own = false) {
     const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'noor' }) as Workspace)
     const deps = {
       roomId: 'room', lead: rowan, agents: async () => [rowan, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
-      askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: () => cap })
+      askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: async () => ({ cap, own, room: 'app' }) })
     } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     return { createWorkspace, run: async (a: object = args) => { const r = await create.handler(a as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } } }
   }
 
-  it('refuses a fourth build workspace when the agent limit is 0, and says how to go on', async () => {
-    const t = tools(ws(3), DEFAULT_OPEN_CAP)
-    expect(await t.run()).toEqual({ isError: true, text: 'Not created: 3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.' })
+  it('refuses at the limit and names the setting that gave it (KERNEL-492)', async () => {
+    const t = tools(ws(3), 3)
+    expect(await t.run()).toEqual({ isError: true, text: `Not created: 3 teammate workspaces are open in this room, the limit. ${APP}` })
     expect(t.createWorkspace).not.toHaveBeenCalled()
-    expect(capRefusal(3, 3)).toBe('3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.')
-    expect(capRefusal(1, 1)).toContain('1 teammate workspace is open in this room, the limit.')
-    expect(capRefusal(5, 3)).toContain('5 teammate workspaces are open in this room, over the limit of 3.')
+    expect(await tools(ws(2), 2, true).run()).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this room, the limit. ${ROOM}` })
+    expect(capRefusal(1, { cap: 1, own: false, room: 'app' })).toContain('1 teammate workspace is open in this room, the limit.')
+    expect(capRefusal(5, { cap: 3, own: true, room: 'app' })).toBe(`5 teammate workspaces are open in this room, over the limit of 3. ${ROOM}`)
+  })
+
+  it('has no cap at 0, from the room or the app, with no hidden default (KERNEL-492)', async () => {
+    expect((await tools(ws(9), 0).run()).isError).toBe(false)
+    expect((await tools(ws(9), 0, true).run()).isError).toBe(false)
   })
 
   it('creates it below the limit, and when the user explicitly asked for more', async () => {
@@ -130,8 +138,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     expect((await tools([...ws(2), ...ws(1, { prState: 'ready' }), ...others], 3).run()).isError).toBe(true)
   })
 
-  it("follows Settings, Models' agent limit, and has no cap when the deps give none", async () => {
-    expect((await tools(ws(2), 2).run()).text).toBe('Not created: 2 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.')
+  it('has no cap when the deps give none', async () => {
     expect((await tools(ws(4), 3).run()).text).toContain('4 teammate workspaces are open in this room, over the limit of 3.')
     expect((await tools(ws(9)).run()).isError).toBe(false)
   })
@@ -140,7 +147,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     const reviewer = { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false } as AgentDef
     const workspaces = ws(3)
     const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'theo' }) as Workspace)
-    const deps = { roomId: 'room', lead: rowan, agents: async () => [rowan, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: () => 3 } as unknown as KernelToolDeps
+    const deps = { roomId: 'room', lead: rowan, agents: async () => [rowan, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, room: 'app' }) } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const r = await create.handler({ agent: 'theo', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
     expect((r as { isError?: boolean }).isError).toBeFalsy()
@@ -152,21 +159,34 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     expect(LEAD_RULE).toContain('Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.')
   })
 
-  it("refuses the fourth workspace in a real Kernel, where the Lead's tools come from Settings", { timeout: 60_000 }, async () => {
+  it("reads the room's own limit, then Settings, Models', in a real Kernel (KERNEL-492)", { timeout: 60_000 }, async () => {
     const { k, room, chat } = await realLead()
     k.sessions.send = async () => ({ queued: false })
     const lead = (await k.agents(room.id)).find((a) => a.lead)!
     const create = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'create_workspace')!
     const make = async (title: string, more: object = {}) => { const r = await create.handler({ agent: 'noor', title, brief: 'Build it', ...more } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
-    for (const title of ['One', 'Two', 'Three']) expect((await make(title)).isError, title).toBe(false)
-    expect(await make('Four')).toEqual({ isError: true, text: 'Not created: 3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.' })
-    expect(k.store.workspaces(room.id).filter((w) => !w.lead)).toHaveLength(3)
-    expect((await make('Four, as asked', { user_asked: true })).isError).toBe(false)
-    expect(k.store.workspaces(room.id).filter((w) => !w.lead)).toHaveLength(4)
-    // A limit set in Settings, Models replaces the default of three.
-    await k.handlers()['settings.set']({ patch: { models: { agentLimit: 5 } } })
-    expect((await make('Five')).isError).toBe(false)
-    expect((await make('Six')).text).toContain('5 teammate workspaces are open in this room, the limit.')
+    const roomCap = (openWorkspaces: number | null) => k.handlers()['settings.setRoom']({ roomId: room.id, patch: { agents: { openWorkspaces } } })
+    const appCap = (agentLimit: number) => k.handlers()['settings.set']({ patch: { models: { agentLimit } } })
+    const open = () => k.store.workspaces(room.id).filter((w) => !w.lead).length
+    // The room's 2 wins over the app's No limit.
+    await roomCap(2)
+    for (const title of ['One', 'Two']) expect((await make(title)).isError, title).toBe(false)
+    expect(await make('Three')).toEqual({ isError: true, text: `Not created: 2 teammate workspaces are open in this room, the limit. Archive one, or the user can change it in Settings, ${room.name}, Agents.` })
+    // The room's No limit wins over the app's 3. A workspace the user opens from New workspace counts like a hand-off.
+    await roomCap(0)
+    await appCap(3)
+    await k.handlers()['workspaces.create']({ roomId: room.id, agentId: 'noor', prompt: 'Mine' })
+    expect((await make('Four')).isError).toBe(false)
+    expect(open()).toBe(4)
+    // With the room on Same as, the app's 4 applies, and the user's workspace is one of the four.
+    await roomCap(null)
+    await appCap(4)
+    expect(await make('Five')).toEqual({ isError: true, text: `Not created: 4 teammate workspaces are open in this room, the limit. Archive one, or the user can raise Agents working at once in Settings, Models, or set this room's own limit in Settings, ${room.name}, Agents.` })
+    expect((await make('Five, as asked', { user_asked: true })).isError).toBe(false)
+    // Neither sets a limit: No limit is no cap, not three.
+    await appCap(0)
+    expect((await make('Six')).isError).toBe(false)
+    expect(open()).toBe(6)
   })
 })
 

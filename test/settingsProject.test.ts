@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
@@ -199,6 +199,37 @@ describe('repo settings files', () => {
     expect(rs.mcp).toEqual({ aliases: { sentry: 'Sentry' } })
     expect(rs.agents).toEqual({ allow: { noor: ['figma'] } })
     expect(rs.sources).toEqual({ 'mcp.aliases.sentry': 'shared', 'agents.allow.noor': 'shared' })
+  })
+
+  it("reads a room's open workspace limit, 0 to 12, the personal file winning, and clears it with null (KERNEL-492)", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const read = async (shared: string, local?: string) => {
+      await mkdir(join(repo, '.kernel'), { recursive: true })
+      await writeFile(join(repo, '.kernel', 'settings.toml'), `[agents]\n${shared}\n`)
+      if (local === undefined) await rm(join(repo, '.kernel', 'settings.local.toml'), { force: true })
+      else await writeFile(join(repo, '.kernel', 'settings.local.toml'), `[agents]\n${local}\n`)
+      return loadRepoSettings(repo)
+    }
+    expect((await read('open_workspaces = 5')).agents).toEqual({ openWorkspaces: 5 })
+    expect((await read('open_workspaces = 0')).agents).toEqual({ openWorkspaces: 0 })
+    for (const bad of ['-1', '13', '"4"', '2.5']) expect((await read(`open_workspaces = ${bad}`)).agents, bad).toBeUndefined()
+    let rs = await read('open_workspaces = 5', 'open_workspaces = 2')
+    expect(rs.agents).toEqual({ openWorkspaces: 2 })
+    expect(rs.sources['agents.openWorkspaces']).toBe('override')
+    // A bad personal value doesn't hide the shared one.
+    expect((await read('open_workspaces = 5', 'open_workspaces = 20')).agents).toEqual({ openWorkspaces: 5 })
+    // Settings writes it like any key, 0 included, and null puts the room back on the app's limit.
+    await rm(join(repo, '.kernel', 'settings.local.toml'), { force: true })
+    rs = await saveRepoSettings(repo, { agents: { openWorkspaces: 0 } })
+    expect(rs.agents).toEqual({ openWorkspaces: 0 })
+    expect(rs.sources['agents.openWorkspaces']).toBe('override')
+    expect((await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).trim()).toBe('[agents]\nopen_workspaces = 0')
+    rs = await saveRepoSettings(repo, { agents: { openWorkspaces: null } })
+    expect(rs.agents).toEqual({ openWorkspaces: 5 })
+    expect(rs.sources['agents.openWorkspaces']).toBe('shared')
+    rs = await saveRepoSettings(repo, { agents: { openWorkspaces: null } }, true)
+    expect(rs.agents).toBeUndefined()
+    expect(rs.sources['agents.openWorkspaces']).toBeUndefined()
   })
 
   it("reads and writes the team's roster in [team] (KERNEL-432)", async () => {

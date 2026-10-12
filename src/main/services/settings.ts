@@ -435,7 +435,12 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     // `[jira]` (KERNEL-474). Jira's transition ids are numbers, so a hand-written `transition = 21` reads as "21".
     jira: Object.fromEntries(Object.entries(picked(doc.jira, ['project', 'transition'], (v) => isString(v) || Number.isInteger(v))).map(([k, v]) => [k, String(v)])),
     mcp: Object.keys(aliases).length ? { aliases } : {},
-    agents: { ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)), ...(Object.keys(allow).length ? { allow } : {}) }
+    // `open_workspaces` is a whole number from 0, no limit, to 12 (KERNEL-492).
+    agents: {
+      ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)),
+      ...picked(doc.agents, ['openWorkspaces'], (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 12),
+      ...(Object.keys(allow).length ? { allow } : {})
+    }
   }
 }
 
