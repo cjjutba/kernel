@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatPart } from '../src/shared/types'
+import type { AgentDef, ChatPart, RoleModel } from '../src/shared/types'
 import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabInFront, tabStop } from '../src/renderer/src/screens/workspace/leadNoChat'
 
 // KERNEL-366: a room with no chats opens on New chat with Rowan, and + and ⌘T there start no chat.
@@ -142,5 +142,113 @@ describe('bringing the box up when the composer is asked for', () => {
     bus.focusComposerIn('ws-lead')
     bringBoxOnAsk('ws-lead', () => ({ noChat: true, tab: 'diff:' }), bringUp)()
     expect(bringUp).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("a New chat box opens on the Lead's pick (KERNEL-544)", () => {
+  const settings = (lead: RoleModel, over: { leadPlanMode?: boolean; engineers?: RoleModel; effortByModel?: Record<string, string> } = {}) => ({
+    models: {
+      roles: {
+        lead, engineers: over.engineers ?? { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'xhigh' },
+        qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }, reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+      },
+      leadPlanMode: over.leadPlanMode ?? false, effortByModel: over.effortByModel ?? {}
+    }
+  }) as Parameters<typeof import('../src/renderer/src/screens/workspace/composer/modelPrefs').leadStart>[1]
+  const opusMedium: RoleModel = { provider: 'claude', model: 'claude-opus-5-5', effort: 'medium' }
+  const astra: RoleModel = { provider: 'codex', model: 'gpt-6-astra', effort: 'max' }
+  const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
+  const rowan = (over: Partial<AgentDef> = {}) => ({ id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '', ...over }) as AgentDef
+
+  it("shows the Lead row's model and effort, not the Frontend and Backend row or the effort a model was last picked at", async () => {
+    const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    const s = settings(opusMedium, { effortByModel: { 'claude-opus-5-5': 'high' } })
+    expect(leadStart(rowan(), s, true)).toEqual({ ...opusMedium, plan: false })
+    expect(boxPick(leadStart(rowan(), s, true), undefined)).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
+  })
+
+  it("takes the Lead's plan mode from Settings, Models and effort", async () => {
+    const { leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    expect(leadStart(rowan(), settings(opusMedium, { leadPlanMode: true }), true).plan).toBe(true)
+    expect(leadStart(rowan(), settings(opusMedium, { leadPlanMode: false }), true).plan).toBe(false)
+  })
+
+  it('opens on a fresh install\'s Lead before Settings has loaded', async () => {
+    const { leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    expect(leadStart(undefined, null, true)).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high', plan: false })
+  })
+
+  it("follows a change in Settings while the box is open and nothing is picked, and only for what is not picked", async () => {
+    const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    const view = (s: ReturnType<typeof settings>, picks?: Parameters<typeof boxPick>[1]) => boxPick(leadStart(rowan(), s, true), picks)
+    const before = settings(opusMedium)
+    const after = settings({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' }, { leadPlanMode: true })
+    expect(view(before)).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
+    expect(view(after)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(view(after, { plan: false })).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: false })
+    expect(view(after, { model: 'claude-haiku-4-5-20251001', effort: 'high' })).toEqual({ model: 'claude-haiku-4-5-20251001', effort: 'high', plan: true })
+  })
+
+  it("shows Rowan's agent file pin over the Lead row, with the file's effort or else the row's", async () => {
+    const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    const s = settings(opusMedium)
+    expect(boxPick(leadStart(rowan({ model: 'sonnet', effort: 'low' }), s, true), undefined)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: false })
+    expect(leadStart(rowan({ model: 'claude-haiku-4-5-20251001' }), s, true)).toMatchObject({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'medium' })
+    expect(leadStart(rowan({ effort: 'xhigh' }), s, true)).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh' })
+    expect(leadStart(rowan({ model: 'inherit' }), s, true)).toMatchObject({ model: 'claude-opus-5-5', effort: 'medium' })
+    expect(leadStart(rowan({ model: 'gpt-5.6-luna' }), s, true)).toMatchObject({ provider: 'codex', model: 'gpt-5.6-luna', effort: 'medium' })
+  })
+
+  it('stays on Codex while it can run', async () => {
+    const { leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    expect(leadStart(rowan(), settings(astra), true)).toEqual({ ...astra, plan: false })
+  })
+
+  it("starts on Claude Code's default model when the Lead row is on Codex and Codex can't run, at an effort that model takes", async () => {
+    const { leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    expect(leadStart(rowan(), settings(astra), false)).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+    expect(leadStart(rowan(), settings({ ...astra, effort: 'ultra' }), false).effort).toBe('xhigh')
+    expect(leadStart(rowan(), settings({ ...astra, effort: 'low' }), false)).toMatchObject({ model: 'claude-opus-5-5', effort: 'low' })
+    expect(leadStart(rowan({ model: 'gpt-5.6-luna' }), settings(opusMedium), false)).toMatchObject({ provider: 'claude', model: 'claude-opus-5-5', effort: 'medium' })
+    expect(leadStart(rowan(), settings(opusMedium), false)).toEqual({ ...opusMedium, plan: false })
+  })
+
+  it('keeps a pick through the box closing and opening, and through a relaunch', async () => {
+    vi.resetModules()
+    vi.useFakeTimers()
+    const disk = new Map<string, string>()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => disk.get(k) ?? null, setItem: (k: string, v: string) => void disk.set(k, v), removeItem: (k: string) => void disk.delete(k) })
+    try {
+      const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+      const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
+      const key = drafts.newChatDraftOf('room-a')
+      const start = leadStart(rowan(), settings(opusMedium), true)
+      drafts.savePicks(key, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+      // The box unmounts, and the next one to mount reads the same picks, with no text in the box.
+      expect(boxPick(start, drafts.loadPicks(key))).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+      expect(drafts.loadDraft(key)).toBeUndefined()
+      // Another room's box is its own.
+      expect(boxPick(start, drafts.loadPicks(drafts.newChatDraftOf('room-b')))).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
+      vi.advanceTimersByTime(500)
+      vi.resetModules()
+      const again = await import('../src/renderer/src/screens/workspace/composer/draftStore')
+      expect(boxPick(start, again.loadPicks(key))).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    } finally {
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('goes back to the Lead when the message is sent', async () => {
+    vi.resetModules()
+    const { boxPick, leadStart } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
+    const key = drafts.newChatDraftOf('room-a')
+    const start = leadStart(rowan(), settings(opusMedium), true)
+    drafts.saveDraft(key, words('plan the week'), '')
+    drafts.savePicks(key, { model: 'claude-haiku-4-5-20251001', effort: 'low', plan: true })
+    drafts.clearDraft(key)
+    expect(drafts.loadDraft(key)).toBeUndefined()
+    expect(boxPick(start, drafts.loadPicks(key))).toEqual({ model: 'claude-opus-5-5', effort: 'medium', plan: false })
   })
 })

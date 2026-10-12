@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
-import type { ChatPart, Effort, ModelId } from '@shared/types'
+import type { ChatPart } from '@shared/types'
 import { providerOf } from '@shared/providers'
-import { effortFor } from '@shared/effort'
 import { call, cleanError } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { leadOf, openLeadChat } from '../../lead'
@@ -12,9 +11,9 @@ import { briefParts, leadMessage } from '../new-workspace/brief'
 import { ChatWelcome, LEAD_SUGGESTIONS } from './ChatWelcome'
 import { focusComposerWhenOpen, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { DraftInput, useDraft } from './composer/draft'
-import { newChatDraftOf, saveDraft } from './composer/draftStore'
+import { clearDraft, newChatDraftOf } from './composer/draftStore'
 import { ModelPicker } from './composer/ModelPicker'
-import { effortLabel, rememberEffort, useDefaultEffort, useEffortMemory } from './composer/modelPrefs'
+import { effortLabel, useLeadBox } from './composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
 import './composer/composer.css'
 
@@ -25,18 +24,14 @@ import './composer/composer.css'
  * whose focus requests it takes, for the shared Lead workspace from before, else the room's New chat key.
  */
 export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: string }) {
-  const settings = useStore((s) => s.settings)
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const name = lead?.name ?? 'Rowan'
   const codexInUse = useCodexInUse()
   const codexModels = useProviderModels('codex')
-  const [model, setModel] = useState<string>(settings?.models.roles.lead.model ?? 'claude-opus-5-5')
-  const memory = useEffortMemory()
-  const fallback = useDefaultEffort(lead?.effort)
-  const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, fallback))
-  const [plan, setPlan] = useState(settings?.models.leadPlanMode ?? false)
-  const [menu, setMenu] = useState<'model' | PlusPanel>(null)
   const draftKey = newChatDraftOf(roomId)
+  // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the room's draft (KERNEL-544).
+  const { model, effort, plan, fallback, pickModel, pickEffort, togglePlan } = useLeadBox(draftKey, lead)
+  const [menu, setMenu] = useState<'model' | PlusPanel>(null)
   const d = useDraft(undefined, draftKey)
   const [sending, run] = useBusy()
   const busy = sending !== null
@@ -57,7 +52,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
       let chat
       try { chat = await call('lead.start', { roomId, ...leadMessage(briefParts(parts, null, [])), model, effort, plan }) }
       catch (e) { actions.ui.toast({ title: 'Could not send', sub: cleanError(e) }); return }
-      if (!picked) saveDraft(draftKey, [], '')
+      if (!picked) clearDraft(draftKey)
       // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
       try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
       actions.chats.upsert(chat)
@@ -69,7 +64,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const onKey = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); start() }
-    else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); setPlan((p) => !p) }
+    else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan() }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); setMenu('linkIssue') }
   }
@@ -85,11 +80,11 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
             <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{lead?.role}</span></span>
             <span ref={modelAnchor} style={{ position: 'relative' }}>
               <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
-              {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); setModel(m); setEffort(x) }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
+              {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={pickEffort} />}
             </span>
             <span className="grow" />
             <span ref={plusAnchor} style={{ position: 'relative' }}>
-              <PlusMenu panel={menu === 'model' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} plan={plan} onPlan={() => { setPlan((p) => !p); setMenu(null) }}
+              <PlusMenu panel={menu === 'model' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} plan={plan} onPlan={() => { togglePlan(); setMenu(null) }}
                 onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
             </span>
             <IconButton className="send" icon="up" size={14} label="Send" busy={busy} busyLabel="Sending" data-ready={hasDraft} onClick={() => start()} />
