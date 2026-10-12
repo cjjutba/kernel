@@ -27,6 +27,8 @@ export interface ReviewComment {
    * included, is `outside`. Only trusted comments reach the agent (KERNEL-222), so a comment without it counts as outside.
    */
   association?: 'trusted' | 'outside'
+  /** The review thread a line comment opens, so the agent can reply in it. A review's own body has none (KERNEL-564). */
+  threadId?: string
 }
 
 /** Everything the PR header and the Checks panel show (WorkspaceCIFailed.png, WorkspaceChangesRequested.png). */

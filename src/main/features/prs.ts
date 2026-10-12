@@ -4,7 +4,7 @@ import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, 
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
 import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
-import { createTextFor } from '../services/conventions'
+import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
 import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, notMergeable, type AutoMergeFacts } from '@shared/merge'
@@ -82,8 +82,12 @@ export class Prs extends Feature {
     if (this.isLocal(ws)) throw new Error('This room merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
-    const text = (await createTextFor((await this.prTexts(ws)).createInstructions, ws.path)) + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
-    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text }])
+    const remote = await this.k.config.remoteOfWs(ws)
+    const ctx: PrContext = { branch: ws.branch, base: stripRemote(ws.baseRef, remote), remote, draft: draft || this.settings.pr.draft }
+    const written = (await this.prTexts(ws)).createInstructions
+    const text = await prTextFor('create', written, ws.path, ctx)
+    // Kernel's own text says `--draft` in its command. Text that goes out as written gets the line.
+    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text: text === written && ctx.draft ? `${text}\nOpen as draft` : text }])
     return this.setPrState(ws, 'creating')
   }
 
@@ -144,10 +148,15 @@ export class Prs extends Feature {
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
+    const remote = await this.k.config.remoteOfWs(ws)
     // A read that failed still sends the instructions, without what GitHub reports.
-    const info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch((e) => { if (e instanceof GhReadError) return null; throw e })
+    const info = await this.read(ws, ws.path, ws.branch, { remote }).catch((e) => { if (e instanceof GhReadError) return null; throw e })
     if (info) bus.push({ type: 'pr.info', info })
-    const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
+    const prNumber = info?.number ?? ws.prNumber
+    const ctx: PrContext = { branch: ws.branch, base: stripRemote(info?.baseRef || ws.baseRef, remote), remote, ...(prNumber ? { prNumber } : {}) }
+    const [kind, key] = ({ conflict: ['resolve', 'resolveInstructions'], cifail: ['fixChecks', 'fixChecksInstructions'], changes: ['addressReview', 'addressReviewInstructions'] } as const)[ws.prState]
+    const texts = await this.prTexts(ws)
+    const [name, text] = resolveFile(ws.prState, { ...texts, [key]: await prTextFor(kind, texts[key], ws.path, ctx) }, info)
     this.k.lead.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'file', name, text }])
     this.setPrState(ws, 'resolving')
