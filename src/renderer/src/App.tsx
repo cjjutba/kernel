@@ -79,8 +79,8 @@ const settingsNav = lazyScreen(() => import('./screens/settings/Settings').then(
 const Settings = settings.Screen
 const SettingsNav = settingsNav.Screen
 
-/** Routes drawn full window, without the sidebar, like Welcome.png, Setup*.png and Settings*.png. */
-const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'settings' || r.name === 'devUi'
+/** Routes drawn full window, without the sidebar column, like Welcome.png and Setup*.png. Settings keeps the column and swaps its list (KERNEL-509). */
+const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'devUi'
 
 /** One branch per screen family. Each family's component lives in screens/<family>/, owned by its lane (docs/SCREENS.md). */
 function Screen({ route }: { route: Route }): ReactNode {
@@ -175,7 +175,10 @@ export function App() {
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
   const sidebar = useStore((s) => s.ui.sidebar)
-  const hidden = booted && !fullWindow(route) && !sidebar
+  // Settings shows the column even with the sidebar hidden (⌘B), so it never counts as hidden: its panel starts at the column's edge, like the app's.
+  const settingsOpen = route.name === 'settings'
+  const column = !fullWindow(route) && (sidebar || settingsOpen)
+  const hidden = booted && !fullWindow(route) && !column
   // Settings is one ⌘, away, so fetch it once the app is idle. Without that, the first ⌘, swaps the window for the loading shell until the chunk lands.
   useEffect(() => {
     if (!booted) return
@@ -236,11 +239,10 @@ export function App() {
   return (
     <Suspense fallback={<div className="app" data-lazy="pending"><Loading /></div>}>
       <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
-        {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} section={route.section} />}
-        {!fullWindow(route) && sidebar && <Sidebar />}
+        {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
         <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
           <Screen route={route} />
-          {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
+          {!fullWindow(route) && <Footer />}
         </div>
         {modal && <ModalView modal={modal} />}
         <Toasts />
