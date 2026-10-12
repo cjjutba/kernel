@@ -171,7 +171,7 @@ export async function copyAgentFiles(fromRepo: string, toRepo: string): Promise<
 /**
  * The file Kernel writes when a repo has none. With an install command, setup is a real line, so every new worktree
  * installs what the room's own checkout installed, and the run example is the stack's. Without one, the scripts stay
- * commented examples.
+ * commented examples. Either way it ends with the example of one database per workspace (KERNEL-449).
  */
 export function defaultRepoSettings(setup?: string, run = 'pnpm dev --port $KERNEL_PORT'): string {
   const scripts = setup
@@ -184,7 +184,18 @@ export function defaultRepoSettings(setup?: string, run = 'pnpm dev --port $KERN
 # Copied from this checkout into every new worktree.
 copy = [".env", ".env.local"]
 
-${scripts}`
+${scripts}
+# One database per workspace: setup creates it and archive drops it.
+#   setup = ${JSON.stringify(setup ? `${setup} && createdb $KERNEL_WORKSPACE_SLUG` : 'createdb $KERNEL_WORKSPACE_SLUG')}
+#   archive = "dropdb --if-exists $KERNEL_WORKSPACE_SLUG"
+# Agents, scripts and terminals read .env.kernel from this checkout when git
+# doesn't track it, with \${KERNEL_*} names filled in for each workspace:
+#   DATABASE_URL=postgres://localhost:5432/\${KERNEL_WORKSPACE_SLUG}
+# Each worktree is also its own Docker Compose project.
+# To read env files the repo commits, from each worktree, list them instead:
+#   [env]
+#   files = [".env.kernel"]
+`
 }
 
 /** Writes .kernel/settings.toml when it is missing, with the checkout's install command as the setup script. Returns true when it wrote one. */

@@ -133,9 +133,13 @@ export class Rooms extends Feature {
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
     })
     await step('copy', async () => {
-      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
+      const { files } = await loadRepoSettings(room.path)
+      const present = (await resolveFilesToCopy(room.path, files.copy, [], files.exclude)).map((f) => f.path)
       if (!present.length) return { detail: 'No local files to copy' }
-      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
+      const detail = present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ')
+      // A copied file that looks like production warns, by name, and the room still opens (KERNEL-449).
+      const production = (await this.k.config.production(room)).map((h) => h.path)
+      return production.length ? { state: 'warn' as const, detail, production } : { detail }
     })
     await step('hooks', async () => {
       const status = await this.k.hooks.hooksStatus()
