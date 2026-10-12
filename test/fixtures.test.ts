@@ -96,6 +96,8 @@ const noCanvas = [
   'SetupPanelHidden',
   'SetupFailed',
   'SetupStopped',
+  'SetupCreatingWorktree', // a new chat whose worktree isn't made yet: the message reads as sent, with the Creating worktree line (KERNEL-543)
+  'SetupWorktreeFailed', // git wouldn't make it: Couldn't create the worktree with git's reason and Try again (KERNEL-543)
   'SetupSentAnyway',
   'SetupDone',
 ]

@@ -25,8 +25,9 @@ function useSince(from: number | undefined) {
   return from ? clock(now - from) : undefined
 }
 
-/** What the failed card says happened: how long setup ran, and how it ended. */
+/** What the failed card says happened: how long setup ran, and how it ended. A worktree git wouldn't make says so, with git's reason. */
 export function setupEnd(ws: Workspace, cmd?: string): { title: string; sub?: string } {
+  if (ws.worktreePending) return { title: "Couldn't create the worktree", sub: ws.worktreePending.error }
   const run = ws.setupRun?.endedAt ? ws.setupRun : undefined
   const took = run ? ` after ${clock(run.endedAt! - run.startedAt)}` : ''
   if (run?.end === null) return { title: `Setup stopped${took}`, sub: cmd }
@@ -37,7 +38,8 @@ export function setupEnd(ws: Workspace, cmd?: string): { title: string; sub?: st
 /**
  * A chat whose workspace is still setting up, or whose setup failed or was stopped (KERNEL-430, SetupRunning.png and the screens
  * after it). The messages waiting for setup are bubbles where they will land, and one line or card says where setup stands. Its
- * log stays in the Setup tab, which this opens while it shows.
+ * log stays in the Setup tab, which this opens while it shows. Before setup, a new chat's worktree is made in the background
+ * (`worktreePending`, KERNEL-543): the message reads as sent and the line says Creating worktree, or the card says git couldn't.
  */
 export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
   const queue = useStore((s) => (chat ? s.queue[chat.id] : undefined)) ?? NO_QUEUE
@@ -45,8 +47,9 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
   const panel = useStore((s) => s.ui.rightPanel)
   const kind = useStore((s) => bottomKindOf(s, ws))
   const failed = ws.status === 'failed'
+  const making = !!ws.worktreePending && !failed
   // A run left from before this setup started doesn't count: only a run with no end is this one.
-  const since = useSince(!failed && ws.setupRun && !ws.setupRun.endedAt ? ws.setupRun.startedAt : undefined)
+  const since = useSince(!failed && !making && ws.setupRun && !ws.setupRun.endedAt ? ws.setupRun.startedAt : undefined)
   const [busy, track] = useBusy<'again' | 'skip'>()
 
   // The Setup tab is on screen while this is, in a bottom pane that is open whatever the user left it as. The tab you were on comes back when setup is done,
@@ -63,7 +66,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
 
   const showLog = () => { actions.ui.setRightPanel(true); actions.ui.setWorkspaceView({ bottom: 'setup' }); actions.ui.setBottomCollapsed(kind, false, false) }
   const unqueue = (q: QueuedMessage) => { if (chat) void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id }))) }
-  const again = () => track('again', () => attempt('Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
+  const again = () => track('again', () => attempt(ws.worktreePending ? 'Could not create the worktree' : 'Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
   const skip = () => track('skip', () => attempt('Could not send', () => call('scripts.skipSetup', { workspaceId: ws.id })))
   const end = failed ? setupEnd(ws, cmd) : undefined
 
@@ -71,12 +74,12 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
     <div className="ws-scroll">
       <div className="thread setup-wait">
         {queue.map((q, i) => (
-          <div key={q.id} className="msg msg-user" data-queued="true">
+          <div key={q.id} className="msg msg-user" data-queued={making ? undefined : 'true'}>
             <div className="bubble">
               {q.parts.map((p, j) => (p.type === 'text' ? <span key={j}>{p.text} </span> : <PartChip key={j} part={p} />))}
             </div>
             <div className="queued-meta">
-              {i === queue.length - 1 && <span>{failed ? 'Not sent yet' : 'Queued, sends after setup'}</span>}
+              {i === queue.length - 1 && !making && <span>{failed ? 'Not sent yet' : 'Queued, sends after setup'}</span>}
               <button type="button" className="link-btn" onClick={() => editQueuedInComposer(q)}>Edit</button>
               <button type="button" className="link-btn" onClick={() => unqueue(q)}>Cancel</button>
             </div>
@@ -89,10 +92,22 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
               {end.sub && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{end.sub}</span>}
             </div>
             <div className="row" style={{ gap: 4 }}>
-              <Button variant="primary" busy={busy === 'again'} busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
-              <Button variant="ghost" busy={busy === 'skip'} busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
-              <Button variant="ghost" disabled={busy !== null} onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })}>Edit script</Button>
+              {ws.worktreePending ? (
+                <Button variant="primary" busy={busy === 'again'} busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button>
+              ) : (
+                <>
+                  <Button variant="primary" busy={busy === 'again'} busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
+                  <Button variant="ghost" busy={busy === 'skip'} busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
+                  <Button variant="ghost" disabled={busy !== null} onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })}>Edit script</Button>
+                </>
+              )}
             </div>
+          </div>
+        ) : making ? (
+          <div className="setup-line" role="status">
+            <Spinner label="Creating worktree" />
+            <span className="ink2">Creating worktree</span>
+            {ws.baseRef && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{ws.baseRef}</span>}
           </div>
         ) : (
           <div className="setup-line" role="status">

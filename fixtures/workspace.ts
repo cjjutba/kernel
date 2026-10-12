@@ -318,15 +318,18 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
   return lines
 }
 
-/** A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped). */
-function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+/**
+ * A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped).
+ * `pending` is a worktree Kernel hasn't made yet (KERNEL-543), with git's reason once it failed: setup hasn't started, so it has no run or log.
+ */
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; pending?: { error?: string }; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
-  const setupRun = status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
+  const setupRun = o.pending ? undefined : status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
-    workspaces: withWorkspace(f, ids.table, { status, setupRun }),
+    workspaces: withWorkspace(f, ids.table, { status, setupRun, ...(o.pending ? { baseRef: 'origin/main', worktreePending: o.pending } : {}) }),
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
-    push: [...f.push, ...setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed'), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
+    push: [...f.push, ...(o.pending ? [] : setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed')), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
     ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
   }
 }
@@ -1191,6 +1194,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
   SetupFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1 })),
   SetupStopped: scene((f) => setupWait(f, 'failed', [setupAsk], { end: null })),
+  // KERNEL-543: the worktree isn't made yet. The message reads as sent, and one line says which base it is made from.
+  SetupCreatingWorktree: scene((f) => setupWait(f, 'setup', [setupAsk], { pending: {} })),
+  // Git wouldn't make it: the card says so with git's reason and Try again, and the message is Not sent yet.
+  SetupWorktreeFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { pending: { error: "fatal: '/Users/cj/Kernel/worktrees/kernel/in-setup-script-tab-in' already exists" } })),
   SetupSentAnyway: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
     items: { [ids.tableChat]: [{ kind: 'note', id: 'sw-note', ts: at(10, 2), text: 'Setup failed, sent anyway' }, { kind: 'user', id: 'sw-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
