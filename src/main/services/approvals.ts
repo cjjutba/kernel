@@ -66,6 +66,21 @@ export class Approvals {
   }
 
   /**
+   * The turn or the session that put these approvals up is gone (KERNEL-563). Each one still pending ends as expired: one
+   * with a waiter resolves null, as in `expireWorkspace`, and one left without a waiter is marked expired. One already
+   * answered keeps its answer. A quit leaves them to `expirePending`.
+   */
+  expireIds(ids: Iterable<string>): Approval[] {
+    if (this.closed) return []
+    return [...ids].flatMap((id) => {
+      const ended = this.finish(id, null, 'expired')
+      if (ended) return [ended]
+      const row = this.store?.approval(id)
+      return row?.status === 'pending' ? [this.expire(row)] : []
+    })
+  }
+
+  /**
    * Kernel is quitting: every approval still waiting ends as expired, while the database is still open, and its waiter
    * resolves null, so a hook falls back to Claude Code's own prompt. An abort that arrives after the database closes,
    * as a dropped hook connection's does, then finds nothing pending. Requests after this answer null at once without

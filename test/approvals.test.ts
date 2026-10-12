@@ -37,6 +37,34 @@ describe('how a request ends (KERNEL-446)', () => {
   })
 })
 
+describe('approvals whose turn or session is gone (KERNEL-563)', () => {
+  it('expires the ones still waiting, marks an orphaned row expired, and leaves an answered one as it was', async () => {
+    const store = await tempStore()
+    const approvals = new Approvals(store)
+    const waiting = approvals.request({ kind: 'question', source: 'sdk', roomId: 'r', title: 'Which database?' })
+    const answered = approvals.request({ kind: 'question', source: 'sdk', roomId: 'r', title: 'Which store?' })
+    approvals.decide(answered.approval.id, { behavior: 'answer', text: 'S3' })
+    // A row saved as pending that no waiter in this run holds.
+    const orphan = { ...waiting.approval, id: 'orphan', title: 'Run pnpm db:reset' }
+    store.saveApproval(orphan)
+    const ended = approvals.expireIds([waiting.approval.id, answered.approval.id, 'orphan', 'unknown'])
+    expect(ended.map((a) => [a.title, a.status])).toEqual([['Which database?', 'expired'], ['Run pnpm db:reset', 'expired']])
+    expect(await waiting.decision).toBeNull()
+    expect(store.approval(answered.approval.id)).toMatchObject({ status: 'answered', answer: 'S3' })
+    expect(store.approval('orphan')?.status).toBe('expired')
+  })
+
+  it('leaves everything to expirePending once Kernel quits', async () => {
+    const store = await tempStore()
+    const approvals = new Approvals(store)
+    const waiting = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', title: 'Run pnpm db:reset' })
+    approvals.expirePending()
+    store.saveApproval({ ...waiting.approval, id: 'orphan' })
+    expect(approvals.expireIds([waiting.approval.id, 'orphan'])).toEqual([])
+    expect(store.approval('orphan')?.status).toBe('pending')
+  })
+})
+
 describe('approvals while Kernel quits (KERNEL-215)', () => {
   it('ends what is waiting, then answers new requests at once without saving them', async () => {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-approvals-')), 'kernel.db'))

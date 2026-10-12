@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
+import type { CanUseTool, Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
@@ -17,20 +17,28 @@ import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
-// An abort ends the stream with an error, as the real one does when Kernel stops the process.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void }[] }))
+// An abort ends the stream with an error, as the real one does when Kernel stops the process. A `late` session keeps its
+// stream open after the abort until `end()`, as a process does while it exits. `end()` is the process exiting on its own.
+const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void; end: () => void; late: boolean }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ options }: { options: Options }) => {
     const items: unknown[] = []
     const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
-    signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
-    sdk.calls.push({ options, feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } })
+    let ended = false
+    const call = {
+      options, late: false,
+      feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
+      end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) }
+    }
+    signal?.addEventListener('abort', () => { if (!call.late) for (const w of waiters.splice(0)) w.reject(aborted()) })
+    sdk.calls.push(call)
     return {
       [Symbol.asyncIterator]: () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
-          : signal?.aborted ? Promise.reject(aborted()) : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
+          : signal?.aborted && !call.late ? Promise.reject(aborted()) : ended ? Promise.resolve({ value: undefined, done: true })
+          : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
       }),
       interrupt: async () => {},
       setModel: async () => {},
@@ -456,5 +464,115 @@ describe('idle stop (KERNEL-183)', () => {
     expect(sdk.calls.at(-1)!.options).toMatchObject({ resume: sid })
     expect(sessions.isRunning('chat')).toBe(true)
     expect(sessions.kernelTurn('chat')).toBe(true)
+  })
+})
+
+describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  type Call = (typeof sdk.calls)[number]
+
+  async function setup() {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cards-')), 'kernel.db'))
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const approvals = new Approvals(store)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const statuses: string[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) })
+    /** Sends a message and starts the turn it begins. */
+    const start = async (text = 'Add a pdf_url column') => {
+      await sessions.send('chat', [{ type: 'text', text }])
+      const call = sdk.calls.at(-1)!
+      call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+      await flush()
+      return call
+    }
+    /**
+     * A question card from canUseTool. Its signal never aborts, so only Kernel can end the card, as when Claude Code
+     * doesn't cancel the call.
+     */
+    const ask = (call: Call, question = 'Which store?') => {
+      const answer = (call.options.canUseTool as CanUseTool)('AskUserQuestion', { questions: [{ question, header: 'Store', multiSelect: false, options: [{ label: 'S3', description: '' }] }] }, { signal: new AbortController().signal, toolUseID: question } as never)
+      const card = store.approvals({ pendingOnly: true }).find((a) => a.title === question)!
+      return { answer, card }
+    }
+    const status = (id: string) => store.approval(id)?.status
+    const interrupted = (call: Call) => call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, uuid: `r${sdk.calls.length}`, duration_ms: 5, errors: [] })
+    return { store, sessions, approvals, start, ask, status, interrupted, statuses }
+  }
+
+  it('ends a waiting card when the chat closes', async () => {
+    const t = await setup()
+    const { answer, card } = t.ask(await t.start())
+    t.sessions.stop('chat')
+    expect(t.status(card.id)).toBe('expired')
+    expect(await answer).toMatchObject({ behavior: 'deny' })
+  })
+
+  it('ends a waiting card when the process exits on its own, and the agent shows offline', async () => {
+    const t = await setup()
+    const call = await t.start()
+    const { card } = t.ask(call)
+    call.end()
+    await flush()
+    expect(t.status(card.id)).toBe('expired')
+    expect(t.statuses.at(-1)).toBe('offline')
+  })
+
+  it("ends the turn's waiting cards on Stop when Claude Code doesn't cancel the call, and keeps an answered one", async () => {
+    const t = await setup()
+    const call = await t.start()
+    const first = t.ask(call, 'Which store?')
+    t.approvals.decide(first.card.id, { behavior: 'answer', text: 'S3' })
+    const second = t.ask(call, 'Which bucket?')
+    await t.sessions.interrupt('chat')
+    t.interrupted(call)
+    await flush()
+    expect([t.status(first.card.id), t.status(second.card.id)]).toEqual(['answered', 'expired'])
+    expect(t.statuses.at(-1)).toBe('idle')
+  })
+
+  it('ends them on Send now too, and still sends the queued message next', async () => {
+    const t = await setup()
+    const call = await t.start()
+    const { card } = t.ask(call)
+    await t.sessions.send('chat', [{ type: 'text', text: 'Use the staging bucket' }])
+    await t.sessions.sendNow('chat', t.sessions.queued('chat')[0].id)
+    t.interrupted(call)
+    await flush()
+    expect(t.status(card.id)).toBe('expired')
+    expect(t.sessions.queued('chat')).toEqual([])
+    expect(t.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts: [{ type: 'text', text: 'Use the staging bucket' }] })
+    expect(t.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it("ends only the old session's cards when a new session replaced it", async () => {
+    const t = await setup()
+    const old = await t.start()
+    const before = t.ask(old, 'Which store?')
+    old.late = true
+    t.sessions.stop('chat')
+    const next = await t.start('Carry on')
+    const after = t.ask(next, 'Which bucket?')
+    // The stopped process ends only now, after the new session put its own card up.
+    old.end()
+    await flush()
+    expect([t.status(before.card.id), t.status(after.card.id)]).toEqual(['expired', 'pending'])
+  })
+
+  it('leaves a waiting card to expirePending when Kernel quits', async () => {
+    const t = await setup()
+    const call = await t.start()
+    const { card } = t.ask(call)
+    const quit = t.sessions.shutdown(50)
+    t.interrupted(call)
+    await quit
+    expect(t.status(card.id)).toBe('pending')
+    expect(t.approvals.expirePending().map((a) => a.id)).toEqual([card.id])
   })
 })
