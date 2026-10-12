@@ -13,7 +13,7 @@ export type BannerAction =
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
   | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -29,12 +29,15 @@ export interface BannerView {
   switchTo?: ModelId
   /** The account "Switch to" moves the provider to (KERNEL-406). Switching is always the user's click. */
   switchAccount?: { provider: Provider; accountId: string; label: string }
-  /** Set on the two banners that only inform, which the user can close until their window resets (KERNEL-595). */
+  /** Set on the banners the user can close until their window resets (KERNEL-595), the near-limit offer to switch accounts too (KERNEL-569). */
   dismissKey?: string
 }
 
-/** What a closed limit banner is remembered by: the banner and the window it spoke of. `resetsAt` is epoch seconds. A new window has a new one. */
-export const limitBannerKey = (id: BannerId, resetsAt: number) => `${id}:${resetsAt}`
+/**
+ * What a closed limit banner is remembered by: the banner and the window it spoke of. `resetsAt` is epoch seconds. A new window has a
+ * new one. `scope` tells apart windows of different accounts, which can reset at the same second (KERNEL-569).
+ */
+export const limitBannerKey = (id: BannerId, resetsAt: number, scope?: string) => `${id}:${scope ? `${scope}:` : ''}${resetsAt}`
 /** A window that has reset can never match its key again, so the key can go. */
 export const limitBannerExpired = (key: string, now: number) => Number(key.slice(key.lastIndexOf(':') + 1)) * 1000 <= now
 
@@ -57,8 +60,10 @@ export interface BannerInput {
   leadName?: string
   /** A chat with Rowan with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
   skipsSetup?: boolean
-  /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit and 80% banners look here (KERNEL-595). */
+  /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
+  /** Settings, Providers: Kernel switches this chat's provider on its own at a limit, so the near-limit offer would only nag (KERNEL-569). */
+  switchAtLimit?: boolean
   /** Settings, Account. A switch left out counts as on, which is the default. */
   usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
   /** Both providers' accounts (KERNEL-406). Without them every limit counts as the Claude login's, as before. */
@@ -108,13 +113,28 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const providerName = PROVIDERS.find((p) => p.id === provider)!.label
   const otherName = PROVIDERS.find((p) => p.id !== provider)!.label
   const accounts = (i.accounts ?? []).filter((a) => a.provider === provider)
-  const active = accounts.find((a) => a.active)?.id ?? 'cli'
-  const usage = i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === active)
+  const current = accounts.find((a) => a.active)
+  const active = current?.id ?? 'cli'
+  const windowsOf = (id: string) => i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === id)
+  const usage = windowsOf(active)
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
+  // How much of its 5-hour window an account used. One that has reset has all of it left, and one never read goes last.
+  const fiveHourUse = (id: string) => {
+    const w = windowsOf(id).find((l) => l.type === 'five_hour' && !l.model)
+    if (w?.utilization === undefined) return Infinity
+    return w.resetsAt !== undefined && w.resetsAt * 1000 <= now ? 0 : w.utilization
+  }
+  const byRoom = (list: AccountProfile[]) => [...list].sort((a, b) => {
+    const x = fiveHourUse(a.id)
+    const y = fiveHourUse(b.id)
+    return x === y ? 0 : x < y ? -1 : 1
+  })
   // Another signed-in account of this provider with no rejected window takes over with one click. A subscription goes before
-  // an API key, which a switch starts paying for (KERNEL-524). A key has no windows, so none of them is rejected.
-  const spare = accounts.filter((a) => !a.active && a.signedIn && !i.usage.some((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === a.id && rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
-  const alt = spare.find((a) => a.auth !== 'apiKey') ?? spare[0]
+  // an API key, which a switch starts paying for (KERNEL-524), and the one with the most 5-hour room goes first of those
+  // (KERNEL-569). A key has no windows, so none of them is rejected.
+  const spare = accounts.filter((a) => !a.active && a.signedIn && !windowsOf(a.id).some((l) => rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
+  const subscriptions = byRoom(spare.filter((a) => a.auth !== 'apiKey'))
+  const alt = subscriptions[0] ?? spare[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
   const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
   const keepGoing = i.codexInUse ? ` Agents on ${otherName} keep working.` : ''
@@ -202,13 +222,29 @@ export function bannerFor(i: BannerInput): BannerView | null {
     }
   }
 
+  // The account in use is close to a window's limit and another subscription account has room: the user can move first. A key never
+  // is offered, and with Kernel switching at a limit on its own the offer would only nag. Closed per account and window, and a
+  // switch from it closes it too, so it comes at most once per window (KERNEL-569).
+  const near = nearLimit(usage, now)
+  const roomy = subscriptions.find((a) => !nearLimit(windowsOf(a.id), now))
+  if (current && roomy && near?.resetsAt && !i.switchAtLimit) {
+    const key = limitBannerKey('accountNearLimit', near.resetsAt, `${provider}:${active}`)
+    if (!i.dismissed?.has(key)) return {
+      id: 'accountNearLimit', kind: 'limit',
+      title: `${current.label} is ${near.utilization === undefined ? 'close to' : `at ${Math.round(near.utilization * 100)}% of`} its ${named(near.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
+      sub: `${roomy.label} has room.`,
+      actions: [{ id: 'switchAccount', label: `Switch to ${roomy.label}`, primary: true }],
+      blocks: false, switchAccount: { provider, accountId: roomy.id, label: roomy.label }, dismissKey: key
+    }
+  }
+
   // A window close to its limit holds teammates' new work (KERNEL-220). Nothing is blocked: turns that run go on, and the Lead can still answer.
   // Only this chat's provider counts, as in the engine (KERNEL-406).
   const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []
   // Closing one is remembered for its window (KERNEL-595). The next banner in line shows in its place, and so does the 80% one when
   // the week that holds teammates is the one the user closed: it would say the same thing about the same window.
   const closed = (id: BannerId, resetsAt: number) => !!i.dismissed?.has(limitBannerKey(id, resetsAt))
-  const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? nearLimit(usage, now) : undefined
+  const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? near : undefined
   if (held?.resetsAt && !closed('nearLimit', held.resetsAt)) return {
     id: 'nearLimit', kind: 'limit', title: `Close to your ${named(held.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
     sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Rowan'} can still answer you.`,
