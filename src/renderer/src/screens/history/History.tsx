@@ -39,7 +39,6 @@ export function History() {
       restoredFromHistory(w.id)
       actions.workspaces.upsert(back)
       // A worktree sets up again before its agent goes on, and the workspace shows it (KERNEL-77).
-      actions.ui.toast({ title: `Restored ${nameOf(w)}`, sub: `Back on ${back.branch}` })
       go({ name: 'workspace', workspaceId: w.id })
     } catch (e) {
       actions.ui.toast({ title: `Could not restore ${nameOf(w)}`, sub: cleanError(e) })

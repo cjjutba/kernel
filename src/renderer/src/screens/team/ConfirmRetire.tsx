@@ -27,7 +27,6 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
       const route = getState().ui.route
       if (route.name === 'agent' && route.agentId === agentId) actions.ui.go({ name: 'team', roomId })
       else actions.ui.closeModal()
-      actions.ui.toast({ title: `${agent.name} retired`, sub: 'The file is in .claude/retired-agents' })
     } catch (e) { setError(cleanError(e)) }
   })
   const leadName = lead?.name ?? 'the Lead'

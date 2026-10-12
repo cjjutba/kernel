@@ -161,7 +161,6 @@ async function archiveFromSidebar(ws: Workspace) {
   }
   try {
     await archiveByHand({ workspaceId: ws.id })
-    actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
   } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: cleanError(e) }) }
 }
 

@@ -38,7 +38,6 @@ export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentNa
   const ids = rows.filter((h) => picked.has(h.id)).map((h) => h.id)
   const commit = () => run('commit', () => attempt('Could not commit', async () => {
     await call('workspaces.commit', { workspaceId: ws.id, hunkIds: ids })
-    actions.ui.toast({ title: 'Committed', sub: `${ids.length} ${ids.length === 1 ? 'change' : 'changes'} from ${name}` })
     setHunks((all) => all.filter((h) => !ids.includes(h.id)))
   }))
 

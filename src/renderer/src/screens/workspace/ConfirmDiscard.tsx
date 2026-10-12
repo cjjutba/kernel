@@ -24,7 +24,6 @@ export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
       await call('workspaces.discard', { workspaceId })
       refreshChanges(workspaceId)
       actions.ui.closeModal()
-      actions.ui.toast({ title: 'Discarded. The worktree matches the last commit.' })
     } catch (e) { setError(cleanError(e)) }
   })
   const d = git?.dirty

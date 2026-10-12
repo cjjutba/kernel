@@ -38,11 +38,11 @@ beforeEach(() => {
 })
 
 describe('archiving a chat with Rowan from the sidebar (KERNEL-405)', () => {
-  it('archives in one click when nothing would be lost, says so, and opens the chat row above', async () => {
+  it('archives in one click when nothing would be lost, adds no toast, and opens the chat row above', async () => {
     preview = { threadId: 't2', title: 'Chat t2', workspaces: [clean('b')] }
     await archiveChatFromSidebar(getState().threads.t2)
     expect(calls.map((c) => c.channel)).toEqual(['threads.archivePreview', 'threads.archive'])
-    expect(getState().ui.toasts.at(-1)).toMatchObject({ title: 'Archived Chat t2.', sub: 'Find it in History.' })
+    expect(getState().ui.toasts).toEqual([])
     expect(getState().ui.modal).toBeNull()
     expect(getState().ui.route).toEqual({ name: 'workspace', workspaceId: 'a' })
   })

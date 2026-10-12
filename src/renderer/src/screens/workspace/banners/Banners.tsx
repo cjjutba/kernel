@@ -116,7 +116,6 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         const thread = isLeadChatWorkspace(ws) ? getState().threads[ws.threadId!] : undefined
         if (thread) return archiveChatFromSidebar(thread)
         await archiveByHand({ workspaceId: ws.id })
-        actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
       })
     }
   }

@@ -40,7 +40,6 @@ export function Room({ roomId }: { roomId?: string }) {
   const archive = () => run('archive', async () => {
     try {
       await call('rooms.update', { roomId, patch: { archived: true } })
-      actions.ui.toast({ title: `Archived ${room.name}`, sub: 'Restore it from Rooms, Archived.' })
       go({ name: 'rooms' })
     } catch (e) { actions.ui.toast({ title: 'Could not archive the room', sub: cleanError(e) }) }
   })
