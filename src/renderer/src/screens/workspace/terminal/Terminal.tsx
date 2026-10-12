@@ -6,9 +6,9 @@ import { call } from '../../../api'
 import { appended } from './buffer'
 import { getState, replayTerminal, useStore } from '../../../store'
 
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+export const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 /** The terminal palette, read from the tokens of the theme in force (tokens.css). Bright colours reuse the normal ones so contrast holds in both themes. */
-const xtermTheme = () => {
+export const xtermTheme = () => {
   const c = (n: string) => css(`--term-${n}`)
   return {
     background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4'),

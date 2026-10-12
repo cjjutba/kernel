@@ -119,7 +119,8 @@ function runScripts(): Fixture {
     // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
     push: [
       ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] }))
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] })),
+      scriptData(ids.table, 'run', `${dim(`$ ${frontend[0].slice(2)}`)}\r\n${green('▲')} ${bold('Next.js 15.3')}\r\n   - Local:   ${cyan('http://localhost:4312')}\r\n   - Studio:  ${cyan('http://localhost:4314')}\r\n\r\n ${green('✓')} Ready in 1.4s\r\n ${green('✓')} Compiled /invoices in 312ms\r\n ${dim('GET /invoices 200 in 84ms')}\r\n ${dim('GET /api/invoices 200 in 31ms')}\r\n`, 'frontend')
     ]
   }
 }
@@ -309,13 +310,41 @@ const toolCalls: ChatItem[] = [
 const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
 const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
 
+const E = '\x1b['
+const dim = (t: string) => `${E}2m${t}${E}22m`
+const bold = (t: string) => `${E}1m${t}${E}22m`
+const green = (t: string) => `${E}32m${t}${E}39m`
+const red = (t: string) => `${E}31m${t}${E}39m`
+const cyan = (t: string) => `${E}36m${t}${E}39m`
+const yellow = (t: string) => `${E}33m${t}${E}39m`
+
+const boxed = (rows: string[]) => {
+  const w = 36
+  const line = (t: string) => `│ ${t}${' '.repeat(w - 2 - t.replace(/\x1b\[[0-9;]*m/g, '').length)} │`
+  return [`╭${'─'.repeat(w)}╮`, ...rows.map(line), `╰${'─'.repeat(w)}╯`].join('\r\n')
+}
+
+/** pnpm install as a terminal prints it: dim command echo, colored counts, a progress line redrawn in place and the update notice in a box. */
+export const SETUP_RAW = {
+  head: `${dim('$ ./scripts/setup.sh')}\r\nCopying .env from the main checkout\r\nLinking node_modules cache\r\n${dim('$ pnpm install')}\r\n`,
+  install: `Lockfile is up to date, resolution step is skipped\r\nPackages: ${green('+1204')}\r\n${green('++++++++++++++++++++++++++++++++')}\r\nProgress: resolved 1, reused 0, downloaded 0, added 0\r${E}2KProgress: resolved 640, reused 612, downloaded 2, added 310\r${E}2KProgress: resolved 1204, reused 1198, downloaded 6, added 940, ${green('done')}\r\n`,
+  notice: `\r\n${boxed(['Update available! ' + red('9.15.0') + ' → ' + green('10.4.1'), cyan('Run pnpm add -g pnpm')])}\r\n`,
+  done: `${green('└─')} ${bold('Done')} in 12.4s\r\n`,
+  failed: `${red('gyp ERR!')} build error\r\n${red('ERR_PNPM_LIFECYCLE')}  better-sqlite3@11.8.1 install: exit status 1\r\n${red('└─')} ${bold('Failed')} in 26.1s\r\n`,
+  frozen: `${dim('$ pnpm install --frozen-lockfile')}\r\n${red('ERR_PNPM_OUTDATED_LOCKFILE')}  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date\r\n${yellow('Setup failed with exit code 1')}\r\n`
+}
+
+const scriptData = (workspaceId: string, kind: 'setup' | 'run', data: string, name?: string): PushEvent => ({ type: 'script.data', workspaceId, kind, ...(name && { name }), data })
+export const setupData = (workspaceId: string, data: string) => scriptData(workspaceId, 'setup', data)
+
 /** Setup's log as main sends it: still running, failed with code 1, or stopped. */
 function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
   const out = (line: string, stream: 'stdout' | 'stderr' = 'stdout'): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line, stream }] })
   const lines = [out('$ pnpm install'), out('Lockfile is up to date, resolution step is skipped'), out('Packages: +1204'), out('Progress: resolved 1204, reused 1198, downloaded 6, added 940')]
-  if (end === 'failed') return [...lines, out('gyp ERR! build error', 'stderr'), out('ERR_PNPM_LIFECYCLE  better-sqlite3@11.8.1 install: exit status 1', 'stderr'), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }]
-  if (end === 'stopped') return [...lines, { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: null }]
-  return lines
+  const raw = [setupData(ids.table, SETUP_RAW.head + SETUP_RAW.install)]
+  if (end === 'failed') return [...lines, ...raw, setupData(ids.table, SETUP_RAW.failed), out('gyp ERR! build error', 'stderr'), out('ERR_PNPM_LIFECYCLE  better-sqlite3@11.8.1 install: exit status 1', 'stderr'), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }]
+  if (end === 'stopped') return [...lines, ...raw, { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: null }]
+  return [...lines, ...raw, setupData(ids.table, SETUP_RAW.notice)]
 }
 
 /**

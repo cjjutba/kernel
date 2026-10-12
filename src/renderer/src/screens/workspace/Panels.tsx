@@ -1,5 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
-import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
+import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
 import { collapsedWord } from './bottomWord'
@@ -15,6 +15,8 @@ import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
+import { ScriptView } from './ScriptView'
+import { scriptKey } from '@shared/scriptLog'
 import { BottomResize } from './BottomResize'
 import { bottomKindOf } from './bottomSplit'
 import { FileIcon } from '../../components/FileIcon'
@@ -384,18 +386,6 @@ function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: str
   return (s.scripts[workspaceId] ?? []).some((l) => l.kind === 'setup') && s.scriptExit[workspaceId]?.setup === undefined
 }
 
-/** The log follows its end while the reader is within this many px of it. */
-const PIN_PX = 80
-
-/** A line keeps its key as older ones drop off the front of the capped log, so only new lines are drawn. */
-const lineIds = new WeakMap<ScriptLine, number>()
-let lineCount = 0
-const lineKey = (l: ScriptLine) => { let k = lineIds.get(l); if (k === undefined) lineIds.set(l, (k = ++lineCount)); return k }
-
-const LogLine = memo(function LogLine({ l }: { l: ScriptLine }) {
-  return <div style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>
-})
-
 /**
  * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
  * pressing a tab opens it again. Rowan's chats and teammates' workspaces each remember whether it is folded.
@@ -417,7 +407,12 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   const [picked, setPicked] = useState<Record<string, string>>({})
   // Until one is picked, the tab shows a script that is running, else the first.
   const selected = names.includes(picked[ws.id]) ? picked[ws.id] : names.find((n) => runningNames.includes(n)) ?? names[0] ?? 'run'
-  const lines = useStore((s) => (s.scripts[ws.id] ?? []).filter((l) => (bottom === 'setup' ? l.kind === 'setup' : l.kind === 'run' && l.name === selected)))
+  const scriptName = bottom === 'run' ? selected : undefined
+  const dataKey = scriptKey(bottom === 'run' ? 'run' : 'setup', scriptName)
+  const fallback = useStore((s) => (s.scripts[ws.id] ?? []).filter((l) => (bottom === 'setup' ? l.kind === 'setup' : l.kind === 'run' && l.name === selected)).map((l) => l.line + '\r\n').join(''))
+  const output = useStore((s) => s.scriptData[ws.id]?.[dataKey] ?? '') || fallback
+  const hasOutput = output.length > 0
+  const logLabel = bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`
   const setupBusy = useStore((s) => setupRunning(s, ws.id))
   const selectedRunning = runningNames.includes(selected)
   // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
@@ -430,16 +425,10 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   })
   const stopSetup = () => doing('stopSetup', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
   const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
-  // The log follows new output while the reader is at its end. Scrolling up to read stops it, and a tab or workspace change starts it again.
-  const log = useRef<HTMLDivElement>(null)
-  const pinned = useRef(true)
-  const onLogScroll = () => { const el = log.current; if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX }
-  useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id, selected])
-  useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id, selected])
   const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
   // The Run tab's empty state has the Run button, so the strip's steps aside while it shows and the word is never on screen twice (KERNEL-512).
   const onRunTab = !collapsed && bottom === 'run'
-  const runEmpty = onRunTab && !noRun && lines.length === 0
+  const runEmpty = onRunTab && !noRun && !hasOutput
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const empty = bottom === 'run'
     ? noRun ? (
@@ -478,7 +467,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         {collapsed && <span className="bottom-word" role="status">{collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun, port: ws.port })}</span>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
         {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
-        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Run and Stop are the one action for the script picked on the Run tab. Its empty state has a Run button of its own, so the strip's Run steps aside while that shows (KERNEL-512). A collapsed bar has no empty state, so it keeps Run and Stop. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
         {(collapsed || bottom !== 'setup') && (selectedRunning
           ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
@@ -490,11 +479,9 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         </div>
       )}
       {!collapsed && bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {!collapsed && bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
-        {lines.length
-          ? lines.map((l) => <LogLine key={lineKey(l)} l={l} />)
-          : empty}
-      </div>}
+      {!collapsed && bottom !== 'terminal' && (hasOutput
+        ? <ScriptView key={`${ws.id}:${dataKey}`} workspaceId={ws.id} kind={bottom === 'run' ? 'run' : 'setup'} name={scriptName} label={logLabel} fallback={fallback} />
+        : <div className="log selectable mono" role="log" aria-label={logLabel} data-empty="true">{empty}</div>)}
     </div>
   )
 }
