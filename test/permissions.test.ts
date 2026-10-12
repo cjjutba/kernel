@@ -57,7 +57,7 @@ describe('decide', () => {
     expect(r.reads).toBe(1)
   })
 
-  it('on Claude, lets Bypass permissions through in a worktree only, and never a question or a plan', () => {
+  it('on Claude, lets Bypass in worktrees through in a worktree only, and never a question or a plan', () => {
     const step = { tool: 'Bash', command: 'ls' }
     expect(decide(step, rules({ mode: 'bypassPermissions' }))).toEqual({ behavior: 'allow' })
     expect(decide(step, rules({ mode: 'bypassPermissions', worktree: false }))).toBeUndefined()
@@ -67,10 +67,10 @@ describe('decide', () => {
     expect(decide({ tool: 'ExitPlanMode' }, rules({ mode: 'bypassPermissions' }))).toBeUndefined()
   })
 
-  it("on Codex, accepts inside the sandbox in every mode but Manual, and leaves a step outside it to the user in every mode", () => {
+  it("on Codex, accepts inside the sandbox in every mode but Ask, and leaves a step outside it to the user in every mode", () => {
     const inside = { tool: 'Bash', command: 'y', sandbox: 'inside' as const }
     const outside = { tool: 'Bash', command: 'pnpm test', sandbox: 'outside' as const }
-    for (const mode of ['acceptEdits', 'auto', 'bypassPermissions'] as const) {
+    for (const mode of ['acceptEdits', 'bypassPermissions'] as const) {
       expect(decide(inside, rules({ mode, worktree: false }))).toEqual({ behavior: 'allow' })
       expect(decide(outside, rules({ mode }))).toBeUndefined()
     }

@@ -44,7 +44,7 @@ export interface Rules {
   mode: Permissions['mode']
   /** The room's Always allow rules, read only when a command needs them. */
   roomAllow: () => string[]
-  /** The workspace has its own worktree, the only place Bypass permissions applies. */
+  /** The workspace has its own worktree, where Bypass in worktrees applies. */
   worktree: boolean
 }
 
@@ -78,9 +78,9 @@ export function decide(step: Step, rules: Rules): Verdict {
 const WEB_TOOLS = new Set(['WebFetch', 'WebSearch'])
 
 /**
- * What the mode lets through of a step the lists left open. Inside Codex's sandbox, every mode but Manual (`default`)
- * accepts, as Claude Code's Accept edits takes an edit in the workspace. Outside it, the user decides in every mode
- * (KERNEL-406). On Claude, Bypass permissions takes the rest in a worktree, but never a question or a plan.
+ * What the mode lets through of a step the lists left open. Inside Codex's sandbox, every mode but Ask accepts, as Claude
+ * Code's Accept edits takes an edit in the workspace. Outside it, the user decides in every mode (KERNEL-406). On Claude,
+ * Bypass in worktrees takes the rest in a worktree, but never a question or a plan.
  */
 function byMode(step: Step, rules: Rules): Verdict {
   if (needsUser(step.tool) || step.sandbox === 'outside') return undefined
