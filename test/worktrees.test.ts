@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, githubRepoOf, listWorktrees, mergeBase, overlaps, remoteRepo, removeWorktree, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
+import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, githubRepoOf, listWorktrees, mergeBase, overlaps, remoteBranches, remoteRepo, removeWorktree, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 // Lets a test make the next N branch checks fail as if git couldn't start. Everything else runs for real.
@@ -208,6 +208,29 @@ describe('worktrees', () => {
     const notRepo = await mkdtemp(join(tmpdir(), 'kernel-not-repo-'))
     onTestFinished(() => rm(notRepo, { recursive: true, force: true }))
     await expect(freeBranch(notRepo, 'feat/x')).rejects.toThrow(/couldn't check/)
+  })
+
+  it("never picks a branch name the room's remote already has (KERNEL-479)", async () => {
+    const remote = await tempRepo()
+    await git(remote, 'branch', 'feat/pushed')
+    await git(remote, 'branch', 'feat/pushed-2')
+    const repo = await tempRepo()
+    await git(repo, 'remote', 'add', 'origin', remote)
+    await git(repo, 'fetch', '-q', 'origin')
+    expect(await freeBranch(repo, 'feat/pushed')).toBe('feat/pushed-3')
+    // Another remote's branches are someone else's business.
+    expect(await freeBranch(repo, 'feat/pushed', 'upstream')).toBe('feat/pushed')
+  })
+
+  it("lists the remote's branches as it has them now, without a fetch (KERNEL-479)", async () => {
+    const remote = await tempRepo()
+    const repo = await tempRepo()
+    expect(await remoteBranches(repo, 'origin', 10_000)).toBeUndefined()
+    await git(repo, 'remote', 'add', 'origin', remote)
+    await git(remote, 'branch', 'feat/kernel-31-export-pdf')
+    expect((await remoteBranches(repo, 'origin', 10_000))?.sort()).toEqual(['feat/kernel-31-export-pdf', 'main'])
+    await git(repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
+    await expect(remoteBranches(repo, 'origin', 10_000)).rejects.toThrow(/does not appear to be a git repository/)
   })
 
   it('still refuses a folder that exists but is not a worktree', async () => {

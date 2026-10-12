@@ -1,7 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import { BLOCKER_RULE } from './handoff'
-import { kernelServer } from './kernelServer'
 
 /** What a reviewer sends with submit_review. */
 export interface ReviewInput {
@@ -30,9 +29,4 @@ export function reviewTools(d: ReviewToolDeps) {
       try { return text(await d.submit(review)) } catch (e) { return { ...text(`Not saved: ${e instanceof Error ? e.message : String(e)}`), isError: true } }
     })
   ]
-}
-
-/** The review workspace's own MCP server, named `kernel` like the Lead's (`kernelServer`). */
-export function reviewMcpServer(d: ReviewToolDeps) {
-  return kernelServer(reviewTools(d))
 }

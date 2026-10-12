@@ -1,0 +1,7 @@
+**Room setup reads the code host once, from the room's remote, and saves it.** A remote on github.com, over HTTPS or SSH, makes the room `github`. A remote anywhere else, or none, makes it `local`. The remote is the one the room pushes to (`workspace.remote`, origin by default), and the parse is the same one that fills `Room.repo`, so a GitHub room always has an owner/repo to show. A remote added or changed later doesn't change the host. KERNEL-477.
+
+**Rooms made before KERNEL-477 keep no host, and Kernel doesn't fill one in.** No host reads as GitHub everywhere (KERNEL-453), so those rooms open and merge pull requests as they always did, and preflight still checks gh for them. KERNEL-477.
+
+**Preflight checks gh while any open room is a GitHub room, and also when there is no room yet.** The gh check is one row on Getting Kernel ready, not a per-room check, so it goes only when every open room merges locally. A first launch has no room to go by, and the first room may well be a GitHub clone, which needs gh, so it keeps the check. An archived room opens no pull requests and doesn't count. KERNEL-477.
+
+**A local room's push check never asks gh, even when its remote is on GitHub.** Check push access still runs git's reach and dry-run push for any remote, since agents may push to it. Only gh's permission and its fixes (`gh auth setup-git`, `gh auth login`) go, so a refused login shows git's own words. KERNEL-477.

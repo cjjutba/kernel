@@ -680,7 +680,9 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
         const { k, room, lead, target } = await setup({}, o)
         await target(k, 164, 'Tool rows', 'KERNEL-197')
         const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
-        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+        // A Linear that fails doesn't hold the start up either, and the Lead hears what went unchecked (KERNEL-479).
+        const note = o.linearToken ? " Couldn't check who KERNEL-198 is assigned to in Linear: Linear answered 500." : ''
+        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.${note}`)
         expect(w).toMatchObject({ status: 'ready', source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' } })
         expect(w.waitsFor).toBeUndefined()
         expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
@@ -692,17 +694,21 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   it("says the teammate starts once the brief goes out when the brief waits for a free slot", async () => {
     const team = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
     const noor = { id: 'w1', name: 'w1', agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
-    const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' }, waitsFor: { on: ['w1'], held: false } } as Workspace
-    let created = false
-    const deps: KernelToolDeps = {
-      // Kai's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
-      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => (created ? [noor, kai] : [noor]),
-      createWorkspace: async () => { created = true; return { ...kai, queued: 'capacity' as const } },
-      messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
-      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    const handOff = async (tracker?: 'linear') => {
+      const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows', ...(tracker ? { tracker } : {}) }, waitsFor: { on: ['w1'], held: false } } as Workspace
+      let created = false
+      const deps: KernelToolDeps = {
+        // Kai's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
+        roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => (created ? [noor, kai] : [noor]),
+        createWorkspace: async () => { created = true; return { ...kai, queued: 'capacity' as const } },
+        messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
+        archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+      }
+      return ((await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }).text
     }
-    const out = (await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }
-    expect(out.text).toBe("Created k1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts once the brief goes out, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.")
+    expect(await handOff('linear')).toBe("Created k1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts once the brief goes out, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.")
+    // An issue saved before KERNEL-462 has no tracker, so the line names none (KERNEL-473).
+    expect(await handOff()).toContain('. The issue tracker marks KERNEL-198 as blocked by KERNEL-197,')
   })
 
   it("keeps Rowan's wait_for, even one that merged already, and doesn't add Linear's blockers", async () => {
@@ -749,7 +755,7 @@ describe('waits, the rules', () => {
 
   it('refuses each target that can never release the wait', () => {
     expect(refuse(['w1'])).toBeUndefined()
-    expect(refuse(['nope'])).toBe('there is no workspace "nope" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or a Linear issue key.')
+    expect(refuse(['nope'])).toBe('there is no workspace "nope" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or an issue key.')
     expect(refuse(['lead'])).toBe('lead is your own workspace, which never opens a pull request.')
     expect(refuse(['rv'])).toBe('rv is a review. Wait for the work it reviews instead (workspace w1).')
     expect(refuse(['main'])).toBe('main works on the main checkout and never opens a pull request of its own.')
@@ -799,7 +805,7 @@ describe('a wait on work in another room', () => {
     const rowan = (await k.team.agents(room.id)).find((a) => a.lead)!
     const tools = kernelTools(k.lead.leadToolDeps(room.id, rowan, lead))
     const call = async (name: string, input: object) => ((await tools.find((t) => t.name === name)!.handler(input as never, {})).content[0] as { text: string }).text
-    const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or a Linear issue key.`
+    const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or an issue key.`
     expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: [ivy.id] })).toBe(`Not created: ${missing(ivy.id)}`)
     expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: ['#12'] })).toBe(`Not created: ${missing('#12')}`)
     const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id })

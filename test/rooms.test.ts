@@ -141,7 +141,7 @@ describe('Kernel rooms', () => {
     const done = (async () => { const room = await k.createRoom({ source: 'folder', name: 'Own app', desc: 'Nights', from: repo, team: ['kai'], autostart: false }); return { room, steps: await setupDone(room.id) } })()
     const { room, steps } = await done
     expect(room).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
-    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
+    expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
     expect((await k.agents(room.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai', 'kernel-reviewer'])
     expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Rowan and Theo from Kernel' })
@@ -169,7 +169,7 @@ describe('Kernel rooms', () => {
     await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
     const room = await k.createRoom({ source: 'folder', name: 'Pushed app', from: repo, team: ['kai'], autostart: false })
     const steps = await setupDone(room.id)
-    expect(steps.map((s) => s.id)).toEqual(['clone', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents'])
+    expect(steps.map((s) => s.id)).toEqual(['clone', 'host', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents'])
     expect(steps.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', title: 'Check push access', detail: 'git can push to origin' })
     // Settings, Room, Git reads the same result without running it again.
     const first = await k.handlers()['rooms.pushCheck']({ roomId: room.id })
@@ -199,6 +199,26 @@ describe('Kernel rooms', () => {
     await exec('git', ['init', '-q', '--bare', remote])
     await exec('git', ['-C', room.path, 'remote', 'add', 'origin', remote])
     expect(await k.handlers()['rooms.pushCheck']({ roomId: room.id })).toMatchObject({ remote: 'origin', push: { state: 'ok' } })
+    await k.stop()
+  })
+
+  it('reads the code host after the checkout and saves it on the room, local with no GitHub remote (KERNEL-477)', async () => {
+    const { k } = await kernel()
+    const none = await k.createRoom({ source: 'folder', name: 'Shop', from: await tempRepo(), team: [], autostart: false })
+    const steps = await setupDone(none.id)
+    expect(steps.map((s) => s.id).slice(0, 3)).toEqual(['clone', 'host', 'worktrees'])
+    expect(steps.find((s) => s.id === 'host')).toMatchObject({ state: 'ok', title: 'Code host', detail: 'Local, no GitHub remote. Kernel merges branches on this Mac.' })
+    expect(k.store.room(none.id)?.host).toBe('local')
+
+    // A remote that isn't GitHub is local too, and git alone checks the push.
+    const repo = await tempRepo()
+    const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+    await exec('git', ['init', '-q', '--bare', remote])
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
+    const other = await k.createRoom({ source: 'folder', name: 'Other', from: repo, team: [], autostart: false })
+    const done = await setupDone(other.id)
+    expect(k.store.room(other.id)?.host).toBe('local')
+    expect(done.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', detail: 'git can push to origin' })
     await k.stop()
   })
 
