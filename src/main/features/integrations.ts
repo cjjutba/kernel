@@ -1,9 +1,9 @@
-import type { Workspace, WorkspaceSource } from '@shared/types'
+import type { Tracker, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
-import { getIssue, getScope, linearToken, listIssues, moveToStarted, planParts, searchIssues } from '../services/linear'
+import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
 import { Feature } from './feature'
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
@@ -18,8 +18,7 @@ export class Integrations extends Feature {
    */
   async startIssue(ws: Workspace, key: string) {
     try {
-      const token = await this.linearKey()
-      if (token) await moveToStarted(token, key, this.linearFetch)
+      await this.tracker.start(key)
     } catch (e) {
       bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
     }
@@ -32,7 +31,7 @@ export class Integrations extends Feature {
   async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
     if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title }, labels: [] }
     try {
-      const issue = await getIssue(await this.linearKey(), key, this.linearFetch)
+      const issue = await this.tracker.issue(key)
       return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels, blockedBy: issue.blockedBy }
     } catch { return { source: { kind: 'issue', id: key, title }, labels: [] } }
   }
@@ -44,9 +43,12 @@ export class Integrations extends Feature {
   async issueLabels(key: string): Promise<string[]> {
     let timer: ReturnType<typeof setTimeout> | undefined
     const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
-    const read = this.linearKey().then((token) => getIssue(token, key, this.linearFetch)).then((i) => i.labels, () => [])
+    const read = this.tracker.issue(key).then((i) => i.labels, () => [])
     try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
   }
+
+  /** The tracker issues come from. Every room uses Linear until a room can pick its own (KERNEL-450). */
+  private get tracker(): Tracker { return linearTracker(() => this.linearKey(), this.linearFetch) }
 
   private async integrations() {
     const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), this.linearKey()])
@@ -57,7 +59,7 @@ export class Integrations extends Feature {
     return {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
-      'issues.list': async ({ query }) => searchIssues(await this.linearKey(), query, this.linearFetch),
+      'issues.list': async ({ query }) => this.tracker.search(query),
       'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
       'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),

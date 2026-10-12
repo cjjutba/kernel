@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, 
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Icon, Skeleton, Spinner, type IconName } from '../../ui'
+import { Icon, Spinner, type IconName } from '../../ui'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
@@ -35,7 +35,7 @@ export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user'
 
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
-function PartChip({ part }: { part: ChatPart }) {
+export function PartChip({ part }: { part: ChatPart }) {
   if (part.type === 'text') return null
   const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}{part.name}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
@@ -278,22 +278,6 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
     case 'result': return null
   }
 }, sameProps)
-
-/** The skeleton while a workspace is being set up (WorkspaceLoading.png). */
-export function TranscriptSkeleton({ branch }: { branch: string }) {
-  return (
-    <div className="ws-scroll" aria-busy="true" aria-label="Opening workspace">
-      <div className="thread" style={{ gap: 14 }}>
-        <span style={{ alignSelf: 'flex-end', width: '56%' }}><Skeleton width="100%" height={58} /></span>
-        <Skeleton width="30%" height={14} />
-        <Skeleton width="92%" height={14} />
-        <Skeleton width="74%" height={14} />
-        <Skeleton width="46%" height={28} />
-        <span className="meta" style={{ fontSize: 12.5 }}>Starting Claude Code in {branch}</span>
-      </div>
-    </div>
-  )
-}
 
 export const Transcript = memo(function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onForked: (chatId: string) => void }) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)

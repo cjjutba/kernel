@@ -58,6 +58,13 @@ button.ws-issue:hover { background: var(--surface-3); }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
 .bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
+/* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
+.msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
+.queued-meta { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
+.link-btn { padding: 0; border: 0; background: none; color: var(--ink-3); font-size: 12px; }
+.link-btn:hover { color: var(--ink); }
+.setup-line { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.setup-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 10px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--input-bg); }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: 1px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip[data-kind='image'] svg { color: var(--add); }
@@ -198,6 +205,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 
 /* bottom panel: underlined tabs, the run script's Run or Stop on every tab, and centered empty states (KERNEL-274) */
 .bottom-panel { height: clamp(160px, 38%, 280px); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+/* While setup runs or has failed, the files fold to their tabs and the log takes the height (KERNEL-430). */
+.bottom-panel[data-tall] { height: auto; flex: 1; min-height: 0; }
 .bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
 .bottom-tabs > [role='tablist'] { align-self: stretch; align-items: stretch; }
 .bottom-tabs .tab { height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
