@@ -81,6 +81,7 @@ const noCanvas = [
   'WorkspaceHireServersDisabled',
   'WorkspaceHireServersMissing',
   'WorkspaceHireServersMany',
+  'WorkspaceHireTeam', // the hire card when the Lead proposes the agent to the team: the line says it opens a pull request (KERNEL-502)
   // A new chat waiting for setup, drawn in design/redesign/ (KERNEL-430).
   'SetupRunning',
   'SetupFollowUp',
