@@ -195,10 +195,27 @@ describe('loadAppSettings', () => {
     expect(resolved.permissions).toMatchObject({ mode: 'bypassPermissions', bypassOnlyInWorktrees: false })
   })
 
-  it('gives a new install, with no file, the default and pins nothing', async () => {
+  it('gives a new install, with no file, Auto and pins nothing (KERNEL-457)', async () => {
     const { saved, resolved } = await load()
     expect(saved).toEqual({})
-    expect(resolved.permissions).toMatchObject({ mode: 'acceptEdits', bypassOnlyInWorktrees: true })
+    expect(DEFAULT_SETTINGS('/home/cj').permissions.mode).toBe('auto')
+    expect(resolved.permissions).toMatchObject({ mode: 'auto', bypassOnlyInWorktrees: true })
+  })
+
+  it('keeps an existing file with no mode on Accept edits, while a new install gets Auto (KERNEL-457)', async () => {
+    const fresh = await load()
+    // Sparse files of every shape an existing install can have: only the version, an unrelated group, or a permissions table with no mode.
+    for (const file of [{ version: 2 }, { version: 2, general: { menuBar: false } }, { version: 2, permissions: { network: false } }, { privacy: { telemetry: 'on' } }]) {
+      const existing = await load(file)
+      expect(existing.resolved.permissions.mode).toBe('acceptEdits')
+      expect(existing.saved.permissions).toMatchObject({ mode: 'acceptEdits' })
+      // Saved and read again, it stays there.
+      await saveAppSettings(existing.file, existing.saved)
+      expect((await loadAppSettings(existing.file, '/home/cj')).resolved.permissions.mode).toBe('acceptEdits')
+    }
+    expect(fresh.resolved.permissions.mode).toBe('auto')
+    // A mode the user chose, Auto included, is kept whatever the default is.
+    expect((await load({ version: 2, permissions: { mode: 'default' } })).resolved.permissions.mode).toBe('default')
   })
 
   it('reads a moved mode back the same after a save', async () => {

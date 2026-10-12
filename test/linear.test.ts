@@ -282,8 +282,8 @@ describe('Linear in the kernel', () => {
 
   /**
    * A Kernel on a temp repo with Rowan and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
-   * The room names its Linear team, so with a token its tracker is Linear (KERNEL-462). `plain` saves the token the way
-   * Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain.
+   * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The room names its
+   * Linear team, so with a token its tracker is Linear (KERNEL-462).
    */
   async function kernel(answer: (c: Call) => unknown, o: { token?: string; plain?: boolean; cipher?: Cipher } = { token: 'lin_stored' }) {
     vi.stubEnv('LINEAR_API_KEY', '')

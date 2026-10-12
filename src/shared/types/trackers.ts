@@ -31,3 +31,33 @@ export interface Tracker {
   /** Moves the issue to its first started state when it hasn't started (D-140). The state's name when it moved. */
   start: (id: string) => Promise<string | undefined>
 }
+
+/** The tracker a room uses, for the screens that list its issues. `where` is GitHub's `owner/repo` (KERNEL-471). */
+export interface RoomTracker {
+  kind: TrackerKind | 'none'
+  where?: string
+}
+
+/** A GitHub issue as the Issues screen lists it (KERNEL-471). */
+export interface GithubIssue {
+  number: number
+  /** `#41`, the key the rest of Kernel uses. */
+  id: string
+  title: string
+  url: string
+  labels: string[]
+  /** Logins. */
+  assignees: string[]
+  milestone?: string
+  /** The login of whoever opened it. */
+  author?: string
+  updatedAt: string
+  /** Assigned to the account gh is signed in as. */
+  mine: boolean
+}
+
+/** One GitHub issue in full, for the Issues screen's pane. Comments are oldest first. */
+export interface GithubIssueDetail extends GithubIssue {
+  body: string
+  comments: { id: string; author?: string; body: string; createdAt: string }[]
+}

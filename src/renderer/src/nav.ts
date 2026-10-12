@@ -126,7 +126,7 @@ const paths = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is s
 function soundRoute(r: any): Route | undefined {
   switch (r?.name) {
     case 'home': case 'inbox': case 'history': case 'rooms': return { name: r.name }
-    case 'issues': return isText(r.issueId) ? { name: 'issues', issueId: r.issueId } : { name: 'issues' }
+    case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
     case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId } : undefined
     // Agents load after the first route is chosen, and the floor and the Board are hidden (D-104), so these open their room's Team page.

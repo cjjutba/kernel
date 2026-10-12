@@ -640,6 +640,39 @@ describe("a room's issue tracker (KERNEL-462)", () => {
   })
 })
 
+describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+  it('issues.tracker names the tracker each room reads, and the repo of a GitHub one', async () => {
+    vi.stubEnv('LINEAR_API_KEY', 'lin_key')
+    const { k, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
+    const github = await k.rooms.addRoom(await tempRepo())
+    await git(github.path, 'remote', 'add', 'origin', 'https://github.com/acme/app.git')
+    const elsewhere = await k.rooms.addRoom(await tempRepo())
+    await git(elsewhere.path, 'remote', 'add', 'origin', 'https://gitlab.com/acme/app.git')
+    const tracker = (roomId: string) => k.integrations.handlers()['issues.tracker']({ roomId })
+    expect(await tracker(room.id)).toEqual({ kind: 'linear' })
+    expect(await tracker(github.id)).toEqual({ kind: 'github', where: 'acme/app' })
+    expect(await tracker(elsewhere.id)).toEqual({ kind: 'none' })
+    await k.stop()
+  })
+
+  it('follows the room\'s [tracker] kind, and reads Jira as none until Kernel can read it', async () => {
+    vi.stubEnv('LINEAR_API_KEY', 'lin_key')
+    const { k, repo, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
+    await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
+    const tracker = () => k.integrations.handlers()['issues.tracker']({ roomId: room.id })
+    expect(await tracker()).toEqual({ kind: 'linear' })
+    await saveRepoSettings(repo, { tracker: { kind: 'github' } })
+    expect(await tracker()).toEqual({ kind: 'github', where: 'acme/app' })
+    await saveRepoSettings(repo, { tracker: { kind: 'none' } })
+    expect(await tracker()).toEqual({ kind: 'none' })
+    await saveRepoSettings(repo, { tracker: { kind: 'jira' } })
+    expect(await tracker()).toEqual({ kind: 'none' })
+    await k.stop()
+  })
+})
+
 describe('skills for a room', () => {
   const skill = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\nBody`
 
