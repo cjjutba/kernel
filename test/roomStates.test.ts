@@ -154,12 +154,14 @@ describe('the pause hold', () => {
     // A hook that refuses a step during the pause shows as blocked.
     call.feed(hookExit2('PreToolUse'))
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the PreToolUse hook' })
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
 
     // A process that dies during the pause shows as offline.
     call.fail(new Error('exit code 137'))
     await flush()
     expect(statuses().at(-1)).toMatchObject({ status: 'offline' })
+    // A status carries no line of text since nothing shows one (KERNEL-620).
+    expect(statuses().filter((e) => 'activity' in e)).toEqual([])
 
     await sessions.send(chat.id, text('held'))
     await sessions.restart(chat.id)
@@ -198,7 +200,7 @@ describe('agent states from real events', () => {
     call.feed({ type: 'system', subtype: 'init', session_id: 's1', apiKeySource: 'none' })
     call.feed({ type: 'system', subtype: 'hook_response', hook_id: 'h', hook_name: 'TaskCompleted', hook_event: 'TaskCompleted', output: '', stdout: '', stderr: 'exit 2: no test output attached to T-11', exit_code: 2, outcome: 'error', uuid: 'u', session_id: 's1' })
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the TaskCompleted hook' })
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
     expect(events.find((e) => e.warn)).toMatchObject({ kind: 'agent.status', data: { detail: expect.stringContaining('TaskCompleted hook'), output: ['exit 2: no test output attached to T-11'] } })
 
     // The agent answering the hook is still blocked: the hook has not let the task finish yet.
@@ -228,7 +230,7 @@ describe('agent states from real events', () => {
     call.feed(toolResult('t1', true))
     call.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'The hook refused the push.' }] } })
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the PreToolUse hook' })
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
 
     // The agent gives up and ends its turn: it still needs someone to look.
     call.feed(success('r1'))
@@ -281,7 +283,7 @@ describe('agent states from real events', () => {
     call.feed(toolUse('t1'))
     call.feed(toolResult('t1'))
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the Stop hook' })
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
     call.feed(success('r1'))
     await flush()
     expect(statuses().at(-1)).toMatchObject({ status: 'idle' })
@@ -299,7 +301,7 @@ describe('agent states from real events', () => {
     await flush()
     call.fail(new Error('exit code 137'))
     await flush()
-    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'offline', activity: 'Session ended in invoice-schema' })
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'offline' })
     expect(events.find((e) => e.kind === 'session.end')).toMatchObject({ text: 'went offline in', data: { detail: expect.stringContaining('exit code 137') } })
     expect(sessions.isRunning(chat.id)).toBe(false)
 

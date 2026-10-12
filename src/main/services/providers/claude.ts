@@ -248,7 +248,7 @@ export class ClaudeRunner implements Runner {
         return decision
       }
     }
-    return awaitDecision(asking, { kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, detail: d.detail, reason, activity: d.title }, signal)
+    return awaitDecision(asking, { kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, detail: d.detail, reason }, signal)
   }
 
   /**
@@ -265,7 +265,7 @@ export class ClaudeRunner implements Runner {
         return decision
       }
     }
-    return awaitDecision(asking, { kind: 'tool', toolName: tool, input, title: d.title, detail: d.detail, reason, activity: d.title }, signal)
+    return awaitDecision(asking, { kind: 'tool', toolName: tool, input, title: d.title, detail: d.detail, reason }, signal)
   }
 
   private async consume() {
@@ -417,8 +417,8 @@ export class ClaudeRunner implements Runner {
       const options = questions?.[0]?.options.map((o) => o.label) ?? (isQuestion ? [] : undefined)
       const reason = isQuestion ? undefined : askReason({ decisionReason, blockedPath, description })
       const result = toolName === 'ExitPlanMode'
-        ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
-        : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title, ...(reason ? { reason } : {}) }, { signal })
+        ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown })
+        : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, ...(reason ? { reason } : {}) }, { signal })
       if (!result) return { behavior: 'deny', message: NO_DECISION }
       // A rule Kernel saved on the room outlives the worktree. Claude Code's suggestions only go back for a tool it can't save.
       const saved = saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })

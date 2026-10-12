@@ -788,7 +788,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
 
 describe('asking from inside a hook (KERNEL-446)', () => {
   const noor = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md' } as AgentDef
-  const ask: Ask = { kind: 'tool', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', activity: 'Run pnpm drizzle-kit push' }
+  const ask: Ask = { kind: 'tool', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push' }
   // The host Sessions gave the chat's runner, so the card and the status are the ones a canUseTool ask gets.
   const hostOf = (sessions: Sessions) => (sessions['live'].get('chat') as unknown as { runner: ClaudeRunner }).runner['host']
   const open = () => new AbortController().signal
