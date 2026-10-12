@@ -29,7 +29,6 @@ export function Integrations() {
     try {
       swap(await call('integrations.connect', { id: 'linear', token }))
       setAsking(false); setToken('')
-      actions.ui.toast({ title: 'Linear connected' })
     } catch (e) { fail('Could not connect Linear', e) }
   })
   const press = (r: Integration) => {
@@ -38,7 +37,7 @@ export function Integrations() {
   }
   const connect = async (r: Integration) => {
     if (r.id === 'linear') {
-      try { swap(await call('integrations.connect', { id: 'linear', token: '' })); actions.ui.toast({ title: 'Linear disconnected' }) } catch (e) { fail('Could not disconnect Linear', e) }
+      try { swap(await call('integrations.connect', { id: 'linear', token: '' })) } catch (e) { fail('Could not disconnect Linear', e) }
     } else if (r.id === 'github') {
       try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'gh auth status' }) } catch (e) { fail('Could not open a terminal', e) }
     } else {

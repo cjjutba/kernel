@@ -16,8 +16,9 @@ function chatRows(roomId: string) {
 }
 
 /**
- * Archives the chat with Rowan and its workspaces, then says so (KERNEL-405). When the chat was on screen, the chat row above it
- * opens, or the one below when it was the first, or the room's front door when no chat is left, as closing a chat did (KERNEL-338).
+ * Archives the chat with Rowan and its workspaces (KERNEL-405). The row leaving the sidebar says so, so there is no toast (KERNEL-495).
+ * When the chat was on screen, the chat row above it opens, or the one below when it was the first, or the room's front door when
+ * no chat is left, as closing a chat did (KERNEL-338).
  */
 export async function archiveChatNow(thread: Thread, workspaceIds: string[]): Promise<void> {
   const before = chatRows(thread.roomId)
@@ -26,7 +27,6 @@ export async function archiveChatNow(thread: Thread, workspaceIds: string[]): Pr
   const route = getState().ui.route
   const shown = route.name === 'workspace' && (route.workspaceId === own || workspaceIds.includes(route.workspaceId))
   await archiveChatByHand(thread.id, workspaceIds)
-  actions.ui.toast({ title: `Archived ${thread.title}.`, sub: 'Find it in History.' })
   if (!shown) return
   const rows = chatRows(thread.roomId).filter((r) => r.thread.id !== thread.id)
   const at = order.indexOf(thread.id)

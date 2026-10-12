@@ -25,7 +25,6 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
   const hide = async () => {
     const hidden = await call('rooms.update', { roomId: room.id, patch: { hidden: true } })
     actions.rooms.upsert(hidden)
-    actions.ui.toast({ title: `${room.name} is hidden`, sub: 'It stays on All rooms.' })
   }
   // Pause and Resume lived on the floor's header until D-104 hid the floor. A paused room offers Resume.
   const togglePause = () => call('rooms.setPaused', { roomId: room.id, paused: !room.paused })

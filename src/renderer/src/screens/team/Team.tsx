@@ -44,8 +44,7 @@ export function Team({ roomId }: { roomId: string }) {
   const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
   const addStarter = (id: string) => run('starter', async () => {
     try {
-      const def = await call('agents.addStarter', { roomId, id })
-      actions.ui.toast({ title: `${def.name} joined the team` })
+      await call('agents.addStarter', { roomId, id })
     } catch (e) { actions.ui.toast({ title: 'Could not add the agent', sub: cleanError(e) }) }
   })
   const restore = (a: AgentDef) => run(a.id, async () => {
@@ -53,7 +52,6 @@ export function Team({ roomId }: { roomId: string }) {
       const def = await call('agents.restore', { roomId, agentId: a.id })
       actions.agents.set(roomId, [...team.filter((x) => x.id !== def.id), def])
       setRetired((r) => r.filter((x) => x.id !== a.id))
-      actions.ui.toast({ title: `${def.name} is back on the team` })
     } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: cleanError(e) }) }
   })
 
