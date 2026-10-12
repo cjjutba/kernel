@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PushEvent } from '../src/shared/ipc'
@@ -12,7 +12,8 @@ import { capText } from '../src/main/services/text'
 import { Sessions } from '../src/main/services/sessions'
 import { Approvals } from '../src/main/services/approvals'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
-import { listen } from '../src/main/features/wiring'
+import { Log } from '../src/main/services/log'
+import { leadUpdateDeps, listen } from '../src/main/features/wiring'
 import type { Kernel } from '../src/main/kernel'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -31,7 +32,7 @@ const NAMES: Record<string, string> = { rowan: 'Rowan', noor: 'Noor', kai: 'Kai'
 const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 
 /** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
-async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean } = {}) {
+async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean; log?: ConstructorParameters<typeof LeadUpdates>[0]['log'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-lu-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   // Teammate workspaces were handed off in the Lead chat "lc" unless a test says otherwise.
@@ -60,7 +61,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
     agentName: (_r, a) => NAMES[a],
     post: (chatId, text, update) => { if (!s.accept || s.busy.has(chatId) || s.hold?.(chatId)) return false; s.posts.push(text); s.updates.push(update); s.to.push(chatId); s.times.push(Date.now()); return true },
     holdOf: (chatId) => s.hold?.(chatId) ?? (s.busy.has(chatId) ? 'busy' : undefined),
-    log: (_level, line) => { s.logs.push(line) },
+    log: (level, line) => { s.logs.push(line); o.log?.(level, line) },
     delivered: (_r, _c, update) => { s.delivered.push(update) },
     reviewer: () => s.reviewer,
     reviewState: () => s.review,
@@ -1447,6 +1448,46 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
       await wait(10)
       expect(s.posts).toHaveLength(frees.length)
     } finally { off() }
+  })
+
+  it("sends an update a full Lead chat refused as soon as Settings, Models raises the agent limit (KERNEL-651)", async () => {
+    const t = await setup()
+    let settings = { ...DEFAULT_SETTINGS('/home/cj') }
+    settings = { ...settings, models: { ...settings.models, agentLimit: 1 } }
+    // No Lead agent, so "lc" takes a slot like any teammate's chat.
+    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
+    // Kai's turn takes the only slot.
+    ;(sessions as unknown as { live: Map<string, { running: boolean }> }).live.set('kc', { running: true })
+    t.s.hold = (chatId) => sessions.postHold(chatId)
+    expect(sessions.postHold('lc')).toBe('capacity')
+    t.u.turnDone(t.store.workspace('w1')!, t.nc, done)
+    await wait()
+    expect(t.s.posts).toEqual([])
+    const before = settings
+    settings = { ...settings, models: { ...settings.models, agentLimit: 2 } }
+    sessions.applySettings(before)
+    // Not at the PR poll 45 seconds later: within the next step.
+    await wait(10)
+    expect(t.s.posts).toHaveLength(1)
+    expect(logged(t.s).at(-1)).toMatchObject({ chatId: 'lc', heldBy: 'capacity' })
+  })
+
+  it("writes each delivery's timings to Kernel's log, and only to the console without one (KERNEL-651)", async () => {
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      const log = new Log({ dir: await mkdtemp(join(tmpdir(), 'kernel-lu-log-')) })
+      const deps = leadUpdateDeps({ o: { log } } as unknown as Kernel)
+      const { u, w1, nc } = await setup({ log: deps.log })
+      u.turnDone(w1, nc, done)
+      await wait()
+      const lines = (await readFile(log.file, 'utf8')).trim().split('\n')
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toMatch(/ INFO \[lead-updates\] delivered \{"roomId":"r","chatId":"lc",.*"heldBy":"none"/)
+      expect(lines[0]).not.toContain('Linked node_modules')
+      expect(console.info).toHaveBeenCalledWith(expect.stringContaining('[lead-updates] delivered '))
+      // A fixture run or a test has no log, and LeadUpdates falls back to the console.
+      expect(leadUpdateDeps({ o: {} } as unknown as Kernel).log).toBeUndefined()
+    } finally { vi.restoreAllMocks() }
   })
 
   it('logs timings and why each update waited, never what it says', async () => {
