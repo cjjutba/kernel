@@ -1,5 +1,7 @@
-/* Footer, Ask Rowan and the update pill (KERNEL-21). Tokens only. */
-.ft { padding: 0 12px 0 16px; gap: 10px; }
+/* Ask Rowan, the update pill and the warnings that used to fill the footer (KERNEL-21, KERNEL-527). Tokens only. */
+/* Hooks down and GitHub paused, a row above the sidebar's bottom row. Empty, it takes no room. */
+.sb-alerts { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 0 4px; }
+.sb-alerts:not(:has(button, .ft-paused)) { display: none; }
 .ft-hooks { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 .ft-down { height: 24px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
 .ft-down:hover { background: var(--surface-3); }
@@ -9,16 +11,15 @@
 .ft-paused { height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: var(--ink-2); font-size: 12px; }
 .ft-paused:focus-visible { outline-offset: 2px; }
 .ft-sub { margin-left: 4px; color: var(--muted); }
-.ft-btn, .ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
-.ft-btn:hover, .ft-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
 .ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; color: var(--ink); }
 .ft-pill:hover { background: var(--surface-3); }
-.ft-btn:focus-visible, .ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
+.ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
 .qa-anchor { position: relative; display: inline-flex; }
 
 /* Ask Rowan (KERNEL-274): a layer of its own, inset from the panel's edge. The field is the popover's middle, with no box
    inside the box; hairlines split the header, the field and the footer. */
-.qa { position: absolute; z-index: 60; right: 4px; bottom: calc(100% + 10px); width: 400px; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-lg); border: 1px solid var(--line-4); background: var(--surface-2); }
+.qa { position: absolute; z-index: 60; left: 0; bottom: calc(100% + 10px); width: 400px; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-lg); border: 1px solid var(--line-4); background: var(--surface-2); }
 /* Focus shows on the popover's border, since the field has no box of its own to ring. */
 .qa:has(.qa-text:focus) { border-color: color-mix(in srgb, var(--ink) 30%, var(--line-4)); }
 .qa .qa-text:focus-visible { outline: none; }
@@ -38,3 +39,6 @@
 .qa-foot { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 0 10px 0 16px; border-top: 1px solid var(--line-3); }
 .qa-note { font-size: 12px; color: var(--muted); }
 .qa-kbd { margin-left: 2px; font: 400 11px var(--mono); opacity: 0.55; }
+/* From the header (sidebar hidden) the popover opens down instead of up. */
+.header .qa { top: calc(100% + 8px); bottom: auto; }
+.header .ft-pill { height: 24px; }

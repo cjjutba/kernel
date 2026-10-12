@@ -2,7 +2,7 @@ import { type ReactNode } from 'react'
 import { Icon } from '../icons'
 
 export { Sidebar } from './sidebar/Sidebar'
-export { Footer } from './footer/Footer'
+export { SidebarAlerts } from './footer/Footer'
 
 export function Modal({ title, onClose, children, footer, width }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number }) {
   return (
