@@ -140,14 +140,22 @@ const envRoomA: Partial<Fixture> = {
   env: { rooms: { [ids.roomA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
 }
 const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
-/** What approvals saved with Always allow in this room. Two are long enough to clamp to two lines. */
+/** What approvals saved with Always allow in this room. The gh one is long enough to clamp to two lines. */
 const roomRules = [
   'pnpm test', 'pnpm typecheck',
-  'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName,url,isDraft,mergeStateStatus,author,labels',
-  'node design/canvas/source/render.mjs Settings SettingsAppearance SettingsNotifications SettingsAccount SettingsShortcuts SettingsModels SettingsPermissions SettingsGit SettingsScripts SettingsPRs',
-  'for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | grep -v "pixelHeight: 900"',
+  'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName',
   'git log --oneline origin/main..HEAD'
 ]
+/** The tools saved the same way (KERNEL-455), as Claude Code writes a rule. */
+const roomToolRules = ['mcp__linear__get_issue', 'mcp__github__create_pull_request', 'WebFetch(domain:docs.stripe.com)']
+/** Auto is the app's mode, as the canvas draws it (KERNEL-455). A8 makes it the default for new installs. */
+const autoMode = (): AppSettings => { const d = DEFAULT_SETTINGS('/Users/you'); return { ...d, permissions: { ...d.permissions, mode: 'auto' } } }
+/** Client A's Permissions page: the commands and tools saved with Always allow in this room, over an app that runs Auto. */
+const roomPermissions = (f: Fixture): Partial<Fixture> => ({
+  ...clientA(),
+  settings: autoMode(),
+  rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, allow: roomRules, allowTools: roomToolRules } : r))
+})
 /** Client A's General page (SettingsRoom.png), which SettingsRoomIcon builds on. */
 const settingsRoom = (f: Fixture): Partial<Fixture> => ({
   ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
@@ -255,7 +263,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsProviders: providersPage('claude'),
   SettingsProvidersCodex: providersPage('codex'),
   SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
-  SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/you'), permissions: { ...DEFAULT_SETTINGS('/Users/you').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
+  // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
+  SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
@@ -308,11 +317,9 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomEnvironment: roomPage('environment', envRoomA),
   SettingsEnvironmentAdd: scene(() => ({ ...envRoomA, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'environment' }, modal: { name: 'envVar', roomId: ids.roomA } } })),
   SettingsRoomInstructions: roomPage('instructions', clientA()),
-  SettingsRoomPermissions: scene((f) => ({
-    ...clientA(),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, allow: roomRules } : r)),
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } }
-  })),
+  SettingsRoomPermissions: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } } })),
+  // KERNEL-455: the room's mode menu is open, over Use app default.
+  SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
   SettingsScripts: settingsPage('scripts'),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
@@ -466,5 +473,7 @@ export const platformFixtures: Record<string, Fixture> = {
     push: f.push,
     ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
   })),
-  ConfirmDiscard: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'discard', workspaceId: ids.table } } }))
+  ConfirmDiscard: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'discard', workspaceId: ids.table } } })),
+  // KERNEL-455: the first switch into Bypass permissions, with Only in worktrees on.
+  ConfirmBypass: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'bypass' } } }))
 }
