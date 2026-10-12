@@ -104,7 +104,7 @@ export type MenuId =
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
-  | 'roomTracker'
+  | 'roomTracker' | 'askHistory'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
@@ -198,5 +198,13 @@ export interface QuickAskState {
   asked?: { chatId: string; since: number; question: string }
 }
 
-/** UI state a fixture forces on boot. `quickAsk` is by room id, a slice of its own that a fixture can set. */
-export type ForcedUi = Partial<UiState> & { quickAsk?: Record<string, QuickAskState> }
+/** A question asked from Ask Rowan, kept in its history (KERNEL-589): the room, the Lead chat it went to, the question and when. */
+export interface AskEntry {
+  roomId: string
+  chatId: string
+  question: string
+  at: number
+}
+
+/** UI state a fixture forces on boot. `quickAsk` is by room id, a slice of its own that a fixture can set, and so is `askHistory`. */
+export type ForcedUi = Partial<UiState> & { quickAsk?: Record<string, QuickAskState>; askHistory?: AskEntry[] }

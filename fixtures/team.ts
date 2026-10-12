@@ -545,6 +545,15 @@ const invoicePdfChat: HeldChat = {
   picks: { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: false, baseRef: '', pickedRef: '', filled: invoicePdfPrompt }
 }
 
+const minutesAgo = (minutes: number) => Date.now() - minutes * 60_000
+const ASK_HISTORY = [
+  { roomId: ids.roomA, chatId: ids.leadChat, question: "What's the status of T-15? Who is blocked?", at: minutesAgo(18) },
+  { roomId: ids.roomA, chatId: ids.leadChat, question: 'Which PRs can I merge right now?', at: minutesAgo(95) },
+  { roomId: ids.roomA, chatId: ids.leadChat, question: 'Why did the invoice-table checks fail?', at: minutesAgo(60 * 26) },
+  { roomId: ids.roomOwn, chatId: ids.leadChat, question: 'Summarize what shipped on Own app this week', at: minutesAgo(60 * 24 * 3) },
+  { roomId: ids.roomB, chatId: ids.leadChat, question: 'Is anyone working on the onboarding docs?', at: minutesAgo(60 * 24 * 9) }
+]
+
 /** Room setup done in a repo that brought its own agents (RoomSetupTeam.png). `team` is the repo's `[team]` table, if it has one. */
 const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
   const r = roomsScene(f)
@@ -582,6 +591,10 @@ export const teamFixtures: Record<string, Fixture> = {
     { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
   ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
+  // Ask Rowan's history from the footer's clock: past questions newest first, each with its room and when (KERNEL-589). Times are
+  // relative to now, so the shot reads today, Yesterday and a weekday.
+  AskHistory: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'askHistory', askHistory: ASK_HISTORY } })),
+  AskHistoryEmpty: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'askHistory', askHistory: [] } })),
   // With the sidebar hidden, Ask Rowan stays in the footer, the same place as with it open (KERNEL-588).
   QuickAskNoSidebar: scene((f) => ({ ...homeScene(f), ui: { ...home, sidebar: false, menu: 'quickAsk' } })),
   // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).

@@ -55,6 +55,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         const { chatId } = await call('lead.ask', { roomId: room.id, text: question, ...(threadId ? { threadId } : {}) })
         actions.chats.setItems(chatId, await call('chats.items', { chatId }))
         actions.quickAsk.setAsked(room.id, { chatId, since, question })
+        actions.quickAsk.remember({ roomId: room.id, chatId, question, at: since })
       } catch (e) { setError(cleanError(e)) }
       finally { actions.quickAsk.setSending(room.id, false) }
     })

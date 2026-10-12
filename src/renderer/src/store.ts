@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  AskEntry, ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -99,6 +99,8 @@ export interface State {
   system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null; github: GitHubStatus }
   /** By room id. The Ask Rowan popover's draft and last question, kept while it is closed. */
   quickAsk: Record<string, QuickAskState>
+  /** Questions asked from Ask Rowan, newest first, kept across launches (KERNEL-589). */
+  askHistory: AskEntry[]
   ui: UiState
 }
 
@@ -124,6 +126,20 @@ function keep(panel: keyof typeof HIDDEN, open: boolean) {
  * teammate workspaces, which start open. localStorage may be missing or blocked, and a stored value may be junk.
  */
 export const BOTTOM_RATIO_DEFAULT = 1 / 3
+/** Ask Rowan's history (KERNEL-589): the newest 50 questions, newest first. localStorage may be missing, blocked or hold junk. */
+const ASK_HISTORY = 'kernel.askHistory'
+export const ASK_HISTORY_MAX = 50
+export function askHistory(): AskEntry[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(ASK_HISTORY) ?? '[]')
+    if (!Array.isArray(v)) return []
+    return v.filter((e): e is AskEntry => !!e && typeof e.roomId === 'string' && typeof e.chatId === 'string' && typeof e.question === 'string' && typeof e.at === 'number').slice(0, ASK_HISTORY_MAX)
+  } catch { return [] }
+}
+/** The list with `entry` first. Asking the same question into the same chat again moves it to the top rather than listing it twice. */
+export function withAsked(list: AskEntry[], entry: AskEntry): AskEntry[] {
+  return [entry, ...list.filter((e) => !(e.chatId === entry.chatId && e.question === entry.question))].slice(0, ASK_HISTORY_MAX)
+}
 const BOTTOM_RATIO = 'kernel.bottomPanelRatio'
 const BOTTOM_COLLAPSED: Record<BottomKind, string> = { lead: 'kernel.bottomCollapsed.lead', teammate: 'kernel.bottomCollapsed.teammate' }
 const COLLAPSED_AT_FIRST: Record<BottomKind, boolean> = { lead: true, teammate: false }
@@ -191,6 +207,7 @@ let state: State = {
   usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
+  askHistory: askHistory(),
   ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
 }
 const listeners = new Set<() => void>()
@@ -587,7 +604,13 @@ export const actions = {
     setSending: (roomId: string, sending: boolean) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft: s.quickAsk[roomId]?.draft ?? '', sending } } })),
     /** The question sent. Clears the draft, which is what was just asked. */
     setAsked: (roomId: string, asked: NonNullable<QuickAskState['asked']>) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: '', asked } } })),
-    clearAsked: (roomId: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: s.quickAsk[roomId]?.draft ?? '' } } }))
+    clearAsked: (roomId: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: s.quickAsk[roomId]?.draft ?? '' } } })),
+    /** Adds a question to Ask Rowan's history and saves it (KERNEL-589). */
+    remember: (entry: AskEntry) => setState((s) => {
+      const list = withAsked(s.askHistory, entry)
+      try { localStorage.setItem(ASK_HISTORY, JSON.stringify(list)) } catch { /* not remembered */ }
+      return { askHistory: list }
+    })
   },
   approvals: {
     set: (list: Approval[]) => setState({ approvals: byRecent(list) }),
@@ -828,8 +851,8 @@ export function launchRoute(): Route {
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
-function applyFixture({ quickAsk, ...ui }: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk }))
+function applyFixture({ quickAsk, askHistory: asked, ...ui }: ForcedUi, push: PushEvent[]) {
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk, askHistory: asked ?? s.askHistory }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)
