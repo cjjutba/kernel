@@ -47,6 +47,34 @@ describe('composer text rules', () => {
     ])
   })
 
+  it('names saved images where they sat, numbered per message, and asks for a Read of each (KERNEL-545)', () => {
+    const content = (m: ReturnType<typeof toUserMessage>) => m.message.content as { type: string; text?: string; source?: unknown }[]
+    const shot = (path: string, size?: { width: number; height: number }) => ({ type: 'image' as const, name: 'image.png', dataUrl: 'data:image/png;base64,AAAA', path, ...size })
+    expect(content(toUserMessage([
+      { type: 'text', text: 'look at' },
+      shot('.kernel/attachments/image.png', { width: 1440, height: 900 }),
+      { type: 'text', text: 'and compare with' },
+      shot('.kernel/attachments/image-2.png')
+    ]))).toEqual([
+      { type: 'text', text: 'look at' },
+      { type: 'text', text: '[Image 1: .kernel/attachments/image.png, 1440x900]' },
+      { type: 'text', text: 'and compare with' },
+      { type: 'text', text: '[Image 2: .kernel/attachments/image-2.png]' },
+      { type: 'text', text: 'Read each of the 2 attached images with the Read tool before answering.' }
+    ])
+    // The next message counts from 1 again.
+    expect(content(toUserMessage([shot('.kernel/attachments/image-3.png'), { type: 'text', text: 'and now?' }])).map((b) => b.text)).toEqual([
+      '[Image 1: .kernel/attachments/image-3.png]',
+      'and now?',
+      'Read the attached image with the Read tool before answering.'
+    ])
+    // An image Kernel couldn't save goes inline, unnumbered, with no line asking for a Read.
+    expect(content(toUserMessage([{ type: 'text', text: 'this' }, { type: 'image', name: 'image.png', dataUrl: 'data:image/png;base64,AAAA' }]))).toEqual([
+      { type: 'text', text: 'this' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }
+    ])
+  })
+
   it('remembers an effort per model and cycles Low to Extra high and back', () => {
     const memory = effortMemory({ 'claude-opus-5-5': 'xhigh', 'claude-nope': 'high', 'claude-sonnet-5-5': 'max' })
     expect(memory).toEqual({ 'claude-opus-5-5': 'xhigh' })

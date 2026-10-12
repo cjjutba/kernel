@@ -14,7 +14,7 @@ import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './heal
 import { forProvider, Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
-import { revisedPlanFile, savePlan } from './plans'
+import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
 import { ClaudeRunner, claudeCommands, claudeModels, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
@@ -719,8 +719,23 @@ export class Sessions {
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
     live.sent = [...parts, ...more.flatMap((m) => m.parts)]
-    live.runner.push(live.sent)
+    this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+  }
+
+  /**
+   * Sends the turn's message. Its images are saved to the workspace first, for the agent to open with Read (KERNEL-545), and
+   * the message goes once they are. The rows keep their data URLs, so the user's bubble doesn't change. A session stopped or
+   * replaced meanwhile gets nothing: `renew` sends `live.sent` itself, as it stood, and never saves again.
+   */
+  private push(chatId: string, ws: Workspace, live: Live) {
+    const sent = live.sent ?? []
+    if (!hasUnsavedImages(sent)) { live.runner.push(sent); return }
+    void withImageFiles(ws.path, sent).then((saved) => {
+      if (this.live.get(chatId) !== live) return
+      live.sent = saved
+      live.runner.push(saved)
+    })
   }
 
   private turnsOf(chatId: string): Turns {

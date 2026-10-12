@@ -5,9 +5,9 @@ import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { run } from '../src/main/services/exec'
 import { searchFiles } from '../src/main/services/files'
-import { attachmentNote, planName, saveAttachments, savePlan } from '../src/main/services/plans'
+import { attachmentNote, planName, saveAttachments, savePlan, withImageFiles } from '../src/main/services/plans'
 import { Kernel } from '../src/main/kernel'
-import type { Approval } from '@shared/types'
+import type { Approval, ChatPart } from '@shared/types'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -89,6 +89,31 @@ describe('change request attachments', () => {
       'Attached image: /w/.kernel/attachments/image-2.png. Read it before revising the plan.'
     )
     expect(attachmentNote('', ['/w/a.png'])).toBe('Attached image: /w/a.png. Read it before revising the plan.')
+  })
+})
+
+describe('images in a chat message (KERNEL-545)', () => {
+  it('saves each image once, out of git, and gives it a path relative to the workspace', async () => {
+    const repo = await tempRepo()
+    const parts: ChatPart[] = [
+      { type: 'text', text: 'look at' },
+      { type: 'image', name: 'image.png', dataUrl: png('first'), width: 800, height: 600 },
+      { type: 'text', text: 'and compare with' },
+      { type: 'image', name: 'image.png', dataUrl: png('second') }
+    ]
+    const saved = await withImageFiles(repo, parts)
+    expect(saved).toEqual([parts[0], { ...parts[1], path: '.kernel/attachments/image.png' }, parts[2], { ...parts[3], path: '.kernel/attachments/image-2.png' }])
+    expect(await readFile(join(repo, '.kernel/attachments/image-2.png'), 'utf8')).toBe('second')
+    expect(await status(repo)).toBe('')
+    // Saved already, so nothing is written again.
+    expect(await withImageFiles(repo, saved)).toBe(saved)
+    await expect(access(join(repo, '.kernel/attachments/image-3.png'))).rejects.toThrow()
+  })
+
+  it('leaves the message as it was when the images can\'t be saved, so they go inline', async () => {
+    const file = join(await tempRepo(), 'README.md')
+    const parts: ChatPart[] = [{ type: 'image', name: 'image.png', dataUrl: png('first') }]
+    expect(await withImageFiles(file, parts)).toBe(parts)
   })
 })
 

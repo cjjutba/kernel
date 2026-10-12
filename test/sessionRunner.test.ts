@@ -1,11 +1,11 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, symlink } from 'node:fs/promises'
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatItem, Decision, Room, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, ChatPart, Decision, Room, TeamUpdate, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
@@ -18,6 +18,7 @@ import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
 import { linkNodeModules } from '../src/main/services/scripts'
+import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
@@ -2573,5 +2574,54 @@ describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
     await s.sessions.send('old', [{ type: 'text', text: 'Once more' }])
     expect(sdk.calls.at(-1)!.options.resume).toBeUndefined()
     s.done()
+  })
+})
+
+describe('images in a chat message (KERNEL-545)', () => {
+  const png = (bytes: string) => `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`
+  const parts: ChatPart[] = [
+    { type: 'text', text: 'look at' },
+    { type: 'image', name: 'image.png', dataUrl: png('first'), width: 800, height: 600 },
+    { type: 'text', text: 'and compare with' },
+    { type: 'image', name: 'image.png', dataUrl: png('second'), width: 1440, height: 900 }
+  ]
+  const sentText = [
+    'look at',
+    '[Image 1: .kernel/attachments/image.png, 800x600]',
+    'and compare with',
+    '[Image 2: .kernel/attachments/image-2.png, 1440x900]',
+    'Read each of the 2 attached images with the Read tool before answering.'
+  ]
+  /** The text blocks of the next message Kernel sent the session. */
+  const nextBlocks = async (call: Call) => ((await call.prompt[Symbol.asyncIterator]().next()).value.message.content as { text?: string }[]).map((b) => b.text)
+
+  it('saves the images of a queued message to the workspace when it goes, and names each where it sat', async () => {
+    const repo = await tempRepo()
+    const s = await setup('acceptEdits', { ws: { path: repo } })
+    expect(await s.sessions.send('chat', parts)).toEqual({ queued: true, why: 'running' })
+    await expect(readdir(join(repo, '.kernel/attachments'))).rejects.toThrow()
+    expect(await nextSent(s.call)).toBe('Add a pdf_url column')
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    expect(await nextBlocks(s.call)).toEqual(sentText)
+    expect(await readFile(join(repo, '.kernel/attachments/image.png'), 'utf8')).toBe('first')
+    expect(await readFile(join(repo, '.kernel/attachments/image-2.png'), 'utf8')).toBe('second')
+    expect((await run('git', ['-C', repo, 'status', '--porcelain', '--untracked-files=all'])).trim()).toBe('')
+    // The user's bubble shows the images as they were sent.
+    expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts })
+  })
+
+  it('sends a fresh session the same files when the resumed one is gone, without saving them again', async () => {
+    const repo = await tempRepo()
+    const s = await setup('acceptEdits', { ws: { path: repo } })
+    s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })
+    await s.sessions.send('old', parts)
+    const first = sdk.calls.at(-1)!
+    expect(await nextBlocks(first)).toEqual(sentText)
+    gone(first, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh).not.toBe(first)
+    expect(await nextBlocks(fresh)).toEqual(sentText)
+    expect((await readdir(join(repo, '.kernel/attachments'))).sort()).toEqual(['image-2.png', 'image.png'])
   })
 })
