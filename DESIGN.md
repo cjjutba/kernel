@@ -153,6 +153,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Left: Hooks down and GitHub paused, only while they hold.
 - Right: the Update ready pill once an update is ready, then Ask Rowan with its send icon and label. Ask Rowan's popover opens up from it, at the right. Nothing moves when the sidebar or the right panel hides.
 - The sidebar's bottom row is the plan chip, What's new and Settings. With the sidebar hidden, the header starts with Show sidebar alone.
+- Ask Rowan history (KERNEL-589): a clock icon after Ask Rowan, at the footer's far right, opens the questions asked from Ask Rowan, newest first, in Ask Rowan's popover shell. Each row is the question on one line in ink, then the room and when in muted 12px (the time today, Yesterday, the weekday, then the date). Picking one opens its Lead chat. With none yet, the popover says so in one muted line.
 
 ## Busy buttons
 
