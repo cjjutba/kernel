@@ -106,10 +106,12 @@ function readLine(entries: string[]) {
  * line every tool is in. disallowedTools then takes away what it names, the same way, and there `mcp__*` takes every MCP
  * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
  * `aliases` is the room's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
- * (KERNEL-464).
+ * (KERNEL-464). `allow` is the room's `[agents.<id>] allow`: MCP servers the user let this agent use though its tools line
+ * doesn't name them, which count as named unless disallowedTools takes them away (KERNEL-537).
  */
-export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string> } = {}): ToolPolicy | undefined {
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string>; allow?: string[] } = {}): ToolPolicy | undefined {
   if (!tools && !o.disallowed?.length) return undefined
+  const allowed = new Set(withAliases((o.allow ?? []).map((s) => `mcp__${s}`), aliasMap(o.aliases)).map((e) => e.split('__')[1]))
   const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
   const aliases = aliasMap(o.aliases)
   const line = tools && readLine(withAliases(tools, aliases))
@@ -118,7 +120,7 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   const own = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool)
   // A background command's output and its stop belong to Bash.
   const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash'))
-    || (tool.startsWith('mcp__') && line.servers.has(tool.split('__')[1]))
+    || (tool.startsWith('mcp__') && (line.servers.has(tool.split('__')[1]) || allowed.has(tool.split('__')[1])))
   const disallows = (tool: string): boolean => !own(tool) && (off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
     || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
   const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
@@ -127,7 +129,7 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
     if (name === 'kernel') return { on: true }
     if (offAll || off.servers.has(name)) return { on: false }
     const except = off.tools.filter((t) => t.server === name).map((t) => t.tool)
-    if (line && !line.servers.has(name)) {
+    if (line && !line.servers.has(name) && !allowed.has(name)) {
       const only = line.tools.filter((t) => t.server === name && !except.includes(t.tool)).map((t) => t.tool)
       return only.length ? { on: true, only } : { on: false }
     }

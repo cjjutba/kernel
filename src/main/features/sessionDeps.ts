@@ -1,6 +1,6 @@
 import type { Kernel } from '../kernel'
 import type { SessionDeps } from '../services/sessions'
-import { aliasesInRoom, disabledInRoom } from '../services/settings'
+import { agentAccessInRoom, aliasesInRoom, disabledInRoom } from '../services/settings'
 
 /**
  * What Sessions calls back into Kernel for (KERNEL-324). A new reaction to a finished turn goes in `onTurnDone`, where the
@@ -16,6 +16,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), apiKey: k.providers.apiKey('codex'), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
+    accessFor: (ws) => { const room = k.store.room(ws.roomId); return room ? agentAccessInRoom(room.path, ws.agentId) : undefined },
     onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],

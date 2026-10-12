@@ -422,7 +422,7 @@ describe('session runner (SDK scripted)', () => {
     // The room heard from a probe that the Gmail connector is up, before this session's first init lists it.
     const room = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
     const { call, options, store, chat } = await setup('acceptEdits', {
-      agent, disabledFor: () => ({ skills: [], mcp: ['figma'] }), aliasesFor: () => ({ linear: 'claude.ai Linear' }),
+      agent, disabledFor: () => ({ skills: [], mcp: ['figma'] }), aliasesFor: () => ({ linear: 'claude.ai Linear' }), deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) },
       onMcp: (_ws, provider, list) => { reports.push([provider, list]); return [...room, ...list] }
     })
     const servers = [
@@ -730,12 +730,29 @@ describe("an agent file's tools line (KERNEL-397)", () => {
   const use = (gate: HookCallback, tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
 
   it('leaves out the built-in tools the file leaves out, and refuses any other tool it does not list', async () => {
-    const { options } = await setup('acceptEdits', { agent: theo })
+    const { options } = await setup('acceptEdits', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
     expect(options.disallowedTools).toEqual(['WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
     const gate = gateOf(options)!
     expect(await use(gate, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
     expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
     for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
+  it('asks about an MCP server the file does not list, unless the room hides it or allows it (KERNEL-537)', async () => {
+    const { options, store, approvals, allowTools } = await setup('acceptEdits', { agent: theo })
+    const gate = gateOf(options)!
+    const answer = use(gate, 'mcp__linear__save_issue')
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })[0]
+    expect(pending).toMatchObject({ kind: 'tool', toolName: 'mcp__linear__save_issue' })
+    approvals.decide(pending.id, { behavior: 'allow', always: true })
+    expect(await answer).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
+    expect(allowTools.length).toBe(1)
+    // Built-in tools the file leaves out are still refused without asking.
+    expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+    // A server the room's allow names counts as listed.
+    const allowed = await setup('acceptEdits', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: ['github'] }) } })
+    expect(await use(gateOf(allowed.options)!, 'mcp__github__merge_pull_request')).toEqual({})
   })
 
   it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {

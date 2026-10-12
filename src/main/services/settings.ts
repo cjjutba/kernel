@@ -750,6 +750,19 @@ export function aliasesInRoom(repo: string): Record<string, string> {
 }
 
 /**
+ * What a room's `[agents]` table lets one agent reach past its file's tools line (KERNEL-537): `unlisted_tools`, the personal
+ * file winning and `ask` when neither sets it, and the MCP servers `[agents.<id>] allow` names, merged agent by agent as
+ * `loadRepoSettings` merges them. Read as a session starts, like `aliasesInRoom`.
+ */
+export function agentAccessInRoom(repo: string, agentId?: string): { unlisted: UnlistedTools; allow: string[] } {
+  const read = (name: string) => roomValues(readTomlSync(repoFile(repo, name))).agents as { unlistedTools?: UnlistedTools; allow?: Record<string, string[]> }
+  const shared = read('settings.toml')
+  const own = read('settings.local.toml')
+  const allow = agentId ? own.allow?.[agentId] ?? shared.allow?.[agentId] ?? [] : []
+  return { unlisted: own.unlistedTools ?? shared.unlistedTools ?? 'ask', allow }
+}
+
+/**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).

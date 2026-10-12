@@ -60,6 +60,8 @@ export interface CodexStart {
   /** The MCP servers the room switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
   disabled?: string[]
   aliases?: Record<string, string>
+  /** The MCP servers the room's `[agents.<id>] allow` lets this agent use though its tools line doesn't name them (KERNEL-537). */
+  allow?: string[]
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
@@ -259,7 +261,7 @@ export class CodexRunner implements Runner {
    */
   private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
     const agent = this.host.agent
-    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases })
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.allow })
     const off = this.o.disabled ?? []
     if (!policy && !off.length) return undefined
     try {

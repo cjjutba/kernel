@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -108,6 +108,8 @@ export interface SessionDeps {
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
   aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
+  /** The room's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
+  accessFor?: (ws: Workspace) => { unlisted: UnlistedTools; allow: string[] } | undefined
   /**
    * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
    * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
@@ -1128,10 +1130,10 @@ export class Sessions {
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws) })
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), allow: this.d.accessFor?.(ws)?.allow })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, root, aliases: this.d.aliasesFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()

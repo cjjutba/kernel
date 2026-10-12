@@ -185,4 +185,14 @@ describe('agent tools', () => {
     })
     expect(serverReach(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'connected' }], { aliases: { linear: 'claude.ai Linear' }, complete: true })).toEqual({ reach: ['claude.ai Linear'], blocked: [] })
   })
+
+  it('lets an agent use the MCP servers its room allows it, unless disallowedTools takes them (KERNEL-537)', () => {
+    const p = toolPolicy(['Read', 'mcp__linear'], { allow: ['figma'] })!
+    expect(p.allows('mcp__figma__get_file')).toBe(true)
+    expect(p.server('figma')).toEqual({ on: true })
+    expect(p.allows('mcp__sentry__issues')).toBe(false)
+    expect(toolPolicy(['Read'], { allow: ['figma'], disallowed: ['mcp__figma'] })!.allows('mcp__figma__get_file')).toBe(false)
+    // An alias names the server it stands for too.
+    expect(toolPolicy(['Read'], { allow: ['linear'], aliases: { linear: 'claude_ai_Linear' } })!.allows('mcp__claude_ai_Linear__get_issue')).toBe(true)
+  })
 })

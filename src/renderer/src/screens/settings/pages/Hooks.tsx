@@ -59,8 +59,8 @@ export function Hooks({ s }: { s: AppSettings }) {
         <Row label="Test"><Button busy={busy === 'test'} busyLabel="Sending" disabled={busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button></Row>
       </Section>
       <Section title="Gates">
-        <Row label="Block TaskCompleted without test output"><Toggle label="Block TaskCompleted without test output" checked={s.hooks.requireTestOutput} onChange={(v) => void patchSettings({ hooks: { requireTestOutput: v } })} /></Row>
-        <Row label="Keep idle teammates working"><Toggle label="Keep idle teammates working" checked={s.hooks.keepTeammatesWorking} onChange={(v) => void patchSettings({ hooks: { keepTeammatesWorking: v } })} /></Row>
+        <Row label="Block TaskCompleted without test output" desc="With agent teams on, a task marked done before any test command ran goes back to the agent once"><Toggle label="Block TaskCompleted without test output" checked={s.hooks.requireTestOutput} onChange={(v) => void patchSettings({ hooks: { requireTestOutput: v } })} /></Row>
+        <Row label="Keep idle teammates working" desc="A teammate that goes idle while the task list has open tasks is sent back to pick one up"><Toggle label="Keep idle teammates working" checked={s.hooks.keepTeammatesWorking} onChange={(v) => void patchSettings({ hooks: { keepTeammatesWorking: v } })} /></Row>
         <Row label="Approval timeout" desc="After this, the request falls back to the normal prompt in Claude Code">
           <Select label="Approval timeout" value={String(timeout)} options={TIMEOUTS.some((t) => t.value === String(timeout)) ? TIMEOUTS : [...TIMEOUTS, { value: String(timeout), label: `${timeout} sec` }]} onChange={(e) => void patchSettings({ permissions: { approvalTimeoutSec: Number(e.target.value) } })} />
         </Row>
