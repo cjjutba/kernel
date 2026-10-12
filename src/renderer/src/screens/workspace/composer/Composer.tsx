@@ -20,6 +20,7 @@ import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
+import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { heldLine, waitersLine } from '../waitLines'
 import './composer.css'
@@ -37,7 +38,7 @@ type MenuName = 'model' | 'context' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
- * files, skills, diff hunks) inline, in order. Enter sends, Shift+Enter breaks the line, Backspace takes a chip like a
+ * files, skills, diff hunks) inline, in order. Enter sends (or Cmd+Enter, by Send messages with), Shift+Enter breaks the line, Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
@@ -163,6 +164,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
+  const sendWith = useSendWith()
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -171,7 +173,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
+    if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }

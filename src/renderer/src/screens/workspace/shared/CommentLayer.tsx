@@ -7,6 +7,7 @@ import { attempt } from '../MessageActions'
 import { canSend, chipName, popoverPlace, previewLines, type Draft, type Size, type Spot } from './comment'
 import type { Surface } from './commentSurfaces'
 import type { Rect } from './cover'
+import { sendHint, sendsOn, useSendWith } from '../composer/sendKey'
 
 const MOVE_MS = 80
 
@@ -189,9 +190,10 @@ function Writing({ draft, file, version, kind, by, archived, busy, onNote, onCan
 }) {
   useEscape(onCancel)
   const ok = canSend(draft.note, archived, busy)
+  const sendWith = useSendWith()
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter sends and Shift+Enter breaks the line. Enter that picks a word in an input method is not a send.
-    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return
+    // Enter sends and Shift+Enter breaks the line, or Cmd+Enter sends by Send messages with. Enter that picks a word in an input method is not a send.
+    if (!sendsOn(e, sendWith) || e.nativeEvent.isComposing) return
     e.preventDefault()
     if (ok) onSend()
   }
@@ -210,7 +212,7 @@ function Writing({ draft, file, version, kind, by, archived, busy, onNote, onCan
         </>
       )}
       <div className="cm-foot">
-        <span className="cm-hint">{archived ? '' : 'Enter to send, Esc to cancel'}</span>
+        <span className="cm-hint">{archived ? '' : `${sendHint(sendWith)}, Esc to cancel`}</span>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
         <Button variant="primary" disabled={!ok && !busy} busy={busy} busyLabel="Sending" onClick={onSend}>Send</Button>
       </div>
