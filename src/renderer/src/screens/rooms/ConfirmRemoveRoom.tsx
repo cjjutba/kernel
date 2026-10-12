@@ -3,12 +3,13 @@ import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { tilde } from './draft'
+import { teamOf } from './roomInfo'
 import './rooms.css'
 
 /** ConfirmRemoveRoom.png. Archives the room's workspaces, then removes Kernel's record of the room. The folder on disk and .claude/agents stay. */
 export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const agents = useStore((s) => s.agents[roomId]?.length ?? 0)
+  const agents = useStore((s) => teamOf(s.agents[roomId]).length)
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && !w.lead).length)
   const root = useStore((s) => s.settings?.worktreeRoot)
   const [worktrees, setWorktrees] = useState(false)

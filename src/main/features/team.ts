@@ -33,6 +33,8 @@ export class Team extends Feature {
    * Kernel's Theo for review workspaces from before KERNEL-553.
    */
   private builtins = new Map<string, Builtins>()
+  /** Rooms whose last list sent to the renderer had Kernel's Theo in it. */
+  private listsTheo = new Set<string>()
   private agentWatchers = new Map<string, () => void>()
   readonly statuses = new Map<string, Record<string, AgentStatus>>()
   /** The shape last reported for each room, so `team.resolved` goes out once per change. */
@@ -53,12 +55,31 @@ export class Team extends Feature {
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
     this.builtins.delete(roomId)
+    this.listsTheo.delete(roomId)
     this.statuses.delete(roomId)
     this.shapes.delete(roomId)
   }
 
   onStatus(e: Extract<PushEvent, { type: 'agent.status' }>) {
     this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
+    // A room's first review on `kernel-reviewer` started, so the renderer needs Theo's name for it now (KERNEL-553).
+    if (e.agentId === KERNEL_REVIEWER && !this.listsTheo.has(e.roomId) && this.agentCache.has(e.roomId)) {
+      const list = this.listed(e.roomId, this.agentsSync(e.roomId))
+      if (this.listsTheo.has(e.roomId)) bus.push({ type: 'agents', roomId: e.roomId, agents: list })
+    }
+  }
+
+  /**
+   * The team as the renderer gets it. The renderer names each workspace's agent from this list, so while the room has a
+   * workspace on `kernel-reviewer` it also holds Kernel's Theo, marked retired so no team view shows it. A review Theo ran
+   * before KERNEL-553 keeps Theo's name, as Kernel's code reviews on that id do (KERNEL-553).
+   */
+  listed(roomId: string, list: AgentDef[]): AgentDef[] {
+    const theo = this.builtins.get(roomId)?.theo
+    const on = !!theo && !list.some((a) => a.id === KERNEL_REVIEWER) && this.store.workspaces(roomId).some((w) => w.agentId === KERNEL_REVIEWER)
+    if (on) this.listsTheo.add(roomId)
+    else this.listsTheo.delete(roomId)
+    return on ? [...list, { ...theo, retired: true, reviewer: false, member: false }] : list
   }
 
   /**
@@ -77,7 +98,7 @@ export class Team extends Feature {
       await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : [...STARTER_IDS])
     }
     const list = await this.agents(roomId)
-    bus.push({ type: 'agents', roomId, agents: list })
+    bus.push({ type: 'agents', roomId, agents: this.listed(roomId, list) })
     for (const a of list) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
     return list
   }
@@ -253,7 +274,7 @@ export class Team extends Feature {
     const had = new Set((was ?? list).map((a) => a.id))
     const room = this.mustRoom(roomId)
     const known = this.statuses.get(roomId) ?? {}
-    bus.push({ type: 'agents', roomId, agents: list })
+    bus.push({ type: 'agents', roomId, agents: this.listed(roomId, list) })
     for (const a of list) {
       if (known[a.id]) continue
       bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
@@ -495,8 +516,8 @@ export class Team extends Feature {
 
   handlers() {
     return {
-      'agents.seed': async ({ roomId, template }) => this.seedAgents(roomId, template),
-      'agents.list': async ({ roomId, retired }) => (retired ? this.retiredOf(roomId) : this.agents(roomId)),
+      'agents.seed': async ({ roomId, template }) => this.listed(roomId, await this.seedAgents(roomId, template)),
+      'agents.list': async ({ roomId, retired }) => (retired ? this.retiredOf(roomId) : this.listed(roomId, await this.agents(roomId))),
       'agents.save': async ({ roomId, agentId, patch, scope }) => this.saveAgentEdit(roomId, agentId, patch, scope),
       'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
       'agents.create': async ({ roomId, draft, scope }) => this.hireFromDraft(roomId, draft, scope),
@@ -506,7 +527,7 @@ export class Team extends Feature {
       },
       'agents.restore': async ({ roomId, agentId, scope }) => this.restore(roomId, agentId, scope),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'agents.setTeam': async ({ roomId, team, from }) => this.setTeam(roomId, team, from),
+      'agents.setTeam': async ({ roomId, team, from }) => this.listed(roomId, await this.setTeam(roomId, team, from)),
       'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),
       'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id)
     } satisfies Partial<Handlers>
