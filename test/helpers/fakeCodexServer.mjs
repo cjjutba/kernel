@@ -137,6 +137,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   // Codex's models, the ids in FAKE_CODEX_MODELS (KERNEL-624).
   if (method === 'model/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MODELS ?? '[]').map((m) => ({ id: m, model: m, displayName: m, description: '', hidden: false, isDefault: false, supportedReasoningEfforts: [], defaultReasoningEffort: 'medium' })), nextCursor: null } })
   if (method === 'thread/compact/start') return send({ id, result: {} })
+  // Each home's MCP servers for `mcpServerStatus/list`, a JSON table by CODEX_HOME ('' for none) in FAKE_CODEX_MCP_STATUS (KERNEL-626).
+  if (method === 'mcpServerStatus/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MCP_STATUS ?? '{}')[home ?? ''] ?? [], nextCursor: null } })
   // Codex's MCP servers, a JSON table in FAKE_CODEX_MCP. `error` fails the request.
   if (method === 'config/read') {
     if (process.env.FAKE_CODEX_MCP === 'error') return send({ id, error: { code: -32603, message: 'failed to load configuration' } })

@@ -9,7 +9,7 @@ import { join } from 'node:path'
 // `FAKE_LOGIN_WAIT` makes it wait until it is stopped, and `FAKE_LOGIN_FAIL` makes it fail. It signs in as `FAKE_EMAIL`
 // on `FAKE_PLAN`, side@example.com on Pro by default, in the claude.ai organization `FAKE_ORG` when set.
 // `mcp login <server>` needs a terminal, as the real one does. It prints the server's sign-in page (MCP_LINK) and says it
-// signed in, or fails with `FAKE_MCP_FAIL`, or waits with `FAKE_LOGIN_WAIT`. A claude.ai connector prints claude.ai's page and is done at once (KERNEL-616).
+// signed in, or fails with `FAKE_MCP_FAIL` (1 for every server, or one server's name), or waits with `FAKE_LOGIN_WAIT`. A claude.ai connector prints claude.ai's page and is done at once (KERNEL-616).
 
 export const LINK = 'https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz'
 
@@ -73,7 +73,7 @@ case "$1 $2" in
     printf "If the browser didn't open, visit: \\033]8;;${MCP_LINK}\\007${MCP_LINK}\\033]8;;\\007\\n"
     printf 'Waiting for authorization\\342\\200\\246 (^C to cancel)\\n'
     if [ -n "$FAKE_LOGIN_WAIT" ]; then sleep 30; fi
-    if [ -n "$FAKE_MCP_FAIL" ]; then printf "Couldn't complete authentication for \\"%s\\": access denied\\n" "$3"; exit 1; fi
+    if [ "$FAKE_MCP_FAIL" = 1 ] || [ "$FAKE_MCP_FAIL" = "$3" ]; then printf "Couldn't complete authentication for \\"%s\\": access denied\\n" "$3"; exit 1; fi
     printf 'Authenticated with "%s". Its tools are now available in Claude Code.\\n' "$3"; exit 0;;
 esac
 exit 2

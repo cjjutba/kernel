@@ -1,7 +1,7 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
-  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
@@ -56,6 +56,8 @@ export interface Fixture {
   images?: Record<string, Record<string, { dataUrl: string }>>
   skills?: Skill[]
   mcp?: McpServer[]
+  /** What `mcp.accounts` returns: every account's MCP servers (KERNEL-626). */
+  mcpAccounts?: McpAccount[]
   integrations?: Integration[]
   /** Branches the new workspace modal lists, local and origin/*. */
   branches?: string[]
