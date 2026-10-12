@@ -50,53 +50,24 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', actions: [{ id: 'newChat' }, { id: 'compact', primary: true }] })
   })
 
-  it('offers a new chat past 150k tokens, whatever the window, and compacting from 90% as before (KERNEL-224)', () => {
+  it('shows no banner for a long chat while the window has room, and the next one still shows (KERNEL-488)', () => {
     const used = (tokens: number, max = 1_000_000, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
-    expect(bannerFor(input({ chat: used(149_999) }))).toBeNull()
-    // 160k on a 1M window is 16%, far under 90%, and the chat is long all the same.
-    const long = bannerFor(input({ chat: used(160_000) }))
-    expect(long).toMatchObject({ id: 'long', kind: 'context', title: 'This chat is long', sub: '160k tokens. Each turn reads all of it again, so turns use more of your limit.', blocks: false })
-    expect(long?.actions).toEqual([{ id: 'dismiss', label: 'Dismiss' }, { id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }])
-    expect(bannerFor(input({ chat: used(150_000) }))?.id).toBe('long')
-    // A small window gets there by percent first, and says it is almost full: the stronger line wins.
-    expect(bannerFor(input({ chat: used(184_000, 200_000) }))).toMatchObject({ id: 'context', title: 'Context is almost full' })
-    expect(bannerFor(input({ chat: used(120_000, 200_000) }))).toBeNull()
-    expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', title: 'Context is almost full' })
-    expect(bannerFor(input({ chat: used(180_000, 200_000, 90) }))?.id).toBe('context')
-    // A chat that never read its context has nothing to go on.
-    expect(bannerFor(input({ chat: { ...chat, contextUsage: undefined } }))).toBeNull()
+    // 160k and 336k in a 1M window are far under 90%, and the context popover already shows how much is free.
+    expect(bannerFor(input({ chat: used(160_000) }))).toBeNull()
+    expect(bannerFor(input({ chat: used(336_000) }))).toBeNull()
+    const hooks = { port: 7420, listening: false, installed: true, events: [] }
+    expect(bannerFor(input({ chat: used(336_000), hooks }))).toMatchObject({ id: 'hooks', title: 'Hooks are disconnected' })
   })
 
-  describe('a dismissed long-chat banner (KERNEL-426)', () => {
-    const used = (tokens: number, max = 1_000_000, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
-
-    it('names the count the way the context popover does, and the reason', () => {
-      expect(bannerFor(input({ chat: used(151_000) }))?.sub).toBe('151k tokens. Each turn reads all of it again, so turns use more of your limit.')
-      expect(bannerFor(input({ chat: used(1_240_000, 2_000_000) }))?.sub).toBe('1.2M tokens. Each turn reads all of it again, so turns use more of your limit.')
-    })
-
-    it('hides only the long-chat banner', () => {
-      expect(bannerFor(input({ chat: used(160_000), longDismissed: true }))).toBeNull()
-      expect(bannerFor(input({ chat: used(160_000), longDismissed: false }))?.id).toBe('long')
-    })
-
-    it('lets the next banner through, such as the hooks being disconnected', () => {
-      const hooks = { port: 7420, listening: false, installed: true, events: [] }
-      expect(bannerFor(input({ chat: used(160_000), hooks }))?.id).toBe('long')
-      expect(bannerFor(input({ chat: used(160_000), hooks, longDismissed: true }))).toMatchObject({ id: 'hooks', title: 'Hooks are disconnected' })
-    })
-
-    it('still shows "Context is almost full" at 90%, which has no Dismiss', () => {
-      const full = bannerFor(input({ chat: used(184_000, 200_000), longDismissed: true }))
-      expect(full).toMatchObject({ id: 'context', title: 'Context is almost full' })
-      expect(full?.actions.map((a) => a.id)).toEqual(['newChat', 'compact'])
-    })
-
-    it('does not hide the banners that rank above it', () => {
-      const long = used(160_000)
-      expect(bannerFor(input({ chat: long, longDismissed: true, online: false }))?.id).toBe('offline')
-      expect(bannerFor(input({ chat: long, longDismissed: true, retry: { attempt: 1, of: 5, nextAt: now + 5000 } }))?.id).toBe('overloaded')
-    })
+  it('still says "Context is almost full" from 90%, on any window size', () => {
+    const used = (tokens: number, max: number, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
+    const full = bannerFor(input({ chat: used(184_000, 200_000) }))
+    expect(full).toMatchObject({ id: 'context', title: 'Context is almost full' })
+    expect(full?.actions.map((a) => a.id)).toEqual(['newChat', 'compact'])
+    expect(bannerFor(input({ chat: used(900_000, 1_000_000) }))?.id).toBe('context')
+    expect(bannerFor(input({ chat: used(120_000, 200_000) }))).toBeNull()
+    // A chat that never read its context has nothing to go on.
+    expect(bannerFor(input({ chat: { ...chat, contextUsage: undefined } }))).toBeNull()
   })
 
   describe('close to a usage limit (KERNEL-224)', () => {
