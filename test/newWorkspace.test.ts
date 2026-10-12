@@ -151,7 +151,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     const { k, room } = await kernel('acme/app')
     const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
     expect(ws.branch).toBe('fix/41-crash-on-save')
-    expect(await gh.calls()).toEqual(['issue view 41 --json number,title,url,body,labels,comments'])
+    expect(await gh.calls()).toEqual(['issue view 41 --json number,title,url,body,labels,comments,assignees'])
   })
 
   it('records the tracker of an issue picked in New workspace, and none in a room without one', async () => {
