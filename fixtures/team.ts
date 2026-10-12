@@ -358,7 +358,8 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
 
 /**
  * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats. The first waits on a plan, the second is running and
- * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon. org-invites has no chat.
+ * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon. org-invites has no chat, and its row
+ * reads its task title (KERNEL-587).
  */
 const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
   const home = homeScene(f)
@@ -369,7 +370,7 @@ const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
       ...f.chats.filter((c) => c.workspaceId !== ids.lead),
       leadChatRow('chat-lead-export', 'Export invoices as PDF', 5), leadChatRow(owner, 'Invoice table and empty states', 6), leadChatRow('chat-lead-login', 'Client portal login', 7)
     ],
-    workspaces: home.workspaces!.map((w) => (w.id === ids.table || w.id === ids.schema ? { ...w, leadChatId: owner } : w)),
+    workspaces: home.workspaces!.map((w) => (w.id === ids.table || w.id === ids.schema ? { ...w, leadChatId: owner } : w.id === ids.invites ? { ...w, title: 'Invite people to an org' } : w)),
     approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: 'chat-lead-export' } : a)),
     push: [{ type: 'chat.running', chatId: owner, running: true }],
     ui: { route: { name: 'home' }, foldedChats: [owner] }
@@ -378,7 +379,8 @@ const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
 
 /**
  * SidebarTrustHeld (no PNG, KERNEL-342): Client A on Home with no approvals. invoice-table is held in `trust` and invoice-schema is idle beside it,
- * and a folded chat hides org-invites, which is held too, so the chat row shows the same icon.
+ * and a folded chat hides org-invites, which is held too, so the chat row shows the same icon. invoice-table's row reads its task title and
+ * invoice-schema has none, so its row falls back to the slug (KERNEL-587).
  */
 const sidebarTrustHeld = (f: Fixture): Partial<Fixture> => {
   const home = homeScene(f)
@@ -391,6 +393,7 @@ const sidebarTrustHeld = (f: Fixture): Partial<Fixture> => {
       ...w,
       ...(held.has(w.id) ? { status: 'trust' as const } : {}),
       ...(w.id === ids.invites ? { leadChatId: owner } : {}),
+      ...(w.id === ids.table ? { title: 'Build the invoice table' } : {}),
       ...(w.id === ids.schema || w.id === ids.table ? { prState: 'none' as const } : {})
     })),
     approvals: [],
