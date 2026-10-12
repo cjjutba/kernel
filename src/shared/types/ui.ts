@@ -79,6 +79,7 @@ export type MenuId =
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
+  | 'roomTracker'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
