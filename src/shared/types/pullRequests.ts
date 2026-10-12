@@ -87,6 +87,12 @@ export interface MergeAllResult {
   stopped?: { workspaceId: string; prNumber?: number; reason: string }
 }
 
+/**
+ * The PR action Kernel is running on a workspace, from the press until it ends, whichever button or tool started it. Every
+ * place showing the PR spins from it (KERNEL-519). The same names as the PR band's buttons.
+ */
+export type PrPending = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen' | 'update'
+
 /** A PR the new workspace modal can start from. */
 export interface PrSummary {
   number: number

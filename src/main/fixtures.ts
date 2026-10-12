@@ -250,6 +250,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.ready': async ({ workspaceId }) => workspace(workspaceId),
     'pr.reopen': async ({ workspaceId }) => workspace(workspaceId),
     'pr.continue': async ({ workspaceId }) => ({ ...workspace(workspaceId), prState: 'none', prNumber: undefined, prUrl: undefined }),
+    'pr.pendingAll': async () => ({}),
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'scripts.replay': async () => ok,

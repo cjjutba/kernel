@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -80,6 +80,8 @@ export interface State {
   mergeQueues: Record<string, MergeQueue>
   /** By room id, a Merge all run that stopped, until the next run starts (KERNEL-411). */
   mergeStops: Record<string, MergeAllResult>
+  /** By workspace id, the PR action main is running, from whichever button or tool started it (KERNEL-519). */
+  prPending: Record<string, PrPending>
   // usage, account, settings, system
   usage: RateLimit[]
   account: ClaudeAccount | null
@@ -155,7 +157,7 @@ let state: State = {
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
-  prs: {}, mergeQueues: {}, mergeStops: {},
+  prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
@@ -590,6 +592,11 @@ export const actions = {
         mergeQueues: queue ? { ...queues, [roomId]: queue } : queues,
         mergeStops: !queue && result?.stopped ? { ...stops, [roomId]: result } : queue ? stops : s.mergeStops
       }
+    }),
+    /** A PR action started, or ended with no `action`. */
+    setPending: (workspaceId: string, action?: PrPending) => setState((s) => {
+      const { [workspaceId]: _p, ...rest } = s.prPending
+      return { prPending: action ? { ...rest, [workspaceId]: action } : rest }
     })
   },
   usage: {
@@ -654,6 +661,7 @@ export function apply(e: PushEvent) {
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
     case 'pr.queue': return actions.prs.setQueue(e.roomId, e.queue, e.result)
+    case 'pr.pending': pushedPending?.add(e.workspaceId); return actions.prs.setPending(e.workspaceId, e.action)
     case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)
@@ -684,6 +692,9 @@ async function start() {
   // loaded would look stopped until its turn ended (KERNEL-340). An older main (a dev build mid-pull) has no such channel.
   pushedLive = { running: new Set(), retry: new Set() }
   void call('chats.live', undefined).then(applyLive, () => applyLive(null))
+  // A PR action that started before this window loaded has no push to learn it from (KERNEL-519). An older main has no such channel.
+  pushedPending = new Set()
+  void call('pr.pendingAll', {}).then(applyPending, () => applyPending(null))
   const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
@@ -742,6 +753,16 @@ function applyLive(live: KernelApi['chats.live']['res'] | null) {
     running: { ...Object.fromEntries(live.running.filter((id) => !pushed.running.has(id)).map((id) => [id, true])), ...s.running },
     retry: { ...Object.fromEntries(Object.entries(live.retry).filter(([id]) => !pushed.retry.has(id))), ...s.retry }
   }))
+}
+
+/** Workspaces a `pr.pending` push reached while `pr.pendingAll` was out. The push came later, so it wins. */
+let pushedPending: Set<string> | undefined
+
+function applyPending(all: Record<string, PrPending> | null) {
+  const pushed = pushedPending
+  pushedPending = undefined
+  if (!all || !pushed) return
+  setState((s) => ({ prPending: { ...Object.fromEntries(Object.entries(all).filter(([id]) => !pushed.has(id))), ...s.prPending } }))
 }
 
 /**
