@@ -77,6 +77,7 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `Composer` | Every composer state: normal, working, plan mode and plan waiting, each empty and typing | `screens/workspace/composer/` |
 | `PlanStates` | Plan mode and plan waiting, empty and typing | `composer/composer.css`, `cards/plan.tsx` |
 | `PlanMotion` (no PNG) | The plan mode motion on a loop | `composer/composer.css`, `new-workspace/newWorkspace.css` |
+| `ArchiveMotion` (no PNG) | How an archived chat or workspace leaves, in three cases: the open chat, a chat while another is open, and the last chat in a room (KERNEL-579) | `components/sidebar/AppSidebar.tsx`, `sidebar.css`, `screens/workspace/archiveChat.ts` |
 | `PlanModeEmpty`, `PlanModeTyping` | Plan mode in Rowan's chat | `composer/composer.css` |
 | `PlanWaiting`, `PlanWaitingTyping` | A plan waiting for approval | `cards/plan.tsx` (`PlanBar`, `PlanInline`) |
 | `PrNoChanges` to `PrClosed` | One screen per PR state, in the order a PR moves through them | `pr/model.ts` (`headerView`), `pr/PrHeader.tsx`, `pr/pr.css` |
@@ -174,6 +175,14 @@ The `ChatRail` screens draw a rail on the chat's right edge for jumping back to 
 - **Keys.** The rail is a button with the label "Jump to message", `aria-haspopup="listbox"` and `aria-expanded`. Tab to it opens the list with the message in view as the active row. Up and Down move the active row, Home and End go to the ends, Enter jumps and Esc closes the list and keeps focus on the rail. The rows are `option`s.
 - **Jump.** A click or Enter closes the list and scrolls the transcript so the message's top sits 16px under the tab row, smoothly, or at once with reduced motion. The message then holds a 1px `--line-4` ring for 1.2s, fading out over its last 400ms. A still can't show this, so no screen draws it. The jumped-to message becomes the one in view.
 - **Scroll to bottom (KERNEL-532).** `ChatRail` and `ChatRailOpen` draw it beside the rail so the two read together. It is a 32px round button on `--surface` with a `--line-3` hairline and a 16px down arrow in `--ink-2`, centred on the thread 12px above the composer. It shows only while the transcript is scrolled up, so `ChatRailLead` and `ChatRailNarrow`, which are at the bottom, don't have it. KERNEL-532 owns the button, so its numbers here only show how the two sit together.
+
+## Archive motion (KERNEL-579)
+
+`ArchiveMotion` plays how a chat or workspace leaves the sidebar, and what the main area does when the archived one was on screen. The values are in DESIGN.md, Motion. The chats, rooms and messages are sample content, not spec.
+
+- Pick a case at the top. Each starts with the pointer on the row's Archive button, then the archive resolves 0.7s in.
+- **Quarter speed** slows the clock, since the whole beat is 0.2s. **Frame** holds it before the archive, or at +50, +100, +150 or +200 ms. **Replay** plays it again. **Reduced motion** shows the jump.
+- The stage is a 1100 by 600 crop of the window: the sidebar, one chat column and the right panel.
 
 ## Not built
 
