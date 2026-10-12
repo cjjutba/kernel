@@ -262,6 +262,16 @@ describe("a room whose reviewer was Kernel's Theo (KERNEL-553)", () => {
     expect((await h['agents.setTeam']({ roomId: room.id, team: {} })).find((a) => a.id === 'kernel-reviewer')).toEqual(theo)
   })
 
+  it('names an archived review Theo ran before the upgrade, so History shows Theo (KERNEL-593)', async () => {
+    const { k, h, room } = await boot()
+    const old = await pr(k, room.id, 1)
+    const made = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'web', title: 'Review PR #101', reviewOf: old.id })
+    k.store.saveWorkspace({ ...made, agentId: 'kernel-reviewer', status: 'archived' })
+    const list = await h['agents.list']({ roomId: room.id })
+    expect(list.find((a) => a.id === 'kernel-reviewer')).toMatchObject({ name: 'Theo', retired: true })
+    expect(list.filter((a) => !a.retired).map((a) => a.id)).toEqual((await k.team.agents(room.id)).map((a) => a.id))
+  })
+
   it('reviews no PR with [team] reviewer = "none", and keeps that choice when Settings saves it', async () => {
     const { k, h, repo, room } = await boot()
     // "No reviewer" differs from what Kernel does on its own now, so it is written. Kernel's code review is the default, so it isn't.

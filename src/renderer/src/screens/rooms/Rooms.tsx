@@ -5,7 +5,7 @@ import { openRoom } from '../../lead'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
 import { openNewRoom } from './draft'
-import { ago, initial, roomState, sourceOf, stateLabel } from './roomInfo'
+import { ago, initial, roomState, sourceOf, stateLabel, teamOf } from './roomInfo'
 import './rooms.css'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -13,7 +13,7 @@ import { SidebarToggle } from '../../components/PanelToggles'
 type Tab = 'all' | 'active' | 'archived'
 
 function RoomRow({ room }: { room: Room }) {
-  const agents = useStore((s) => s.agents[room.id] ?? [])
+  const agents = teamOf(useStore((s) => s.agents[room.id]))
   const status = useStore((s) => s.status[room.id])
   const approvals = useStore((s) => s.approvals)
   const workspaces = useStore((s) => s.workspaces)

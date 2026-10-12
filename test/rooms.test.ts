@@ -8,7 +8,7 @@ import type { RoomSetupStep } from '../src/shared/types'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
-import { ago, agoShort, roomState } from '../src/renderer/src/screens/rooms/roomInfo'
+import { ago, agoShort, roomState, teamOf } from '../src/renderer/src/screens/rooms/roomInfo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, lockfileInstall, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { tempRepo, trustRoom } from './helpers'
@@ -482,5 +482,11 @@ describe('Rooms page helpers', () => {
     expect(roomState({ ...room, archived: true }, [], {})).toBe('archived')
     const now = 1_000_000_000_000
     expect([120, 3600, 7200, 86400 * 2, 86400 * 21].map((s) => ago(now - s * 1000, now))).toEqual(['2 min ago', '1 hour ago', '2 hours ago', '2 days ago', '3 weeks ago'])
+  })
+
+  it("counts the team without Kernel's Theo, which the list keeps only to name old reviews (KERNEL-553)", () => {
+    const agent = (id: string, retired?: boolean) => ({ id, name: id, role: 'Engineer', model: 'opus', file: '', retired }) as never
+    expect(teamOf([agent('rowan'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['rowan', 'kai'])
+    expect(teamOf(undefined)).toEqual([])
   })
 })

@@ -33,6 +33,9 @@ export function sourceOf(room: Room, home?: string): string {
 
 export const initial = (a: Pick<AgentDef, 'name'>) => a.name[0]?.toUpperCase() ?? '?'
 
+/** The room's team, without the retired agents the list keeps for naming old workspaces, as Kernel's Theo (KERNEL-553). */
+export const teamOf = (agents: AgentDef[] | undefined): AgentDef[] => (agents ?? []).filter((a) => !a.retired)
+
 /** The room's letter: "Client A" is A, "Own app" is O. A last word of one character wins. */
 export function roomLetter(name: string): string {
   const last = name.trim().split(/\s+/).pop() ?? ''
