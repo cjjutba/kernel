@@ -7,8 +7,8 @@ import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL } from '../../plans'
-import { toolPolicy } from '../../agentTools'
 import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
+import { toolPolicy } from '../../agentTools'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { codexEnv, KERNEL_VERSION } from './client'
@@ -219,10 +219,10 @@ export class CodexRunner implements Runner {
     await this.rpc.request('initialize', initializeParams(KERNEL_VERSION), { timeoutMs: 60_000 })
     this.rpc.notify('initialized', {})
     this.gitDir = await gitCommonDir(ws.path).catch(() => undefined)
+    const config = await this.mcpConfig(ws.path)
     // The same in every mode (KERNEL-447). Under `untrusted` Kernel sees every command Codex doesn't trust on its own, so Never
     // allow, network off and protected branches hold in Bypass permissions too, and no `approvalsReviewer` ever answers for the
     // user: Auto runs as Accept edits on Codex until Always ask can reach the user under `auto_review` (KERNEL-433).
-    const config = await this.mcpConfig(ws.path)
     const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality, ...(config ? { config } : {}) }
     if (this.threadId) {
       try {
