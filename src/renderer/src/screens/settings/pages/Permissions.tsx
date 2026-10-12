@@ -57,7 +57,7 @@ export function Permissions({ s }: { s: AppSettings }) {
   const p = s.permissions
   const availability = useModeAvailability()
   return (
-    <Page title="Permissions" intro="The mode new chats start in. A room can set its own, and Shift+Tab in the composer changes one chat.">
+    <Page title="Permissions" intro="The mode new chats start in. A room can set its own.">
       <Section title="Mode">
         <ModeList value={p.mode} availability={availability} />
         <Row className="set-sub" label="Only in worktrees" desc="Never skip permissions on your current branch"><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => void patchSettings({ permissions: { bypassOnlyInWorktrees: v } })} /></Row>
