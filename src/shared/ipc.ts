@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -334,7 +334,8 @@ export interface KernelApi {
   /**
    * Add account. Claude runs `claude auth login` in a folder of the account's own, and Codex signs in with ChatGPT in a home
    * of its own. Its email and plan are read from the account, and its email is its name until it is renamed (KERNEL-567).
-   * Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
+   * Progress arrives as `account.add` push events. Resolves with the new account once it is signed in. A login that is
+   * already the CLI's own or an added account's is refused with "That account is already in Kernel." (KERNEL-616).
    */
   'accounts.add': { req: { provider: Provider }; res: AccountProfile }
   /**
@@ -346,11 +347,12 @@ export interface KernelApi {
   'accounts.addKey': { req: { provider: Provider; label: string; key: string } | { provider: Provider; accountId: string; key: string }; res: AccountProfile }
   /** The code the sign-in page shows, for `claude auth login`'s prompt (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
-  /** Closes the Add account sheet: stops the sign-in that is running. */
+  /** Closes the Add account sheet: stops the sign-in that is running, an MCP server's (`accounts.mcpSignIn`) included. */
   'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
   /**
    * Use: the account runs the provider's next turns. A running turn finishes on the account it started on. `reason` is
    * `banner` from the limit banner's Switch to, which leaves the account in use at its limit, and `user` by default (KERNEL-568).
+   * The new account's row carries `missingModels` when agents start on a model it doesn't offer, and the Inbox says so (KERNEL-616).
    */
   'accounts.switch': { req: { provider: Provider; accountId: string; reason?: Exclude<SwitchReason, 'limit'> }; res: AccountProfile[] }
   /**
@@ -368,6 +370,20 @@ export interface KernelApi {
    * without following its links into `~/.claude`. The CLI's own login can't be removed.
    */
   'accounts.remove': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
+  /**
+   * Which MCP servers need a sign-in on a Claude account, `cli` for the CLI's own login: Claude Code starts on the account
+   * in the home folder, lists its servers and stops, sending no message. It shares the user-added servers' sign-ins first,
+   * so what is left is a claude.ai connector or a server no account has signed in to. The answer lands on the account's
+   * `mcpSignIns` (KERNEL-616).
+   */
+  'accounts.checkMcp': { req: { provider: 'claude'; accountId: string }; res: AccountProfile[] }
+  /**
+   * Signs one MCP server in on a Claude account: `claude mcp login <server>` in the account's folder, which opens the
+   * browser. A user-added server's sign-in then reaches every account. Progress arrives as `account.mcpSignIn` pushes, and
+   * `accounts.cancelAdd` stops it. Resolves once Claude Code finishes, with the server off the account's `mcpSignIns`
+   * unless it is a claude.ai connector, which the user finishes on claude.ai (KERNEL-616).
+   */
+  'accounts.mcpSignIn': { req: { provider: 'claude'; accountId: string; server: string }; res: AccountProfile[] }
   /** A provider's models with their efforts: Claude's from MODELS, Codex's from `model/list`, read once per launch. */
   'models.list': { req: { provider: Provider }; res: ProviderModel[] }
 
@@ -598,6 +614,8 @@ export type PushEvent =
   | { type: 'accounts'; accounts: AccountProfile[] }
   /** Where Add account is, for its sheet (KERNEL-406). */
   | { type: 'account.add'; add: AccountAddStep }
+  /** Where a sign-in to an MCP server on a Claude account is (`accounts.mcpSignIn`, KERNEL-616). */
+  | { type: 'account.mcpSignIn'; signIn: McpSignInStep }
   /** Network reachability as main sees it (WorkspaceOffline.png). */
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */

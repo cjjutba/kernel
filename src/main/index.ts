@@ -21,6 +21,7 @@ import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
 import { muteShadowedWarning } from './services/providers/claude'
+import { macKeychain } from './services/providers/claudeHome'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { handZoom, zoomStepOf } from './windowZoom'
@@ -339,6 +340,8 @@ app.whenReady().then(async () => {
       cipher: safeStorage.isEncryptionAvailable()
         ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }
         : undefined,
+      // MCP sign-ins are shared between Claude logins through the Keychain. A smoke test leaves the user's items alone (KERNEL-616).
+      keychain: smokeTest ? undefined : macKeychain(),
       version: app.getVersion(),
       updater,
       // A dev run has no updater and no notes in its build, so What's new reads the version's release file in the repo.

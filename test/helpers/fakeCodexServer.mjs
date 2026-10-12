@@ -9,7 +9,7 @@
 // turn/interrupt ends the running turn at any step, as Codex 0.153.4 does: a request still waiting for Kernel's answer is
 // cleared with serverRequest/resolved, and the turn completes as interrupted (KERNEL-563).
 // Input that isn't a script ends the turn at once with a short reply.
-import { appendFileSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -96,9 +96,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const used = JSON.parse(process.env.FAKE_CODEX_USED ?? '{}')[home ?? '']
   const primary = used === undefined ? { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 } : { usedPercent: used, windowDurationMins: 300, resetsAt: Math.round(Date.now() / 1000) + 3600 }
   if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
-  // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in.
+  // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in. A home's
+  // ChatGPT login is the email its auth.json names, so each added account is its own (KERNEL-616).
   if (method === 'account/read' && apiKey) return send({ id, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })
-  if (method === 'account/read') return send({ id, result: { account: !home || existsSync(join(home, 'auth.json')) ? { type: 'chatgpt', email: process.env.FAKE_CODEX_EMAIL ?? 'cj@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true } })
+  if (method === 'account/read') {
+    let auth = {}
+    try { auth = home ? JSON.parse(readFileSync(join(home, 'auth.json'), 'utf8')) : {} } catch { /* none */ }
+    return send({ id, result: { account: !home || existsSync(join(home, 'auth.json')) ? { type: 'chatgpt', email: auth.email ?? process.env.FAKE_CODEX_EMAIL ?? 'cj@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true } })
+  }
   // The browser step happens at once: the fake writes the account's auth.json and says the login finished.
   // An API key login checks nothing and finishes at once. Without the ephemeral store it writes the key to auth.json.
   if (method === 'account/login/start' && params.type === 'apiKey') {
@@ -109,7 +114,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (method === 'account/login/start') {
     send({ id, result: { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/oauth/authorize?fake=1' } })
-    if (process.env.FAKE_CODEX_LOGIN !== 'wait') setTimeout(() => { if (home) writeFileSync(join(home, 'auth.json'), '{}'); send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }) }, 20)
+    if (process.env.FAKE_CODEX_LOGIN !== 'wait') setTimeout(() => { if (home) writeFileSync(join(home, 'auth.json'), JSON.stringify({ email: process.env.FAKE_CODEX_LOGIN_EMAIL ?? 'chatgpt@example.com' })); send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }) }, 20)
     return
   }
   if (method === 'account/login/cancel') { send({ id, result: {} }); return send({ method: 'account/login/completed', params: { loginId: 'login-1', success: false, error: 'canceled' } }) }

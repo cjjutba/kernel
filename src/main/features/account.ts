@@ -245,7 +245,7 @@ export class Account extends Feature {
       const key = limitKey(hit)
       const seen = this.moving.get(key)
       if (seen && Math.abs((seen.at ?? 0) - (hit.resetsAt ?? 0)) <= 60) {
-        if (seen.state === 'waiting') this.moveOff(p, from, seen, limits)
+        if (seen.state === 'waiting') this.moveOff(p, from, key, seen, limits)
         continue
       }
       const move: Move = { at: hit.resetsAt, state: 'reading' }
@@ -255,20 +255,28 @@ export class Account extends Feature {
       void this.k.providers.readUsage({ provider: p, force: true }).catch(() => undefined).then((fresh) => {
         if (this.moving.get(key) !== move) return
         move.state = 'waiting'
-        this.moveOff(p, from, move, fresh ?? this.store.meta<RateLimit[]>('limits') ?? [])
+        this.moveOff(p, from, key, move, fresh ?? this.store.meta<RateLimit[]>('limits') ?? [])
       })
     }
   }
 
-  /** Moves `p` off the rejection on `from` to the account with the most room, unless the user moved it or turned the switch off meanwhile. */
-  private moveOff(p: Provider, from: string | undefined, move: Move, limits: RateLimit[]) {
-    if (this.stopped || !this.settings?.accounts?.switchAtLimit?.[p] || this.k.providers.active(p) !== from) return
+  /**
+   * Moves `p` off the rejection on `from` to the account `spareFor` picks: the most room, among the accounts that offer the
+   * models its agents start on when one does (KERNEL-616). Reading those models can take a moment, so the move reads as
+   * `reading` meanwhile, and nothing happens when the rejection went, the user moved it or turned the switch off.
+   */
+  private moveOff(p: Provider, from: string | undefined, key: string, move: Move, limits: RateLimit[]) {
+    const still = () => !this.stopped && this.moving.get(key) === move && !!this.settings?.accounts?.switchAtLimit?.[p] && this.k.providers.active(p) === from
+    if (!still()) return
     // A fresh reading can find the limit lifted.
     if (!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === from))) return
-    const to = this.k.providers.spareAccount(p, limits)
-    if (!to) return
-    move.state = 'done'
-    void this.k.providers.switchTo(p, to, { reason: 'limit' }).catch(() => undefined)
+    move.state = 'reading'
+    void this.k.providers.spareFor(p, limits).catch(() => undefined).then((to) => {
+      if (!still() || move.state !== 'reading') return
+      if (!to) { move.state = 'waiting'; return }
+      move.state = 'done'
+      void this.k.providers.switchTo(p, to, { reason: 'limit' }).catch(() => undefined)
+    })
   }
 
   /**

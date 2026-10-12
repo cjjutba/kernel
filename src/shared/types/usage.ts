@@ -74,6 +74,53 @@ export interface AccountProfile {
    * plan, so the row asks the user to sign in again, which moves it to a full login and keeps its id and nickname.
    */
   legacyToken?: boolean
+  /**
+   * Claude only: the MCP servers that need a sign-in on this account, as `accounts.checkMcp` last found them, an empty list
+   * when none do. Undefined until checked (KERNEL-616).
+   */
+  mcpSignIns?: McpSignIn[]
+  /**
+   * The models agents start on that this account doesn't offer, each with the agents that use it, as Kernel last read the
+   * account's models. Kernel reads them when it switches to the account. Undefined until read or when nothing is missing
+   * (KERNEL-616).
+   */
+  missingModels?: MissingModel[]
+}
+
+/**
+ * An MCP server that needs a sign-in on one Claude account (KERNEL-616). A server the user added signs in once for every
+ * account, since Kernel shares its sign-in between the CLI's own login and each added login. A claude.ai connector
+ * (`connector`) belongs to the claude.ai account: each account has only the connectors set up on it, and Kernel never
+ * copies one.
+ */
+export interface McpSignIn {
+  /** The server's name as Claude Code lists it: "linear", "claude.ai Google Drive". */
+  server: string
+  connector: boolean
+}
+
+/** A model agents start on that an account doesn't offer, so their next turns there fail (KERNEL-616). */
+export interface MissingModel {
+  /** "claude-opus-5-5". */
+  model: string
+  /** "Opus 5.5", or the id when Kernel has no name for it. */
+  label: string
+  /** The names of the agents whose role or file puts them on it, "Rowan". */
+  agents: string[]
+}
+
+/**
+ * Where a sign-in to one MCP server on one Claude account is (`accounts.mcpSignIn`, KERNEL-616). `browser` carries the
+ * page Claude Code opened, for a link in case it didn't open. A claude.ai connector is `done` once the page is open: the
+ * user finishes on claude.ai, and the connector loads from the account's next session.
+ */
+export interface McpSignInStep {
+  accountId: string
+  server: string
+  step: 'browser' | 'done' | 'failed'
+  url?: string
+  connector?: boolean
+  error?: string
 }
 
 /** Where a provider's executable comes from: Kernel's bundled copy, the one on the PATH, a path from Settings, or none found. */
