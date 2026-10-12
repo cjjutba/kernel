@@ -255,7 +255,7 @@ export class Prs extends Feature {
   }
 
   /**
-   * Merges with the room's method (`codeHost.mergeMethod`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
+   * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
    */
   async mergePr(id: string) {
@@ -288,7 +288,7 @@ export class Prs extends Feature {
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name)
     if (block) throw new Error(block)
-    const method = await this.k.codeHost.mergeMethod(this.mustRoom(ws.roomId))
+    const method = await this.k.codeHost.methodFor(this.mustRoom(ws.roomId))
     this.merging.add(id)
     this.setPrState(ws, 'merging')
     try {

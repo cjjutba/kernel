@@ -35,7 +35,7 @@ export class CodeHosts extends Feature {
    * The method the room's PRs merge with: its `[pr] merge_method`, else the app's `pr.mergeMethod` if the repo allows it,
    * else the first one the repo allows. A repo whose methods can't be read gets the app's (KERNEL-468).
    */
-  async mergeMethod(room: Room): Promise<MergeMethod> {
+  async methodFor(room: Room): Promise<MergeMethod> {
     const own = (await loadRepoSettings(room.path).catch(() => undefined))?.pr?.mergeMethod
     return own ?? allowedMethod(this.settings.pr.mergeMethod, await this.mergeMethods(room))
   }
