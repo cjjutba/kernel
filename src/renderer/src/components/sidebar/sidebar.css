@@ -54,7 +54,7 @@
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
-.sb-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 0 0 2px; }
+.sb-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 2px; }
 /* The Usage pill and its popover, which opens above it (PlanMenu.tsx, UsagePopover.png). One section per provider: the account in use, its
    windows, then Switch. The meters are the shared Meter, white from 85%. A section's Switch rows bleed 8px past its padding and pad themselves
    back, so their hover fill is wider than their text. */
