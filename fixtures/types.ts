@@ -1,5 +1,5 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
@@ -48,6 +48,8 @@ export interface Fixture {
   tree?: Record<string, FileEntry[]>
   /** By workspace id. */
   hunks?: Record<string, Hunk[]>
+  /** By workspace id, the commit rows of the Changes ⋯ menu (PanelCompare, KERNEL-516). */
+  commits?: Record<string, BranchCommit[]>
   /** By workspace id, then path. */
   fileText?: Record<string, Record<string, string>>
   /** By workspace id, then `${at}:${path}`, what `workspaces.readImage` returns (KERNEL-409). */
