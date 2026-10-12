@@ -2,7 +2,6 @@ import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, Model
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
 import { clock, nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
-import { formatTokens } from '../composer/formatTokens'
 
 export { clock, resetPhrase }
 
@@ -12,9 +11,9 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers' | 'dismiss'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'long' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -55,20 +54,11 @@ export interface BannerInput {
   accounts?: AccountProfile[]
   /** A role or this chat runs on Codex, so the banners name the provider (KERNEL-406). */
   codexInUse?: boolean
-  /** The user dismissed this chat's long-chat banner (KERNEL-426). It skips only that banner: the next one still shows, and "Context is almost full" cannot be dismissed. */
-  longDismissed?: boolean
   now: number
 }
 
 /** From this much context use the chat offers to compact. */
 export const CONTEXT_WARN = 90
-
-/**
- * From this many tokens in the context, whatever the window's size, the chat offers a new one: every turn re-reads all of it,
- * and a 1M window reaches 90% far too late for that to be cheap. It comes before `CONTEXT_WARN` on a big window and
- * after it on a small one (KERNEL-224, which amends KERNEL-334's one percent threshold for the banner; the ring keeps its levels).
- */
-export const CONTEXT_LONG = 150_000
 
 const DAY = 24 * 3600_000
 
@@ -223,14 +213,6 @@ export function bannerFor(i: BannerInput): BannerView | null {
   if (chat && (chat.context ?? 0) >= CONTEXT_WARN) return {
     id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new tab starts clean in this chat.',
     actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
-  }
-
-  // Past 150k tokens a chat costs more with every turn, however empty the window still is (KERNEL-224). It names the count and the
-  // reason, since the context popover beside it can show most of the window free. Dismissed, it falls through to the next banner (KERNEL-426).
-  const used = chat?.contextUsage?.used ?? 0
-  if (chat && !i.longDismissed && used >= CONTEXT_LONG) return {
-    id: 'long', kind: 'context', title: 'This chat is long', sub: `${formatTokens(used)} tokens. Each turn reads all of it again, so turns use more of your limit.`,
-    actions: [{ id: 'dismiss', label: 'Dismiss' }, { id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.
