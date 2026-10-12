@@ -12,11 +12,12 @@ import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
 import { bannerFor, setupCommand, type BannerAction, type BannerView } from './model'
 import { chatProvider } from '@shared/providers'
 import { useCodexInUse } from '../composer/providerModels'
+import { dismissLimitBanner, useLimitDismissed } from './limitDismissed'
 import './banners.css'
 
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
-  notify: 'Setting up', usage: 'Opening', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
+  notify: 'Setting up', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
   tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving'
 }
 
@@ -39,6 +40,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.roomId)?.name : undefined))
   const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
   const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
+  const dismissed = useLimitDismissed()
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!retry) return
@@ -47,7 +49,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -78,7 +80,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         if (view.limit) await call('usage.notifyOnReset', { type: view.limit })
         setSettled({ id: view.id, notified: true })
       })
-      case 'usage': return run(id, 'Could not open Terminal', () => call('app.openTerminal', { cwd: ws.path, command: 'claude /usage' }))
+      case 'usage': return go({ name: 'settings', page: 'account' })
       case 'wait': return setSettled({ id: view.id })
       case 'switch': return chat && view.switchTo && run(id, 'Could not switch the model', async () => {
         await call('chats.configure', { chatId: chat.id, model: view.switchTo })
@@ -124,7 +126,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
   const shown = mine ? [] : view.actions
   return (
     <Banner
-      kind={view.kind} title={view.title}
+      key={view.dismissKey ?? view.id} kind={view.kind} title={view.title} onDismiss={view.dismissKey ? () => dismissLimitBanner(view.dismissKey!) : undefined}
       actions={shown.length ? <span className="wsb-actions">{shown.map((a) => (
         <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null} onClick={() => act(a.id)}>{a.label}</Button>
       ))}</span> : undefined}

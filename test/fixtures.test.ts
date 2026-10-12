@@ -38,6 +38,7 @@ const noCanvas = [
   'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
   'WorkspaceNearLimit', // 91% of the 5-hour window: teammates' new work waits, the queued message says why (KERNEL-224)
+  'WorkspaceWeeklyWarn', // 85% of the week used: the warning with a close button on hover and View usage (KERNEL-595)
   'WorkspaceQueuedMerge', // a brief held until another PR merges, with Send now (KERNEL-361)
   'WorkspaceWaitedOn', // a PR another workspace's brief waits for, naming that workspace above the box
   'InboxOverlap',

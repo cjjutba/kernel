@@ -29,7 +29,14 @@ export interface BannerView {
   switchTo?: ModelId
   /** The account "Switch to" moves the provider to (KERNEL-406). Switching is always the user's click. */
   switchAccount?: { provider: Provider; accountId: string; label: string }
+  /** Set on the two banners that only inform, which the user can close until their window resets (KERNEL-595). */
+  dismissKey?: string
 }
+
+/** What a closed limit banner is remembered by: the banner and the window it spoke of. `resetsAt` is epoch seconds. A new window has a new one. */
+export const limitBannerKey = (id: BannerId, resetsAt: number) => `${id}:${resetsAt}`
+/** A window that has reset can never match its key again, so the key can go. */
+export const limitBannerExpired = (key: string, now: number) => Number(key.slice(key.lastIndexOf(':') + 1)) * 1000 <= now
 
 export interface BannerInput {
   ws: Workspace
@@ -50,6 +57,8 @@ export interface BannerInput {
   leadName?: string
   /** A chat with Rowan with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
   skipsSetup?: boolean
+  /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit and 80% banners look here (KERNEL-595). */
+  dismissed?: ReadonlySet<string>
   /** Settings, Account. A switch left out counts as on, which is the default. */
   usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
   /** Both providers' accounts (KERNEL-406). Without them every limit counts as the Claude login's, as before. */
@@ -163,7 +172,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     return {
       id: 'weekly', kind: 'limit', title: `You've used your ${named('weekly limit')}`,
       sub: `${weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${keepGoing}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.'}${billed}`,
-      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'Open /usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt }] : []), ...switchAction],
+      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt }] : []), ...switchAction],
       blocks: !alt, limit: weekly.type, switchAccount
     }
   }
@@ -195,18 +204,21 @@ export function bannerFor(i: BannerInput): BannerView | null {
 
   // A window close to its limit holds teammates' new work (KERNEL-220). Nothing is blocked: turns that run go on, and the Lead can still answer.
   // Only this chat's provider counts, as in the engine (KERNEL-406).
-  const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'Open /usage' }] : []
+  const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []
+  // Closing one is remembered for its window (KERNEL-595). The next banner in line shows in its place, and so does the 80% one when
+  // the week that holds teammates is the one the user closed: it would say the same thing about the same window.
+  const closed = (id: BannerId, resetsAt: number) => !!i.dismissed?.has(limitBannerKey(id, resetsAt))
   const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? nearLimit(usage, now) : undefined
-  if (held?.resetsAt) return {
+  if (held?.resetsAt && !closed('nearLimit', held.resetsAt)) return {
     id: 'nearLimit', kind: 'limit', title: `Close to your ${named(held.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
     sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Rowan'} can still answer you.`,
-    actions: usageAction, blocks: false
+    actions: usageAction, blocks: false, dismissKey: limitBannerKey('nearLimit', held.resetsAt)
   }
 
   const week = usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
-  if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false) return {
+  if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false && !closed('weeklyWarn', week.resetsAt) && !closed('nearLimit', week.resetsAt)) return {
     id: 'weeklyWarn', kind: 'limit', title: `You've used ${Math.round((week.utilization ?? WEEKLY_WARN) * 100)}% of this week's ${named('limit')}`,
-    sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: usageAction, blocks: false
+    sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: usageAction, blocks: false, dismissKey: limitBannerKey('weeklyWarn', week.resetsAt)
   }
 
   if (i.retry) {

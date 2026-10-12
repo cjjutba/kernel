@@ -461,6 +461,8 @@ export const platformFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
+  // KERNEL-595: 85% of the week is used, so any workspace says so, with a close button on hover. Same banner layout as WorkspaceNearLimit, not blocking. No PNG.
+  WorkspaceWeeklyWarn: scene(() => ({ usage: [{ type: 'seven_day', status: 'allowed', utilization: 0.85, resetsAt: secs(nextMonday()) }], ui: open })),
   // The retry is between attempts, so the turn shows as the canvas draws it: no Stop button.
   WorkspaceOverloaded: scene((f) => ({
     items: { [ids.tableChat]: [...tableItems, { kind: 'user', id: 'u-shorten', ts: at(10, 40), parts: [{ type: 'text', text: 'Shorten the empty state copy.' }] }] },
