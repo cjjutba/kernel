@@ -9,3 +9,9 @@ export { trackerKind } from '@shared/trackerKind'
 export function issueTracker(source: { id: string; tracker?: TrackerKind }): TrackerKind {
   return source.tracker ?? (source.id.startsWith('#') ? 'github' : 'linear')
 }
+
+/** A tracker as text agents read names it: "Linear", "GitHub". */
+const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub', jira: 'Jira' }
+
+/** The tracker's name, or "the issue tracker" for an issue saved without one. */
+export const trackerName = (kind: TrackerKind | undefined) => (kind ? NAMES[kind] : 'the issue tracker')

@@ -1,8 +1,9 @@
 import type { AgentDef, Chat, Workspace } from '@shared/types'
-import { reviewMcpServer, reviewTools } from '../services/reviewMcp'
-import { teammateMcpServer, teammateTools } from '../services/teammateMcp'
+import { reviewTools } from '../services/reviewMcp'
+import { teammateTools } from '../services/teammateMcp'
 import { kernelServer } from '../services/kernelServer'
 import { sharedTools } from '../services/sharedMcp'
+import { issueTools } from '../services/issueMcp'
 import { LEAD_REVIEW_RULE, LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../services/handoff'
 import { kernelTools, LEAD_INSTRUCTIONS } from '../services/kernelMcp'
 import { Feature } from './feature'
@@ -13,22 +14,27 @@ export class Tools extends Feature {
   private get sharing() { return this.settings?.experimental.sharing === true }
 
   /**
-   * The tools in an agent's `kernel` server: the Lead's, a reviewer's or a teammate's own, and share_file for all three
-   * while sharing is on.
+   * The tools in an agent's `kernel` server: the Lead's, a reviewer's or a teammate's own, get_issue for all three
+   * (KERNEL-473), and share_file while sharing is on.
    */
   toolsFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
     const own = agent?.lead ? kernelTools(this.k.lead.leadToolDeps(ws.roomId, agent, chat))
       : ws.reviewOf ? reviewTools({ submit: (review) => this.k.reviews.submitReview(ws.id, review) })
       : teammateTools(this.k.waits.teammateToolDeps(ws.id))
-    return this.sharing ? [...own, ...sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) })] : own
+    const issue = issueTools({ issueKey: () => this.issueKey(ws.id), tracker: () => this.k.integrations.trackerFor(ws.roomId) })
+    return [...own, ...issue, ...(this.sharing ? sharedTools({ share: (o) => this.k.sharing.shareFile(ws.id, chat.id, o) }) : [])]
   }
 
-  /** The `kernel` server for a session. With sharing on, every agent's server adds share_file (KERNEL-302). Off, each gets exactly the server it had before. */
+  /** The issue a workspace builds, as saved now. A review reads the issue of the work it reviews. */
+  private issueKey(id: string): string | undefined {
+    const ws = this.store.workspace(id)
+    const of = (w: Workspace | undefined) => (w?.source?.kind === 'issue' ? w.source.id : undefined)
+    return of(ws) ?? (ws?.reviewOf ? of(this.store.workspace(ws.reviewOf)) : undefined)
+  }
+
+  /** The `kernel` server for a session, with the tools `toolsFor` gives the agent. The Lead's carries its instructions. */
   mcpFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
-    return this.sharing ? { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
-      : agent?.lead ? { kernel: this.k.lead.leadTools(ws.roomId, agent, chat) }
-      : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.k.reviews.submitReview(ws.id, review) }) }
-      : { kernel: teammateMcpServer(this.k.waits.teammateToolDeps(ws.id)) }
+    return { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
   }
 
   /**

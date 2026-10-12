@@ -186,15 +186,31 @@ export function planParts(issue: LinearIssueDetail): ChatPart[] {
   ]
 }
 
+/** Reading an issue with no token, which an agent's get_issue passes on (KERNEL-473). */
+export const LINEAR_SIGNED_OUT = "Kernel isn't connected to Linear. The user can connect it in Settings, Integrations."
+
 /**
  * Linear as a room's tracker (KERNEL-450). `token` is read on every call, so a token saved in Settings > Integrations
  * applies at once. `start` without a token resolves to nothing: Linear isn't connected, so there is nothing to move (D-140).
+ * `issue` says plainly when Kernel isn't connected or Linear has no such issue, since get_issue hands its error to an agent.
  */
 export function linearTracker(token: () => Promise<string | undefined>, fetchImpl: typeof fetch = fetch): Tracker {
   return {
     kind: 'linear',
     search: async (query) => searchIssues(await token(), query, fetchImpl),
-    issue: async (id) => getIssue(await token(), id, fetchImpl),
+    issue: async (id) => {
+      const key = await token()
+      if (!key) throw new Error(LINEAR_SIGNED_OUT)
+      try {
+        const issue = await getIssue(key, id, fetchImpl)
+        // Linear has one assignee, and says whether it is the token's user (KERNEL-479).
+        return issue.assignee ? { ...issue, assignees: [issue.assignee] } : issue
+      } catch (e) {
+        // Linear answers an unknown key with "Entity not found: Issue".
+        if (/not found|could not find/i.test((e as Error).message)) throw new Error(`Linear has no issue ${id}, or this token can't see it.`)
+        throw e
+      }
+    },
     start: async (id) => {
       const key = await token()
       return key ? moveToStarted(key, id, fetchImpl) : undefined

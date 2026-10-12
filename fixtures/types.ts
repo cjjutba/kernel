@@ -1,6 +1,6 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -60,6 +60,8 @@ export interface Fixture {
   /** Open PRs and Linear issues the new workspace modal lists. */
   openPrs?: PrSummary[]
   issues?: IssueSummary[]
+  /** What `issues.taken` finds for any issue (ConfirmIssueTaken.png, KERNEL-479). Left out, nothing. */
+  issueTaken?: IssueTaken
   /** What the Issues screen reads (KERNEL-159). Issues carry their detail, so the issue pane needs nothing else. */
   linear?: { issues?: LinearIssueDetail[]; scope?: LinearScope }
   /** By room id, the tracker `issues.tracker` reports. A room without one reads as Linear, which every Issues and New workspace fixture drew before KERNEL-471. */

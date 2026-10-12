@@ -103,7 +103,7 @@ export class Workspaces extends Feature {
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
-        const made = await this.newBranchWorktree(room, wanted, baseRef)
+        const made = await this.newBranchWorktree(room, wanted, baseRef, remote)
         branch = made.branch
         path = made.path
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
@@ -286,8 +286,9 @@ export class Workspaces extends Feature {
 
   /** The fork's worktree and record: a branch at `from` whose files are made to match `files`, and the workspace in setup. */
   private async forkTree(src: Workspace, room: Room, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
+    const remote = await this.k.config.remoteFor(room.path, repo)
     const ws = await this.withPort(async (port) => {
-      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from)
+      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from, remote)
       try {
         await writeTree(path, `${from}^{tree}`, files)
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -318,10 +319,13 @@ export class Workspaces extends Feature {
     try { return await run } finally { if (this.branchLocks.get(roomId) === run) this.branchLocks.delete(roomId) }
   }
 
-  /** A worktree on a new branch: `wanted`, or the first free name after it, in the room's worktree folder. */
-  private newBranchWorktree(room: Room, wanted: string, baseRef: string): Promise<{ branch: string; path: string }> {
+  /**
+   * A worktree on a new branch: `wanted`, or the first free name after it, here and on `remote` (KERNEL-479), in the room's
+   * worktree folder.
+   */
+  private newBranchWorktree(room: Room, wanted: string, baseRef: string, remote: string): Promise<{ branch: string; path: string }> {
     return this.withBranchLock(room.id, async () => {
-      const branch = await freeBranch(room.path, wanted)
+      const branch = await freeBranch(room.path, wanted, remote)
       return { branch, path: await createWorktree({ repo: room.path, root: roomWorktreeRoot(this.settings.worktreeRoot, room), branch, baseRef }) }
     })
   }

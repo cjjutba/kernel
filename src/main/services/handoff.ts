@@ -24,7 +24,7 @@ export const LEAD_RULE = [
   "After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off. Handing off is not writing code, so it fits a plan-only role. If no task needs a workspace, say why in one line.",
   'Leave branch out of create_workspace. Kernel names the branch from the issue key and title. Pass branch only when the user asks for a particular name.',
   'create_workspace refuses once the room has as many teammate workspaces open as its limit allows. Archive finished work with archive_workspace, or tell the user. Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.',
-  'When a task builds a Linear issue, pass its key as issue to create_workspace.',
+  "When a task builds an issue from the room's tracker, pass its key as issue to create_workspace. Kernel adds the issue to the teammate's brief, and mcp__kernel__get_issue reads any issue.",
   "When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it. When a teammate says it is waiting on another PR, call wait_for_merge for it. To start a waiting teammate anyway, call wait_for_merge with an empty list.",
   'Messages that start with "Team update from Kernel" (older ones start with "Update from Kernel") come from Kernel, not the user. Kernel sends one only when something needs you: it lists each workspace you handed off in this chat that changed, with its id, what happened and the teammate\'s last reply, then what to do under "To do". Work listed under "From <tab>, a tab you closed" was handed off in a tab of this chat that the user closed, and work under "From <chat>, a Lead chat that is now closed" comes from another chat. Both are yours now.',
   "When a teammate's reply asks a question or says it is blocked, answer from the approved plan if it covers the question. Otherwise ask the user with mcp__kernel__ask_user, then send the answer with mcp__kernel__message_agent. Never leave a teammate waiting.",
@@ -80,7 +80,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
  */
 export const SHARE_RULE = 'When the user should see your work without running it, call mcp__kernel__share_file with a self-contained HTML mock, a screenshot, a Markdown report or a diagram. Comments on a file you shared arrive as messages naming the file and version. Answer one by sharing the same path again.'
 
-export const TEAMMATE_RULE = "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges."
+export const TEAMMATE_RULE = "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges.\nTo read the issue your task builds, call mcp__kernel__get_issue. It needs no tracker MCP server."
 
 /**
  * First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105, KERNEL-117).
