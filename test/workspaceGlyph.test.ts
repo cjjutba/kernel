@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { chatGlyph, leadGlyph, workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
 import { leadWaiting } from '../src/renderer/src/lead'
-import type { Approval, Workspace } from '../src/shared/types'
+import type { Approval, ReviewRound, ReviewVerdict, Workspace } from '../src/shared/types'
 
 const approval = (kind: Approval['kind'], extra: Partial<Approval> = {}): Approval =>
   ({ id: `a-${kind}`, kind, source: 'sdk', title: kind, status: 'pending', createdAt: 0, ...extra })
@@ -69,6 +69,36 @@ describe('a ready PR GitHub blocks (KERNEL-401)', () => {
     const idle = { waiting: [], running: false }
     expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
     expect(workspaceGlyph(ws({ prBlocked: 'behind' }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
+  })
+})
+
+describe('a ready PR its review holds back (KERNEL-608)', () => {
+  const ws = (o: Partial<Workspace>) => ({ id: 'w', status: 'ready', prState: 'ready', prNumber: 7, prHead: 'b', ...o }) as Workspace
+  const idle = { waiting: [], running: false }
+  const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'kernel-reviewer', verdict: 'blockers', summary: '', blockers: [{ text: 'No label.' }], sha: 'b', prNumber: 7, lens: 'ux', ts: 1, ...o })
+  const round = (o: Partial<ReviewRound> = {}): ReviewRound => ({ n: 3, rounds: 3, head: 'a', prNumber: 7, kinds: ['code', 'ux'], ...o })
+
+  it('reads blockers found while any kind of review found them on the head commit, as the header and the PRs tab do', () => {
+    const blocked = ws({ reviews: [verdict({ lens: 'code', verdict: 'approved', blockers: undefined }), verdict({})] })
+    expect(workspaceGlyph(blocked, idle)).toEqual({ icon: 'pr', tone: 'del', label: 'Blockers found' })
+    expect(workspaceGlyph({ ...blocked, prState: 'open' }, idle)).toEqual({ icon: 'pr', tone: 'del', label: 'Blockers found' })
+    // GitHub's own block still reads open first, as the header has it.
+    expect(workspaceGlyph({ ...blocked, prBlocked: 'review' }, idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
+  })
+
+  it('reads ready to merge once the blockers are on an earlier commit, or on another PR', () => {
+    expect(workspaceGlyph(ws({ reviews: [verdict({ sha: 'a' })] }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({ reviews: [verdict({ prNumber: 6 })] }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+  })
+
+  it('reads open, not ready to merge, while the review rounds ran out with blockers left on the last round', () => {
+    // A commit after the last round nobody reviewed, as in KERNEL-558.
+    const capped = ws({ reviews: [verdict({ sha: 'a' })], reviewRound: round() })
+    expect(workspaceGlyph(capped, idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
+    // Rounds left, a last round that left no blockers, or a round of another PR, read ready again.
+    expect(workspaceGlyph({ ...capped, reviewRound: round({ n: 2 }) }, idle)).toMatchObject({ label: 'Ready to merge' })
+    expect(workspaceGlyph({ ...capped, reviews: [verdict({ sha: 'a', verdict: 'approved', blockers: undefined })] }, idle)).toMatchObject({ label: 'Ready to merge' })
+    expect(workspaceGlyph({ ...capped, reviewRound: round({ prNumber: 6 }) }, idle)).toMatchObject({ label: 'Ready to merge' })
   })
 })
 
