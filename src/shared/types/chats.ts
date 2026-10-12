@@ -74,6 +74,8 @@ export interface Chat {
   autoTitle?: { turns: number }
   /** The Lead chat this tab belongs to. Set on every Lead tab, absent elsewhere (KERNEL-337). */
   threadId?: string
+  /** When a turn last ended in this chat since the user saw it. Unset is read, as is every chat from before (KERNEL-507). */
+  unreadAt?: number
   createdAt: number
 }
 

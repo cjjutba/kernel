@@ -188,6 +188,11 @@ export interface KernelApi {
   'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }; res: Chat }
   'chats.rename': { req: { chatId: string; title: string }; res: Chat }
   'chats.close': { req: { chatId: string }; res: Ok }
+  /**
+   * The chat is on screen: clears `unreadAt` and pushes the chat. A chat that is already read stays as it is, with no push.
+   * The renderer calls it whenever the chat it shows has `unreadAt` (KERNEL-507).
+   */
+  'chats.markRead': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
   'chats.fork': { req: { chatId: string; itemId?: string }; res: Chat }
   /** Run the turn that produced `itemId` again. `now` sends it ahead of the queue and stops the running turn (Retry now). */
