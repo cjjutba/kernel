@@ -179,6 +179,11 @@ export interface SessionDeps {
   onCutOff?: (cutOff: Record<string, CutOffReason>) => void
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
+  /**
+   * A hold on every chat of a room or a provider lifted: a resume, back online or signed in, the launch checks done, or a
+   * chat's setup hold released. A chat `post` refused may take Kernel's message now (KERNEL-637).
+   */
+  onFreed?: () => void
 }
 
 /**
@@ -192,6 +197,13 @@ export interface Sender { from?: MessageFrom; update?: TeamUpdate }
 
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
+
+/**
+ * Why `post` refuses Kernel's message now (KERNEL-637): the chat runs a turn (`busy`), has messages queued, its session died
+ * mid-turn, it waits for setup or a launch check, its room is paused, it is offline or signed out, it is held near a usage
+ * limit or over the agent limit, or Kernel is closing.
+ */
+export type PostHold = 'busy' | 'queued' | 'crashed' | 'setup' | 'launching' | 'paused' | 'offline' | 'limit' | 'capacity' | 'closing'
 
 /** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
 export type CutOffReason = 'limit' | 'quit'
@@ -369,6 +381,7 @@ export class Sessions {
     }
     this.carryOn()
     this.pushReasons()
+    this.d.onFreed?.()
   }
 
   /** The reasons holding `provider`'s chats, or every reason when it names none. */
@@ -403,6 +416,7 @@ export class Sessions {
     if (!this.launching) return
     this.launching = false
     this.drainWaiting()
+    this.d.onFreed?.()
   }
 
   /**
@@ -423,6 +437,7 @@ export class Sessions {
     this.saveQueues()
     if (!this.live.get(chatId)?.running) this.drain(chatId)
     this.pushReasons()
+    this.d.onFreed?.()
   }
 
   /** Hands Kernel what every chat held for setup is holding, to save. */
@@ -479,6 +494,7 @@ export class Sessions {
     for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running && !this.cutOff.has(c.id)) this.drain(c.id)
     this.carryOn()
     this.pushReasons()
+    this.d.onFreed?.()
   }
 
   private pausedChat(chat: Chat) {
@@ -707,10 +723,26 @@ export class Sessions {
    */
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
-    // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
-    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || this.unmade(chat) || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    if (this.postHold(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
+  }
+
+  /** Why `post` would refuse Kernel's message into the chat now, or nothing when it would send it (KERNEL-637). */
+  postHold(chatId: string): PostHold | undefined {
+    const chat = this.d.store.chat(chatId)
+    if (!chat || this.closing) return 'closing'
+    if (this.live.get(chatId)?.running) return 'busy'
+    if (this.queued(chatId).length) return 'queued'
+    if (this.crashed.has(chatId)) return 'crashed'
+    if (this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || this.unmade(chat)) return 'setup'
+    // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
+    if (this.launching && this.cutOff.has(chatId)) return 'launching'
+    if (this.holding(chatProvider(chat))) return 'offline'
+    if (this.pausedChat(chat)) return 'paused'
+    if (this.nearLimitHolds(chatId)) return 'limit'
+    if (this.atCapacity(chatId)) return 'capacity'
+    return undefined
   }
 
   /**
