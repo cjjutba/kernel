@@ -36,6 +36,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     isLead: (ws) => !!k.team.agentOf(ws.roomId, ws.agentId)?.lead,
     agentName: (roomId, agentId) => k.team.agentOf(roomId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
+    holdOf: (chatId) => k.sessions.postHold(chatId),
     reviewState: (ws) => k.reviews.reviewState(ws),
     // The team's reviewer, for usage data and for telling its old workspaces from reviews (KERNEL-121, KERNEL-397).
     reviewer: (roomId) => k.team.reviewerOf(roomId),
@@ -71,6 +72,9 @@ export function listen(k: Kernel): () => void {
     // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
     keepScript(e)
     if (e.type === 'chat.running') k.chats.onRunning(e)
+    // A chat that stopped running, or whose queue emptied, may take a Team update now, and a turn's end frees a slot for the
+    // others. The update goes then, not at the next PR poll (KERNEL-637).
+    if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()
     if (e.type === 'agent.status') k.team.onStatus(e)
     // Someone signed in or out: Claude says so with `account`, Codex and account switches with `accounts`, so the next
     // team read checks pinned models again (KERNEL-634).
