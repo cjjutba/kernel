@@ -37,6 +37,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onTurnDone: (ws, chat, turn) => {
       void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
       void k.chats.nameChat(ws, chat, true)
+      // A turn the user stopped is one they were watching (KERNEL-507).
+      if (!turn.interrupted) k.chats.markUnread(chat)
       const lead = !!k.team.agentOf(ws.roomId, ws.agentId)?.lead
       const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
       k.notifications.turnDone(ws, chat, done)

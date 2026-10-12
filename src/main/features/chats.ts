@@ -154,6 +154,21 @@ export class Chats extends Feature {
     this.saveChat({ ...now, title: now.threadId ? NEW_TAB : NEW_CHAT, autoTitle: { turns: 0 } })
   }
 
+  /**
+   * A turn ended in the chat, so it is unread until the renderer shows it and calls `markRead` (KERNEL-507). Main doesn't
+   * know which chat is on screen, so every finished turn marks its chat, the one on screen too.
+   */
+  markUnread(chat: Chat) {
+    const now = this.store.chat(chat.id)
+    if (now) this.saveChat({ ...now, unreadAt: Date.now() })
+  }
+
+  /** The chat is on screen. A chat that is already read is left alone, with no push. */
+  markRead(chatId: string) {
+    const chat = this.mustChat(chatId)
+    if (chat.unreadAt !== undefined) this.saveChat({ ...chat, unreadAt: undefined })
+  }
+
   /** Open chats still called "New chat" or "New tab" after a finished turn, as /clear left them before KERNEL-202. Named one at a time. */
   async nameStuckChats() {
     for (const ws of this.store.workspaces().filter((w) => w.status !== 'archived')) {
@@ -316,6 +331,7 @@ export class Chats extends Feature {
       'chats.list': async ({ workspaceId }) => this.chatTabs(workspaceId),
       'chats.rename': async ({ chatId, title }) => this.renameChat(chatId, title),
       'chats.close': async ({ chatId }) => { await this.closeChat(chatId); return { ok: true } },
+      'chats.markRead': async ({ chatId }) => { this.markRead(chatId); return { ok: true } },
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
