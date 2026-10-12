@@ -1340,6 +1340,29 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
     expect(s.posts).toHaveLength(3)
   })
 
+  it('greys a lifted block and keeps ready to merge out of the To do line while a review holds the PR back (KERNEL-635)', async () => {
+    const lifted = async (review: ReviewState) => {
+      const { store, s, u, nc } = await told()
+      blocked(store, 'w1', 'review')
+      await wait()
+      s.review = review
+      blocked(store, 'w1', undefined)
+      await wait()
+      // An unblock that wakes nobody rides along with the next update, here a finished turn.
+      if (s.posts.length === 2) { u.turnDone(store.workspace('w1')!, nc, done); await wait() }
+      expect(s.posts).toHaveLength(3)
+      return { todo: parts(s.posts[2]).todo, events: s.updates.at(-1)!.rows[0].events.filter((e) => e.kind === 'pr.unblocked') }
+    }
+    for (const review of [rs({ blockers: true, blocking: ['ux'] }), rs({ stale: true, waiting: ['ux'], stillBlocked: { rounds: 3, kinds: ['ux'] } }), rs({ stillBlocked: { rounds: 3, kinds: ['ux'] } })]) {
+      const { todo, events } = await lifted(review)
+      expect(todo.join('\n')).not.toMatch(/ready to merge/)
+      expect(events).toEqual([{ kind: 'pr.unblocked', text: 'GitHub no longer blocks it', actionable: false, held: true }])
+    }
+    const free = await lifted(rs())
+    expect(free.todo).toEqual([UNBLOCKED_TODO])
+    expect(free.events).toEqual([{ kind: 'pr.unblocked', text: 'GitHub no longer blocks it', actionable: true }])
+  })
+
   it("asks the author, not the reviewer, to update a PR that fell behind, in one line with the author's own news", () => {
     const of = { id: 'w2', roomId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
     const approval: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }
