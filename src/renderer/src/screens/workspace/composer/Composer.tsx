@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill, Workspace } from '@shared/types'
+import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, PermissionMode, QueuedMessage, Skill, Workspace } from '@shared/types'
 import { MODELS, type Provider } from '@shared/types'
 import { chatProvider } from '@shared/providers'
 import { effortsOf, modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
+import { bypassConfirmed } from '../../../bypassConfirm'
 import { FileIcon } from '../../../components/FileIcon'
+import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, useStore } from '../../../store'
 import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
@@ -15,9 +17,11 @@ import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued,
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
+import { ModeMenu } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
+import { MODE_ICON, buttonName, modeAria, modePatch, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
@@ -34,11 +38,12 @@ const EMPTY_WS: Workspace[] = []
  */
 let appliedPrefill = 0
 
-type MenuName = 'model' | 'context' | PlusPanel
+type MenuName = 'model' | 'context' | 'mode' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
- * files, skills, diff hunks) inline, in order. Enter sends (or Cmd+Enter, by Send messages with), Shift+Enter breaks the line, Backspace takes a chip like a
+ * files, skills, diff hunks) inline, in order. Enter sends (or Cmd+Enter, by Send messages with), Shift+Enter breaks the line, Shift+Tab cycles the chat's
+ * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
@@ -57,8 +62,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced, chat.id)
-  // Fixtures open the model picker the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
-  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : null)
+  // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? 'mode' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -66,6 +71,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
+  const modeAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
   const name = agent?.name ?? 'the agent'
 
@@ -149,11 +155,27 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
   }
 
-  const togglePlan = () => void configure({ plan: !chat.plan })
   const pickModel = (m: string, effort: Effort) => void configure({ model: m, effort })
   // KERNEL-406: the chat's provider, its models, and a new tab on the other provider for a chat that has started.
   const provider = chatProvider(chat)
   const grouped = useCodexInUse(provider)
+  // KERNEL-456: the mode the chat runs in comes from main (KERNEL-572), which the window reads once for a chat it hasn't heard of and then hears of each change.
+  const runMode = useStore((s) => s.runModes[chat.id])
+  const roomMode = useStore((s) => s.rooms.find((r) => r.id === roomId)?.permissionMode)
+  const appMode = useStore((s) => s.settings?.permissions.mode)
+  const availability = useModeAvailability()
+  useEffect(() => {
+    if (getState().runModes[chat.id]) return
+    void call('chats.runMode', { chatId: chat.id }).then((m) => { if (!getState().runModes[chat.id]) actions.chats.setRunMode(chat.id, m) }).catch(() => undefined)
+  }, [chat.id])
+  const shown = shownMode(chat.plan, runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
+  /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
+  const setMode = (mode: ComposerMode) => {
+    if (mode === shown.picked) return
+    if (mode === 'bypassPermissions' && !bypassConfirmed()) { setMenu(null); return actions.ui.openModal({ name: 'confirm', kind: 'bypass', chatId: chat.id }) }
+    void configure(modePatch(mode))
+  }
+  const cycleMode = () => setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)))
   const providerModels = useProviderModels(provider)
   const efforts = effortsOf(chat.model, providerModels)
   const newChatOn = (p: Provider, m: string, x: Effort) => void attempt('Could not open a tab', async () => {
@@ -177,12 +199,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
-    if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
+    if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
+  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
     const id = chat.id
     void attempt('Could not edit the message', async () => {
@@ -282,11 +304,17 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
+              <span ref={modeAnchor} style={{ position: 'relative' }}>
+                <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
+                  <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={11} stroke={1.9} />
+                </Button>
+                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); setMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
+              </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
               <span ref={plusAnchor} style={{ position: 'relative' }}>
-                <PlusMenu panel={menu === 'model' || menu === 'context' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
-                  plan={chat.plan} onPlan={togglePlan} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
+                <PlusMenu panel={menu === 'model' || menu === 'context' || menu === 'mode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
+                  onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
               </span>
               {running && !hasDraft
                 ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
