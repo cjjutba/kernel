@@ -31,7 +31,7 @@ async function setup(n = 1) {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: false } }))
   const k = new Kernel({ dataDir, home })
   kernels.push(k)
   await k.start()
@@ -213,6 +213,7 @@ describe('the PR poll (KERNEL-216)', () => {
   it('costs ten open PRs at most a third of the gh calls an hour it did', async () => {
     const { k, ws, prs, reads } = await setup(10)
     for (const w of ws) { prs[w.id] = info(w.id, 'ready'); await k.prs.refreshPr(w.id) }
+    const ids = new Set(ws.map((w) => w.id))
     const t = clock(k)
     const hour = async (states: PrState[]) => {
       ws.forEach((w, i) => { prs[w.id] = info(w.id, states[i]) })
@@ -222,7 +223,7 @@ describe('the PR poll (KERNEL-216)', () => {
       reads.length = 0
       // A poll every 45 seconds for an hour.
       for (let i = 0; i < 80; i++) await t.tick()
-      return reads.length
+      return reads.filter((id) => ids.has(id)).length
     }
     // Before, every poll read every open PR: 80 polls of 10 PRs. Each read is `gh pr view` and `gh api graphql`.
     const before = 80 * 10

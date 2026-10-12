@@ -147,6 +147,10 @@ export class CodexRunner implements Runner {
   private isClosed = false
   private threadId?: string
   private turnId?: string
+  /** A turn is being started: its `turn/start` hasn't answered yet, so Stop has no turn id to interrupt. */
+  private starting = false
+  /** Stop was pressed while the turn was starting. It interrupts the turn as soon as Codex names it. */
+  private stopAsked = false
   private model: string
   private effort: Effort
   private plan: boolean
@@ -199,7 +203,9 @@ export class CodexRunner implements Runner {
   async interrupt() {
     const threadId = this.threadId
     const turnId = this.turnId
-    if (!this.rpc || !threadId || !turnId) return
+    if (!this.rpc) return
+    if (!turnId && this.starting) { this.stopAsked = true; this.turnStop.abort(); return }
+    if (!threadId || !turnId) return
     // The turn's cards end first. Codex 0.153.4 doesn't hold the interrupt for an open request: it clears the request.
     this.turnStop.abort()
     await this.rpc.request('turn/interrupt', { threadId, turnId }, { timeoutMs: 10_000 }).catch(() => undefined)
@@ -321,6 +327,13 @@ export class CodexRunner implements Runner {
 
   private async turn(parts: ChatPart[]) {
     this.turnStop = new AbortController()
+    this.stopAsked = false
+    this.starting = true
+    try { await this.startTurn(parts) } finally { this.starting = false }
+    if (this.stopAsked) { this.stopAsked = false; await this.interrupt() }
+  }
+
+  private async startTurn(parts: ChatPart[]) {
     const threadId = await this.ready!
     if (this.isClosed) return
     // The thread is up: the chat resumes it by this id from now on, and the turn shows as working.

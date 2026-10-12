@@ -259,6 +259,19 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('result')).toEqual([])
   })
 
+  it('stops a turn Codex has not named yet, as soon as it does', async () => {
+    const t = track(await setup())
+    t.fake.env.FAKE_CODEX_START_MS = '400'
+    await t.sessions.send('chat', [{ type: 'text', text: script({ wait: 'interrupt' }) }])
+    await until(async () => (await t.sent('turn/start')).length === 1)
+    await t.sessions.interrupt('chat')
+    expect(await t.sent('turn/interrupt')).toEqual([])
+    await t.idle()
+    expect((await t.sent('turn/interrupt'))[0].params).toEqual({ threadId: 'thread-1', turnId: 'turn-1' })
+    expect(t.of('interrupted')).toHaveLength(1)
+    expect(t.of('result')).toEqual([])
+  })
+
   it('starts a fresh thread when the one the chat resumes is gone', async () => {
     const t = track(await setup({ chat: { sessionId: 'gone' } }))
     await t.sessions.send('chat', [{ type: 'text', text: 'carry on' }])
