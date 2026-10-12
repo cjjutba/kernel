@@ -7,16 +7,21 @@ import { join } from 'node:path'
 // The CLI's own login starts signed in as cj@example.com on Max.
 // `auth login` prints a link and its code prompt. `FAKE_CODE_FILE` makes it wait for a code and write what it got there,
 // `FAKE_LOGIN_WAIT` makes it wait until it is stopped, and `FAKE_LOGIN_FAIL` makes it fail. It signs in as `FAKE_EMAIL`
-// on `FAKE_PLAN`, side@example.com on Pro by default.
+// on `FAKE_PLAN`, side@example.com on Pro by default, in the claude.ai organization `FAKE_ORG` when set.
+// `mcp login <server>` needs a terminal, as the real one does. It prints the server's sign-in page (MCP_LINK) and says it
+// signed in, or fails with `FAKE_MCP_FAIL`, or waits with `FAKE_LOGIN_WAIT`. A claude.ai connector prints claude.ai's page and is done at once (KERNEL-616).
 
 export const LINK = 'https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz'
+
+/** The sign-in page `mcp login` prints for a server the user added. */
+export const MCP_LINK = 'https://mcp.example.com/authorize?client_id=k616&state=abc'
 
 export interface FakeClaude {
   bin: string
   /** The logins signed in now, by Keychain name: `cli`, or the folder path. */
-  logins(): Promise<Record<string, { email: string; plan: string }>>
+  logins(): Promise<Record<string, { email: string; plan: string; org?: string }>>
   /** Signs a folder's login in or out behind Kernel's back, as a sign-out on another Mac or an upgrade would. */
-  setLogin(home: string | 'cli', login: { email: string; plan: string } | null): Promise<void>
+  setLogin(home: string | 'cli', login: { email: string; plan: string; org?: string } | null): Promise<void>
   /** Each command it ran: its arguments, CLAUDE_CONFIG_DIR, and whether it got a token from the Mac. */
   calls(): Promise<{ args: string; dir: string; token: boolean }[]>
 }
@@ -39,7 +44,11 @@ case "$1 $2" in
   "--version "*) echo "2.1.292 (Claude Code)"; exit 0;;
   "auth status")
     F="$KC/$(key)"
-    if [ -f "$F" ]; then read EMAIL PLAN < "$F"; printf '{"loggedIn":true,"authMethod":"claude.ai","email":"%s","subscriptionType":"%s"}\\n' "$EMAIL" "$PLAN"; exit 0; fi
+    if [ -f "$F" ]; then
+      read EMAIL PLAN ORG < "$F"
+      if [ -n "$ORG" ]; then O=",\\"orgId\\":\\"$ORG\\""; else O=''; fi
+      printf '{"loggedIn":true,"authMethod":"claude.ai","email":"%s","subscriptionType":"%s"%s}\\n' "$EMAIL" "$PLAN" "$O"; exit 0
+    fi
     printf '{"loggedIn":false,"authMethod":"none"}\\n'; exit 1;;
   "auth logout") rm -f "$KC/$(key)"; echo "Successfully logged out from your Anthropic account."; exit 0;;
   "auth login")
@@ -49,9 +58,23 @@ case "$1 $2" in
     if [ -n "$FAKE_CODE_FILE" ]; then read code; echo "$code" > "$FAKE_CODE_FILE"; fi
     if [ -n "$FAKE_LOGIN_WAIT" ]; then sleep 30; fi
     if [ -n "$FAKE_LOGIN_FAIL" ]; then printf '\\nOAuth error: Request failed with status code 400\\n'; exit 1; fi
-    printf '%s %s\\n' "\${FAKE_EMAIL:-side@example.com}" "\${FAKE_PLAN:-pro}" > "$KC/$(key)"
+    printf '%s %s %s\\n' "\${FAKE_EMAIL:-side@example.com}" "\${FAKE_PLAN:-pro}" "\${FAKE_ORG:-}" > "$KC/$(key)"
     if [ -n "$CLAUDE_CONFIG_DIR" ]; then mkdir -p "$CLAUDE_CONFIG_DIR"; printf '{"oauthAccount":{"emailAddress":"%s"},"userID":"u1"}\\n' "\${FAKE_EMAIL:-side@example.com}" > "$CLAUDE_CONFIG_DIR/.claude.json"; fi
     printf '\\nLogin successful.\\n'; exit 0;;
+  "mcp login")
+    if [ ! -t 0 ]; then echo "Couldn't complete authentication for \\"$3\\": stdin isn't a terminal"; exit 1; fi
+    case "$3" in
+      "claude.ai "*)
+        printf 'Opening browser to authorize "%s"\\342\\200\\246\\n' "$3"
+        printf "If the browser didn't open, visit: \\033]8;;https://claude.ai/customize/connectors\\007https://claude.ai/customize/connectors\\033]8;;\\007\\n"
+        echo "Once authorized on claude.ai, the connector will be available the next time you start Claude Code."; exit 0;;
+    esac
+    printf 'Starting authentication for "%s"\\342\\200\\246\\n' "$3"
+    printf "If the browser didn't open, visit: \\033]8;;${MCP_LINK}\\007${MCP_LINK}\\033]8;;\\007\\n"
+    printf 'Waiting for authorization\\342\\200\\246 (^C to cancel)\\n'
+    if [ -n "$FAKE_LOGIN_WAIT" ]; then sleep 30; fi
+    if [ -n "$FAKE_MCP_FAIL" ]; then printf "Couldn't complete authentication for \\"%s\\": access denied\\n" "$3"; exit 1; fi
+    printf 'Authenticated with "%s". Its tools are now available in Claude Code.\\n' "$3"; exit 0;;
 esac
 exit 2
 `)
@@ -59,15 +82,15 @@ exit 2
   return {
     bin,
     logins: async () => {
-      const out: Record<string, { email: string; plan: string }> = {}
+      const out: Record<string, { email: string; plan: string; org?: string }> = {}
       for (const name of await readdir(keychain)) {
-        const [email, plan] = (await readFile(join(keychain, name), 'utf8')).trim().split(' ')
-        out[name === 'cli' ? 'cli' : name.replace(/%/g, '/')] = { email, plan }
+        const [email, plan, org] = (await readFile(join(keychain, name), 'utf8')).trim().split(' ')
+        out[name === 'cli' ? 'cli' : name.replace(/%/g, '/')] = { email, plan, ...(org ? { org } : {}) }
       }
       return out
     },
     setLogin: async (home, login) => {
-      if (login) await writeFile(join(keychain, keyOf(home)), `${login.email} ${login.plan}\n`)
+      if (login) await writeFile(join(keychain, keyOf(home)), `${login.email} ${login.plan} ${login.org ?? ''}\n`)
       else await rm(join(keychain, keyOf(home)), { force: true })
     },
     calls: async () => (await readFile(log, 'utf8')).split('\n').filter(Boolean).map((l) => {

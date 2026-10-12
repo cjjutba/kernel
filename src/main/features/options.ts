@@ -1,5 +1,6 @@
 import type { AppUpdate, SharedFile } from '@shared/types'
 import type { Cipher } from '../services/env'
+import type { Keychain } from '../services/providers/claudeHome'
 import type { AppSettings } from '../services/settings'
 import type { ShellRead } from '../services/shellPath'
 
@@ -53,6 +54,11 @@ export interface KernelOptions {
   openExternal?: (url: string) => Promise<void>
   /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
   cipher?: Cipher
+  /**
+   * The Mac's Keychain, where each Claude login keeps its MCP servers' sign-ins, which Kernel shares between logins
+   * (KERNEL-616). The app passes `macKeychain`, tests a fake. Without one, each login keeps only its own sign-ins.
+   */
+  keychain?: Keychain
   /**
    * Where usage data goes, and the Mac it comes from (KERNEL-397). Only a packaged release build with a key passes it, and
    * only when DO_NOT_TRACK and KERNEL_TELEMETRY=0 aren't set. Without it Kernel never sends, whatever Settings, Privacy says.

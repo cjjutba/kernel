@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type SwitchReason } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
 import { limitProvider } from '@shared/providers'
+import { joinLabels } from '@shared/waits'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
@@ -14,9 +15,9 @@ import type { UsageRead } from '../services/sessions'
 import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
 import { claudeExecutable, resolveBinary } from '../services/providers/binary'
-import { claudeStatus, copyClaudeConfig, linkClaudeHome, loginEnv, logoutClaude, removeClaudeHome, type ClaudeLogin } from '../services/providers/claudeHome'
+import { claudeStatus, copyClaudeConfig, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
-import { probeClaudeUsage, sessionEnv } from '../services/providers/claude'
+import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
 import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
 import { codexLimits } from '../services/providers/codex/runner'
 import type { Rpc } from '../services/providers/codex/rpc'
@@ -45,6 +46,8 @@ interface StoredAccount {
   home?: string
   /** What Kernel last read of a login's sign-in. Undefined until the first read, so a restart never announces an old sign-out. */
   signedIn?: boolean
+  /** A Claude login's claude.ai organization, which tells two plans on one email apart (KERNEL-616). */
+  orgId?: string
   createdAt: number
 }
 /** The CLI's own login as `accounts.json` keeps it: its nickname, its last email, and what Kernel last read of its sign-in (KERNEL-567). */
@@ -63,6 +66,18 @@ const SIGN_IN_MS = 15 * 60_000
 
 /** How long `readUsage` trusts an account's last read. Claude Code answers the usage call from a snapshot under a minute old. */
 const USAGE_FRESH_MS = 60_000
+
+/** How often the MCP sign-ins are shared at most, so chats starting together read the Keychain once (KERNEL-616). */
+const SHARE_EVERY_MS = 2_000
+
+/** Adding a login Kernel already has (KERNEL-616). */
+const ALREADY_IN = 'That account is already in Kernel.'
+
+/** A role's name, for an agent Kernel names by its role before any room's team is read (KERNEL-616). */
+const ROLE_NAMES: Record<Role, string> = { lead: 'Lead', engineers: 'Engineers', qa: 'QA', reviewer: 'Reviewer' }
+
+/** A model id without its case and its context-window tag (`[1m]`). */
+const bareModel = (id: string) => id.toLowerCase().replace(/\[[^\]]*\]$/, '')
 
 /**
  * What a Codex account's home shares with `~/.codex`, made first when `~/.codex` has none, so chats, MCP servers, plugins,
@@ -90,6 +105,12 @@ export class Providers extends Feature {
    * (KERNEL-568). `limit` is the window the account it left had hit, when the banner or Kernel moved it off a limit.
    */
   private switches = new Map<Provider, { to: string; from: string; limit?: RateLimit['type'] }>()
+  /** When the MCP sign-ins were last shared (KERNEL-616). */
+  private sharedAt = 0
+  /** What `checkMcp` last found on each Claude login, by account id, `cli` for the CLI's own (KERNEL-616). */
+  private mcpSignIns = new Map<string, McpSignIn[]>()
+  /** The models each account offers, by `provider:id`, with the login they were read on (`loginKey`, KERNEL-616). */
+  private offered = new Map<string, { login: string; ids: string[] }>()
 
   // ---------- models
 
@@ -262,11 +283,13 @@ export class Providers extends Feature {
   /**
    * What a Claude process adds to its environment for an account, the active one by default: an added login's folder as
    * CLAUDE_CONFIG_DIR, readied first (KERNEL-567), a legacy token, or an API key account's key (KERNEL-523). Nothing for
-   * the CLI login. A folder that moved is passed as it signed in, so its sessions fail as signed out rather than run on
-   * another login.
+   * the CLI login, which `cli` names too. A folder that moved is passed as it signed in, so its sessions fail as signed out
+   * rather than run on another login. The MCP sign-ins are shared first (KERNEL-616).
    */
   claudeEnv(accountId = this.active('claude')): Record<string, string> {
-    const a = accountId ? this.stored('claude', accountId) : undefined
+    const a = accountId && accountId !== CLI_ACCOUNT ? this.stored('claude', accountId) : undefined
+    // Each Claude process reads its MCP sign-ins from its login's Keychain item.
+    this.shareMcp()
     if (!a) return {}
     if (a.auth === 'apiKey') {
       const key = this.apiKey('claude', a.id)
@@ -337,7 +360,7 @@ export class Providers extends Feature {
    * and a name that was its email follows a new one. Each change is saved and tells every window, and a login going from
    * signed in to signed out saves one Inbox notice, unless the user signed it out (`quiet`).
    */
-  private async noteLogin(provider: Provider, id: string | undefined, who: { signedIn: boolean; email?: string; plan?: string; subscriptionType?: string }, o: { quiet?: boolean; push?: boolean } = {}) {
+  private async noteLogin(provider: Provider, id: string | undefined, who: { signedIn: boolean; email?: string; plan?: string; subscriptionType?: string; orgId?: string }, o: { quiet?: boolean; push?: boolean } = {}) {
     const file = this.load()
     const a = id ? this.stored(provider, id) : undefined
     if ((id && !a) || this.stopped) return
@@ -349,10 +372,14 @@ export class Providers extends Feature {
     let planChanged = false
     if (who.signedIn && a) {
       const tier = provider === 'claude' ? planOf(who.subscriptionType) : 'unknown'
-      const next = { email: who.email ?? a.email, plan: who.plan ?? a.plan, claudePlan: tier === 'unknown' ? a.claudePlan : tier }
+      const next = { email: who.email ?? a.email, plan: who.plan ?? a.plan, claudePlan: tier === 'unknown' ? a.claudePlan : tier, orgId: who.orgId ?? a.orgId }
       const label = a.label === a.email && next.email ? next.email : a.label
       planChanged = next.claudePlan !== a.claudePlan
-      if (next.email !== a.email || next.plan !== a.plan || planChanged || label !== a.label) { Object.assign(a, next, { label }); changed = true }
+      if (next.email !== a.email || next.plan !== a.plan || planChanged || next.orgId !== a.orgId || label !== a.label) {
+        Object.assign(a, next, { label })
+        if (!a.orgId) delete a.orgId
+        changed = true
+      }
     }
     if (!changed) return
     await this.save()
@@ -428,23 +455,37 @@ export class Providers extends Feature {
       const bin = this.binary(provider).path
       const cli = bin ? await this.identity(provider, undefined, bin) : { signedIn: false }
       const saved = file[provider].cli
-      out.push({ id: CLI_ACCOUNT, provider, label: saved?.label ?? cli.email ?? saved?.email ?? OWN_LOGIN[provider], email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn })
+      out.push({ id: CLI_ACCOUNT, provider, label: saved?.label ?? cli.email ?? saved?.email ?? OWN_LOGIN[provider], email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn, ...this.extras(provider, CLI_ACCOUNT) })
       for (const a of file[provider].accounts) {
         const key = a.auth === 'apiKey'
         const legacy = provider === 'claude' && !key && !a.home
         const signedIn = key ? this.keySignedIn(a.id) : legacy ? this.tokenSignedIn(a.id)
           : provider === 'claude' ? a.signedIn !== false && !this.moved(a)
             : a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id, signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}) })
+        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id, signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}), ...this.extras(provider, a.id) })
       }
     }
     return out
+  }
+
+  /** What a row adds (KERNEL-616): the MCP servers that need a sign-in, as last checked, and the models it lacks, as last read. */
+  private extras(provider: Provider, id: string): Pick<AccountProfile, 'mcpSignIns' | 'missingModels'> {
+    const signIns = provider === 'claude' ? this.mcpSignIns.get(id) : undefined
+    const missing = this.missing(provider, id)
+    return { ...(signIns ? { mcpSignIns: signIns } : {}), ...(missing ? { missingModels: missing } : {}) }
   }
 
   /** Tells every window the accounts changed. */
   async pushAccounts() {
     const accounts = await this.list().catch(() => undefined)
     if (accounts && !this.stopped) bus.push({ type: 'accounts', accounts })
+  }
+
+  /** Every account, told to every window too, for an action's answer. */
+  private async pushList(): Promise<AccountProfile[]> {
+    const accounts = await this.list()
+    if (!this.stopped) bus.push({ type: 'accounts', accounts })
+    return accounts
   }
 
   private step(add: AccountAddStep) { if (!this.stopped) bus.push({ type: 'account.add', add }) }
@@ -526,7 +567,7 @@ export class Providers extends Feature {
    * Add account. Claude runs `claude auth login` in a new folder of the account's own, and Codex signs in with ChatGPT in a
    * new home of its own (KERNEL-406, KERNEL-567). Each reads its email and plan from the account, and its email names it until
    * it is renamed. The new account is added but not used until the user switches to it, or Kernel does at a limit once the
-   * user turned that on (KERNEL-568).
+   * user turned that on (KERNEL-568). A login Kernel already has is refused and its new folder or home goes (KERNEL-616).
    */
   async add(provider: Provider): Promise<AccountProfile> {
     if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
@@ -544,6 +585,7 @@ export class Providers extends Feature {
     await this.linkCodexHome(home)
     try {
       const who = await this.codexSignIn(home)
+      if (await this.alreadyIn('codex', who)) throw new Error(ALREADY_IN)
       const stored: StoredAccount = { id, label: who.email || 'ChatGPT account', email: who.email, plan: who.plan, signedIn: true, createdAt: Date.now() }
       this.load().codex.accounts.push(stored)
       await this.save()
@@ -555,13 +597,39 @@ export class Providers extends Feature {
     }
   }
 
+  /**
+   * Whether a login that just signed in is one Kernel has: an added account of the provider, or its CLI's own login while
+   * that is signed in. The same email is the same account, and on Claude the same organization too when both are known,
+   * since one email can have a personal plan and a Team seat. Codex says only the email (KERNEL-616).
+   */
+  private async alreadyIn(provider: Provider, who: { email?: string; orgId?: string }): Promise<boolean> {
+    const email = who.email?.toLowerCase()
+    if (!email) return false
+    const same = (o: { email?: string; orgId?: string } | undefined) => o?.email?.toLowerCase() === email && (!o.orgId || !who.orgId || o.orgId === who.orgId)
+    if (this.load()[provider].accounts.some((a) => a.auth !== 'apiKey' && same(a))) return true
+    const bin = this.binary(provider).path
+    if (!bin) return false
+    if (provider === 'claude') {
+      const cli = await claudeStatus(bin)
+      return !!cli?.signedIn && same(cli)
+    }
+    const r = await readCodexAccount(bin, undefined)
+    return r.account?.type === 'chatgpt' && same({ email: r.account.email ?? undefined })
+  }
+
   /** A full Claude login in the new account's folder. Never `claude setup-token` (KERNEL-567). */
   private async addClaude(id: string): Promise<AccountProfile> {
     const home = this.claudeHome(id)
     try {
       const who = await this.claudeLogin(home)
+      if (await this.alreadyIn('claude', who)) {
+        // The new folder's login goes with its Keychain item. The account's other login stays signed in.
+        const bin = this.binary('claude').path
+        if (bin) await logoutClaude(bin, home).catch(() => undefined)
+        throw new Error(ALREADY_IN)
+      }
       const tier = planOf(who.subscriptionType)
-      const stored: StoredAccount = { id, label: who.email ?? 'Claude account', email: who.email, plan: who.plan, ...(tier !== 'unknown' ? { claudePlan: tier } : {}), home, signedIn: true, createdAt: Date.now() }
+      const stored: StoredAccount = { id, label: who.email ?? 'Claude account', email: who.email, plan: who.plan, ...(tier !== 'unknown' ? { claudePlan: tier } : {}), ...(who.orgId ? { orgId: who.orgId } : {}), home, signedIn: true, createdAt: Date.now() }
       this.load().claude.accounts.push(stored)
       await this.save()
       return { id, provider: 'claude', label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
@@ -672,7 +740,8 @@ export class Providers extends Feature {
    * idle processes end now (`restartProvider`). A limit on the account switched to holds its chats; one on the old account
    * no longer does. `reason` says who switched (KERNEL-568). From the limit banner or by Kernel at a limit, the account it
    * left had hit a window: the chats' next turns say so, and its reset sends a notification. `from` is the account it
-   * left, the one in use by default.
+   * left, the one in use by default. Agents that start on a model the account doesn't offer are named in the Inbox and on
+   * its row (`warnMissing`, KERNEL-616).
    */
   async switchTo(provider: Provider, accountId: string, o: { reason?: SwitchReason; from?: string } = {}): Promise<AccountProfile[]> {
     const file = this.load()
@@ -693,6 +762,7 @@ export class Providers extends Feature {
     // The account menu shows the new account, and the plan defaults follow its plan (KERNEL-225).
     if (provider === 'claude') await this.k.account.accountChanged()
     this.sessions.drainWaiting()
+    await this.warnMissing(provider, to)
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
     return accounts
@@ -710,14 +780,33 @@ export class Providers extends Feature {
    * with no rejected 5-hour or weekly window in `limits`, the lowest 5-hour use first and an account never read last. Never
    * an API key account, which bills per token, and never the one in use. Sign-ins are as Kernel last read them.
    */
-  spareAccount(provider: Provider, limits: RateLimit[], now = Date.now()): string | undefined {
+  spareAccount(provider: Provider, limits: RateLimit[], now = Date.now()): string | undefined { return this.spares(provider, limits, now)[0] }
+
+  /**
+   * The account a switch at a limit moves `provider` to (KERNEL-616): `spareAccount`'s pick, unless it doesn't offer a model
+   * agents on the provider start on and another account with room does. Each account's models are read once per login. An
+   * account Kernel can't read counts as offering them. When none with room offers them all, the pick stands.
+   */
+  async spareFor(provider: Provider, limits: RateLimit[], now = Date.now()): Promise<string | undefined> {
+    const ids = this.spares(provider, limits, now)
+    const need = [...this.pinned(provider).keys()].map(bareModel)
+    if (ids.length < 2 || !need.length) return ids[0]
+    for (const id of ids) {
+      const offered = await this.offeredOn(provider, id)
+      if (!offered || need.every((m) => offered.includes(m))) return id
+    }
+    return ids[0]
+  }
+
+  /** Every account `spareAccount` could pick, best first. */
+  private spares(provider: Provider, limits: RateLimit[], now: number): string[] {
     const file = this.load()[provider]
     const signedIn = (a: StoredAccount) => a.auth !== 'apiKey' && (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
       : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
     const ids = [...(file.cli?.signedIn !== false ? [CLI_ACCOUNT] : []), ...file.accounts.filter(signedIn).map((a) => a.id)].filter((id) => id !== (file.active ?? CLI_ACCOUNT))
     const of = (id: string) => limits.filter((l) => limitProvider(l) === provider && (l.accountId ?? CLI_ACCOUNT) === id)
     const used = (id: string) => of(id).find((l) => l.type === 'five_hour')?.utilization ?? Infinity
-    return ids.filter((id) => !blockingLimit(of(id), now)).sort((a, b) => used(a) - used(b))[0]
+    return ids.filter((id) => !blockingLimit(of(id), now)).sort((a, b) => used(a) - used(b))
   }
 
   /**
@@ -775,6 +864,8 @@ export class Providers extends Feature {
       await removeClaudeHome(home)
     }
     if (provider === 'codex') await rm(this.codexHome(accountId)!, { recursive: true, force: true })
+    this.mcpSignIns.delete(accountId)
+    this.offered.delete(`${provider}:${accountId}`)
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
     return accounts
@@ -854,6 +945,182 @@ export class Providers extends Feature {
     }
   }
 
+  // ---------- MCP sign-ins (KERNEL-616)
+
+  /**
+   * Shares the user-added MCP servers' sign-ins among every Claude login (`shareMcpSignIns`): the CLI's own, and each added
+   * login whose folder still matches the path it signed in with. At most once every SHARE_EVERY_MS unless `force`. A server
+   * a login got leaves that account's `mcpSignIns`. Without a Keychain (tests that don't pass one) nothing is shared.
+   */
+  private shareMcp(o: { force?: boolean } = {}) {
+    const keychain = this.o.keychain
+    if (!keychain || this.stopped || (!o.force && Date.now() - this.sharedAt < SHARE_EVERY_MS)) return
+    this.sharedAt = Date.now()
+    const logins = [{ id: CLI_ACCOUNT, item: credentialsItem(process.env), dir: this.claudeRoot() }]
+    for (const a of this.load().claude.accounts) if (a.home && !this.moved(a)) logins.push({ id: a.id, item: credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), dir: a.home })
+    let got: Map<string, string[]>
+    try { got = shareMcpSignIns(keychain, logins) } catch { return }
+    let changed = false
+    for (const l of logins) {
+      const servers = got.get(l.dir) ?? []
+      const list = this.mcpSignIns.get(l.id)
+      if (!list?.some((s) => servers.includes(s.server))) continue
+      this.mcpSignIns.set(l.id, list.filter((s) => !servers.includes(s.server)))
+      changed = true
+    }
+    if (changed) void this.pushAccounts()
+  }
+
+  /**
+   * The folder of a Claude login whose MCP servers Kernel checks and signs in: undefined for the CLI's own, an added login's
+   * folder otherwise. A key account has no login of its own, so its processes use the CLI's sign-ins.
+   */
+  private mcpHome(accountId: string): string | undefined {
+    if (accountId === CLI_ACCOUNT) return undefined
+    const a = this.stored('claude', accountId)
+    if (!a) throw new Error('That account is no longer in Kernel.')
+    if (a.auth === 'apiKey') throw new Error("This account's MCP servers use Claude Code's own login. Check them there.")
+    if (!a.home || this.moved(a)) throw new Error('Sign this account in again first.')
+    return a.home
+  }
+
+  /** A Claude process's environment on a login, as its sessions get it, for the MCP check and sign-in. */
+  private mcpEnv(accountId: string, home: string | undefined): Record<string, string> {
+    return sessionEnv(process.env, this.claudeEnv(home ? accountId : CLI_ACCOUNT))
+  }
+
+  /**
+   * Which MCP servers need a sign-in on a Claude login (`accounts.checkMcp`). The sign-ins are shared first, then Claude Code
+   * starts on the login in the home folder, lists its servers and stops, sending no message. What is left is a claude.ai
+   * connector, or a server no login has signed in to.
+   */
+  async checkMcp(accountId: string): Promise<AccountProfile[]> {
+    const home = this.mcpHome(accountId)
+    this.shareMcp({ force: true })
+    const list = await probeClaudeMcp(this.home, { env: this.mcpEnv(accountId, home), executable: claudeExecutable(this.settings.providers?.claude) })
+    this.mcpSignIns.set(accountId, list.filter((s) => s.status === 'needs-auth').map((s) => ({ server: s.name, connector: isConnector(s.name) || (s.source ?? s.scope) === 'claudeai' })))
+    return this.pushList()
+  }
+
+  /**
+   * Signs one MCP server in on a Claude login (`accounts.mcpSignIn`): `claude mcp login` in its folder, which opens the
+   * browser, one sign-in at a time like Add account. A user-added server's new sign-in is shared with every login at once.
+   * A claude.ai connector finishes on claude.ai and loads from the account's next session, so it stays listed until the
+   * next check.
+   */
+  async mcpSignIn(accountId: string, server: string): Promise<AccountProfile[]> {
+    const home = this.mcpHome(accountId)
+    const name = server.trim()
+    if (!name) throw new Error('Name the MCP server to sign in to.')
+    if (this.adding.has('claude')) throw new Error('A sign-in is already open. Finish or cancel it first.')
+    const bin = this.mustBinary('claude')
+    const connector = isConnector(name)
+    const step = (s: Pick<McpSignInStep, 'step' | 'url' | 'error'>) => { if (!this.stopped) bus.push({ type: 'account.mcpSignIn', signIn: { accountId, server: name, ...(connector ? { connector } : {}), ...s } }) }
+    const run = loginMcp(bin, name, { env: this.mcpEnv(accountId, home), cwd: this.home, timeoutMs: SIGN_IN_MS, onLink: (url) => step({ step: 'browser', url }) })
+    this.adding.set('claude', { cancel: run.cancel })
+    try { await run.done } catch (e) {
+      step({ step: 'failed', error: (e as Error).message })
+      throw e
+    } finally { this.adding.delete('claude') }
+    step({ step: 'done' })
+    if (!connector) {
+      const list = this.mcpSignIns.get(accountId)
+      if (list) this.mcpSignIns.set(accountId, list.filter((s) => s.server !== name))
+      this.shareMcp({ force: true })
+    }
+    return this.pushList()
+  }
+
+  // ---------- models an account offers (KERNEL-616)
+
+  /**
+   * Reads the models an account offers, `cli` for the CLI's own login: Claude Code's initialize answer on it, which sends
+   * no message, or Codex's `model/list` in its home. Ids are kept bare. A Claude row counts by its own id, the model id it
+   * resolves to and the model its alias names. Tests swap it, so none starts a CLI.
+   */
+  readModels = async (provider: Provider, accountId: string): Promise<string[]> => {
+    if (provider === 'claude') {
+      const rows = await claudeModels(this.home, { env: this.claudeEnv(accountId), bin: claudeExecutable(this.settings.providers?.claude) })
+      return rows.flatMap((m) => [m.value, m.resolvedModel, MODELS.find((x) => x.id.split('-')[1] === bareModel(m.value))?.id]).filter((id): id is string => !!id).map(bareModel)
+    }
+    const id = accountId === CLI_ACCOUNT ? undefined : accountId
+    return (await readCodexModels(this.mustBinary('codex'), id ? this.codexHome(id) : undefined, id ? this.apiKey('codex', id) : undefined)).map((m) => bareModel(m.id))
+  }
+
+  /** What an account's models follow: its email and plan. Undefined while it reads signed out. */
+  private loginKey(provider: Provider, accountId: string): string | undefined {
+    const file = this.load()[provider]
+    if (accountId === CLI_ACCOUNT) return file.cli?.signedIn === false ? undefined : `${file.cli?.email ?? ''}`
+    const a = this.stored(provider, accountId)
+    return !a || a.signedIn === false ? undefined : `${a.email ?? ''}|${a.plan ?? ''}|${a.auth ?? ''}`
+  }
+
+  /**
+   * The models an account offers, read once per login (`loginKey`), so a new plan reads them again. Undefined when Kernel
+   * can't tell: the app didn't ask for pin checks (tests), the account reads signed out, or the read failed or found none.
+   */
+  private async offeredOn(provider: Provider, accountId: string): Promise<string[] | undefined> {
+    if (!this.o.checkPins) return undefined
+    const login = this.loginKey(provider, accountId)
+    if (login === undefined) return undefined
+    const had = this.offered.get(`${provider}:${accountId}`)
+    if (had?.login === login) return had.ids
+    const ids = await this.readModels(provider, accountId).catch(() => [] as string[])
+    if (!ids.length || this.stopped) return undefined
+    this.offered.set(`${provider}:${accountId}`, { login, ids })
+    return ids
+  }
+
+  /**
+   * The models agents on `provider` start on, by their role's default or their file's pin (`Team.pickFor`, KERNEL-550), each
+   * with the names of the agents on it, across the open rooms whose team Kernel has read. Before any is read, the roles'
+   * own defaults, named by role.
+   */
+  private pinned(provider: Provider): Map<string, Set<string>> {
+    const out = new Map<string, Set<string>>()
+    const add = (model: string, name: string) => out.set(model, (out.get(model) ?? new Set()).add(name))
+    let read = false
+    for (const r of this.store.rooms()) {
+      if (r.archived) continue
+      for (const a of this.k.team.agentsSync(r.id)) {
+        read = true
+        const pick = this.k.team.pickFor(a)
+        if (pick.provider === provider && pick.model) add(pick.model, a.name)
+      }
+    }
+    if (!read) for (const [role, pick] of Object.entries(this.settings.models.roles) as [Role, { provider: Provider; model: string }][]) if (pick.provider === provider && pick.model) add(pick.model, ROLE_NAMES[role])
+    return out
+  }
+
+  /** The models agents on `provider` start on that the account doesn't offer, by what Kernel last read of it, or `offered`. */
+  private missing(provider: Provider, accountId: string, offered?: string[]): MissingModel[] | undefined {
+    const had = this.offered.get(`${provider}:${accountId}`)
+    const ids = offered ?? (had && had.login === this.loginKey(provider, accountId) ? had.ids : undefined)
+    if (!ids?.length) return undefined
+    const out = [...this.pinned(provider)].filter(([model]) => !ids.includes(bareModel(model)))
+      .map(([model, names]) => ({ model, label: MODELS.find((m) => m.id === model)?.label ?? model, agents: [...names].sort() }))
+    return out.length ? out : undefined
+  }
+
+  /**
+   * After a switch: when agents start on a model the account doesn't offer, one Inbox notice a day names the models and the
+   * agents, before their next turns fail there. The account's row says the same (`missingModels`).
+   */
+  private async warnMissing(provider: Provider, accountId: string) {
+    const missing = this.missing(provider, accountId, await this.offeredOn(provider, accountId))
+    if (!missing || this.stopped) return
+    const name = this.label(provider, accountId)
+    const models = joinLabels(missing.map((m) => m.label))
+    const agents = joinLabels([...new Set(missing.flatMap((m) => m.agents))].sort())
+    const title = `${name} doesn't offer ${models}`
+    const day = new Date().toISOString().slice(0, 10)
+    this.notifications.notice({
+      id: `n-models-${provider}-${accountId}-${missing.map((m) => m.model).join('+')}-${day}`, title, heading: title,
+      sub: `${agents} can't run on it. Pick another model in Settings, Models.`,
+      body: `${name} doesn't offer ${models}, so ${agents} can't run on it. Pick another model for them in Settings, Models, or switch to another account.`
+    })
+  }
+
   handlers() {
     return {
       'providers.status': async ({ provider }) => this.status(provider),
@@ -869,6 +1136,8 @@ export class Providers extends Feature {
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
+      'accounts.checkMcp': async ({ accountId }) => this.checkMcp(accountId),
+      'accounts.mcpSignIn': async ({ accountId, server }) => this.mcpSignIn(accountId, server),
       'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }
