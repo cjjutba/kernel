@@ -67,7 +67,9 @@
 .cr-search svg { position: absolute; left: 11px; top: 10px; color: var(--muted); }
 .cr-search input { width: 100%; height: 34px; padding: 0 12px 0 32px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); outline: none; font-size: 13px; }
 .cr-search input:focus { border-color: var(--ink-3); }
-.cr-list { display: flex; flex-direction: column; gap: 2px; max-height: 276px; overflow-y: auto; }
+/* The list bleeds to the modal's edge, past .rm-pad's 18px, and pads itself back, so its thumb sits on the edge and rows stay put (KERNEL-602). The gutter is
+   held, as in the sidebar's .sb-scroll, so rows are the same width whether or not the list scrolls: 18px less the 6px thumb. OpenFolder sets its own margin-top. */
+.cr-list { display: flex; flex-direction: column; gap: 2px; max-height: 276px; overflow-y: auto; scrollbar-gutter: stable; margin-right: -18px; padding-right: 12px; }
 .cr-repo { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--r); background: transparent; color: var(--ink-2); text-align: left; flex-shrink: 0; width: 100%; }
 .cr-repo:hover { background: var(--nav-hover); }
 .cr-repo[aria-checked='true'] { border-color: var(--line-3); background: var(--surface-3); }
@@ -112,7 +114,8 @@
 }
 
 /* TrustScripts: the scripts a room waits on (KERNEL-218) */
-.ts-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+/* Bleeds past .confirm-body's 20px the same way as .cr-list (KERNEL-602): 20px less the 6px thumb. */
+.ts-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; scrollbar-gutter: stable; margin-right: -20px; padding-right: 14px; }
 .ts-item { display: flex; flex-direction: column; gap: 6px; }
 .ts-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
 .ts-error { margin: 0; font-size: 13px; color: var(--ink-2); }

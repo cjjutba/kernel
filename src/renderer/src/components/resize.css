@@ -5,9 +5,10 @@
    90 degrees: 8px tall on the hairline between the right panel's panes, with the glow fading toward both ends (KERNEL-513, PanelResize.png). */
 .resize-handle { --edge-glow: color-mix(in srgb, var(--ink) 45%, transparent); position: absolute; top: 0; bottom: 0; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
 .resize-handle:focus-visible { outline-offset: -2px; }
-/* The sidebar's handle fills its 8px right gutter. A right panel's handle is centred on the panel's 1px left border, which is the panel's own, so the strip starts 1px outside it. */
+/* The sidebar's handle fills its 8px right gutter. A right panel's handle starts on the panel's own 1px left border and runs 7px into the panel, so it never
+   covers the thumb of the scroller to its left, the chat's, which sits on that border (KERNEL-602). */
 .resize-handle[data-edge='right'] { right: 0; }
-.resize-handle[data-edge='left'] { left: -4px; }
+.resize-handle[data-edge='left'] { left: -1px; }
 /* The bottom pane's handle sits on its 1px top border the same way, across the full width. */
 .resize-handle[data-edge='top'] { top: -5px; bottom: auto; left: 0; right: 0; width: auto; height: 8px; cursor: row-resize; }
 
@@ -20,7 +21,7 @@
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
 .resize-handle[data-edge='right']::after { right: -2px; }
-.resize-handle[data-edge='left']::after { left: calc(50% - 2px); }
+.resize-handle[data-edge='left']::after { left: -1px; }
 .resize-handle[data-edge='top']::after { top: 3px; bottom: auto; left: 0; right: 0; width: auto; height: 3px; transform: scaleX(0.6); }
 .resize-handle:hover::after, .resize-handle:focus-visible::after, .resize-handle[data-dragging]::after {
   opacity: 1; transform: none;
