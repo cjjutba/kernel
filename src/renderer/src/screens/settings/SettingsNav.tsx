@@ -81,7 +81,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
     <nav ref={nav} aria-label="Settings" className="set-nav" style={{ width }}>
-      <div className="drag" style={{ height: 42, flexShrink: 0 }} />
+      <div className="drag" style={{ height: 53, flexShrink: 0 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
         <label htmlFor="set-q" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>Search settings</label>

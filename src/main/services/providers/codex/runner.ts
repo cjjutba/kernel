@@ -8,13 +8,17 @@ import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL } from '../../plans'
 import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
+import { toolPolicy } from '../../agentTools'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { codexEnv, KERNEL_VERSION } from './client'
 import { initializeParams, Rpc, RpcError } from './rpc'
-import { callTool, CODEX_TOOL_PREFIX, toolOutput, toolSpecs } from './tools'
+import { callTool, CODEX_TOOL_PREFIX, mcpOverrides, toolOutput, toolSpecs } from './tools'
+import type { JsonValue } from './protocol/serde_json/JsonValue'
 import type { CommandExecutionRequestApprovalParams } from './protocol/v2/CommandExecutionRequestApprovalParams'
 import type { CommandExecutionRequestApprovalResponse } from './protocol/v2/CommandExecutionRequestApprovalResponse'
+import type { ConfigReadParams } from './protocol/v2/ConfigReadParams'
+import type { ConfigReadResponse } from './protocol/v2/ConfigReadResponse'
 import type { DynamicToolCallParams } from './protocol/v2/DynamicToolCallParams'
 import type { FileChangeRequestApprovalParams } from './protocol/v2/FileChangeRequestApprovalParams'
 import type { FileChangeRequestApprovalResponse } from './protocol/v2/FileChangeRequestApprovalResponse'
@@ -215,10 +219,11 @@ export class CodexRunner implements Runner {
     await this.rpc.request('initialize', initializeParams(KERNEL_VERSION), { timeoutMs: 60_000 })
     this.rpc.notify('initialized', {})
     this.gitDir = await gitCommonDir(ws.path).catch(() => undefined)
+    const config = await this.mcpConfig(ws.path)
     // The same in every mode (KERNEL-447). Under `untrusted` Kernel sees every command Codex doesn't trust on its own, so Never
     // allow, network off and protected branches hold in Bypass permissions too, and no `approvalsReviewer` ever answers for the
     // user: Auto runs as Accept edits on Codex until Always ask can reach the user under `auto_review` (KERNEL-433).
-    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality }
+    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality, ...(config ? { config } : {}) }
     if (this.threadId) {
       try {
         const r = await this.rpc.request<ThreadStartResponse>('thread/resume', { threadId: this.threadId, ...settings }, { timeoutMs: 60_000 })
@@ -233,6 +238,25 @@ export class CodexRunner implements Runner {
     this.threadId = r.thread.id
     this.host.managed(r.thread.id)
     return r.thread.id
+  }
+
+  /**
+   * The agent file's limits on Codex's MCP servers, as the thread's config (KERNEL-451). Codex says which servers it has
+   * for this folder. When it can't, the chat says the file doesn't limit them, rather than failing to start.
+   */
+  private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
+    const agent = this.host.agent
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools })
+    if (!policy) return undefined
+    try {
+      const r = await this.rpc!.request<ConfigReadResponse>('config/read', { cwd } satisfies ConfigReadParams, { timeoutMs: 30_000 })
+      const servers = r?.config?.mcp_servers
+      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {})
+      return Object.keys(config).length ? config : undefined
+    } catch {
+      this.host.item({ kind: 'note', id: `codex-mcp-${Date.now()}`, ts: Date.now(), text: `Kernel couldn't read Codex's MCP servers, so ${agent?.name ?? 'this agent'}'s file doesn't limit them in this chat.` })
+      return undefined
+    }
   }
 
   private async turn(parts: ChatPart[]) {
