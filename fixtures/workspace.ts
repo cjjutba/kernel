@@ -1527,6 +1527,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
   PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
   PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
+  // The capsule on a neutral band: soft Create PR with its icon and its own menu square, and a closed PR's Reopen (KERNEL-528).
+  PrNoPrHidden: headerScene('none', []),
+  PrClosedHidden: headerScene('closed', [prNote('h-note', 'PR #147 was closed without merging.', 'closed')]),
   PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
   HeaderBranchTooltip: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   WorkspaceToast: prScene('merged', [], {

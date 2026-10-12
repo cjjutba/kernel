@@ -4,7 +4,7 @@ import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { NO_RULES, actionKey, afterArchive, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { NO_RULES, actionIcon, actionKey, afterArchive, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { openRoom } from '../../../lead'
 import { archivedByHand } from '../byHand'
@@ -126,32 +126,33 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   // `display: contents` keeps the parent's flex layout and hands the band's tone to everything inside. The capsule is the one
   // wrapper that is a box of its own.
   const tone = (children: ReactNode) => <span className={capsule ? 'pr-tone pr-cap' : 'pr-tone'} data-tone={band}>{children}</span>
+  // In the right panel the head is one block in two rows: the state with the link at its right, in line with the chat header, then
+  // the actions at full width, in line with the chat's tab row. The capsule keeps one row: the state, the link, then the actions
+  // (KERNEL-528). `extra` renders outside the rows, as the Merge anyway confirmation does.
+  const out = (buttons: ReactNode, extra?: ReactNode) => spread
+    ? tone(<><div className="pr-r1">{state}{gap}{link}</div>{buttons && <div className="pr-r2">{buttons}</div>}{extra}</>)
+    : tone(<>{state}{link}{buttons}{extra}</>)
 
-  if (busy) return tone(<>{link}{state}{gap}{spinner(busy)}</>)
+  if (busy) return out(spinner(busy))
 
-  if (view.merged) return tone(
+  if (view.merged) return out(
     <>
-      {link}
-      {state}
-      {gap}
       <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} /><span className="pr-btn-label">Continue</span></Button>
       <Button className="pr-solid" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
     </>
   )
 
-  // Create PR stays ink on the neutral band; Merge PR takes the green solid; everything else is a soft button in the band's tone.
+  // Merge PR takes the green solid; everything else is a soft button in the band's tone, Create PR on the neutral band included, so a
+  // lone action is no full-width white bar (KERNEL-528). Each leads with its icon.
   const b = view.button
   const solid = b?.kind === 'primary' && band === 'ready'
-  const ink = b?.kind === 'primary' && band === 'idle'
+  const icon = b && actionIcon(b.label, b.action)
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{b.label}</Button>
+      : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} stroke={1.5} />}{b.label}</Button>
 
-  return tone(
+  const buttons = !main && !view.archive ? null : (
     <>
-      {link}
-      {state}
-      {gap}
       {view.caret ? (
         <span className="pr-split">
           {main}
@@ -170,7 +171,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
         </span>
       ) : main}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
-      {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
     </>
   )
+  return out(buttons, confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body))
 }

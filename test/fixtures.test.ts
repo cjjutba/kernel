@@ -67,6 +67,8 @@ const noCanvas = [
   'PrReadyHidden',
   'PrBlockers', // Blockers on the latest commit: Blockers found in the band, with a soft Merge anyway (KERNEL-501)
   'PrCiFailHidden',
+  'PrNoPrHidden', // the capsule's soft Create PR with its own menu square (KERNEL-528)
+  'PrClosedHidden', // the capsule's Reopen and Archive on a closed PR (KERNEL-528)
   'PrMergedHiddenLong',
   'HeaderBranchTooltip',
   // Plan mode with nothing waiting, typing in it, and typing changes to a waiting plan (KERNEL-322, drawn in design/redesign/PlanStates.png).
