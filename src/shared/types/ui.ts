@@ -88,9 +88,10 @@ export type Modal =
   | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[]; held: HeldChat }
   /**
    * The first switch into Bypass permissions, asked once (KERNEL-455). `roomId` is the room whose mode override is being set,
-   * and none means the app's mode in Settings, Permissions.
+   * and none means the app's mode in Settings, Permissions. `chatId` is a chat that picked Bypass permissions in its composer: only
+   * that chat's own mode is set, and Settings stays as it is (KERNEL-456).
    */
-  | { name: 'confirm'; kind: 'bypass'; roomId?: string }
+  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
 
@@ -101,7 +102,7 @@ export type Modal =
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
-  | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
+  | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
   | 'roomTracker'
 

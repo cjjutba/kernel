@@ -1,6 +1,6 @@
 import { useId } from 'react'
 import { rememberBypassConfirmed } from '../bypassConfirm'
-import { saveAppMode, saveRoomMode } from '../permissionModes'
+import { saveAppMode, saveChatMode, saveRoomMode } from '../permissionModes'
 import { actions, useStore } from '../store'
 import { ConfirmDialog, useBusy } from '../ui'
 import './confirmBypass.css'
@@ -14,15 +14,16 @@ const STOPS = [
 ]
 
 /**
- * The first switch into Bypass permissions (ConfirmBypass.png, KERNEL-455). It saves Bypass as the app's mode, or as `roomId`'s
- * override, and never shows again once the user has said yes. Cancelling saves nothing and asks again next time.
+ * The first switch into Bypass permissions (ConfirmBypass.png, KERNEL-455). It saves Bypass as the app's mode, as `roomId`'s override,
+ * or as the own mode of `chatId`, the chat whose composer picked it (KERNEL-456), and never shows again once the user has said yes.
+ * Cancelling saves nothing and asks again next time.
  */
-export function ConfirmBypass({ roomId }: { roomId?: string }) {
+export function ConfirmBypass({ roomId, chatId }: { roomId?: string; chatId?: string }) {
   const id = useId()
   const onlyInWorktrees = useStore((s) => s.settings?.permissions.bypassOnlyInWorktrees ?? true)
   const [busy, run] = useBusy()
   const use = () => run('use', async () => {
-    const saved = roomId ? await saveRoomMode(roomId, 'bypassPermissions') : await saveAppMode('bypassPermissions')
+    const saved = chatId ? await saveChatMode(chatId, 'bypassPermissions') : roomId ? await saveRoomMode(roomId, 'bypassPermissions') : await saveAppMode('bypassPermissions')
     if (!saved) return
     rememberBypassConfirmed()
     actions.ui.closeModal()
