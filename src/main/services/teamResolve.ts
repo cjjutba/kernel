@@ -3,6 +3,7 @@ import type { AgentDef, AgentWarning, TeamConfig } from '@shared/types'
 import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, RESERVED_AGENT_IDS } from '@shared/team'
 import type { Builtins } from './builtins'
 import { canOpenPr } from './agentTools'
+import { isUnreadable } from './agents'
 
 /** Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). */
 export interface Resolved {
@@ -17,15 +18,17 @@ export interface Resolved {
  * - Lead: `[team] lead`, else a file marked Lead (the first by name when several are), else Kernel's Rowan.
  * - Reviewer: `[team] reviewer` (`none` for nobody), else the first other file whose role says review, else Kernel's Theo.
  * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request.
- * A file with a reserved id, or the same id as an earlier file, is left out with a warning. The Lead comes first, then by name.
+ * A file with a reserved id, or the same id as an earlier file, is left out with a warning. A file Kernel can't read stays
+ * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent leads or reviews only
+ * when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first, then by name.
  */
 export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtins: Builtins }): Resolved {
   const cfg = o.config ?? {}
   const warnings = new Map<string, AgentWarning[]>()
   const warn = (id: string | undefined, w: AgentWarning) => { if (id) warnings.set(id, [...(warnings.get(id) ?? []), w]) }
 
-  // Files in name order, so the same folder always resolves the same way.
-  const byFile = [...o.files].sort((a, b) => basename(a.file).localeCompare(basename(b.file)))
+  // Files in name order, so the same folder always resolves the same way. A file Kernel can read keeps its id over one it can't.
+  const byFile = [...o.files].sort((a, b) => Number(isUnreadable(a)) - Number(isUnreadable(b)) || basename(a.file).localeCompare(basename(b.file)))
   const files: AgentDef[] = []
   const skipped: string[] = []
   for (const a of byFile) {
@@ -35,7 +38,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
     files.push(a)
   }
   const byName = (a: AgentDef, b: AgentDef) => a.name.localeCompare(b.name)
-  const named = (id: string | undefined) => (id ? files.find((a) => a.id === id) : undefined)
+  const named = (id: string | undefined) => (id ? files.find((a) => a.id === id && !isUnreadable(a)) : undefined)
 
   // The Lead.
   let lead: AgentDef | undefined
@@ -43,7 +46,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   if (cfg.lead === KERNEL_LEAD && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'setting' }
   else if (named(cfg.lead)) { lead = named(cfg.lead); leadFrom = 'setting' }
   else if (cfg.lead) warn('$lead', { kind: 'setting-missing', detail: `lead = "${cfg.lead}"` })
-  const marked = files.filter((a) => a.lead).sort(byName)
+  const marked = files.filter((a) => a.lead && a.origin !== 'plugin').sort(byName)
   if (!lead && marked.length) { lead = marked[0]; leadFrom = 'file' }
   if (!lead && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'builtin' }
   for (const a of marked) if (a !== lead) warn(a.id, { kind: 'second-lead', detail: lead?.name })
@@ -56,15 +59,17 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   else if (named(cfg.reviewer) && named(cfg.reviewer) !== lead) { reviewer = named(cfg.reviewer); reviewerFrom = 'setting' }
   else if (cfg.reviewer) warn('$reviewer', { kind: 'setting-missing', detail: `reviewer = "${cfg.reviewer}"` })
   if (!reviewer && cfg.reviewer !== NO_REVIEWER) {
-    reviewer = files.filter((a) => a !== lead && /\breview/i.test(a.role)).sort(byName)[0]
+    reviewer = files.filter((a) => a !== lead && a.origin !== 'plugin' && /\breview/i.test(a.role)).sort(byName)[0]
     if (reviewer) reviewerFrom = 'file'
     else if (o.builtins.reviewer) { reviewer = o.builtins.reviewer; reviewerFrom = 'builtin' }
   }
 
   const team: AgentDef[] = files.map((a) => {
+    // Its error is the one thing to say about it.
+    if (isUnreadable(a)) return { ...a, lead: false, reviewer: false, member: false }
     const isLead = a === lead
     const isReviewer = a === reviewer
-    const opens = canOpenPr(a.tools)
+    const opens = canOpenPr(a.tools, a.disallowedTools)
     const member = isLead ? false : cfg.helpers?.includes(a.id) ? false : cfg.members?.includes(a.id) ? true : opens
     if (!isLead && !isReviewer && !opens && !cfg.members?.includes(a.id) && !cfg.helpers?.includes(a.id)) warn(a.id, { kind: 'cant-open-pr' })
     if (!a.description.trim()) warn(a.id, { kind: 'no-description' })
@@ -79,7 +84,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   for (const file of skipped) warn(lead?.id, { kind: 'reserved-id', detail: file })
 
   const agents = team
-    .map((a) => (warnings.get(a.id)?.length ? { ...a, warnings: warnings.get(a.id) } : a))
+    .map((a) => (warnings.get(a.id)?.length ? { ...a, warnings: [...(a.warnings ?? []), ...warnings.get(a.id)!] } : a))
     .sort((a, b) => Number(b.lead) - Number(a.lead) || byName(a, b))
   return { agents, leadFrom, reviewerFrom }
 }

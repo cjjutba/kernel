@@ -177,7 +177,6 @@ export function App() {
     const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
     return () => cancelIdleCallback(id)
   }, [booted])
-  useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
   // Usage data is asked about once, after the first room, in a build that can send it (KERNEL-397).
   const rooms = useStore((s) => s.rooms.length)
   useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, rooms, route.name, modal])

@@ -14,7 +14,8 @@ import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/servi
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
-import { callTool, toolSpecs } from '../src/main/services/providers/codex/tools'
+import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
+import { toolPolicy } from '../src/main/services/agentTools'
 import { fakeCodex, item, script } from './helpers/fakeCodex'
 import { tempRepo } from './helpers'
 
@@ -31,7 +32,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability'] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -46,7 +47,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const reached = { count: 0 }
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } })]
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => fake.env,
+    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
     codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined })
   })
@@ -341,6 +342,49 @@ describe('permission modes on Codex (KERNEL-447)', () => {
     await t.idle()
     expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
     expect(await t.sent('thread/start')).toHaveLength(1)
+  })
+})
+
+describe("an agent file's tools on Codex (KERNEL-451)", () => {
+  const servers = {
+    linear: { command: 'linear-mcp', args: [], enabled: true },
+    github: { url: 'https://api.githubcopilot.com/mcp/', enabled: true, disabled_tools: ['delete_repo'] },
+    sentry: { command: 'sentry-mcp', enabled: true },
+    old: { command: 'old-mcp', enabled: false }
+  }
+  const scoped = { ...noor, tools: ['Read', 'Edit', 'Bash', 'mcp__linear__get_issue', 'mcp__github'], disallowedTools: ['mcp__github__merge_pull_request'] } as AgentDef
+
+  it("starts and resumes the thread without the MCP servers and tools the agent file doesn't reach", async () => {
+    const t = track(await setup({ agent: scoped, mcp: JSON.stringify(servers) }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    expect((await t.sent('config/read')).map((m) => m.params)).toEqual([{ cwd: t.repo }])
+    const config = { 'mcp_servers.linear.enabled_tools': ['get_issue'], 'mcp_servers.github.disabled_tools': ['delete_repo', 'merge_pull_request'], 'mcp_servers.sentry.enabled': false }
+    expect((await t.sent('thread/start'))[0].params.config).toEqual(config)
+    t.sessions.stop('chat')
+    await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
+    await until(async () => (await t.sent('thread/resume')).length === 1)
+    expect((await t.sent('thread/resume'))[0].params.config).toEqual(config)
+  })
+
+  it("leaves Codex's servers alone for an agent with no tools line, and says so when Codex can't list them", async () => {
+    const open = track(await setup({ mcp: JSON.stringify(servers) }))
+    await open.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await open.idle()
+    expect(await open.sent('config/read')).toEqual([])
+    expect((await open.sent('thread/start'))[0].params).not.toHaveProperty('config')
+    const t = track(await setup({ agent: scoped, mcp: 'error' }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    expect((await t.sent('thread/start'))[0].params).not.toHaveProperty('config')
+    expect(t.of('note').map((n) => n.text)).toContain("Kernel couldn't read Codex's MCP servers, so Noor's file doesn't limit them in this chat.")
+  })
+
+  it('narrows the lists the user set for a server, and skips a name a config key can\'t hold', () => {
+    const policy = toolPolicy(['mcp__linear__get_issue', 'mcp__linear__list_issues', 'mcp__figma__get_code', 'mcp__my.server'])!
+    const user = { linear: { enabled_tools: ['list_issues', 'save_issue'] }, figma: { enabled_tools: ['get_image'] }, 'my.server': {}, notion: {} }
+    expect(mcpOverrides(policy, user)).toEqual({ 'mcp_servers.linear.enabled_tools': ['list_issues'], 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
+    expect(mcpOverrides(undefined, user)).toEqual({})
   })
 })
 
