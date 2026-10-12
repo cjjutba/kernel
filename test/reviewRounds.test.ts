@@ -151,6 +151,67 @@ describe('review rounds', () => {
     expect(sent).toEqual(['code', 'ux'])
     expect(of().reviewRound).toMatchObject({ n: 2, rounds: 3, kinds: ['code', 'ux'] })
   })
+
+  it('saves the [review] rounds that stopped a round, so the update agrees, and a raised value starts the next push\'s round (KERNEL-633)', async () => {
+    const { k, repo, push, of, chatOf, verdict, sent, record } = await setup({ files: { 'src/main/a.ts': 'a\n' } })
+    const policy = async (toml: string) => {
+      await mkdir(join(repo, '.kernel'), { recursive: true })
+      await writeFile(join(repo, '.kernel', 'settings.toml'), toml)
+      await git(repo, 'add', '-A')
+      await git(repo, 'commit', '-qm', 'Review policy')
+    }
+    await k.reviews.onReady(of().id)
+    await verdict('code', 'blockers')
+    // Round 1 of 2 left blockers, so they go back to Kai. Then the base branch lowers `rounds` to 1.
+    expect(k.reviews.reviewState(of()).stillBlocked).toBeUndefined()
+    await policy('[review]\nrounds = 1\n')
+    k.sessions.stop(chatOf('code').id)
+    record()
+    await push({ 'src/main/a.ts': 'try 1\n' })
+    await k.reviews.onReady(of().id)
+    expect(sent).toEqual([])
+    expect(of().reviewRound).toMatchObject({ n: 1, rounds: 1 })
+    const state = k.reviews.reviewState(of())
+    expect(state.stillBlocked).toEqual({ rounds: 1, kinds: ['code'] })
+    expect(decide({ ws: of(), name: 'Kai', events: [ready(of())] }, { allMerged: () => false, review: state }).todo).toEqual([
+      "PR #101 has new commits, but it was still blocked after 1 review round, so Kernel didn't review them. Don't send it back to Kai: tell the user what the code review found that is still open, and ask with ask_user how they want to go on."
+    ])
+    // Raising it again lets the next push start round 2.
+    await policy('[review]\nrounds = 3\n')
+    const head = await push({ 'src/main/a.ts': 'try 2\n' })
+    await k.reviews.onReady(of().id)
+    expect(sent).toEqual(['code'])
+    expect(of().reviewRound).toMatchObject({ n: 2, rounds: 3, head })
+  })
+
+  it('runs the kinds with no verdict again on the same head after the review workspace was archived, in the same round (KERNEL-633)', async () => {
+    const { k, of, rws, verdict } = await setup({ settings: UX_ON })
+    await k.reviews.onReady(of().id)
+    await verdict('ux', 'approved')
+    const round = of().reviewRound
+    const [first] = rws()
+    await k.archive.archiveWorkspace(first.id)
+    // CI runs again on the same commit.
+    await k.reviews.onReady(of().id)
+    const open = rws().filter((w) => w.status !== 'archived')
+    expect(open).toHaveLength(1)
+    expect(open[0].id).not.toBe(first.id)
+    expect(k.store.chats(open[0].id).map((c) => c.lens?.kind)).toEqual(['code'])
+    expect(of().reviewRound).toEqual(round)
+    // With that review workspace open, another ready on the head starts nothing more.
+    await k.reviews.onReady(of().id)
+    expect(rws().filter((w) => w.status !== 'archived')).toHaveLength(1)
+  })
+
+  it('starts nothing on the same head after archiving once every kind reported', async () => {
+    const { k, of, rws, verdict } = await setup({ settings: UX_ON })
+    await k.reviews.onReady(of().id)
+    await verdict('code', 'blockers')
+    await verdict('ux', 'approved')
+    await k.archive.archiveWorkspace(rws()[0].id)
+    await k.reviews.onReady(of().id)
+    expect(rws().filter((w) => w.status !== 'archived')).toHaveLength(0)
+  })
 })
 
 describe('review rounds near the usage limit', () => {
@@ -175,5 +236,21 @@ describe('review rounds near the usage limit', () => {
     await k.reviews.onReady(of().id)
     expect(of().reviewRound).toMatchObject({ kinds: ['code', 'ux'] })
     expect(of().reviewRound?.skipped).toBeUndefined()
+  })
+  it("passes on one kind's blockers while another waits for usage, and names the one that waits (KERNEL-633)", async () => {
+    const { k, of, rws, chatOf, verdict } = await setup({ settings: UX_ON })
+    ;(k.sessions as unknown as { mergeLimits: (l: RateLimit[]) => void }).mergeLimits([{ type: 'five_hour', status: 'allowed', utilization: 0.95, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    await k.reviews.onReady(of().id)
+    await vi.waitFor(() => expect(k.sessions.queueReason(chatOf('ux').id)).toBe('limit'), { timeout: 10_000, interval: 20 })
+    await verdict('code', 'blockers')
+    const state = k.reviews.reviewState(of())
+    // Still in progress, so auto-merge counts the UX review as not done.
+    expect(state).toMatchObject({ inProgress: true, reviewing: [], held: ['ux'], blocking: ['code'] })
+    const [r] = rws()
+    const review: TeamEvent = { n: 1, workspaceId: r.id, kind: 'review', pr: 101, review: { verdict: 'blockers', lens: 'code', summary: 'No.', blockers: [{ text: 'x' }], of: of().id, ofName: 'Kai', ofPr: 101, current: true } }
+    const ctx = { allMerged: () => false, workspace: (id: string) => k.store.workspace(id), stateOf: (id: string) => k.reviews.reviewState(k.store.workspace(id)!) }
+    expect(decide({ ws: r, name: 'Code review', events: [review] }, ctx).todo).toEqual([
+      `Send the code review's blockers to Kai with message_agent (workspace ${of().id}). The UX review waits for usage to drop below the limit, and its findings come in a later update.`
+    ])
   })
 })

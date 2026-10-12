@@ -307,8 +307,13 @@ export interface ReviewState {
   stale?: boolean
   /** The newest review workspace still open, to ask for another pass instead of a new one. `failed`: its setup failed. */
   open?: { workspaceId: string; agentId: string; name: string; failed?: boolean }
-  /** Required kinds whose review waits for usage to drop below the limit (KERNEL-552). They count as in progress. */
+  /**
+   * Required kinds whose review waits for usage to drop below the limit (KERNEL-552). They count as in progress, so a merge
+   * waits for them, but other kinds' blockers don't (KERNEL-633).
+   */
   held?: ReviewKind[]
+  /** Kernel is starting a review round (KERNEL-633). */
+  starting?: boolean
   /** Optional kinds the head's review round skipped to save usage (KERNEL-552). */
   skipped?: ReviewKind[]
   /**
@@ -323,6 +328,9 @@ export interface ReviewState {
  * left after the last review round Kernel runs (KERNEL-608).
  */
 const reviewHolds = (review: ReviewState | undefined): boolean => !!review && (review.blockers || !!review.stillBlocked)
+
+/** A review is setting up or working, or Kernel is starting one, not only kinds waiting for usage to drop (KERNEL-633). */
+const reviewRuns = (review: ReviewState): boolean => review.reviewing.length > 0 || !!review.starting || (review.inProgress && !review.held?.length)
 
 /** Every review that looked at the PR approved its latest commit, and none is still to report. */
 const allApproved = (review: ReviewState | undefined): boolean => !!review?.approved.length && !review.waiting.length && !review.blockers && !review.inProgress
@@ -911,11 +919,13 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         const ofAt = `(workspace ${r.of})`
         if (r.verdict === 'blockers' && r.lens && r.current && state) {
           // A kind's blockers on the head wait for the rest of its review round, so the author gets them all at once and the
-          // Lead reads them side by side. After the last round Kernel runs, they go to the user instead (KERNEL-552).
-          if (state.inProgress) break
+          // Lead reads them side by side. After the last round Kernel runs, they go to the user instead (KERNEL-552). A kind
+          // that waits for usage, maybe for hours, holds nothing back: the line names it instead (KERNEL-633).
+          if (reviewRuns(state)) break
           const ofPr = of?.prNumber ?? r.ofPr
-          if (state.stillBlocked) { wake(stillBlockedTodo(ofPr ? `PR #${ofPr}` : 'the PR', state.stillBlocked, r.ofName, false), true); break }
-          wake(blockersTodo(state.blocking.length ? state.blocking : [r.lens], r.ofName, ofAt), true)
+          const held = state.held?.length ? ` ${heldText(state.held)}, and ${state.held.length === 1 ? 'its findings come' : 'their findings come'} in a later update.` : ''
+          if (state.stillBlocked) { wake(stillBlockedTodo(ofPr ? `PR #${ofPr}` : 'the PR', state.stillBlocked, r.ofName, false) + held, true); break }
+          wake(blockersTodo(state.blocking.length ? state.blocking : [r.lens], r.ofName, ofAt) + held, true)
           break
         }
         if (r.verdict === 'blockers') {
