@@ -64,6 +64,20 @@
 .plan-note { font-size: 11.5px; color: var(--muted); }
 .plan-foot { padding: 6px; border-top: 1px solid var(--line-3); }
 
+/* The scrolling list in the sidebar frame, in the app and in Settings (KERNEL-597). The frame pads 0 8px 0 10px, so the list bleeds out to its edges and
+   pads itself back: the scrollbar lands on the column's right edge and rows stay where they were. The scrollbar is 6px and takes layout width, so the
+   right padding is 8px less that, and the gutter is always held so rows line up with the ones above whether or not the list scrolls. It is a thin thumb
+   with no track, drawn only while the pointer is over the list or it scrolls (useScrollIdle sets data-scrolling). The colour is a custom property on the list, since Chromium does not repaint a thumb whose only change is a :hover on the list (it did not in Settings). ::-webkit-scrollbar only:
+   scrollbar-width or scrollbar-color would switch these rules off. */
+.sb-scroll { --sb-thumb: transparent; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; margin: 0 -8px 0 -10px; padding: 0 2px 0 10px; }
+.sb-scroll:hover, .sb-scroll[data-scrolling] { --sb-thumb: var(--line-4); }
+.sb-scroll::-webkit-scrollbar { width: 6px; }
+.sb-scroll::-webkit-scrollbar-track { background: transparent; }
+.sb-scroll::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--sb-thumb); }
+/* The resize handle sits just outside the column, on the panel's 8px edge, so it never covers the thumb. Its glow stays on the panel's border. */
+.sidebar > .resize-handle[data-edge='right'] { right: -8px; }
+.sidebar > .resize-handle[data-edge='right']::after { right: auto; left: -1px; }
+
 /* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
 /* A workspace under the chat that started it sits one level in, 12px past the chat's icon: the sub row's 20px plus 12px. Chat rows keep the sub row's padding. */
