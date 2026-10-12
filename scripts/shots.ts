@@ -146,9 +146,16 @@ async function hoverTitle(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// PanelResize is the handle between the right panel's panes with the pointer on it, long enough for the glow to arrive (KERNEL-513).
+async function hoverSplitHandle(page: Page) {
+  await page.getByRole('separator', { name: 'Resize bottom panel' }).hover()
+  await page.waitForTimeout(400)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
+  PanelResize: hoverSplitHandle,
   NewWorkspaceFromGitHub: openIssuesTab,
   NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,

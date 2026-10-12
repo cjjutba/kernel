@@ -15,6 +15,8 @@ import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
+import { BottomResize } from './BottomResize'
+import { bottomKindOf } from './bottomSplit'
 import { FileIcon } from '../../components/FileIcon'
 import { FileTree } from './FileTree'
 import { gitDecoration } from './gitStatus'
@@ -219,18 +221,14 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   const right = (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
   // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
   const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
-  // While setup runs or has failed there is nothing to show here yet, so the files fold to their tabs and the log below takes the height.
-  // Picking a tab or Show files opens them again (KERNEL-430).
-  const [opened, setOpened] = useState<string>()
-  const folded = setupFolds(ws) && opened !== ws.id
-  const pick = (id: string) => { setOpened(ws.id); actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right }) }
+  const pick = (id: string) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })
   // A narrow panel scrolls its tabs sideways, so the one shown scrolls into view when it changes (KERNEL-489).
   const strip = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [right, folded, isLead])
+  useLayoutEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [right, isLead])
   return (
-    <div className={folded ? 'col' : 'col grow'} style={{ minHeight: 0 }}>
+    <div className="col grow" style={{ minHeight: 0 }}>
       <div ref={strip} className="panel-tabs" data-lead={isLead || undefined}>
-        <Tabs label="Workspace panel" value={folded ? '' : right} onChange={pick} tabs={[
+        <Tabs label="Workspace panel" value={right} onChange={pick} tabs={[
           // No count with nothing ready, as LeadPrsEmpty and LeadPrsNoneReady draw it (KERNEL-411).
           ...(isLead ? [{ id: 'prs', label: ready ? <>PRs {count(ready)}</> : 'PRs' }] : []),
           { id: 'files', label: 'All files' },
@@ -238,21 +236,17 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
           { id: 'checks', label: 'Checks' },
           ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
         ]} />
-        {folded && <><span className="grow" /><IconButton icon="chevron" size={12} label="Show files" onClick={() => setOpened(ws.id)} /></>}
       </div>
-      {folded ? null : <>{right === 'prs' && <LeadPrs roomId={ws.roomId} />}
+      {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
       {right === 'files' && <FilesTree ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
       {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
       {right === 'checks' && <Checks ws={ws} changes={changes} />}
-      {right === 'shared' && <SharedPanel ws={ws} />}</>}
+      {right === 'shared' && <SharedPanel ws={ws} />}
     </div>
   )
 }
 
 // ---------- Setup, Run, Terminal
-
-/** Setup is still running, or failed and holds the chat: the Setup tab is what matters, so the files fold (KERNEL-430). */
-const setupFolds = (ws: Workspace) => ws.status === 'setup' || ws.status === 'failed'
 
 /** Setup is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
 function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: string) {
@@ -271,8 +265,19 @@ const LogLine = memo(function LogLine({ l }: { l: ScriptLine }) {
   return <div style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>
 })
 
+/**
+ * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
+ * pressing a tab opens it again. Rowan's chats and teammates' workspaces each remember whether it is folded.
+ */
 export function BottomPanel({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)
+  const kind = useStore((s) => bottomKindOf(s, ws))
+  const collapsed = useStore((s) => s.ui.bottomCollapsed[kind])
+  const panel = useRef<HTMLDivElement>(null)
+  const pick = (id: string) => {
+    actions.ui.setWorkspaceView({ bottom: id as typeof bottom })
+    if (collapsed) actions.ui.setBottomCollapsed(kind, false)
+  }
   const rs = useRoomSettings(ws.roomId)
   // A script that is running stays in the picker, so it can be stopped, even after Settings renamed or removed it or before they load.
   const runningNames = useStore((s) => runningRuns(s, ws.id).join('\n')).split('\n').filter(Boolean)
@@ -301,6 +306,9 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id, selected])
   useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id, selected])
   const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
+  // The Run tab's empty state has the Run button, so the strip's steps aside while it shows and the word is never on screen twice (KERNEL-512).
+  const onRunTab = !collapsed && bottom === 'run'
+  const runEmpty = onRunTab && !noRun && lines.length === 0
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const empty = bottom === 'run'
     ? noRun ? (
@@ -311,7 +319,8 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     ) : (
       <div className="script-empty">
-        <span className="script-empty-icon"><Icon name="play" size={30} stroke={1.2} /></span>
+        <span className="script-empty-icon"><svg width="40" height="40" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M5 3.2c0-.6.7-1 1.2-.6l6.2 4.4c.4.3.4 1 0 1.3l-6.2 4.4c-.5.4-1.2 0-1.2-.6z" /></svg></span>
+        {!selectedRunning && <Button className="idle-run" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
         <span>Runs on port {ws.port}. Output shows here.</span>
       </div>
     )
@@ -329,25 +338,27 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     )
   return (
-    <div className="bottom-panel" data-tall={setupFolds(ws) || undefined}>
+    <div ref={panel} className="bottom-panel" data-collapsed={collapsed || undefined}>
+      {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
-        <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
+        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
+        <Tabs label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
-        {bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
-        {bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
-        {/* Run and Stop are the one action for the script picked on the Run tab, so its empty state has no button of its own. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
-        {bottom !== 'setup' && (selectedRunning
-          ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{bottom === 'run' ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
-          : !noRun && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
+        {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
+        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {/* Run and Stop are the one action for the script picked on the Run tab. Its empty state has a Run button of its own, so the strip's Run steps aside while that shows (KERNEL-512). A collapsed bar has no empty state, so it keeps Run and Stop. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
+        {(collapsed || bottom !== 'setup') && (selectedRunning
+          ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
+          : !noRun && !runEmpty && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
       </div>
-      {bottom === 'run' && names.length > 1 && (
+      {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">
           <SegmentedControl label="Run script" value={selected} onChange={(name) => setPicked((p) => ({ ...p, [ws.id]: name }))} options={names.map((name) => ({ value: name, label: name, busy: runningNames.includes(name) }))} />
         </div>
       )}
-      {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
+      {!collapsed && bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
+      {!collapsed && bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
         {lines.length
           ? lines.map((l) => <LogLine key={lineKey(l)} l={l} />)
           : empty}

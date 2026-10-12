@@ -1,6 +1,6 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile,
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
@@ -116,6 +116,34 @@ function showing(panel: keyof typeof HIDDEN) {
 function keep(panel: keyof typeof HIDDEN, open: boolean) {
   try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
 }
+/**
+ * The right panel's bottom pane (KERNEL-513), kept across launches like the panel toggles. Its size is one fraction of the panel below the PR band
+ * for every chat, and a key is stored only once it is dragged. Collapsed or open is kept apart for Rowan's chats, which start collapsed, and for
+ * teammate workspaces, which start open. localStorage may be missing or blocked, and a stored value may be junk.
+ */
+export const BOTTOM_RATIO_DEFAULT = 1 / 3
+const BOTTOM_RATIO = 'kernel.bottomPanelRatio'
+const BOTTOM_COLLAPSED: Record<BottomKind, string> = { lead: 'kernel.bottomCollapsed.lead', teammate: 'kernel.bottomCollapsed.teammate' }
+const COLLAPSED_AT_FIRST: Record<BottomKind, boolean> = { lead: true, teammate: false }
+export function bottomRatio(): number {
+  try {
+    const n = Number(localStorage.getItem(BOTTOM_RATIO))
+    return Number.isFinite(n) && n > 0 && n < 1 ? n : BOTTOM_RATIO_DEFAULT
+  } catch { return BOTTOM_RATIO_DEFAULT }
+}
+function keepBottomRatio(ratio: number | null) {
+  try { if (ratio === null) localStorage.removeItem(BOTTOM_RATIO); else localStorage.setItem(BOTTOM_RATIO, String(ratio)) } catch { /* not remembered */ }
+}
+/** What was last saved for `kind`, or where it starts. Setup wait opens the pane without saving, and asks for this when it goes. */
+export function bottomCollapsed(kind: BottomKind): boolean {
+  try {
+    const v = localStorage.getItem(BOTTOM_COLLAPSED[kind])
+    return v === '1' ? true : v === '0' ? false : COLLAPSED_AT_FIRST[kind]
+  } catch { return COLLAPSED_AT_FIRST[kind] }
+}
+function keepBottomCollapsed(kind: BottomKind, collapsed: boolean) {
+  try { localStorage.setItem(BOTTOM_COLLAPSED[kind], collapsed ? '1' : '0') } catch { /* not remembered */ }
+}
 /** The Lead chats folded in the sidebar, by id, kept across launches like the panel toggles. localStorage may be missing or blocked, and its value may not be a list. */
 const FOLDED_CHATS = 'kernel.foldedChats'
 function foldedChats(): string[] {
@@ -161,7 +189,7 @@ let state: State = {
   usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
 }
 const listeners = new Set<() => void>()
 
@@ -447,6 +475,14 @@ export const actions = {
       setUi({ foldedChats: next })
       keepFoldedChats(next)
     },
+    /** The bottom pane's height as a fraction of the panel below its header. Null goes back to the default and forgets the saved one. */
+    setBottomRatio: (ratio: number | null) => { setUi({ bottomRatio: ratio ?? BOTTOM_RATIO_DEFAULT }); keepBottomRatio(ratio) },
+    /** Setup wait opens the pane for as long as it shows and passes `save: false`, so what the user chose comes back with `restoreBottomCollapsed`. */
+    setBottomCollapsed: (kind: BottomKind, collapsed: boolean, save = true) => {
+      setState((s) => ({ ui: { ...s.ui, bottomCollapsed: { ...s.ui.bottomCollapsed, [kind]: collapsed } } }))
+      if (save) keepBottomCollapsed(kind, collapsed)
+    },
+    restoreBottomCollapsed: (kind: BottomKind) => actions.ui.setBottomCollapsed(kind, bottomCollapsed(kind), false),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
     setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */

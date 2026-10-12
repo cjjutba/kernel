@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { readWidth, releasedAs } from '../src/renderer/src/components/ResizeHandle'
+import { draggedSize, keyedSize, readWidth, releasedAs } from '../src/renderer/src/components/ResizeHandle'
 import { SIDEBAR_HIDE_BELOW, SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit } from '../src/renderer/src/components/sidebar/useSidebarWidth'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -30,5 +30,35 @@ describe('the width the sidebar and the Settings nav share', () => {
     expect(sidebarLimit()).toBe(480)
     vi.stubGlobal('window', { innerWidth: 600 })
     expect(sidebarLimit()).toBe(SIDEBAR_MIN)
+  })
+})
+
+describe('a top edge, as on the right panel\'s bottom pane', () => {
+  it('grows with ArrowUp and shrinks with ArrowDown, and takes the big step with Shift', () => {
+    expect(keyedSize('top', 'ArrowUp', false, 272, 160, 600)).toBe(280)
+    expect(keyedSize('top', 'ArrowDown', false, 272, 160, 600)).toBe(264)
+    expect(keyedSize('top', 'ArrowUp', true, 272, 160, 600)).toBe(304)
+    expect(keyedSize('top', 'ArrowDown', true, 272, 160, 600)).toBe(240)
+  })
+  it('ignores the keys a vertical edge has no use for', () => {
+    expect(keyedSize('top', 'ArrowLeft', false, 272, 160, 600)).toBeNull()
+    expect(keyedSize('top', 'ArrowRight', false, 272, 160, 600)).toBeNull()
+    expect(keyedSize('left', 'ArrowUp', false, 320, 320, 720)).toBeNull()
+  })
+  it('goes to the smallest on Home and the largest on End', () => {
+    expect(keyedSize('top', 'Home', false, 272, 160, 600)).toBe(160)
+    expect(keyedSize('top', 'End', false, 272, 160, 600)).toBe(600)
+  })
+  it('grows when dragged up and shrinks when dragged down', () => {
+    expect(draggedSize('top', 272, 500, 450)).toBe(322)
+    expect(draggedSize('top', 272, 500, 540)).toBe(232)
+  })
+  it('leaves the left and right edges as they were', () => {
+    expect(keyedSize('right', 'ArrowRight', false, 236, 200, 480)).toBe(244)
+    expect(keyedSize('right', 'ArrowLeft', false, 236, 200, 480)).toBe(228)
+    expect(keyedSize('left', 'ArrowLeft', false, 400, 320, 720)).toBe(408)
+    expect(keyedSize('left', 'ArrowRight', true, 400, 320, 720)).toBe(368)
+    expect(draggedSize('right', 236, 100, 140)).toBe(276)
+    expect(draggedSize('left', 400, 900, 860)).toBe(440)
   })
 })

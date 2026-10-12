@@ -158,6 +158,9 @@ export interface WorkspaceTabs {
   sharedVersion?: Record<string, number>
 }
 
+/** Whose bottom pane a flag is for: a chat with Rowan, or a teammate's workspace. */
+export type BottomKind = 'lead' | 'teammate'
+
 export interface UiState {
   route: Route
   modal: Modal
@@ -176,6 +179,10 @@ export interface UiState {
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
+  bottomRatio: number
+  /** The bottom pane is folded to its tab bar. One flag for Rowan's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */
+  bottomCollapsed: Record<BottomKind, boolean>
   /** Why the app could not start. Set when `boot` fails, so Loading shows the error and Try again instead of "Starting Kernel" forever (KERNEL-217). */
   startError?: string
 }

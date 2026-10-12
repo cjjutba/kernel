@@ -181,7 +181,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* right panel */
 .panel-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; padding: 0 10px; }
 .panel-tabs .tab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
-/* A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so Show files stays pinned after it (KERNEL-489). */
+/* A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so what follows it stays pinned (KERNEL-489). */
 .panel-tabs > [role='tablist'] { min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .panel-tabs > [role='tablist']::-webkit-scrollbar { display: none; }
 /* The tablist clips what sits outside it, so the focus ring is drawn inside the tab. */
@@ -215,16 +215,25 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .changes-count { font-size: 13px; color: var(--ink-2); }
 .changes-total { display: inline-flex; gap: 6px; margin-right: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
-/* bottom panel: underlined tabs, the run script's Run or Stop on every tab, and centered empty states (KERNEL-274) */
-.bottom-panel { height: clamp(160px, 38%, 280px); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
-/* While setup runs or has failed, the files fold to their tabs and the log takes the height (KERNEL-430). */
-.bottom-panel[data-tall] { height: auto; flex: 1; min-height: 0; }
-.bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
+/* The right panel under the PR band: the top pane (tabs and their list) over the bottom pane. `--bottom-ratio` is the bottom's share of this box, one for
+   every chat (store.ts, KERNEL-513), a third until it is dragged. It stays between 160px for the top and the tab bar plus 120px for the bottom (bottomSplit.ts), so
+   a short window keeps both panes. The box is a size container so the bottom's height can be a share of it. */
+.ws-split { flex: 1; min-height: 0; display: flex; flex-direction: column; container: ws-split / size; }
+/* bottom panel: underlined tabs, the run script's Run or Stop on every tab, and centered empty states (KERNEL-274). Collapsed it is its 40px tab bar under the hairline (KERNEL-513). */
+.bottom-panel { position: relative; height: clamp(160px, calc(var(--bottom-ratio, 0.3333) * 100cqh), calc(100cqh - 160px)); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.bottom-panel[data-collapsed] { height: 41px; }
+.bottom-panel[data-collapsed] .bottom-tabs { border-bottom: 0; }
+.bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
+/* The chevron points down while the pane is open and up once it is folded. */
+.bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
+.bottom-tabs > .icon-btn[aria-expanded='false'] svg { transform: rotate(180deg); }
 .bottom-tabs > [role='tablist'] { align-self: stretch; align-items: stretch; }
 .bottom-tabs .tab { height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
 .bottom-tabs .tab[aria-selected='true'] { background: transparent; border-bottom-color: var(--ink); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
+/* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */
+.script-empty .btn.idle-run { margin-bottom: 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
 .run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
