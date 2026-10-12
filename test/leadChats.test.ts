@@ -284,7 +284,8 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
   })
 
   it("gives the Lead, a teammate and a reviewer get_issue, which reads the workspace's issue, or the reviewed work's", async () => {
-    const { k, room, first, call, byTitle } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor.' })
+    // Noor opens PRs, so Noor takes tasks and can review (KERNEL-465).
+    const { k, room, first, call, byTitle } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
     const asked = linear(k)
     await call(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
     const work = byTitle('Issues screen')
