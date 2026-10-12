@@ -1,5 +1,6 @@
 import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
+import { mcpCounts } from '@shared/mcpCounts'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
@@ -220,17 +221,19 @@ const mcpAcrossServers: McpServer[] = [
 ]
 const connectUrl = 'https://claude.ai/settings/connectors'
 const server = (name: string, kind: McpAccountServer['kind'], state: McpAccountServer['state'] = 'ready', more: Partial<McpAccountServer> = {}): McpAccountServer => ({ name, kind, connector: kind === 'connector', state, ...more })
-/** KERNEL-647: Work has everything ready. Personal has Linear and Gmail waiting on a sign-in, Vercel failed, Google Drive and Notion not set up, and Figma ignored. Codex has a sign-in, a failure and a server switched off in config.toml. */
+/** An account with the counts Kernel gives it (KERNEL-660). */
+const counted = (a: Omit<McpAccount, 'needsYou' | 'ready'>): McpAccount => ({ ...a, ...mcpCounts(a.servers) })
+/** KERNEL-647: Work has everything ready. Personal has Linear and Gmail waiting on a sign-in, Vercel failed, Google Drive and Notion not set up, and Figma ignored. Codex has a sign-in, and a server switched off in config.toml and a plugin's server Codex never starts, both off (KERNEL-660). */
 const mcpAcrossAccounts: McpAccount[] = [
-  {
+  counted({
     provider: 'claude', accountId: 'cli', label: 'Work', email: 'cj@example.com', checkedAt: Date.now(),
     servers: [
       server('GitHub', 'user'), server('Linear', 'user'), server('Vercel', 'user'),
       server('claude.ai Gmail', 'connector'), server('claude.ai Google Drive', 'connector'), server('claude.ai Notion', 'connector'), server('claude.ai Figma', 'connector'),
       server('plugin:github:github', 'plugin'), server('plugin:vercel:vercel', 'plugin', 'ready', { note: 'Covered by claude.ai Vercel on this account.' })
     ]
-  },
-  {
+  }),
+  counted({
     provider: 'claude', accountId: 'personal', label: 'Personal', email: 'cj@jutba.example', checkedAt: Date.now(),
     servers: [
       server('GitHub', 'user'), server('Linear', 'user', 'needs-sign-in'), server('Vercel', 'user', 'failed', { error: 'Connection closed' }),
@@ -238,21 +241,21 @@ const mcpAcrossAccounts: McpAccount[] = [
       server('claude.ai Figma', 'connector', 'ignored', { connectUrl }),
       server('plugin:github:github', 'plugin'), server('plugin:vercel:vercel', 'plugin', 'not-set-up', { note: 'Needs the claude.ai Vercel connector.' })
     ]
-  },
-  {
+  }),
+  counted({
     provider: 'codex', accountId: 'cli', label: 'cj@example.com', email: 'cj@example.com', checkedAt: Date.now(),
     servers: [
-      server('Supabase', 'user'), server('Linear', 'user', 'needs-sign-in'), server('vapi', 'user', 'not-set-up', { note: 'Switched off in Codex’s config.toml.' }),
-      server('code-review', 'plugin', 'failed', { error: 'Codex lists it from the code-review plugin but didn’t start it.' })
+      server('Supabase', 'user'), server('Linear', 'user', 'needs-sign-in'), server('vapi', 'user', 'off', { note: 'Off in Codex config' }),
+      server('code-review', 'plugin', 'off', { note: 'Not started by Codex' })
     ]
-  }
+  })
 ]
 /** KERNEL-647: twenty-seven servers on one account, to check the page reads at 1440x900. */
 const manyServers = (): McpAccount[] => {
   const user = ['GitHub', 'Linear', 'Vercel', 'Supabase', 'Sentry', 'Stripe', 'PostHog', 'Neon', 'Figma', 'Mobbin', 'Porkbun', 'Slack'].map((n, i): McpAccountServer => server(n, 'user', i === 1 ? 'needs-sign-in' : i === 5 ? 'failed' : 'ready', i === 5 ? { error: 'Connection closed' } : {}))
   const connectors = ['Gmail', 'Google Drive', 'Google Calendar', 'Notion', 'Asana', 'Canva', 'Zapier', 'Box', 'Atlassian'].map((n, i): McpAccountServer => server(`claude.ai ${n}`, 'connector', i < 4 ? 'ready' : i < 7 ? 'needs-sign-in' : i === 7 ? 'not-set-up' : 'ignored', i === 7 ? { connectUrl } : {}))
   const plugins = ['github', 'vercel', 'figma', 'linear', 'sentry', 'superpowers'].map((n): McpAccountServer => server(`plugin:${n}:${n}`, 'plugin'))
-  return [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], servers: [...user, ...connectors, ...plugins] }]
+  return [mcpAcrossAccounts[0], counted({ ...mcpAcrossAccounts[1], servers: [...user, ...connectors, ...plugins] })]
 }
 const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'claude.ai Gmail', 'claude.ai Google Drive'], current: 'claude.ai Gmail', done: ['Linear'], failed: [] }
 const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }

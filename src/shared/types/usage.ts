@@ -145,8 +145,10 @@ export interface McpSignInStep {
  * - `failed`: it didn't start, with the provider's reason in one line (`error`).
  * - `not-set-up`: the account doesn't have it. `note` says why, and a claude.ai connector carries `connectUrl`.
  * - `ignored`: the user chose to ignore it on that account (`accounts.mcpIgnore`), whatever its state would be.
+ * - `off`: off on purpose, with the reason in `note`: switched off in Codex's `config.toml` ("Off in Codex config"), or a
+ *   plugin's server Codex lists and never starts ("Not started by Codex"). It never needs the user (KERNEL-660).
  */
-export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored'
+export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored' | 'off'
 
 /**
  * Where an MCP server comes from (KERNEL-646). `user`: one the user added, which Kernel shares with every account of the
@@ -165,8 +167,8 @@ export interface McpAccountServer {
   /** Why it failed, as the provider said, in one line. Only on `failed`. */
   error?: string
   /**
-   * One line on a state that needs a why: what keeps a `not-set-up` server off the account, or the connector that stands in
-   * for a plugin's server on a `ready` one ("Covered by claude.ai Vercel on this account.").
+   * One line on a state that needs a why: what keeps a `not-set-up` server off the account, the connector that stands in
+   * for a plugin's server on a `ready` one ("Covered by claude.ai Vercel on this account."), or why one is `off`.
    */
   note?: string
   /**
@@ -190,6 +192,30 @@ export interface McpAccount {
   /** Why the last check failed. The account then has no servers. */
   error?: string
   servers: McpAccountServer[]
+  /**
+   * The servers that need the user here (`mcpNeedsYou`): needing a sign-in, failed or not set up, and not ignored, `off` or
+   * switched off in every room. Every surface shows this number (KERNEL-660).
+   */
+  needsYou: number
+  /** The servers `ready` here (KERNEL-660). */
+  ready: number
+  /**
+   * Codex only: the provider's other accounts whose servers read the same, by id (KERNEL-660). Codex keeps MCP sign-ins in one
+   * store for every Codex account (KERNEL-646.md), so these can show as one. Undefined when none match.
+   */
+  sharedWith?: string[]
+}
+
+/**
+ * The claude.ai connectors Set up this account sends to claude.ai in one step (`accounts.mcpSetUp`, KERNEL-660): open `url`
+ * once, signed in to claude.ai as `email`, and add `servers` there. A re-check picks them up once added.
+ */
+export interface McpConnect {
+  provider: Provider
+  accountId: string
+  email?: string
+  url: string
+  servers: string[]
 }
 
 /**
@@ -206,6 +232,10 @@ export interface McpSignInAll {
   failed: { server: string; error: string }[]
   finished?: boolean
   canceled?: boolean
+  /** Set up this account (`accounts.mcpSetUp`): the servers it ignored because they weren't ticked (KERNEL-660). */
+  ignored?: string[]
+  /** Set up this account: the claude.ai connectors it sent to claude.ai, as its `account.mcpConnect` push (KERNEL-660). */
+  connect?: McpConnect
 }
 
 /**
