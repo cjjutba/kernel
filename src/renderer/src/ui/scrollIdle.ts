@@ -1,7 +1,5 @@
-/** How long after the last activity the thumb stays up. */
-const IDLE_MS = 1000
-/** How long a list of scrollers found under the pointer is trusted before it is read again, since content can start to overflow while the pointer moves. */
-const SCROLLERS_MS = 250
+/** How long after the last scroll the thumb stays up, before its 200ms fade (tokens.css). */
+const IDLE_MS = 800
 
 /** The part of an element the activity needs, so a test can stand in for a DOM node. */
 export interface ScrollTarget {
@@ -10,7 +8,7 @@ export interface ScrollTarget {
 }
 
 /**
- * Which scrollers show their thumb. `touch` sets `data-scrolling` on an element and clears it IDLE_MS after the last touch, `hold` keeps it set while a
+ * Which scrollers show their thumb. `touch` sets `data-scrolling` on an element and clears it IDLE_MS after the last scroll, `hold` keeps it set while a
  * native scrollbar is pressed, and `release` starts the countdown again. State is a timer per element, never React state, so no activity renders anything.
  */
 export function createScrollActivity(idleMs = IDLE_MS) {
@@ -66,45 +64,29 @@ function onScrollbar(el: Element, x: number, y: number): boolean {
 }
 
 /**
- * Shows a scroller's thumb through `data-scrolling` while the area is in use, and for a second after (KERNEL-597, KERNEL-602, amended by
- * feat-fade-scrollbars-after-pointer-and). In use means it scrolls, by wheel, keys, touch or dragging the thumb, the pointer moves over it, or its native scrollbar is held.
- * A pointer that rests on an area does not count, so the thumb fades after a second even under a stationary pointer. A scroll event doesn't bubble but does
- * capture, and so do the pointer events used here, so one listener each on the document sees every scroller in the app, sidebar, chat, Settings, modals and
- * popovers alike. A pointer move marks the scrollers that hold the element under it, from the nearest outwards, and never one that doesn't. Chromium aims a
- * native scrollbar's pointerdown and pointerup at the scroller itself, and sends no pointermove while the thumb is dragged, only scroll events, so a press
- * on the scrollbar holds the thumb up until the button is released, even with the pointer still. The attribute is set on the element, not in state, so
- * nothing renders. Returns a function that removes the listeners and clears every mark.
+ * Shows a scroller's thumb through `data-scrolling` while the area scrolls, and for 800ms after (KERNEL-597, KERNEL-602, amended by
+ * feat-fade-scrollbars-after-pointer-and and feat-scrollbar-thumb-shows-only-on). Scrolling means wheel, keys, touch or a dragged thumb, or a native
+ * scrollbar held. A pointer that moves over an area, or rests on it, does not show its thumb. A scroll event doesn't bubble but does capture, and so do the
+ * pointer events used here, so one listener each on the document sees every scroller in the app, sidebar, chat, Settings, modals and popovers alike. Chromium
+ * aims a native scrollbar's pointerdown and pointerup at the scroller itself, and sends no pointermove while the thumb is dragged, only scroll events, so a
+ * press on the scrollbar holds the thumb up until the button is released, even with the pointer still. A pointer move with no button down also releases a
+ * hold whose pointerup was missed, which only restarts the countdown. The attribute is set on the element, not in state, so nothing renders. Returns a
+ * function that removes the listeners and clears every mark.
  */
 export function installScrollIdle(): () => void {
   const activity = createScrollActivity()
   let held: Element | undefined
-  let found: { from: EventTarget | null; at: number; scrollers: Element[] } | undefined
-  let frame = 0
-  let latest: PointerEvent | undefined
 
   const release = () => {
     if (held) activity.release(held)
     held = undefined
   }
-  const scrollersAt = (from: EventTarget | null, now: number): Element[] => {
-    if (found && found.from === from && now - found.at < SCROLLERS_MS) return found.scrollers
-    const scrollers: Element[] = []
-    for (let el = from instanceof Element ? from : null; el; el = el.parentElement) if (hasScrollbar(el)) scrollers.push(el)
-    found = { from, at: now, scrollers }
-    return scrollers
-  }
   const onScroll = (e: Event) => {
     // The page itself never scrolls (body is overflow hidden), and `document` has no attributes to set.
     if (e.target instanceof Element) activity.touch(e.target)
   }
-  // Pointer moves arrive faster than frames, so read the layout once a frame, for the last one.
   const onMove = (e: PointerEvent) => {
     if (e.buttons === 0) release()
-    latest = e
-    if (!frame) frame = requestAnimationFrame(() => {
-      frame = 0
-      if (latest) for (const el of scrollersAt(latest.target, performance.now())) activity.touch(el)
-    })
   }
   const onDown = (e: PointerEvent) => {
     if (!(e.target instanceof Element) || !hasScrollbar(e.target) || !onScrollbar(e.target, e.clientX, e.clientY)) return
@@ -126,7 +108,6 @@ export function installScrollIdle(): () => void {
     document.removeEventListener('pointerup', release, options)
     document.removeEventListener('pointercancel', release, options)
     window.removeEventListener('blur', release)
-    cancelAnimationFrame(frame)
     activity.dispose()
   }
 }
