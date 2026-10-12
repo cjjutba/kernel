@@ -3,7 +3,8 @@ import { watch } from 'node:fs'
 import { mkdtemp, mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
+import { agentFromFile, createAgent, draftAgent, hireDefaults, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
+import { canOpenPr } from '../src/main/services/agentTools'
 
 // fs.watch timing varies under load, so wait for the callback instead of sleeping a fixed time.
 const WATCH = { timeout: 10_000 }
@@ -169,6 +170,18 @@ describe('agents', () => {
     await expect(createAgent(repo, d)).rejects.toThrow(/already on the team/)
     await expect(createAgent(repo, { ...d, text: '---\nname: Bad Name\ndescription: x\n---\nbody' })).rejects.toThrow(/lowercase/)
     await expect(createAgent(repo, { ...d, text: '---\nname: ok\n---\nbody' })).rejects.toThrow(/description/)
+  })
+  // KERNEL-476: a drafted Designer used to get Read, Grep, Glob and Bash, and a Docs writer had no Bash, so both joined as helpers.
+  it('gives every drafted role but a reviewer the tools to open a pull request', async () => {
+    const pr = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
+    const drafts = ['a designer who checks every screen against DESIGN.md', 'writes the docs for each release', 'owns the SQL schema and migrations', 'QA: tests each flow end to end', 'Reviews security in every diff']
+      .map((description) => draftAgent({ description }))
+    expect(drafts.map((d) => [d.id, d.tools])).toEqual([['designer', pr], ['docs', pr], ['data', pr], ['qa-tests', pr], ['reviewer', ['Read', 'Grep', 'Glob']]])
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    for (const d of drafts) await createAgent(repo, d)
+    expect((await loadAgents(repo)).map((a) => [a.id, canOpenPr(a.tools)])).toEqual([['data', true], ['designer', true], ['docs', true], ['qa-tests', true], ['reviewer', false]])
+    expect(hireDefaults('Frontend')).toEqual({ tools: pr })
+    expect(hireDefaults('Security reviewer')).toEqual({ role: 'Reviewer', tools: ['Read', 'Grep', 'Glob'] })
   })
   it('lists retired agents and restores one, refusing when the name is taken', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
