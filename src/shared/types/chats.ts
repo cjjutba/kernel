@@ -137,7 +137,7 @@ export type ChatItem =
    */
   | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail'; refs?: NoteRef[] }
   | { kind: 'interrupted'; id: string; ts: number }
-  /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
+  /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and the transcript stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
   /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */
   | { kind: 'shared'; id: string; ts: number; sharedId: string; version: number }

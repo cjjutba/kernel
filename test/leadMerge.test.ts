@@ -80,10 +80,10 @@ describe('merge_workspace (KERNEL-352)', () => {
   })
 
   it('merges in a turn the user started, and names the PR by number and title', async () => {
-    const t = leadTools([ws('floor', { prNumber: 265, prTitle: 'Drop the floor and the Board from the 0.1.0 changelog' })])
-    expect(await t.merge(['floor'])).toBe('Merged #265 (Drop the floor and the Board from the 0.1.0 changelog).')
-    expect(t.refreshPr).toHaveBeenCalledWith('floor')
-    expect(t.mergeWorkspace).toHaveBeenCalledWith('floor')
+    const t = leadTools([ws('changelog', { prNumber: 265, prTitle: 'Trim the 0.1.0 changelog' })])
+    expect(await t.merge(['changelog'])).toBe('Merged #265 (Trim the 0.1.0 changelog).')
+    expect(t.refreshPr).toHaveBeenCalledWith('changelog')
+    expect(t.mergeWorkspace).toHaveBeenCalledWith('changelog')
   })
 
   it("merges the reviewed PR for a review's id", async () => {
@@ -197,7 +197,7 @@ const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, du
 describe('merge_workspace in the Kernel (KERNEL-352)', () => {
   it('reads the switch and the turn live, merges through the Merge button path and releases a teammate waiting on it', async () => {
     const { k, room, lead, merge, target, merged } = await kernelRoom()
-    const noor = await target(265, 'Drop the floor and the Board from the 0.1.0 changelog')
+    const noor = await target(265, 'Trim the 0.1.0 changelog')
     expect(noor.prState).toBe('ready')
     const kai = await k.createWorkspace(room.id, { prompt: 'Build on it', agentId: 'kai', title: 'Next step', leadChatId: lead.id, waitFor: [noor.id] })
     expect(kai.waitsFor).toMatchObject({ on: [noor.id], held: true })
@@ -220,7 +220,7 @@ describe('merge_workspace in the Kernel (KERNEL-352)', () => {
 
     // The user's own message starts a user turn.
     await k.sessions.send(lead.id, [{ type: 'text', text: 'Merge the ready ones' }])
-    expect(await merge([noor.id])).toBe('Merged #265 (Drop the floor and the Board from the 0.1.0 changelog).')
+    expect(await merge([noor.id])).toBe('Merged #265 (Trim the 0.1.0 changelog).')
     expect(merged).toEqual([noor.branch])
     expect(k.store.workspace(noor.id)?.prState).toBe('merged')
     // The pr event releases Kai's held brief, as a merge from the PR panel does (KERNEL-259).

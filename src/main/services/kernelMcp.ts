@@ -530,7 +530,7 @@ export function kernelTools(d: KernelToolDeps) {
       return text(plans.map((p) => `Approved in the tab "${p.tab}" at ${new Date(p.at).toISOString()}:\n${p.plan}`).join('\n\n'))
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
-      if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working', activity: t })
+      if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working' })
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),

@@ -224,7 +224,7 @@ async function readAgents(dir: string, extra: Partial<AgentDef>): Promise<AgentD
     const joinedAt = await stat(file).then((s) => s.birthtimeMs, () => 0)
     return { ...def, joinedAt: joinedAt > 0 ? Math.round(joinedAt) : undefined, ...extra }
   }))).filter((a): a is AgentDef => !!a)
-  // Lead first, then alphabetical, so the floor seats them in a stable order.
+  // Lead first, then alphabetical, so the order is stable.
   return agents.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name))
 }
 

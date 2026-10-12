@@ -3,7 +3,7 @@ import type { PermissionMode } from './settings'
 
 export type AgentStatus = 'working' | 'planning' | 'walking' | 'needs' | 'idle' | 'blocked' | 'offline' | 'paused'
 
-/** How a person is drawn on the floor (Main.dc.html roster). Kernel picks one when the file has none. */
+/** An agent's colors. Team and the agent profile color its avatar with the shirt. Kernel picks one when the file has none. */
 export interface AgentLook {
   shirt: string
   skin: string
@@ -193,5 +193,5 @@ export interface AgentDraft {
   file: string
 }
 
-/** Team templates offered on an empty floor (FloorEmpty.png). */
+/** Team templates offered on Team when the room has no agents yet. */
 export type TeamTemplate = { kind: 'starter' } | { kind: 'pair' } | { kind: 'copy'; fromRoomId: string }

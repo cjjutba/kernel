@@ -1058,7 +1058,7 @@ export class Sessions {
     // A chat stopped while idle has no process but is stopped all the same.
     if (!live && !this.turns.has(chatId)) return
     // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
-    // an idle chat that gave up blocked has no turn left to end, so the floor hears it here (Archive, Close chat).
+    // an idle chat that gave up blocked has no turn left to end, so Team and the sidebar hear it here (Archive, Close chat).
     const shown = this.turns.get(chatId)?.blocked && !live?.running
     // A Codex plan waiting on the chat ends with it, as the process's cards do in `end` (KERNEL-563).
     this.expireCards(this.turns.get(chatId)?.plans)
@@ -1473,7 +1473,7 @@ export class Sessions {
   private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number; afterTurn?: boolean }, plan?: string): Promise<Decision | undefined> {
     // A turn that stopped before its card went up shows none: an abort that has already fired never fires again (KERNEL-563).
     if (o.signal?.aborted) return undefined
-    this.setStatus(ws, agent, 'needs', a.activity)
+    this.setStatus(ws, agent, 'needs')
     const asker = this.live.get(chatId)
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
     const { approval, decision } = this.d.approvals.request({
@@ -1497,10 +1497,10 @@ export class Sessions {
    * A plan for the user to approve, from either provider (KERNEL-406): Claude's ExitPlanMode, or a Codex plan-mode turn's
    * plan. Approval takes the chat out of plan mode and starts a Lead's hand-off (`planApproved`).
    */
-  private async requestPlan(chatId: string, ws: Workspace, agent: AgentDef | undefined, plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown; activity?: string }): Promise<Decision | undefined> {
+  private async requestPlan(chatId: string, ws: Workspace, agent: AgentDef | undefined, plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown }): Promise<Decision | undefined> {
     // A Codex plan comes after its turn ended (`CodexRunner.planned`), so it stays with the chat rather than a turn (KERNEL-563).
     const afterTurn = chatProvider(this.mustChat(chatId)) === 'codex'
-    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan, activity: o.activity ?? 'Plan' }, { signal: o.signal, afterTurn }, plan)
+    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan }, { signal: o.signal, afterTurn }, plan)
     if (result?.behavior === 'allow') await this.planApproved(chatId)
     return result
   }
@@ -1586,15 +1586,15 @@ export class Sessions {
   }
 
   /** A paused room shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */
-  private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus, activity?: string) {
+  private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus) {
     const shown = this.paused.has(ws.roomId) && !PAUSE_KEEPS.has(status) ? 'paused' : status
-    if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown, activity })
+    if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown })
   }
 
   /** The session ended without being stopped: the agent goes offline and the logs say where and why. */
   private offline(ws: Workspace, reason: string) {
     const detail = `Claude Code exited in ${ws.name}${reason ? ` (${reason.slice(0, 120)})` : ''}. The worktree and chat are saved.`
-    this.setStatus(ws, this.d.agentFor(ws), 'offline', `Session ended in ${ws.name}`)
+    this.setStatus(ws, this.d.agentFor(ws), 'offline')
     bus.activity({ kind: 'session.end', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'went offline in', object: ws.name, warn: true, data: { detail, crashed: true } })
   }
 
@@ -1616,7 +1616,7 @@ export class Sessions {
   private showBlocked(ws: Workspace, chatId: string): boolean {
     const blocked = this.turns.get(chatId)?.blocked
     if (!blocked) return false
-    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${blocked} hook`)
+    this.setStatus(ws, this.d.agentFor(ws), 'blocked')
     return true
   }
 

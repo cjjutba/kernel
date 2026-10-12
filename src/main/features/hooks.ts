@@ -11,7 +11,7 @@ import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
 import { tildify } from '../services/rooms'
 import { Feature } from './feature'
 
-/** How a hook from an outside session moves its agent on the floor. */
+/** How a hook from an outside session sets its agent's status in Team and the sidebar. */
 const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
 
 /** The hook server, the hooks in Claude's settings file, and the preflight checks (KERNEL-325). */
@@ -53,7 +53,7 @@ export class Hooks extends Feature {
   /** A hook from a session Kernel did not start. The listener on the bus calls it. */
   onHook(e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) {
     this.hookSeen.set(e.hook_event_name, Date.now())
-    // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
+    // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so Kernel learns their status from the hooks.
     const status = HOOK_STATUS[e.hook_event_name]
     if (!status || !ctx?.roomId || !ctx.agentId) return
     if (this.k.team.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
@@ -71,7 +71,7 @@ export class Hooks extends Feature {
         isManaged: (id) => this.sessions.isManaged(id),
         resolve: (cwd) => this.resolveCwd(cwd)
       })
-      // A server that closes or errors on its own takes the floor and the logs with it (WorkspaceHooksDown.png).
+      // A server that closes or errors on its own takes agent statuses and the logs with it (WorkspaceHooksDown.png).
       const server = this.hookServer
       // A quit closes it on purpose, and the window is still up to flash Hooks are disconnected (KERNEL-214).
       server.on('close', () => { if (this.hookServer === server && !this.stopped) void this.pushHooks() })

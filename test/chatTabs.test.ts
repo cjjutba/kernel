@@ -126,7 +126,7 @@ describe('chat tabs', () => {
     expect(withTerm.map((c) => c.kind).sort()).toEqual(['chat', 'terminal'])
     await h['chats.close']({ chatId: term2.id })
 
-    // Hooks from the big terminal move the agent on the floor.
+    // Hooks from the big terminal set the agent's status.
     const statuses: string[] = []
     const onPush = (e: any) => { if (e.type === 'agent.status' && e.agentId === 'kai') statuses.push(e.status) }
     bus.on('push', onPush)

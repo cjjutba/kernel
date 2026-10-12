@@ -88,7 +88,7 @@ export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent
     case 'SessionEnd': return { ...base, kind: 'session.end', text: 'ended the session', data: { reason: e.reason } }
     case 'UserPromptSubmit': return { ...base, kind: 'prompt', text: 'got a message', data: { prompt: e.prompt.slice(0, 280) } }
     case 'PreToolUse': {
-      // A subagent delegation is one agent talking to another: the floor walks the speaker to the listener (KERNEL-24).
+      // A subagent delegation is one agent talking to another, logged as agent.talk (KERNEL-24).
       const input = (e.tool_input ?? {}) as Record<string, unknown>
       if ((e.tool_name === 'Task' || e.tool_name === 'Agent') && typeof input.subagent_type === 'string') {
         const line = typeof input.description === 'string' ? input.description : typeof input.prompt === 'string' ? input.prompt : ''

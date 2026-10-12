@@ -48,8 +48,6 @@ export interface Ask {
   detail?: string
   options?: string[]
   questions?: AskedQuestion[]
-  /** Shown as the agent's activity while it waits. */
-  activity: string
   /** Why Kernel asked, for the card's reason line (`Approval.reason`). */
   reason?: string
 }
@@ -131,7 +129,7 @@ export interface RunnerHost {
    * Show a plan for approval and wait. An approved plan takes the chat out of plan mode and starts a Lead's hand-off.
    * `toolName` and `input` are the call that asked, when the plan came from a tool such as ExitPlanMode.
    */
-  requestPlan(plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown; activity?: string }): Promise<Decision | undefined>
+  requestPlan(plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown }): Promise<Decision | undefined>
   /** A Lead's hand-off texts: right after an approved plan, and the one reminder at a stop before anything was handed off. */
   handoffAfterPlan(): string | undefined
   handoffAtStop(): string | undefined

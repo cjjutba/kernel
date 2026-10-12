@@ -170,7 +170,7 @@ export class Workspaces extends Feature {
     if (!o.lead) bus.track({ name: 'workspace.created', by: o.leadChatId ? 'lead' : 'user', review: !!(o.reviewOf ?? o.linkReviewOf) })
     // The issue goes to In Progress in the room's tracker, when it came from there.
     if (!o.lead && o.source?.kind === 'issue' && o.source.id) void this.k.integrations.startIssue(ws, o.source)
-    // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
+    // Rowan's hand-off: the task this workspace builds moves to Building now, not when the turn ends.
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 

@@ -465,7 +465,7 @@ export class CodexRunner implements Runner {
   }
 
   private async planned(plan: string) {
-    const result = await this.host.requestPlan(plan, { signal: this.planStop.signal, activity: 'Plan ready' })
+    const result = await this.host.requestPlan(plan, { signal: this.planStop.signal })
     if (!result || this.isClosed && !this.host.chat()) return
     if (result.behavior === 'allow') { this.host.followUp(this.host.handoffAfterPlan() ?? PLAN_APPROVED); return }
     const text = result.behavior === 'answer' ? result.text : result.message
@@ -507,7 +507,7 @@ export class CodexRunner implements Runner {
     const d = describeTool('Bash', { command })
     const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
     const reason = verdict?.behavior === 'ask' ? ALWAYS_ASK : leaves ? `${OUTSIDE_SANDBOX}.` : undefined
-    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), ...(reason ? { reason } : {}), activity: d.title }, { signal })
+    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), ...(reason ? { reason } : {}) }, { signal })
     saveAlwaysAllow(this.host, step, result)
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
@@ -531,7 +531,7 @@ export class CodexRunner implements Runner {
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
-    const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, { signal })
+    const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
 
@@ -546,7 +546,7 @@ export class CodexRunner implements Runner {
     if (verdict?.behavior === 'deny') return none
     if (verdict?.behavior === 'allow') return granted
     const title = p.permissions.network ? 'Allow network access' : 'Allow access outside the workspace'
-    const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined, activity: title }, { signal })
+    const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined }, { signal })
     return result?.behavior === 'allow' ? granted : none
   }
 
@@ -554,7 +554,7 @@ export class CodexRunner implements Runner {
   private async question(p: ToolRequestUserInputParams, signal: AbortSignal): Promise<ToolRequestUserInputResponse> {
     const questions = p.questions.map((q) => ({ question: q.question, ...(q.header ? { header: q.header } : {}), options: (q.options ?? []).map((o) => askedOption(o.label, o.description)) }))
     const first = questions[0]
-    const result: Decision | undefined = await this.host.ask({ kind: 'question', toolName: 'AskUserQuestion', input: { questions }, title: first?.question ?? 'Question', options: first?.options.map((o) => o.label) ?? [], questions, activity: first?.question ?? 'Question' }, { signal })
+    const result: Decision | undefined = await this.host.ask({ kind: 'question', toolName: 'AskUserQuestion', input: { questions }, title: first?.question ?? 'Question', options: first?.options.map((o) => o.label) ?? [], questions }, { signal })
     const answers: ToolRequestUserInputResponse['answers'] = {}
     if (result?.behavior === 'answer') {
       const given = result.answers ?? {}

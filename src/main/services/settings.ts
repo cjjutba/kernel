@@ -22,7 +22,6 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
   general: { openTo: 'lastPlace', openAtLogin: false, sendWith: 'enter' },
-  floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
@@ -221,6 +220,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
     // Nothing read Voice briefs, so it went with the Experimental page (KERNEL-540). A file that still has it loads without it.
     delete exp.voice
   }
+  // Nothing reads these since KERNEL-606 removed the screen, so they went (KERNEL-620). A file that still has them loads without them.
+  delete s.floor
   // Checked as a whole, but only the keys the file has stay in `saved`, so a saved preset doesn't pin every other terminal default.
   const own = group('terminal')
   if (own) {

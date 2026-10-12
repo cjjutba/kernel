@@ -239,7 +239,7 @@ export interface KernelApi {
   /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
   'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
 
-  // board (KERNEL-18)
+  // tasks (KERNEL-18)
   'tasks.list': { req: { roomId: string }; res: Task[] }
 
   // home and inbox (KERNEL-17)
@@ -579,7 +579,7 @@ export type PushEvent =
   /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
   | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
-  | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
+  | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
   /** A script's lines from the last 50 ms, in order, so a chatty script is about 20 pushes a second (KERNEL-216). */
   | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; lines: Pick<ScriptLine, 'line' | 'stream'>[] }

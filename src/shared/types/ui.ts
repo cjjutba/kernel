@@ -168,7 +168,7 @@ export interface UiState {
   toasts: Toast[]
   banner: Banner | null
   theme: Theme
-  /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
+  /** Nothing reads it since the briefing sequence went (KERNEL-606). store.ts's `setStage` still writes it, so it stays until that goes. */
   stage?: string
   workspace: WorkspaceView
   /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
@@ -177,7 +177,7 @@ export interface UiState {
   foldedChats: string[]
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
-  /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */
+  /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
   bottomRatio: number

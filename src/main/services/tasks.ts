@@ -17,7 +17,7 @@ const IN_REVIEW: Workspace['prState'][] = ['creating', 'draft', 'open', 'checks'
 const PR_BLOCKED: Workspace['prState'][] = ['cifail', 'changes', 'conflict']
 
 /**
- * Where a task sits, from what is true now (Board.png). Nothing here is a timer.
+ * Where a task sits, from what is true now. Nothing here is a timer.
  * No workspace is Plan. A running workspace is Building, or QA when a QA agent holds it.
  * An open PR is Review, a merged one is Done. Failures block. A waiting approval needs the user.
  */
@@ -44,7 +44,7 @@ export function nextTaskId(existing: Pick<Task, 'id'>[]): string {
 const parentOf = (id: string) => /^(T-\d+)[a-z]$/.exec(id)?.[1]
 
 /**
- * The board's tasks (KERNEL-18). Created from approved plans and from TaskCreated hooks, linked to
+ * A room's tasks (KERNEL-18). Created from approved plans and from TaskCreated hooks, linked to
  * workspaces as Rowan hands them out, and moved only by real events: workspace, PR and approval changes.
  */
 export class Tasks {

@@ -108,7 +108,7 @@ describe('overlap detection across two real worktrees', () => {
     expect(await svc.check('r')).toEqual([])
   })
 
-  it('stays off the floor once handed to the Lead, until it clears', async () => {
+  it('stays out of the Inbox once handed to the Lead, until it clears', async () => {
     const { kai, noor } = await room()
     const svc = service(() => [kai, noor])
     await edit(kai.path, 'src/invoices.ts', 20, 34)
