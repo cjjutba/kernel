@@ -4,6 +4,8 @@ A message that goes at once starts Rowan's session before setup writes `$KERNEL_
 
 Teammates still wait. A hand-off's brief waits for setup whatever the switch says, with the trust hold, the failed card, Run again and Send anyway as before.
 
+The window keeps a chat with Rowan that isn't held open while setup runs. KERNEL-430 shuts the composer of a workspace in setup until something waits in the chat's queue, so a message can't go before a teammate's brief. A chat with Rowan has no brief on its way, so what the user sends goes at once, or waits in main when the chat is held. `setupGate` in `screens/workspace/setupGate.ts` holds the rule. The renderer knows a chat is held only when messages wait there for setup (`skipsSetup`). A chat with Rowan with nothing held shows its transcript, not SetupWait, unless setup failed before anything was sent. Then the card offers Run again and Send anyway. After Rowan has answered, a failed setup shows the banner with Edit script and Run again. It says Rowan keeps answering without it and doesn't pause the composer. The trust banner says the same instead of "Rowan starts once you trust them".
+
 settings.json holds only the keys a user set (KERNEL-225), and `leadWaitForSetup` arrived after that, so a file has the key only when the user flipped the switch. The new default reaches everyone who never touched it, and nobody who chose a value is moved off it.
 
-Amends KERNEL-405. KERNEL-490.
+Amends KERNEL-405 and KERNEL-430. KERNEL-490.

@@ -48,6 +48,8 @@ export interface BannerInput {
   isLead?: boolean
   /** The Lead's name, for "Rowan can still answer you". */
   leadName?: string
+  /** A chat with Rowan with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
+  skipsSetup?: boolean
   /** Settings, Account. A switch left out counts as on, which is the default. */
   usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
   /** Both providers' accounts (KERNEL-406). Without them every limit counts as the Claude login's, as before. */
@@ -129,9 +131,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
   }
 
+  // A chat with Rowan that isn't held keeps answering while setup waits or after it failed (KERNEL-490).
+  const without = `${name} keeps answering without it.`
+
   // KERNEL-209 holds the workspace until the user trusts the room's scripts. Its brief waits in the queue, so the composer stays open.
   if (ws.status === 'trust') return {
-    id: 'trust', kind: 'trust', title: "Waiting for you to trust this repo's scripts", sub: `Setup has not run yet. ${name} starts once you trust them.`,
+    id: 'trust', kind: 'trust', title: "Waiting for you to trust this repo's scripts", sub: `Setup has not run yet. ${i.skipsSetup ? without : `${name} starts once you trust them.`}`,
     actions: [{ id: 'review', label: 'Review', primary: true }], blocks: false
   }
 
@@ -141,8 +146,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const code = i.setupCode
     return {
       id: 'setup', kind: 'setup', title: 'Setup script failed',
-      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}. ${name} waits until setup passes.`,
-      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: true
+      sub: `${code === null || code === undefined ? `${cmd ?? 'The setup script'} did not finish` : `${what} with code ${code}`}. ${i.skipsSetup ? without : `${name} waits until setup passes.`}`,
+      actions: [{ id: 'editScript', label: 'Edit script' }, { id: 'runAgain', label: 'Run again', primary: true }], blocks: !i.skipsSetup
     }
   }
 

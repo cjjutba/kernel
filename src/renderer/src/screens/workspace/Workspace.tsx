@@ -26,6 +26,7 @@ import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { SetupWait } from './SetupWait'
+import { setupGate, skipsSetup } from './setupGate'
 import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
@@ -130,9 +131,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const diffs = tabs?.diffs ?? NO_TABS
   const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
-  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
   const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
+  const skips = !!ws && skipsSetup(ws, heldForSetup)
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running, skips)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -171,7 +173,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   useEffect(() => bringBoxOnAsk(workspaceId, () => latest.current, showNew), [workspaceId, showNew])
 
   if (!ws) return <div className="panel" />
-  const setup = ws.status === 'setup'
   // A chat with Rowan with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
   const ownPr = !isLead || (isLeadChatWorkspace(ws) && (hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
   const title = headerTitle(ws)
@@ -179,11 +180,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
   // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
-  // banner doesn't say it a second time.
-  const setupWait = (setup || ws.status === 'failed') && chat?.kind !== 'terminal' && empty
+  // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
+  // with Rowan that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
+  const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
+  const setupWait = gate.wait && chat?.kind !== 'terminal'
   const banner = setupWait && found?.id === 'setup' ? undefined : found
-  // Setup without a held chat (a teammate's brief still on its way) keeps the box shut, so nothing goes out before setup does.
-  const blocked = (setup && !heldForSetup) || !!banner?.blocks
+  const blocked = gate.shut || !!banner?.blocks
 
   const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
