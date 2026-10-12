@@ -340,12 +340,24 @@ export async function updateAgent(repoPath: string, id: string, patch: AgentEdit
   return agentFromFile(path, await readFile(path, 'utf8'))
 }
 
+/** What an agent needs to take a task through to a pull request: it edits files and runs git and gh. */
+const PR_TOOLS = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
+
 const ROLES: { match: RegExp; role: string; tools: string[] }[] = [
   { match: /secur|review|audit/i, role: 'Reviewer', tools: ['Read', 'Grep', 'Glob'] },
-  { match: /design/i, role: 'Designer', tools: ['Read', 'Grep', 'Glob', 'Bash'] },
-  { match: /doc|writer|copy/i, role: 'Docs', tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob'] },
-  { match: /data|sql|schema|migrat/i, role: 'Data', tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }
+  { match: /design/i, role: 'Designer', tools: PR_TOOLS },
+  { match: /doc|writer|copy/i, role: 'Docs', tools: PR_TOOLS },
+  { match: /data|sql|schema|migrat/i, role: 'Data', tools: PR_TOOLS }
 ]
+
+/**
+ * The role a new agent's name and description suggest, and the tools it gets when nobody wrote a tools line: a reviewer
+ * reads, and every other role can open a pull request (KERNEL-476). New agent and hire_agent both use it.
+ */
+export function hireDefaults(text: string): { role?: string; tools: string[] } {
+  const kind = ROLES.find((r) => r.match.test(text))
+  return { role: kind?.role, tools: [...(kind?.tools ?? PR_TOOLS)] }
+}
 
 /** The slug a name or a description becomes: "Security reviewer" is security-reviewer. */
 export const agentSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '')
@@ -357,14 +369,13 @@ export const agentSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '
 export function draftAgent(o: { description: string; name?: string; model?: string }): AgentDraft {
   const description = oneLine(o.description)
   if (!description) throw new Error('Describe what the agent should do.')
-  const kind = ROLES.find((r) => r.match.test(`${o.name ?? ''} ${description}`))
-  const id = (o.name?.trim() ? agentSlug(o.name) : '') || (kind ? agentSlug(kind.role) : '') || agentSlug(description.split(' ').slice(0, 2).join(' ')) || 'new-agent'
+  const { role, tools } = hireDefaults(`${o.name ?? ''} ${description}`)
+  const id = (o.name?.trim() ? agentSlug(o.name) : '') || (role ? agentSlug(role) : '') || agentSlug(description.split(' ').slice(0, 2).join(' ')) || 'new-agent'
   const name = titleCase(id)
   const sentence = description.charAt(0).toUpperCase() + description.slice(1).replace(/[.!?]*$/, '.')
   const model = o.model || 'sonnet'
-  const tools = kind?.tools ?? ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
   const prompt = `You are ${name}. ${sentence} Work in your own worktree, keep changes small, and tell Rowan what you did and what is left when you finish.`
-  const text = renderAgentFile({ id, description: sentence, model, tools, role: kind?.role, prompt })
+  const text = renderAgentFile({ id, description: sentence, model, tools, role, prompt })
   return { id, name, description: sentence, model, tools, text, file: `.claude/agents/${id}.md` }
 }
 

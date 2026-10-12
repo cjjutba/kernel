@@ -103,6 +103,18 @@ export interface AgentWarning {
 }
 
 /**
+ * The MCP servers an agent's tools line reaches in a room, for the hire card's servers row and hire_agent's result
+ * (KERNEL-476). `reach` holds the servers it may use that are connected, starting or not reported on yet, by the room's
+ * name for each. `blocked` holds the ones its line names that it can't use: the server `failed`, `needs-auth`, is
+ * `disabled` in Claude Code or Codex, is switched `off` in the room, or is `missing` from the room, with `suggestion` a
+ * working server whose name contains the missing one. A server is only called missing once the room's list is whole.
+ */
+export interface AgentReach {
+  reach: string[]
+  blocked: { name: string; why: 'failed' | 'needs-auth' | 'disabled' | 'off' | 'missing'; suggestion?: string }[]
+}
+
+/**
  * The `[team]` table in .kernel/settings.toml (KERNEL-397). Each key overrides what Kernel works out from the agent files,
  * so a room without one needs nothing written.
  */
