@@ -10,7 +10,7 @@ const TEMPLATES: { name: string; sub: string; template: (from?: string) => TeamT
 ]
 
 /**
- * An empty room's team choices, which the empty floor offered until D-104 hid it. The default template from Settings, Agents
+ * An empty room's team choices. The default template from Settings, Agents
  * comes first, and copying needs another room with agents.
  */
 export function TeamTemplates({ room }: { room: Room }) {

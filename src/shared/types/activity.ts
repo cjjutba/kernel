@@ -1,4 +1,4 @@
-/** A line in the room logs and the source of every floor animation. */
+/** A line in the room logs. */
 export interface ActivityEvent {
   id: string
   ts: number
