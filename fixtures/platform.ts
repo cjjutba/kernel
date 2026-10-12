@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpServer, McpSignInAll, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -212,6 +212,34 @@ const trackerRoom = (id: string, crew: string[], room: Partial<Room>, menu = fal
 
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
+/** KERNEL-627: the servers of a room whose Claude accounts differ. Work has all of them ready. Personal has no sign-in to Linear, Gmail or Google Drive, and Vercel failed there. Both Codex accounts share Supabase. */
+const mcpAcrossServers: McpServer[] = [
+  { name: 'GitHub', source: 'user', enabled: true }, { name: 'Linear', source: 'user', enabled: true }, { name: 'Vercel', source: 'user', enabled: true },
+  { name: 'claude.ai Gmail', source: 'claudeai', enabled: true }, { name: 'claude.ai Google Drive', source: 'claudeai', enabled: true },
+  { name: 'Supabase', source: 'user', provider: 'codex', enabled: true }
+]
+const mcpAcrossAccounts: McpAccount[] = [
+  {
+    provider: 'claude', accountId: 'cli', label: 'Work', checkedAt: Date.now(),
+    servers: [
+      { name: 'GitHub', connector: false, state: 'ready' }, { name: 'Linear', connector: false, state: 'ready' }, { name: 'Vercel', connector: false, state: 'ready' },
+      { name: 'claude.ai Gmail', connector: true, state: 'ready' }, { name: 'claude.ai Google Drive', connector: true, state: 'ready' }
+    ]
+  },
+  {
+    provider: 'claude', accountId: 'personal', label: 'Personal', checkedAt: Date.now(),
+    servers: [
+      { name: 'GitHub', connector: false, state: 'ready' }, { name: 'Linear', connector: false, state: 'needs-sign-in' }, { name: 'Vercel', connector: false, state: 'failed', error: 'Connection closed' },
+      { name: 'claude.ai Gmail', connector: true, state: 'needs-sign-in' }, { name: 'claude.ai Google Drive', connector: true, state: 'needs-sign-in' }
+    ]
+  },
+  { provider: 'codex', accountId: 'cli', label: 'cj@example.com', checkedAt: Date.now(), servers: [{ name: 'Supabase', connector: false, state: 'ready' }] },
+  { provider: 'codex', accountId: 'personal', label: 'Personal', checkedAt: Date.now(), servers: [{ name: 'Supabase', connector: false, state: 'ready' }] }
+]
+const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'claude.ai Gmail', 'claude.ai Google Drive'], current: 'claude.ai Gmail', done: ['Linear'], failed: [] }
+const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }
+const skillsOnAccount = (extra: Partial<Fixture>) => scene(() => ({ ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts, ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'skills', account: 'personal' } } }))
+const personalMcpSignIns = [{ server: 'Linear', connector: false }, { server: 'claude.ai Gmail', connector: true }, { server: 'claude.ai Google Drive', connector: true }]
 /** As Kernel resolves them (KERNEL-397): Rowan leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', reviewer: id === 'theo', member: id !== 'rowan' && id !== 'theo', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
 const sixAgents: AgentDef[] = [
@@ -329,6 +357,23 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsProvidersMcp: providersPage('claude', {
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
   }),
+  // KERNEL-627: Sign in to all on the same line while it runs, then what failed.
+  SettingsProvidersMcpSigningIn: providersPage('claude', {
+    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(1) }, keyAccount('claude'), ownCodex],
+    push: [{ type: 'account.mcpSignInAll', run: signInAllRun }]
+  }),
+  SettingsProvidersMcpSignInFailed: providersPage('claude', {
+    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(2) }, keyAccount('claude'), ownCodex],
+    push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }]
+  }),
+  // KERNEL-627: the notice after adding Personal, with the action that opens Skills and MCP on it.
+  SettingsMcpNeededNotice: scene(() => ({
+    ...clientA(),
+    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns }, keyAccount('claude'), ownCodex],
+    providerStatus,
+    usage: providerUsage(),
+    ui: { route: { name: 'settings', page: 'providers', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '3 MCP servers need a sign-in on Personal', action: { label: 'Open', route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'skills', account: 'personal' } } }] }
+  })),
   // KERNEL-619: Personal's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
   SettingsProvidersKeychain: providersPage('claude', {
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, keychainWait: true }, keyAccount('claude'), ownCodex],
@@ -444,6 +489,14 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'reviews' } }
   })),
   SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
+  // KERNEL-627: each server's state on every account in one line, an account with sign-ins missing gets Sign in to all, and Codex's two accounts share theirs.
+  SettingsSkillsAccounts: roomPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts }),
+  // KERNEL-627: Sign in to all is on Gmail, the second of three, with Cancel.
+  SettingsSkillsSigningIn: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllRun }] }),
+  // KERNEL-627: it ended with Google Drive not signed in, and says why.
+  SettingsSkillsSignInFailed: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }] }),
+  // KERNEL-627: the notice's action opens the page on Personal, scrolled to its sign-in line with Sign in to all focused.
+  SettingsSkillsAccountFocus: skillsOnAccount({}),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene(settingsRoom),
   // KERNEL-253: the room has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
