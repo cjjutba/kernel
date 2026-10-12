@@ -123,6 +123,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'workspaces.changes': async ({ workspaceId }) => f.changes[workspaceId] ?? [],
     'workspaces.diff': async ({ workspaceId }) => f.diffs[workspaceId] ?? '',
+    'workspaces.commits': async ({ workspaceId }) => f.commits?.[workspaceId] ?? [],
+    'workspaces.compareBranches': async ({ workspaceId }) => [...new Set([workspace(workspaceId).baseRef, ...(f.branches ?? [])])],
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
     'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => !e.dir && e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
     'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
