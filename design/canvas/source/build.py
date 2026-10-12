@@ -54,7 +54,7 @@ def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=No
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
     s=s.replace('%%ROOMSSHOW%%',' show' if menu=='rooms' else '').replace('%%ROOMSHOW%%',' show' if menu=='room' else '')
-    # D-104 hid the floor and the Board and D-108 dropped Try. D-139 lists the Lead's open chats under a room, each with its workspaces,
+    # The sidebar has no floor, Board or Try row (D-104, D-108). D-139 lists the Lead's open chats under a room, each with its workspaces,
     # and moves Team into the room menu, so no row is Team's: 'lead' marks the Lead's current chat and 'ws' the current workspace.
     for k in ['search','home','inbox','issues','history','lead','ws']:
         on=k==active
@@ -134,8 +134,6 @@ assert hi.count(tile)==1 and hi.count("{ letter: 'B', name: 'Client B',")==1
 hi=hi.replace(tile,'overflow: hidden; '+tile[:-7]+'<sc-if value="{{ r.avatar }}" hint-placeholder-val="{{ false }}">'+avatar(18)+'</sc-if></span>')
 hi=hi.replace("{ letter: 'B', name: 'Client B',","{ letter: '', avatar: true, name: 'Client B',")
 emit('HomeRoomIcon', hi, 'home', icons={'Client B': avatar(16)})
-# The floor and Board screens (Main, Floor*, Board, BoardEmpty, TaskDetail) are hidden (D-104). Their pages keep the sidebar they
-# were drawn with and are not rebuilt, so they still show the screens as they were. Board.dc.html and Main.dc.html stay as templates.
 ib=rd('Inbox.dc.html')
 for n,v in [
     ('Inbox','none'),
