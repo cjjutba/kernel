@@ -267,6 +267,11 @@ export interface ReviewVerdict {
   lens?: ReviewKind
   /** Its kind wasn't required for the PR: its approval doesn't count toward a merge, and its blockers still hold one. */
   optional?: true
+  /**
+   * The commit the reviewer approved, when Kernel carried the approval to a later head whose new commits touched none of the
+   * kind's paths (KERNEL-552). `sha` is then that later head.
+   */
+  keptFrom?: string
   ts: number
 }
 

@@ -185,6 +185,16 @@ export class Account extends Feature {
   private holdsTeammates(): boolean { return !!this.settings?.usage?.pauseNearLimit }
 
   /**
+   * The usage window of `provider`'s account in use that holds teammates' new work now, as Sessions holds it, or undefined
+   * (KERNEL-552). Reviews read it as a round starts: an optional kind is skipped, and a required one starts and waits.
+   */
+  nearLimit(provider: Provider): RateLimit | undefined {
+    if (!this.holdsTeammates()) return undefined
+    const limits = this.store.meta<RateLimit[]>('limits') ?? []
+    return nearLimit(limits.filter((l) => limitProvider(l) === provider && l.accountId === this.k.providers.active(provider)))
+  }
+
+  /**
    * "Warn me before the weekly limit": the weekly window at 80% or more saves one Inbox row and shows one macOS banner. One
    * per window, kept under `weeklyWarned` by its reset time, which a reading from the usage call can put a second off, so
    * times a minute apart count as the same window. A window already past its reset doesn't warn.

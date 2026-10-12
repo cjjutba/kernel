@@ -1,6 +1,6 @@
 import type { ReviewVerdict } from './chats'
 import type { PrBlocked } from './pullRequests'
-import type { MergeMethod } from './settings'
+import type { MergeMethod, ReviewKind } from './settings'
 import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
@@ -82,6 +82,8 @@ export interface Workspace {
   reviewOf?: string
   /** Reviewers' verdicts on this workspace's PR, one per review workspace and kind of review (KERNEL-549). */
   reviews?: ReviewVerdict[]
+  /** The latest review round Kernel started on this workspace's PR (KERNEL-552). */
+  reviewRound?: ReviewRound
   /** The PR's head commit as GitHub last reported it. */
   prHead?: string
   prNumber?: number
@@ -104,6 +106,15 @@ export interface Workspace {
   /** The setup script's last run, for the chat's setup line and the note when it passes (KERNEL-430). */
   setupRun?: SetupRun
 }
+
+/**
+ * A review round: one set of review runs on one head commit of a PR (KERNEL-552). Kernel saves the kinds it chose as the
+ * round starts, so a change to `[review]` meanwhile applies from the next round. `n` counts the rounds that ran a review,
+ * from 1. `rounds` is `[review] rounds`, the most Kernel runs while blockers are left. `kept` approved the head before and
+ * kept that approval, since the new commits touched none of their paths. `skipped` are optional kinds Kernel left out to
+ * save usage. The kinds in neither ran.
+ */
+export interface ReviewRound { n: number; rounds: number; head: string; prNumber: number; kinds: ReviewKind[]; kept?: ReviewKind[]; skipped?: ReviewKind[] }
 
 /** When the setup script started and how it ended: an exit code, null when it was stopped, or `timeout`. No `endedAt` while it runs. */
 export interface SetupRun { startedAt: number; endedAt?: number; end?: number | null | 'timeout' }
