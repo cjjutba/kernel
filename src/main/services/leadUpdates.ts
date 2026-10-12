@@ -7,7 +7,7 @@ import type { TurnDone } from './notifications'
 import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
-import { blockedWhy, kindsText, reviewPhrase, reviewsText, type ReviewPhrase } from '@shared/merge'
+import { blockedWhy, kindsText, reviewPhrase, reviewsText } from '@shared/merge'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody passes a
@@ -78,7 +78,7 @@ export interface TeamEvent {
   /** A setup that passed once the user trusted the room's scripts, rather than on Run again (KERNEL-261). */
   trusted?: boolean
   /** A review: the verdict, its kind (KERNEL-549), and the work it is about, with its author's name and PR number (KERNEL-130). */
-  review?: { verdict: ReviewVerdict['verdict']; lens?: ReviewKind; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean }
+  review?: { verdict: ReviewVerdict['verdict']; lens?: ReviewKind; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean; stillBlocked?: number }
   /** A wait on other PRs (KERNEL-259), and on a setup that passed while one stands. */
   wait?: WaitNews
   /** A file the teammate shared, at the version it shared (KERNEL-302). `source` is its path in the workspace. */
@@ -188,7 +188,8 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
       if (r.verdict === 'approved') return `${by('approved')} ${what}${r.current ? ', at its latest commit' : ''}.`
       const list = (r.blockers ?? []).map((x, i) => `  ${i + 1}. ${x.file ? `${x.file}${x.line ? `:${x.line}` : ''}: ` : ''}${x.text}`)
       const total = r.total ?? list.length
-      return [`${by('found')} ${total} ${total === 1 ? 'blocker' : 'blockers'} in ${what}${total > list.length ? ` (the first ${list.length} below)` : ''}:`, ...list].join('\n')
+      const stuck = r.stillBlocked ? `, and it is ${stillBlockedText(r.stillBlocked).toLowerCase()}` : ''
+      return [`${by('found')} ${total} ${total === 1 ? 'blocker' : 'blockers'} in ${what}${stuck}${total > list.length ? ` (the first ${list.length} below)` : ''}:`, ...list].join('\n')
     }
   }
 }
@@ -272,7 +273,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
  * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
  * off. `shares` are its shared files, which the card draws apart from `events`.
  */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card?: ReviewPhrase; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card: string[]; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: From; owner?: string }
@@ -298,29 +299,68 @@ export interface ReviewState {
   stale?: boolean
   /** The newest review workspace still open, to ask for another pass instead of a new one. `failed`: its setup failed. */
   open?: { workspaceId: string; agentId: string; name: string; failed?: boolean }
+  /** Required kinds whose review waits for usage to drop below the limit (KERNEL-552). They count as in progress. */
+  held?: ReviewKind[]
+  /** Optional kinds the head's review round skipped to save usage (KERNEL-552). */
+  skipped?: ReviewKind[]
+  /**
+   * The PR is still blocked after `rounds` review rounds, `[review] rounds` or more, by `kinds`' blockers on the last round's
+   * head, so Kernel starts no more by itself (KERNEL-552). Unset while a review runs.
+   */
+  stillBlocked?: { rounds: number; kinds: ReviewKind[] }
 }
 
 /** Every review that looked at the PR approved its latest commit, and none is still to report. */
 const allApproved = (review: ReviewState | undefined): boolean => !!review?.approved.length && !review.waiting.length && !review.blockers && !review.inProgress
 
+/** "the UX review", "the code and UX reviews", for the middle of a sentence. */
+const reviewsOf = (kinds: readonly ReviewKind[]) => reviewsText(kinds).replace(/^The/, 'the')
+
+/** "Still blocked after 2 review rounds", as the card and the Lead's text say it (KERNEL-552). */
+const stillBlockedText = (n: number) => `Still blocked after ${n} review ${n === 1 ? 'round' : 'rounds'}`
+
+/** "Skipped the UX review to save usage" (KERNEL-552). */
+const skippedText = (kinds: readonly ReviewKind[]) => `Skipped ${reviewsOf(kinds)} to save usage`
+
+/** "The code review waits for usage to drop below the limit" (KERNEL-552). */
+const heldText = (kinds: readonly ReviewKind[]) => `${reviewsText(kinds)} ${kinds.length === 1 ? 'waits' : 'wait'} for usage to drop below the limit`
+
 /** Where a PR that passed checks stands with its review, for the Lead's text, or nothing when Kernel can't tell. */
 function reviewStatus(review: ReviewState | undefined): string {
   if (!review) return ''
-  if (review.blockers) return `${reviewsText(review.blocking)} found blockers.`
-  if (review.inProgress) return review.reviewing.length ? `${reviewsText(review.reviewing)} ${review.reviewing.length === 1 ? 'is' : 'are'} running.` : 'Kernel is starting its review.'
+  const skipped = review.skipped?.length ? ` ${skippedText(review.skipped)}.` : ''
+  return `${reviewStanding(review)}${skipped}`
+}
+
+function reviewStanding(review: ReviewState): string {
+  if (review.blockers) return `${reviewsText(review.blocking)} found blockers.${review.stillBlocked ? ` ${stillBlockedText(review.stillBlocked.rounds)}.` : ''}`
+  if (review.stillBlocked) return `${stillBlockedText(review.stillBlocked.rounds)}, so Kernel didn't review its new commits.`
+  if (review.inProgress) {
+    const parts = [...(review.reviewing.length ? [`${reviewsText(review.reviewing)} ${review.reviewing.length === 1 ? 'is' : 'are'} running.`] : []), ...(review.held?.length ? [`${heldText(review.held)}.`] : [])]
+    return parts.length ? parts.join(' ') : 'Kernel is starting its review.'
+  }
   if (allApproved(review)) return `${reviewsText(review.approved)} approved it.`
   if (review.stale || review.waiting.length) return `${review.open ? `${review.open.name}'s review` : 'Its last review'} was of a different commit.`
   return 'Nobody has reviewed it yet.'
 }
 
-/** The same review in the card's words (KERNEL-411), a segment of its own after Ready to merge, or nothing when Kernel can't tell. */
-function reviewCard(review: ReviewState | undefined): ReviewPhrase | undefined {
-  if (!review) return undefined
-  if (review.blockers) return reviewPhrase({ blockers: { lenses: review.blocking } })
-  if (review.inProgress) return reviewPhrase({ reviewing: review.reviewing })
-  if (allApproved(review)) return reviewPhrase({ approved: review.approved })
-  if (review.stale || review.waiting.length) return reviewPhrase({ stale: true })
-  return reviewPhrase({})
+/**
+ * The same review in the card's words (KERNEL-411), segments of their own after Ready to merge, or none when Kernel can't
+ * tell. A review round that skipped a kind, or waits for usage, says so in a segment of its own (KERNEL-552).
+ */
+function reviewCard(review: ReviewState | undefined): string[] {
+  if (!review) return []
+  const skipped = review.skipped?.length ? [skippedText(review.skipped)] : []
+  const stuck = review.stillBlocked ? [stillBlockedText(review.stillBlocked.rounds)] : []
+  if (review.blockers) return [reviewPhrase({ blockers: { lenses: review.blocking } }).text, ...stuck, ...skipped]
+  if (stuck.length) return [...stuck, ...skipped]
+  if (review.inProgress) {
+    const held = review.held?.length ? [`${kindsText(review.held)} ${review.held.length === 1 ? 'review waits' : 'reviews wait'} for usage to drop`] : []
+    return [...(review.reviewing.length || !held.length ? [reviewPhrase({ reviewing: review.reviewing }).text] : []), ...held, ...skipped]
+  }
+  if (allApproved(review)) return [reviewPhrase({ approved: review.approved }).text, ...skipped]
+  if (review.stale || review.waiting.length) return [reviewPhrase({ stale: true }).text, ...skipped]
+  return [reviewPhrase({}).text, ...skipped]
 }
 
 /** PR states that mean the PR is still being created or checked, so a turn that just ended isn't news on its own. */
@@ -639,10 +679,13 @@ export class LeadUpdates {
         if (!ws || this.d.isLead(ws)) continue
         // A verdict is current while the reviewed PR's head is the commit it reviewed, as of now, not as of the verdict.
         // A wait that broke and came back, as when its PR reopened, says nothing (KERNEL-259).
+        // Blockers on the head after the last review round Kernel runs say so (KERNEL-552).
         const kept = collapse(events, ws).filter((e) => e.kind !== 'wait.broken' || stillBroken(ws, e, (id) => this.d.store.workspace(id))).map((e) => {
-          if (!e.review?.sha) return e
-          const head = this.d.store.workspace(e.review.of)?.prHead
-          return { ...e, review: { ...e.review, current: !head || head === e.review.sha } }
+          if (!e.review) return e
+          const of = this.d.store.workspace(e.review.of)
+          const current = e.review.sha ? !of?.prHead || of.prHead === e.review.sha : e.review.current
+          const stuck = current && e.review.verdict === 'blockers' && e.review.lens && of ? this.d.reviewState?.(of)?.stillBlocked?.rounds : undefined
+          return { ...e, review: { ...e.review, current, ...(stuck ? { stillBlocked: stuck } : {}) } }
         })
         if (!kept.length) continue
         const turn = kept.find((e) => e.kind === 'turn')
@@ -696,7 +739,8 @@ export class LeadUpdates {
         // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411).
         events: b.events.flatMap((e) => [
           { kind: e.kind, text: cardText(e), actionable: b.wake.has(e) },
-          ...((e.kind === 'pr.ready' || e.kind === 'pr.unblocked') && b.card ? [{ kind: 'pr.review' as const, text: b.card.text, actionable: false }] : [])
+          ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
+          ...(e.review?.stillBlocked ? [{ kind: 'pr.review' as const, text: stillBlockedText(e.review.stillBlocked), actionable: false }] : [])
         ]),
         ...(b.reply ? { reply: b.reply } : {}),
         ...(b.from ? { fromChat: b.from.title, ...(b.from.tab ? { fromTab: true } : {}) } : {}),
@@ -731,8 +775,34 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
  */
 export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined }
 
-/** The To do line for a PR that passed checks and every review approved. The review's own line says the same, so it shows once. */
-const readyToMerge = (pr: string, kinds: ReviewKind[]) => `${upper(pr)} passed checks, has no conflicts and ${reviewsText(kinds).replace(/^The/, 'the')} approved it. Tell the user it is ready to merge.`
+/**
+ * The To do line for a PR that passed checks and every review approved. The review's own line says the same, so it shows once.
+ * A kind the review round skipped to save usage is the user's to know (KERNEL-552).
+ */
+function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = []): string {
+  const left = skipped.length ? ` Kernel skipped ${reviewsOf(skipped)} to save usage.` : ''
+  return `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.${left} Tell the user it is ready to merge${skipped.length ? `, and that ${reviewsOf(skipped)} didn't run` : ''}.`
+}
+
+/**
+ * The To do line for a PR still blocked after the review rounds `[review] rounds` allows (KERNEL-552). Kernel starts no more,
+ * so the Lead brings what is open to the user instead of sending it back to the author. `pushed`: the author pushed since,
+ * and Kernel didn't review the new commits. In the same words from every event that meets it, so it shows once.
+ */
+function stillBlockedTodo(pr: string, s: NonNullable<ReviewState['stillBlocked']>, author: string, pushed: boolean): string {
+  const what = pushed ? `${upper(pr)} has new commits, but it was ${stillBlockedText(s.rounds).toLowerCase()}, so Kernel didn't review them.` : `${upper(pr)} is ${stillBlockedText(s.rounds).toLowerCase()}, so Kernel won't review it again by itself.`
+  return `${what} Don't send it back to ${author}: tell the user what ${reviewsOf(s.kinds)} found that is still open, and ask with ask_user how they want to go on.`
+}
+
+/**
+ * The To do line for blockers from one review round. With two kinds or more, they may pull opposite ways, and the user picks
+ * rather than the author getting both (KERNEL-552). In the same words from each kind's verdict, so it shows once.
+ */
+function blockersTodo(kinds: ReviewKind[], author: string, at: string): string {
+  const whose = `${reviewsOf(kinds)}${kinds.length > 1 ? "'" : "'s"}`
+  if (kinds.length < 2) return `Send ${whose} blockers to ${author} with message_agent ${at}.`
+  return `Send ${whose} blockers to ${author} in one message with message_agent ${at}. If blockers from two reviews contradict each other, don't pass both on: ask the user which to follow with ask_user first.`
+}
 
 /**
  * The To do line for a ready PR GitHub won't merge, in the same words from every event that meets it, so it shows once
@@ -790,17 +860,30 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // Kernel runs a kind's review again by itself once the fix passes checks (KERNEL-549), so the Lead only passes the
         // blockers on. A review without a kind, which the Lead started, is still the Lead's to ask again, unless the user
         // archived its workspace, which can't review again.
-        const whose = r.lens ? reviewsText([r.lens]).replace(/^The/, 'the') + "'s" : `${name}'s`
-        if (r.verdict === 'blockers') { wake(`Send ${whose} blockers to ${r.ofName} with message_agent (workspace ${r.of}).${archived || r.lens ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true); break }
+        const state = c.stateOf?.(r.of)
+        const ofAt = `(workspace ${r.of})`
+        if (r.verdict === 'blockers' && r.lens && r.current && state) {
+          // A kind's blockers on the head wait for the rest of its review round, so the author gets them all at once and the
+          // Lead reads them side by side. After the last round Kernel runs, they go to the user instead (KERNEL-552).
+          if (state.inProgress) break
+          const ofPr = of?.prNumber ?? r.ofPr
+          if (state.stillBlocked) { wake(stillBlockedTodo(ofPr ? `PR #${ofPr}` : 'the PR', state.stillBlocked, r.ofName, false), true); break }
+          wake(blockersTodo(state.blocking.length ? state.blocking : [r.lens], r.ofName, ofAt), true)
+          break
+        }
+        if (r.verdict === 'blockers') {
+          if (r.lens) { wake(blockersTodo([r.lens], r.ofName, ofAt), true); break }
+          wake(`Send ${name}'s blockers to ${r.ofName} with message_agent ${ofAt}.${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true)
+          break
+        }
         // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge. Kernel asks
         // for another once the PR passes checks again; a review from before review kinds is the Lead's to ask for.
         if (!r.current && of?.prNumber) { if (!r.lens || c.autoReview === false) wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
         // Another review of the PR is still running or found blockers. Its own news says what's next.
-        const state = c.stateOf?.(r.of)
         if (r.lens && (state?.inProgress || state?.blockers)) break
         const kinds = state?.approved.length ? state.approved : [r.lens ?? 'code']
         // A PR GitHub still blocks is its author's to update, or the user's to know (KERNEL-401).
-        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, `(workspace ${r.of})`, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds), true); break }
+        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped), true); break }
         const approver = r.lens ? reviewsText(kinds) : name
         if (!of?.prNumber) { wake(`${approver} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
         wake(`${approver} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
@@ -830,7 +913,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         const review = c.review
         // A review still to come, or one that found blockers, says what's next itself.
         if (review?.blockers || review?.inProgress) break
-        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [])); break }
+        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped)); break }
         if (review?.open || review?.stale) break
         wake(`GitHub no longer blocks ${pr}, so it is ready to merge. Tell the user.`)
         break
@@ -841,9 +924,11 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // Blockers come with the review's own update, and a review that runs will say what it found. Kernel starts the reviews
         // itself (KERNEL-549), so a PR that just passed checks reads as in progress while they start.
         if (review?.blockers || review?.inProgress) break
+        // Kernel ran the last review round it runs and blockers were left, so it didn't review the new commits (KERNEL-552).
+        if (review?.stillBlocked) { wake(stillBlockedTodo(pr, review.stillBlocked, name, true)); break }
         // A branch behind its base is updated first: the update makes a new head, which any review would have to see again (KERNEL-401).
         if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
-        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [])); break }
+        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // No review looked at this PR: auto review is off (KERNEL-115), or none of the room's reviews covers what it changes.
         if (!review?.open && !review?.stale) {

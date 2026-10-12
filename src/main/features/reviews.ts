@@ -1,4 +1,4 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type ReviewRound, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
 import { kindStates, lensOf, reviewsText, reviewVerdicts } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
@@ -11,15 +11,18 @@ import { remoteOf, reviewPolicyOf, saveReviewSettings } from '../services/settin
 import { resolveBaseRef } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { isUnreadable } from '../services/agents'
-import { kindLabel, kindsFor, lensAgent } from '../services/lenses'
+import { inPaths, kindLabel, kindsFor, lensAgent } from '../services/lenses'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
 /**
  * One kind of review a PR gets, as Kernel settles it when the review starts (KERNEL-549): the room agent that runs it, none
- * for Kernel's own prompt, whether its approval counts toward a merge, and the model its chat runs on.
+ * for Kernel's own prompt, whether its approval counts toward a merge, the model its chat runs on, and its `paths`.
  */
-export interface PlannedReview { kind: ReviewKind; agent?: AgentDef; optional: boolean; model?: string; provider?: Provider }
+export interface PlannedReview { kind: ReviewKind; agent?: AgentDef; optional: boolean; model?: string; provider?: Provider; paths: string[] }
+
+/** Whether changed `files` touch a kind's `paths`. Empty `paths` cover every file, as `kindsFor` reads them. */
+const touches = (paths: string[], files: string[]) => (paths.length ? files.some((f) => inPaths(f, paths)) : files.length > 0)
 
 /** A PR's base branch's review policy, and the ref Kernel read it from, none when no ref for the base resolves. */
 interface Policy { review: ReviewConfig; team: TeamConfig; base?: string }
@@ -32,8 +35,6 @@ interface Policy { review: ReviewConfig; team: TeamConfig; base?: string }
 export class Reviews extends Feature {
   /** PRs whose reviews Kernel is starting, by workspace id, so an update meanwhile reads them as in progress. */
   private starting = new Set<string>()
-  /** The head commit Kernel last asked each review chat to look at, so the same commit is never asked for twice. */
-  private asked = new Map<string, string>()
 
   /** Where a review worktree starts: the reviewed workspace's branch, or its copy on the remote when the local one is gone. */
   async reviewBase(repo: string, branch: string, remote: string): Promise<string> {
@@ -98,17 +99,26 @@ export class Reviews extends Feature {
     return undefined
   }
 
+  /** The files that differ between two commits of a PR, or undefined when git can't say, as when one is gone after a force push. */
+  private async filesBetween(of: Workspace, from: string, to: string): Promise<string[] | undefined> {
+    const repo = this.mustRoom(of.roomId).path
+    if (!from || !to || !(await this.resolves(repo, from)) || !(await this.resolves(repo, to))) return undefined
+    const r = await exec('git', ['-C', repo, 'diff', '--name-only', '--no-renames', '-z', from, to])
+    return r.code === 0 ? r.stdout.split('\0').filter(Boolean) : undefined
+  }
+
   /**
    * The reviews a PR gets, in REVIEW_KINDS' order (KERNEL-549): each kind its base branch's `[review]` turns on whose paths
    * the PR touches. A kind's `agent` runs it. The code review's is otherwise the room's reviewer, as the base branch's
    * `[team]` picks it, or Kernel's prompt when there is none. `[team] reviewer = "none"` leaves code review out unless
-   * `[review.code]` names an agent. An agent never reviews its own PR: that kind runs Kernel's prompt instead.
+   * `[review.code]` names an agent. An agent never reviews its own PR: that kind runs Kernel's prompt instead. `rounds` is the
+   * base branch's `[review] rounds` (KERNEL-552).
    */
-  async planFor(of: Workspace): Promise<PlannedReview[]> {
+  async planFor(of: Workspace): Promise<{ plan: PlannedReview[]; rounds: number }> {
     const policy = await this.policyFor(of)
     const files = policy.base ? await this.changedFiles(of, policy.base) : undefined
     const pool = this.agentsSync(of.roomId).filter((a) => !a.lead && !a.retired && !a.builtIn && !isUnreadable(a))
-    return kindsFor(policy.review, files).flatMap((kind): PlannedReview[] => {
+    const plan = kindsFor(policy.review, files).flatMap((kind): PlannedReview[] => {
       const c = policy.review.kinds[kind]
       let agent = c.agent ? pool.find((a) => a.id === c.agent) : undefined
       if (kind === 'code' && !c.agent) {
@@ -118,29 +128,68 @@ export class Reviews extends Feature {
         agent = named === KERNEL_REVIEWER ? undefined : named ? pool.find((a) => a.id === named) : pool.find((a) => a.origin !== 'plugin' && /\breview/i.test(a.role))
       }
       if (agent?.id === of.agentId) agent = undefined
-      return [{ kind, ...(agent ? { agent } : {}), optional: !c.required, ...(c.model ? { model: c.model } : {}), ...(c.provider ? { provider: c.provider } : {}) }]
+      return [{ kind, ...(agent ? { agent } : {}), optional: !c.required, ...(c.model ? { model: c.model } : {}), ...(c.provider ? { provider: c.provider } : {}), paths: c.paths }]
     })
+    return { plan, rounds: policy.review.rounds }
+  }
+
+  /** The PR's latest review round, none when there is none yet or it was of another PR, as after Continue (KERNEL-552). */
+  private roundOf(ws: Workspace): ReviewRound | undefined {
+    return ws.reviewRound && ws.reviewRound.prNumber === ws.prNumber ? ws.reviewRound : undefined
   }
 
   /**
-   * A teammate's PR passed checks (KERNEL-549). While `pr.autoReview` is on, Kernel starts the reviews it needs: a review
-   * workspace with a chat per kind the first time, and after that a new chat for a kind it lacks, and "review again" to each
-   * chat that hasn't sent a verdict on the PR's latest commit. The Lead's own workspaces and reviews get none.
+   * The review round Kernel starts on the PR's head (KERNEL-552), or none once `[review] rounds` rounds ran and the last one
+   * left blockers. After a round, a kind that approved its head keeps that approval unless the new commits touch the kind's
+   * paths, so after a fix only the kinds that blocked run again. Kernel doesn't know what changed when either commit is gone,
+   * and then every kind runs. Near the usage limit an optional kind that would run is skipped. A round that runs nothing,
+   * every kind kept or skipped, doesn't count toward `rounds`.
+   */
+  private async nextRound(of: Workspace, plan: PlannedReview[], rounds: number): Promise<ReviewRound | undefined> {
+    const last = this.roundOf(of)
+    const head = of.prHead ?? ''
+    let kept: ReviewKind[] = []
+    if (last) {
+      const before = kindStates({ ...of, prHead: last.head })
+      if (last.n >= rounds && before.blocking.length) return undefined
+      const files = await this.filesBetween(of, last.head, head)
+      kept = files ? plan.filter((p) => before.approved.includes(p.kind) && !touches(p.paths, files)).map((p) => p.kind) : []
+    }
+    const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p).provider)).map((p) => p.kind)
+    const runs = plan.length - kept.length - skipped.length
+    return { n: (last?.n ?? 0) + (runs ? 1 : 0), rounds, head, prNumber: of.prNumber!, kinds: plan.map((p) => p.kind), ...(kept.length ? { kept } : {}), ...(skipped.length ? { skipped } : {}) }
+  }
+
+  /**
+   * A teammate's PR passed checks (KERNEL-549). While `pr.autoReview` is on, Kernel starts a review round on its head
+   * (KERNEL-552): a review workspace with a chat per kind the first time, and after that a new chat for a kind it lacks and
+   * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
+   * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. The Lead's own workspaces
+   * and reviews get none.
    */
   async onReady(workspaceId: string): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || this.isLeadWorkspace(of)) return
-    if (this.settings.pr.autoReview === false || this.starting.has(of.id)) return
+    if (this.settings.pr.autoReview === false || this.starting.has(of.id) || this.roundOf(of)?.head === (of.prHead ?? '')) return
     // Before any await, so an update composed meanwhile reads the review as in progress.
     this.starting.add(of.id)
     try {
       await this.k.team.agents(of.roomId)
-      const plan = await this.planFor(of)
+      const { plan, rounds } = await this.planFor(of)
       const now = this.store.workspace(of.id)
       if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || this.stopped) return
+      const round = await this.nextRound(now, plan, rounds)
+      // Still blocked after the last round `[review] rounds` allows. The Lead's update brings it to the user.
+      if (!round || this.stopped) return
+      const run = plan.filter((p) => !round.kept?.includes(p.kind) && !round.skipped?.includes(p.kind))
       const open = this.store.workspaces(of.roomId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
-      if (open) await this.reviewAgain(open, now, plan)
-      else await this.startReview(now, plan)
+      if (open) await this.reviewAgain(open, now, run)
+      else if (run.length) await this.startReview(now, run)
+      // Read again after the awaits, so a verdict saved meanwhile isn't lost. A kept approval now counts for the new head.
+      const fresh = this.mustWs(of.id)
+      const last = this.roundOf(fresh)
+      const reviews = fresh.reviews?.map((v) => (last && round.kept?.includes(lensOf(v)) && v.verdict === 'approved' && v.sha === last.head && (!v.prNumber || v.prNumber === fresh.prNumber) ? { ...v, sha: round.head, keptFrom: v.keptFrom ?? v.sha } : v))
+      this.updateWs(of.id, { reviewRound: round, ...(reviews ? { reviews } : {}) })
     } catch (e) {
       if (this.stopped) return
       console.warn(`[reviews] starting the review of ${of.name} failed`, e)
@@ -158,35 +207,31 @@ export class Reviews extends Feature {
       prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(of.leadChatId ? { leadChatId: of.leadChatId } : {})
     })
     const chats = plan.map((p, i) => this.lensChat(ws, p, i === 0 ? chat : undefined))
-    for (const [i, c] of chats.entries()) {
-      this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })
-      if (of.prHead) this.asked.set(c.id, of.prHead)
-    }
+    for (const [i, c] of chats.entries()) this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })
     return this.k.workspaces.setUpWorkspace(ws, room, repo, chats[0])
   }
 
   /**
-   * A PR passed checks again with its review workspace open: a kind with no chat gets one, and each chat that hasn't sent a
-   * verdict on the latest commit is asked to review again, once per commit. A review workspace still setting up, or whose
-   * setup failed, holds the messages until setup passes.
+   * A new review round with the PR's review workspace open (KERNEL-552): each kind the round runs that has no chat gets one,
+   * and each that has is asked to review again. A review workspace still setting up, or whose setup failed, holds the
+   * messages until setup passes. A kind that turned required or optional since its chat started reads as the round has it.
    */
-  private async reviewAgain(rws: Workspace, of: Workspace, plan: PlannedReview[]) {
+  private async reviewAgain(rws: Workspace, of: Workspace, run: PlannedReview[]) {
     const tabs = this.chatTabs(rws.id).filter((c) => c.kind === 'chat')
-    const { current } = reviewVerdicts(of)
-    for (const p of plan) {
+    for (const p of run) {
       // A review chat from before review kinds runs the code review.
       const chat = tabs.find((c) => (c.lens?.kind ?? 'code') === p.kind)
       if (!chat) {
         const made = this.lensChat(rws, p)
-        if (of.prHead) this.asked.set(made.id, of.prHead)
         if (rws.status === 'ready') await this.sessions.send(made.id, this.briefParts(of, p.kind), { from: 'kernel' })
         else this.sessions.hold(made.id, this.briefParts(of, p.kind), { from: 'kernel' })
         continue
       }
-      if (!of.prHead || this.asked.get(chat.id) === of.prHead) continue
-      if (current.some((v) => v.workspaceId === rws.id && lensOf(v) === p.kind)) continue
-      this.asked.set(chat.id, of.prHead)
-      const text = `PR #${of.prNumber} has new commits, up to ${of.prHead.slice(0, 7)}. Review it again as your rule says, and call submit_review again.`
+      if (chat.lens && !!chat.lens.optional !== p.optional) {
+        const { optional: _optional, ...lens } = chat.lens
+        this.saveChat({ ...chat, lens: { ...lens, ...(p.optional ? { optional: true as const } : {}) } })
+      }
+      const text = `PR #${of.prNumber} has new commits${of.prHead ? `, up to ${of.prHead.slice(0, 7)}` : ''}. Review it again as your rule says, and call submit_review again.`
       await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'kernel' })
     }
   }
@@ -243,7 +288,10 @@ export class Reviews extends Feature {
     return review.verdict === 'approved' ? `Saved: you approved ${what}. The Lead hears about it.` : `Saved: ${verdict.blockers?.length ?? 0} blocker(s) in ${what}. The Lead passes them on.`
   }
 
-  /** What Kernel knows about reviews of a workspace's PR, kind by kind, for the Lead's updates (KERNEL-549). */
+  /**
+   * What Kernel knows about reviews of a workspace's PR, kind by kind, for the Lead's updates (KERNEL-549), and of its review
+   * rounds (KERNEL-552).
+   */
   reviewState(ws: Workspace): ReviewState {
     // Kernel's own reviewer included, which isn't on the team when the room has a reviewer of its own.
     const name = (id: string) => this.k.team.agentOf(ws.roomId, id)?.name ?? id
@@ -252,22 +300,35 @@ export class Reviews extends Feature {
     const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
     // A review runs while its setup runs or waits for the user to trust the room's scripts (KERNEL-261), or while its chat
     // works on it or has messages waiting and hasn't sent a verdict on the head commit. A review whose setup failed isn't
-    // running: it waits for the user. A chat from before review kinds runs the code review.
+    // running: it waits for the user. A chat from before review kinds runs the code review. One whose turn waits for usage
+    // to drop is held, not running (KERNEL-552).
     const busy = (r: Workspace, c: Chat) => r.status === 'setup' || r.status === 'trust' || (r.status === 'ready' && (this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
     const reviewing = new Set<ReviewKind>()
+    const held = new Set<ReviewKind>()
     for (const r of reviews) {
       for (const c of this.chatTabs(r.id).filter((c) => c.kind === 'chat')) {
         const kind = c.lens?.kind ?? 'code'
-        if (busy(r, c) && !current.some((v) => v.workspaceId === r.id && lensOf(v) === kind)) reviewing.add(kind)
+        if (!busy(r, c) || current.some((v) => v.workspaceId === r.id && lensOf(v) === kind)) continue
+        if (this.sessions.queueReason(c.id) === 'limit') held.add(kind)
+        else reviewing.add(kind)
       }
     }
+    const ordered = (set: Set<ReviewKind>) => REVIEW_KINDS.map((k) => k.id).filter((k) => set.has(k))
     const open = reviews[0]
+    const inProgress = reviewing.size > 0 || held.size > 0 || this.starting.has(ws.id)
+    // The last round reached `[review] rounds` with blockers on its head, which Kernel won't send back again.
+    const round = this.roundOf(ws)
+    const left = round && round.n >= round.rounds && !inProgress ? kindStates({ ...ws, prHead: round.head }).blocking : []
+    const skipped = round && round.head === ws.prHead ? round.skipped ?? [] : []
     return {
       approved: s.approved, blocking: s.blocking, blockers: s.blocking.length > 0,
-      reviewing: REVIEW_KINDS.map((k) => k.id).filter((k) => reviewing.has(k)),
-      inProgress: reviewing.size > 0 || this.starting.has(ws.id),
+      reviewing: ordered(reviewing),
+      inProgress,
       waiting: s.waiting,
       stale: verdicts.length > 0 && current.length === 0,
+      ...(held.size ? { held: ordered(held) } : {}),
+      ...(skipped.length ? { skipped } : {}),
+      ...(round && left.length ? { stillBlocked: { rounds: round.n, kinds: left } } : {}),
       ...(open ? { open: { workspaceId: open.id, agentId: open.agentId, name: name(open.agentId), ...(open.status === 'failed' ? { failed: true } : {}) } } : {})
     }
   }
