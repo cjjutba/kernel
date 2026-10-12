@@ -1,5 +1,4 @@
 import type { Modal } from '@shared/types'
-import { actions } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import './issues.css'
 
@@ -17,16 +16,16 @@ function rowOf(f: Finding): { label: string; value: string; mono?: boolean } {
 /**
  * Someone may already be on this issue (ConfirmIssueTaken.png). It lists what Kernel found, up to three things, and waits.
  * Starting anyway destroys nothing, so the button is the primary one and not the red one. `onStart` is what starting does:
- * it may wait on the main process, and the button spins until it settles.
+ * it may wait on the main process, and the button spins until it settles. `onCancel` is where Cancel goes back to (KERNEL-500).
  */
-export function ConfirmIssueTaken({ issue, findings, onStart }: { issue: string; findings: Finding[]; onStart: () => void | Promise<void> }) {
+export function ConfirmIssueTaken({ issue, findings, onStart, onCancel }: { issue: string; findings: Finding[]; onStart: () => void | Promise<void>; onCancel: () => void }) {
   const [busy, run] = useBusy()
   const rows = findings.map(rowOf)
   return (
     <ConfirmDialog
       title={`Someone may already be on ${issue}`} confirmLabel="Start anyway" busy={!!busy} busyLabel="Starting"
       body="Kernel found work on this issue by someone else. A new workspace may repeat it."
-      onConfirm={() => void run('start', async () => { await onStart() })} onCancel={actions.ui.closeModal}
+      onConfirm={() => void run('start', async () => { await onStart() })} onCancel={onCancel}
     >
       {rows.length > 0 && (
         <dl className="is-taken">
