@@ -107,7 +107,7 @@
 .hc-state { flex-shrink: 0; display: inline-flex; align-items: center; color: var(--ink-3); }
 .hc-state[data-tone='needs'] { color: var(--ink); }
 .hc-state[data-tone='merged'] { color: var(--merged); }
-.hc-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.hc-title { font-size: 13px; font-weight: 500; color: var(--ink); }
 .hc-line { font-size: 12px; color: var(--muted); }
 .hc-wrap-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
 .hc-wrap { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }

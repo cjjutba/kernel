@@ -16,7 +16,7 @@ const OPEN_MS = 700
 const WARM_MS = 300
 /** Long enough to cross the gap between a row and its card, short enough that leaving the row feels like leaving. */
 const LEAVE_MS = 140
-const GAP = 14
+const GAP = 10
 const EDGE = 8
 let warmUntil = 0
 
@@ -129,10 +129,10 @@ function Card({ eyebrow, stat, state, title, line, wrap, onArchive, pr, when }: 
       <div className={`hc-title ${wrap ? 'hc-wrap-title' : 'ellipsis'}`}>{title}</div>
       <div className={`hc-line ${wrap ? 'hc-wrap' : 'ellipsis'}`}>{line}</div>
       <div className="hc-foot">
-        {onArchive && <Button onClick={onArchive}>Archive</Button>}
+        {onArchive && <Button icon="archive" onClick={onArchive}>Archive</Button>}
         {pr && (pr.url
-          ? <button type="button" className="hc-pr mono" data-merged={pr.merged ? '' : undefined} aria-label={`Open pull request ${pr.number}`} onClick={() => void call('system.openExternal', { url: pr.url! }).catch(() => undefined)}>#{pr.number}<Icon name="ext" size={12} /></button>
-          : <span className="hc-pr mono" data-merged={pr.merged ? '' : undefined}>#{pr.number}</span>)}
+          ? <button type="button" className="hc-pr mono" data-merged={pr.merged ? '' : undefined} aria-label={`Open pull request ${pr.number}`} onClick={() => void call('system.openExternal', { url: pr.url! }).catch(() => undefined)}><Icon name="pr" size={12} />#{pr.number}<Icon name="ext" size={12} /></button>
+          : <span className="hc-pr mono" data-merged={pr.merged ? '' : undefined}><Icon name="pr" size={12} />#{pr.number}</span>)}
         <span className="grow" />
         {when && <span className="hc-when">{when}</span>}
       </div>
