@@ -1,4 +1,4 @@
-/** Columns on the board. Spec, Plan and Review are gates that wait on the user (Board.png). */
+/** Where a task is in its life. Spec, Plan and Review are gates that wait on the user. */
 export type TaskColumn = 'spec' | 'plan' | 'build' | 'qa' | 'review' | 'done'
 export type TaskState = 'working' | 'needs' | 'blocked' | 'idle' | 'done'
 
@@ -18,7 +18,7 @@ export interface Task {
   workspaceId?: string
   /** The parent of a split task, "T-15" for "T-15a". */
   parentId?: string
-  /** Board header grouping, for example "Invoices v1". */
+  /** The group a task belongs to, for example "Invoices v1". */
   milestone?: string
   spec?: string
   steps: TaskStep[]

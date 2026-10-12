@@ -10,16 +10,11 @@ import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead } from './lead'
 import { AgentProfile } from './screens/agent/AgentProfile'
-// Floor, Board and Settings load lazily (below), but their stylesheets stay eager, in the slots those screens' imports used to fill.
-// Other screens lean on rules in floor.css and settings.css (.agent-dot, the compact .nav-item), and `.log-all` has to come before
-// tokens.css's `.btn` to lose the tie, as FloorEmpty.png draws it. A new stylesheet under screens/floor, board or settings has to be
-// imported here too, or it becomes a lazy chunk that lands after tokens.css.
-import './screens/board/board.css'
+// Settings loads lazily (below), but its stylesheet stays eager, in the slot the screen's import used to fill. Other screens lean on
+// rules in settings.css (the compact .nav-item). A new stylesheet under screens/settings has to be imported here too, or it becomes
+// a lazy chunk that lands after tokens.css.
 import './screens/workspace/composer/composer.css'
 import './screens/workspace/cards/cards.css'
-import './screens/floor/moments/moments.css'
-import './screens/floor/logs.css'
-import './screens/floor/floor.css'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
@@ -74,9 +69,7 @@ function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>) {
   }
   return { Screen, warm: () => void fetch() }
 }
-// Settings, and the hidden Floor and Board (D-104), load on first visit so they stay out of the main chunk.
-const Board = lazy(() => import('./screens/board/Board').then((m) => ({ default: m.Board })))
-const Floor = lazy(() => import('./screens/floor/Floor').then((m) => ({ default: m.Floor })))
+// Settings loads on first visit so it stays out of the main chunk.
 const settings = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.Settings))
 const settingsNav = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.SettingsNav))
 const Settings = settings.Screen
@@ -98,9 +91,6 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
-    case 'floor': return <Floor roomId={route.roomId} />
-    case 'board': return <Board roomId={route.roomId} />
-    case 'task': return <Board roomId={route.roomId} taskId={route.taskId} />
     case 'team': return <Team roomId={route.roomId} />
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />

@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, TeamConfig, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, TeamConfig, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
@@ -152,52 +152,6 @@ const historyScene = (f: Fixture): Partial<Fixture> => {
     ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
   }
 }
-
-/** Board.png: ten tasks across the six columns, in Client A. Branches follow the canvas (wt/t-14-invoice-table). */
-const boardScene = (f: Fixture): Partial<Fixture> => {
-  const A = ids.roomA
-  const task = (id: string, title: string, column: Task['column'], state: Task['state'], agentId: string, extra: Partial<Task> = {}): Task =>
-    ({ id, roomId: A, title, column, state, agentId, steps: [], milestone: 'Invoices v1', createdAt: at(10, 5), updatedAt: at(10, 31), ...extra })
-  const merged = (id: string, name: string, branch: string, agentId: string, n: number, prTitle: string): Workspace => ({
-    id, roomId: A, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
-    prState: 'merged', prNumber: n, prTitle, createdAt: at(9, 10), mergedAt: at(9, 50), archivedAt: at(9, 52)
-  })
-  const branchOf = (id: string, branch: string) => (w: Workspace) => (w.id === id ? { ...w, branch, stat: id === ids.table ? { files: 4, added: 412, removed: 38 } : w.stat } : w)
-  const workspaces = [
-    ...f.workspaces.map(branchOf(ids.table, 'wt/t-14-invoice-table')).map(branchOf(ids.schema, 'wt/t-12-invoice-schema')).map((w) => (w.id === ids.invites ? { ...w, prState: 'ready' as const } : w)),
-    merged('ws-t10', 'invoice-model-types', 'feat/t-10-invoice-model-types', 'noor', 33, 'feat(invoices): model and zod schema'),
-    merged('ws-t08', 'auth-orgs', 'feat/t-08-auth-orgs', 'noor', 36, 'feat(auth): orgs and roles'),
-    merged('ws-t07', 'seed-data', 'chore/t-07-seed-data', 'kai', 29, 'chore(db): seed invoices')
-  ]
-  const tasks: Task[] = [
-    task('T-16', 'Client portal login', 'spec', 'working', 'rowan'),
-    task('T-15', 'Export invoices as PDF', 'plan', 'needs', 'rowan'),
-    task('T-14', 'Invoice table and empty states', 'build', 'working', 'kai', {
-      workspaceId: ids.table, spec: 'Show invoices in a sortable table with empty, loading and error states. Follow DESIGN.md. Playwright covers each state.',
-      steps: [
-        { text: 'Table with sortable headers', state: 'done' }, { text: 'Empty, loading and error states', state: 'done' },
-        { text: 'Playwright coverage', state: 'doing' }, { text: 'Ivy verifies with test output', state: 'next' }
-      ]
-    }),
-    task('T-12', 'Invoice schema and migration', 'build', 'needs', 'noor', { workspaceId: ids.schema }),
-    task('T-13', 'Rate limit the public API', 'qa', 'working', 'ivy'),
-    task('T-11', 'Org settings page', 'qa', 'blocked', 'ivy'),
-    task('T-09', 'Org invites', 'review', 'needs', 'theo', { workspaceId: ids.invites }),
-    task('T-10', 'Invoice model types', 'done', 'done', 'noor', { workspaceId: 'ws-t10', completedAt: at(9, 50) }),
-    task('T-08', 'Auth with organisations', 'done', 'done', 'noor', { workspaceId: 'ws-t08', completedAt: at(9, 40) }),
-    task('T-07', 'Realistic seed data', 'done', 'done', 'kai', { workspaceId: 'ws-t07', completedAt: at(9, 30) })
-  ]
-  const log = (id: string, h: number, m: number, extra: Partial<ActivityEvent>): ActivityEvent => ({ id, ts: at(h, m), roomId: A, workspaceId: ids.table, taskId: 'T-14', kind: 'note', text: '', ...extra })
-  const activity = [
-    ...f.activity,
-    log('t14-4', 10, 31, { agentId: 'kai', text: 'attached test output' }),
-    log('t14-3', 10, 24, { agentId: 'kai', text: 'added empty and error states' }),
-    log('t14-2', 10, 12, { agentId: 'rowan', kind: 'task.assigned', text: 'assigned it to', object: 'Kai' }),
-    log('t14-1', 10, 5, { actor: 'you', kind: 'task.created', text: 'approved the plan' })
-  ]
-  return { activity, workspaces, tasks: { [A]: tasks }, status: { [A]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'working' } } }
-}
-
 
 /** Team.png and AgentProfile.png: six agents in Client A with the canvas's models, states and workspaces. Kai's recent work is four tasks. */
 const teamScene = (f: Fixture): Partial<Fixture> => {
@@ -617,9 +571,6 @@ export const teamFixtures: Record<string, Fixture> = {
   }),
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
-  Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
-  TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
-  BoardEmpty: scene((f) => ({ ...boardScene(f), tasks: { [ids.roomA]: [] }, ui: { route: { name: 'board', roomId: ids.roomA } } })),
   Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
   // No PNG: a new room with no agents offers the team templates the empty floor had (D-104).
   TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'team', roomId: clientC.id } } })),
