@@ -31,7 +31,7 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai. Open a PR for each task.'
 }
 
 async function dirs() {
@@ -1030,7 +1030,7 @@ describe('create_workspace when the task is already handed off (KERNEL-287)', ()
   })
 
   it('refuses the same agent and title from the same Lead chat, but not from another chat or for another agent', async () => {
-    const { k, room, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor.' })
+    const { k, room, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' })
     expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
     const ws = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
     expect(await run(first, 'create_workspace', { agent: 'kai', title: ' drafts per chat ', brief: 'Go again' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` })
@@ -1063,7 +1063,7 @@ describe('create_workspace when the task is already handed off (KERNEL-287)', ()
 })
 
 describe('create_workspace when the handed-off task is a review, failed setup or older work (KERNEL-287)', () => {
-  const NOOR = { '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor.' }
+  const NOOR = { '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor. Open a PR for each task.' }
 
   it('says when the task is handed off but its setup failed, with or without an issue key', async () => {
     const { k, room, first, run } = await setup()

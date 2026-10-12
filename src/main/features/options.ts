@@ -5,6 +5,11 @@ import type { AppSettings } from '../services/settings'
 /** What the app shell, or a test, passes to `new Kernel()`. */
 export interface KernelOptions {
   dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
+  /**
+   * Claude Code's subagents, for the plugin agents among them (KERNEL-463). The app passes `claudeAgents`, which starts
+   * Claude Code to ask. Tests pass a stub or leave it out, and then no room has plugin agents.
+   */
+  claudeAgents?: (home: string) => Promise<import('@anthropic-ai/claude-agent-sdk').AgentInfo[]>
   /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
   probeNetwork?: () => Promise<boolean>
   /** Re-reads the user's PATH before each preflight, so "Check again" finds a CLI installed after launch. Tests leave it out. */

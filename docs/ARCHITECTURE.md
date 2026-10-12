@@ -31,7 +31,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 
 `ClaudeRunner` runs a chat as a Claude Agent SDK `query()` in streaming input mode, with:
 - `cwd` set to the workspace path, `settingSources: ['user','project','local']` so CLAUDE.md, agents and skills load
-- the agent from the room's resolved team (`features/team.ts`, `services/teamResolve.ts`): the repo's `.claude/agents`, `[team]` in `.kernel/settings.toml`, and Kernel's own Rowan and Theo where the repo has no Lead or reviewer (KERNEL-397)
+- the agent from the room's resolved team (`features/team.ts`, `services/teamResolve.ts`): the repo's `.claude/agents`, `[team]` in `.kernel/settings.toml`, and Kernel's own Rowan and Theo where the repo has no Lead or reviewer (KERNEL-397), plus the user's `~/.claude/agents` and Claude Code's plugin agents (`services/pluginAgents.ts`, KERNEL-463)
 - `systemPrompt: { type: 'preset', preset: 'claude_code', append: <agent instructions + workspace context> }`
 - `canUseTool` routing whatever Claude Code would prompt for through `approvals.ts`. The user's own allow rules still apply, so with a broad allow list that is mostly Always ask commands (D-016)
 - in-process `hooks` reporting activity, the same shape as the http hooks, plus a Bash guard that applies Never allow (`deny`) and Always ask (`ask`) and lets room "Always allow" rules through, and a gate that refuses tools the agent file's tools line doesn't list. The built-in tools it leaves out also go in `disallowedTools` (`services/agentTools.ts`, KERNEL-397)

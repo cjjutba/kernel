@@ -51,14 +51,15 @@ export class Trust extends Feature {
    * The repo's text the room would run and copy, from `settings.toml` and from a personal file only when a commit brought
    * it (KERNEL-209, KERNEL-190). The user's own personal file needs no trusting. The install scripts in package.json are
    * the repo's text whoever wrote the setup script, and they join it when the room runs a package install: its setup script
-   * does, or its Install step still has to (KERNEL-260).
+   * does, or its Install step still has to (KERNEL-260). Only a JS install counts, so a `bundle install` that runs every
+   * time doesn't keep them in (KERNEL-444).
    */
   private async subjectOf(room: Room, repo?: RepoSettings): Promise<TrustSubject | undefined> {
     const settings = repo ?? await loadRepoSettings(room.path)
     const subject = scriptsToTrust(settings, { localIsOwn: await localSettingsOwn(room.path) })
     const installs = await installScripts(room.path)
     if (!installs.length) return subject
-    const installing = (!!settings.scripts.setup && runsPackageInstall(settings.scripts.setup, await lockfileInstall(room.path))) || !!(await installCommand(room.path)).command
+    const installing = (!!settings.scripts.setup && runsPackageInstall(settings.scripts.setup, await lockfileInstall(room.path))) || runsPackageInstall((await installCommand(room.path)).command ?? '')
     return installing ? { ...(subject ?? { scripts: {}, copy: [] }), installScripts: installs } : subject
   }
 
@@ -129,18 +130,20 @@ export class Trust extends Feature {
   private heldInstalls(): string[] { return this.store.meta<string[]>(HELD_INSTALLS) ?? [] }
 
   /**
-   * Whether the room's Install step has to wait: the repo has install scripts and the user hasn't trusted them. A room that
-   * waits is remembered, so trusting it runs the install later (KERNEL-260).
+   * Whether the room's Install step has to wait: the repo has install scripts, or the install runs the repo's own code
+   * (KERNEL-444), and the user hasn't trusted the room's text. A room that waits is remembered, so trusting it runs the
+   * install later (KERNEL-260).
    */
-  async holdInstall(room: Room): Promise<boolean> {
-    if (!(await installScripts(room.path)).length || !(await this.untrusted(room))) return false
+  async holdInstall(room: Room, runsRepoCode = false): Promise<boolean> {
+    if (!runsRepoCode && !(await installScripts(room.path)).length) return false
+    if (!(await this.untrusted(room))) return false
     this.store.saveMeta(HELD_INSTALLS, [...new Set([...this.heldInstalls(), room.id])])
     return true
   }
 
   /**
-   * The install room setup skipped, run in the background now that the room is trusted. `installCommand` runs nothing when
-   * node_modules exists, so an install that happened meanwhile isn't run twice. The room's log says how it went.
+   * The install room setup skipped, run in the background now that the room is trusted. `installCommand` leaves out a stack
+   * whose folder exists, such as node_modules, so an install that happened meanwhile isn't run twice. The room's log says how it went.
    */
   private async runHeldInstall(roomId: string) {
     if (!this.heldInstalls().includes(roomId)) return

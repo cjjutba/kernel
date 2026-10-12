@@ -10,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
-import { SESSION_GONE_NOTE, Sessions } from '../src/main/services/sessions'
+import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
@@ -32,7 +32,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; mcp?: string } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp'] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -49,7 +49,8 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onReached: () => { reached.count++ },
-    codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined })
+    codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
+    disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, onMcp: o.onMcp
   })
   const items = () => store.items(chat.id)
   const of = <K extends ChatItem['kind']>(kind: K) => items().filter((i): i is Extract<ChatItem, { kind: K }> => i.kind === kind)
@@ -279,11 +280,49 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(t.of('note').map((n) => n.text)).toContain("Kernel couldn't read Codex's MCP servers, so Noor's file doesn't limit them in this chat.")
   })
 
+  // KERNEL-464: a server the room switched off is off on Codex too, and the tools line reads through the room's aliases.
+  it("switches off the room's off servers and reads the tools line through the room's aliases", async () => {
+    const t = track(await setup({ agent: { ...scoped, tools: ['Read', 'mcp__lin__get_issue', 'mcp__github'] }, aliases: { lin: 'linear' }, off: ['github'], mcp: JSON.stringify(servers) }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    expect((await t.sent('thread/start'))[0].params.config).toEqual({ 'mcp_servers.linear.enabled_tools': ['get_issue'], 'mcp_servers.github.enabled': false, 'mcp_servers.sentry.enabled': false })
+    // An agent with no tools line still loses what the room switched off.
+    const open = track(await setup({ off: ['sentry', 'old'], mcp: JSON.stringify(servers) }))
+    await open.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await open.idle()
+    expect((await open.sent('thread/start'))[0].params.config).toEqual({ 'mcp_servers.sentry.enabled': false })
+    const blind = track(await setup({ off: ['sentry'], mcp: 'error' }))
+    await blind.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await blind.idle()
+    expect(blind.of('note').map((n) => n.text)).toContain("Kernel couldn't read Codex's MCP servers, so the ones switched off in this room are on in this chat.")
+  })
+
+  // KERNEL-464: what app-server says of each server's start reaches the room, and a tool call speaks for a server it says nothing of.
+  it("tells the room how Codex's MCP servers started, and what tool calls show of the rest", async () => {
+    const heard: unknown[] = []
+    const t = track(await setup({ onMcp: (_ws, provider, list) => { heard.push([provider, ...list]); return list } }))
+    const status = (name: string, state: string, more: object = {}) => ({ notify: 'mcpServer/startupStatus/updated', params: { threadId: '$thread', name, status: state, error: null, failureReason: null, ...more } })
+    const call = (id: string, server: string, state: string, error?: string) => ({ notify: 'item/completed', params: { item: { type: 'mcpToolCall', id, server, tool: 'get', status: state, arguments: {}, result: null, error: error ? { message: error } : null, durationMs: 5 } } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(
+      status('linear', 'starting'), status('linear', 'ready'), status('notion', 'failed', { error: 'token expired', failureReason: 'reauthenticationRequired' }),
+      status('sentry', 'failed', { error: 'spawn sentry-mcp ENOENT' }), status('figma', 'cancelled'),
+      call('m1', 'github', 'failed', 'connection closed'), call('m2', 'github', 'failed', 'connection closed'), call('m3', 'github', 'completed'), call('m4', 'linear', 'failed', 'bad input')
+    ) }])
+    await t.idle()
+    expect(heard).toEqual([
+      ['codex', { name: 'linear', status: 'pending' }], ['codex', { name: 'linear', status: 'connected' }], ['codex', { name: 'notion', status: 'needs-auth', error: 'token expired' }],
+      ['codex', { name: 'sentry', status: 'failed', error: 'spawn sentry-mcp ENOENT' }],
+      ['codex', { name: 'github', status: 'failed', error: 'connection closed' }], ['codex', { name: 'github', status: 'connected' }]
+    ])
+  })
+
   it('narrows the lists the user set for a server, and skips a name a config key can\'t hold', () => {
     const policy = toolPolicy(['mcp__linear__get_issue', 'mcp__linear__list_issues', 'mcp__figma__get_code', 'mcp__my.server'])!
     const user = { linear: { enabled_tools: ['list_issues', 'save_issue'] }, figma: { enabled_tools: ['get_image'] }, 'my.server': {}, notion: {} }
     expect(mcpOverrides(policy, user)).toEqual({ 'mcp_servers.linear.enabled_tools': ['list_issues'], 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
     expect(mcpOverrides(undefined, user)).toEqual({})
+    expect(mcpOverrides(undefined, user, ['notion', 'my.server', 'absent'])).toEqual({ 'mcp_servers.notion.enabled': false })
+    expect(mcpOverrides(policy, user, ['linear'])).toEqual({ 'mcp_servers.linear.enabled': false, 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
   })
 })
 

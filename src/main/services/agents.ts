@@ -193,7 +193,24 @@ function readError(e: unknown): string {
 
 /** Every file in the folder, a file Kernel can't read or parse among them with what went wrong (KERNEL-451). */
 export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}): Promise<AgentDef[]> {
-  const dir = join(repoPath, '.claude', o.retired ? 'retired-agents' : 'agents')
+  return readAgents(join(repoPath, '.claude', o.retired ? 'retired-agents' : 'agents'), o.retired ? { retired: true } : {})
+}
+
+/** The user's own agents in `~/.claude/agents`, which Claude Code runs in every folder, read the same way (KERNEL-463). */
+export function loadPersonalAgents(home: string): Promise<AgentDef[]> {
+  return readAgents(join(home, '.claude', 'agents'), { origin: 'personal' })
+}
+
+/**
+ * The agents a room runs (KERNEL-463): its own files, the user's personal ones, then plugin agents. A personal file with the
+ * id of a room file Kernel can read is left out, as Claude Code leaves it out. Plugin agents' ids hold a colon, which no file's can.
+ */
+export function teamFiles(project: AgentDef[], personal: AgentDef[], plugins: AgentDef[] = []): AgentDef[] {
+  const ids = new Set(project.filter((a) => !isUnreadable(a)).map((a) => a.id))
+  return [...project, ...personal.filter((a) => !ids.has(a.id)), ...plugins]
+}
+
+async function readAgents(dir: string, extra: Partial<AgentDef>): Promise<AgentDef[]> {
   let names: string[] = []
   try { names = (await readdir(dir)).filter((f) => f.endsWith('.md')) } catch { return [] }
   const agents = (await Promise.all(names.map(async (n): Promise<AgentDef | null> => {
@@ -205,7 +222,7 @@ export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}
       def = unreadableAgent(file, readError(e))
     }
     const joinedAt = await stat(file).then((s) => s.birthtimeMs, () => 0)
-    return { ...def, joinedAt: joinedAt > 0 ? Math.round(joinedAt) : undefined, ...(o.retired ? { retired: true } : {}) }
+    return { ...def, joinedAt: joinedAt > 0 ? Math.round(joinedAt) : undefined, ...extra }
   }))).filter((a): a is AgentDef => !!a)
   // Lead first, then alphabetical, so the floor seats them in a stable order.
   return agents.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name))
@@ -323,12 +340,24 @@ export async function updateAgent(repoPath: string, id: string, patch: AgentEdit
   return agentFromFile(path, await readFile(path, 'utf8'))
 }
 
+/** What an agent needs to take a task through to a pull request: it edits files and runs git and gh. */
+const PR_TOOLS = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
+
 const ROLES: { match: RegExp; role: string; tools: string[] }[] = [
   { match: /secur|review|audit/i, role: 'Reviewer', tools: ['Read', 'Grep', 'Glob'] },
-  { match: /design/i, role: 'Designer', tools: ['Read', 'Grep', 'Glob', 'Bash'] },
-  { match: /doc|writer|copy/i, role: 'Docs', tools: ['Read', 'Edit', 'Write', 'Grep', 'Glob'] },
-  { match: /data|sql|schema|migrat/i, role: 'Data', tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }
+  { match: /design/i, role: 'Designer', tools: PR_TOOLS },
+  { match: /doc|writer|copy/i, role: 'Docs', tools: PR_TOOLS },
+  { match: /data|sql|schema|migrat/i, role: 'Data', tools: PR_TOOLS }
 ]
+
+/**
+ * The role a new agent's name and description suggest, and the tools it gets when nobody wrote a tools line: a reviewer
+ * reads, and every other role can open a pull request (KERNEL-476). New agent and hire_agent both use it.
+ */
+export function hireDefaults(text: string): { role?: string; tools: string[] } {
+  const kind = ROLES.find((r) => r.match.test(text))
+  return { role: kind?.role, tools: [...(kind?.tools ?? PR_TOOLS)] }
+}
 
 /** The slug a name or a description becomes: "Security reviewer" is security-reviewer. */
 export const agentSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, '')
@@ -340,14 +369,13 @@ export const agentSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '
 export function draftAgent(o: { description: string; name?: string; model?: string }): AgentDraft {
   const description = oneLine(o.description)
   if (!description) throw new Error('Describe what the agent should do.')
-  const kind = ROLES.find((r) => r.match.test(`${o.name ?? ''} ${description}`))
-  const id = (o.name?.trim() ? agentSlug(o.name) : '') || (kind ? agentSlug(kind.role) : '') || agentSlug(description.split(' ').slice(0, 2).join(' ')) || 'new-agent'
+  const { role, tools } = hireDefaults(`${o.name ?? ''} ${description}`)
+  const id = (o.name?.trim() ? agentSlug(o.name) : '') || (role ? agentSlug(role) : '') || agentSlug(description.split(' ').slice(0, 2).join(' ')) || 'new-agent'
   const name = titleCase(id)
   const sentence = description.charAt(0).toUpperCase() + description.slice(1).replace(/[.!?]*$/, '.')
   const model = o.model || 'sonnet'
-  const tools = kind?.tools ?? ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
   const prompt = `You are ${name}. ${sentence} Work in your own worktree, keep changes small, and tell Rowan what you did and what is left when you finish.`
-  const text = renderAgentFile({ id, description: sentence, model, tools, role: kind?.role, prompt })
+  const text = renderAgentFile({ id, description: sentence, model, tools, role, prompt })
   return { id, name, description: sentence, model, tools, text, file: `.claude/agents/${id}.md` }
 }
 
@@ -397,6 +425,11 @@ export async function restoreAgent(repoPath: string, id: string): Promise<string
  */
 export function watchAgents(repoPath: string, onChange: () => void, delay = 150): () => void {
   return watchFolder(join(repoPath, '.claude', 'agents'), onChange, { delay })
+}
+
+/** The same for `~/.claude/agents`, whose files join every room's team (KERNEL-463). */
+export function watchPersonalAgents(home: string, onChange: () => void, delay = 150): () => void {
+  return watchFolder(join(home, '.claude', 'agents'), onChange, { delay })
 }
 
 /** The same for the room's `.kernel/settings*.toml`, whose `[team]` decides who leads and reviews (KERNEL-397). */
