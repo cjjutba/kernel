@@ -1,28 +1,39 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { MODELS } from '@shared/types'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, updateAgent, watchAgents, watchTeamSettings } from '../services/agents'
-import { canOpenPr } from '../services/agentTools'
+import { createAgent, draftAgent, loadAgents, loadPersonalAgents, restoreAgent, retireAgent, teamFiles, updateAgent, watchAgents, watchPersonalAgents, watchTeamSettings } from '../services/agents'
 import { builtinFile, loadBuiltins, type Builtins } from '../services/builtins'
+import { loadPluginAgents } from '../services/pluginAgents'
 import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/rooms'
 import { loadRepoSettings, saveTeamSettings } from '../services/settings'
-import { resolveTeam, type Resolved } from '../services/teamResolve'
+import { adviseRoster, resolveTeam, takesTasksByDefault, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
 
 /** A model id that is Codex's (gpt-6-astra, o4-mini, codex-mini), for an agent file without `provider:` (KERNEL-406). */
 const CODEX_MODEL = /^(gpt-|o\d|codex-)/i
 
 /**
+ * Why Kernel won't edit or retire an agent whose file isn't in the room's repo, or nothing when it is (KERNEL-463). A personal
+ * file is every room's, and a plugin's files are Claude Code's to change.
+ */
+function notInRepo(a: AgentDef, change: 'edit' | 'retire'): string | undefined {
+  if (a.origin === 'personal') return `${a.name}'s file is in ~/.claude/agents, which every room shares. ${change === 'edit' ? 'Edit it there.' : `Move it out of that folder to retire ${a.name} in every room.`}`
+  if (a.origin !== 'plugin') return undefined
+  const plugin = a.id.slice(0, a.id.indexOf(':'))
+  return change === 'edit' ? `${a.name} comes from the ${plugin} plugin, and Kernel doesn't change a plugin's files.` : `${a.name} comes from the ${plugin} plugin. Turn the plugin off in Claude Code to remove it.`
+}
+
+/**
  * Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
  * who reviews and who takes tasks come from the files, the room's `[team]` settings and Kernel's own Rowan and Theo
- * (KERNEL-397).
+ * (KERNEL-397). The user's own agents in ~/.claude/agents and Claude Code's plugin agents join every room (KERNEL-463).
  */
 export class Team extends Feature {
   readonly agentCache = new Map<string, AgentDef[]>()
@@ -32,6 +43,9 @@ export class Team extends Feature {
   readonly statuses = new Map<string, Record<string, AgentStatus>>()
   /** The shape last reported for each room, so `team.resolved` goes out once per change. */
   private shapes = new Map<string, string>()
+  /** Plugin agents, as Claude Code listed them once this launch (KERNEL-463). Unset until the list comes back. */
+  private plugins?: AgentDef[]
+  private pluginsAsked = false
 
   stop() {
     for (const close of this.agentWatchers.values()) close()
@@ -82,7 +96,9 @@ export class Team extends Feature {
 
   private async resolve(roomId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
     const room = this.mustRoom(roomId)
-    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    this.askPlugins()
+    const plugins = this.plugins
+    const [files, repo] = await Promise.all([this.loadTeamFiles(room.path, plugins), loadRepoSettings(room.path)])
     const builtins = await loadBuiltins(this.o.starterDir, files)
     const r = resolveTeam({ files, config: config ?? repo.team, builtins })
     if (config) return { ...r, builtins }
@@ -90,7 +106,44 @@ export class Team extends Feature {
     this.builtins.set(roomId, builtins)
     this.adoptLead(roomId, r.agents.find((a) => a.lead))
     this.report(roomId, r)
+    // The plugin list came back while this ran, so the room reads it now.
+    if (plugins !== this.plugins) this.reload(roomId, { quiet: true })
     return { ...r, builtins }
+  }
+
+  /** Whether Room setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */
+  async rosterOf(roomId: string): Promise<RosterAdvice> {
+    const team = (await loadRepoSettings(this.mustRoom(roomId).path)).team
+    return adviseRoster((await this.resolve(roomId, { ...team, roster: undefined })).agents, team)
+  }
+
+  /** A new or restored agent joins the room's roster, when it has one, so it doesn't land off the team (KERNEL-465). */
+  async joinRoster(roomId: string, agentId: string) {
+    const room = this.mustRoom(roomId)
+    const roster = (await loadRepoSettings(room.path)).team?.roster
+    if (roster?.length && !roster.includes(agentId)) await saveTeamSettings(room.path, { roster: [...roster, agentId] })
+  }
+
+  /** The room's own agent files, the user's personal ones and plugin agents, as `resolveTeam` takes them (KERNEL-463). */
+  private async loadTeamFiles(repoPath: string, plugins = this.plugins): Promise<AgentDef[]> {
+    const [project, personal] = await Promise.all([loadAgents(repoPath), loadPersonalAgents(this.home)])
+    return teamFiles(project, personal, plugins)
+  }
+
+  /**
+   * Asks Claude Code for its plugin agents, once a launch and only when the app passes `claudeAgents`. The first team reads
+   * go ahead without them, and every room read so far reads again when the list comes back. A failed ask leaves no plugin
+   * agents until the next launch, so a Mac without Claude Code doesn't start a process at every read.
+   */
+  private askPlugins() {
+    const ask = this.o.claudeAgents
+    if (!ask || this.pluginsAsked) return
+    this.pluginsAsked = true
+    void (async () => {
+      const list = await ask(this.home)
+      this.plugins = await loadPluginAgents(list, this.home)
+      if (!this.stopped) for (const roomId of this.agentCache.keys()) this.reload(roomId, { quiet: true })
+    })().catch((err) => { this.plugins = []; console.warn('[kernel] could not list plugin agents', err) })
   }
 
   /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
@@ -115,25 +168,33 @@ export class Team extends Feature {
   }
 
   /**
-   * Files in .claude/agents, or the room's `[team]` settings, changed from outside Kernel (or from here). Reload, and tell
-   * the renderer when the team differs.
+   * Files in .claude/agents or ~/.claude/agents, or the room's `[team]` settings, changed from outside Kernel (or from here).
+   * Reload, and tell the renderer when the team differs.
    */
   private watchTeam(roomId: string) {
     if (this.agentWatchers.has(roomId)) return
     const room = this.store.room(roomId)
     if (!room) return
-    const reload = () => {
-      void (async () => {
-        if (!this.store.room(roomId)) return
-        const was = this.agentCache.get(roomId)
-        const before = JSON.stringify(was)
-        const list = await this.agents(roomId)
-        if (JSON.stringify(list) !== before) this.changed(roomId, list, was)
-      })().catch(() => undefined)
-    }
+    const reload = () => this.reload(roomId)
     const files = watchAgents(room.path, reload)
+    const personal = watchPersonalAgents(this.home, reload)
     const settings = watchTeamSettings(room.path, reload)
-    this.agentWatchers.set(roomId, () => { files(); settings() })
+    this.agentWatchers.set(roomId, () => { files(); personal(); settings() })
+  }
+
+  /**
+   * Reads the room's team again and tells the renderer when it differs. With `quiet`, plugin agents that show up don't walk
+   * in: they were there all along, and Kernel only just heard of them.
+   */
+  private reload(roomId: string, o: { quiet?: boolean } = {}) {
+    void (async () => {
+      if (!this.store.room(roomId)) return
+      const was = this.agentCache.get(roomId)
+      const before = JSON.stringify(was)
+      const list = await this.agents(roomId)
+      if (JSON.stringify(list) === before) return
+      this.changed(roomId, list, o.quiet ? [...(was ?? []), ...list.filter((a) => a.origin === 'plugin' && !was?.some((w) => w.id === a.id))] : was)
+    })().catch(() => undefined)
   }
 
   /** The team changed: the renderer hears, and agents whose definition changed start fresh at their next turn. */
@@ -163,7 +224,10 @@ export class Team extends Feature {
   /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
   private async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit): Promise<AgentDef> {
     const room = this.mustRoom(roomId)
-    if (this.agentOf(roomId, agentId)?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
+    const agent = this.agentOf(roomId, agentId)
+    if (agent?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
+    const elsewhere = agent && notInRepo(agent, 'edit')
+    if (elsewhere) throw new Error(elsewhere)
     const was = this.agentCache.get(roomId)
     const saved = await updateAgent(room.path, agentId, patch)
     const list = await this.agents(roomId)
@@ -176,6 +240,7 @@ export class Team extends Feature {
     const room = this.mustRoom(roomId)
     const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
     const def = await createAgent(room.path, draft)
+    await this.joinRoster(roomId, def.id)
     if (room.desks && !room.desks.includes(def.id)) await this.k.rooms.updateRoom(roomId, { desks: [...room.desks, def.id] })
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list, was)
@@ -194,6 +259,8 @@ export class Team extends Feature {
     if (!agent) throw new Error(`${agentId} is not on this team.`)
     if (agent.builtIn) throw new Error(`${agent.name} is Kernel's own ${agent.lead ? 'Lead' : 'reviewer'}. Pick another one in Settings, Agents instead.`)
     if (agent.lead) throw new Error(`${agent.name} leads this room. Pick another Lead in Settings, Agents first.`)
+    const elsewhere = notInRepo(agent, 'retire')
+    if (elsewhere) throw new Error(elsewhere)
     await retireAgent(room.path, agentId)
     const list = await this.agents(roomId)
     const chosen = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId)
@@ -213,11 +280,12 @@ export class Team extends Feature {
   /**
    * Settings, Agents and Room setup: who leads, who reviews and who takes tasks (KERNEL-397). The change goes to `[team]` in
    * the shared settings.toml, holding only what differs from what Kernel works out from the files, so a team that agrees
-   * with Kernel writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept.
+   * with Kernel writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept. `roster` keeps
+   * the agents it lists that have a file (KERNEL-465).
    */
   private async setTeam(roomId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
     const room = this.mustRoom(roomId)
-    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    const [files, repo] = await Promise.all([this.loadTeamFiles(room.path), loadRepoSettings(room.path)])
     const ids = new Set(files.map((a) => a.id))
     const want: TeamConfig = { ...repo.team }
     for (const [k, v] of Object.entries(patch) as [keyof TeamConfig, TeamPatch[keyof TeamConfig]][]) {
@@ -231,14 +299,24 @@ export class Team extends Feature {
     // A teammate's open work would run as the Lead's, with the Lead's tools and none of its updates.
     const busy = want.lead && want.lead !== repo.team?.lead ? this.store.workspaces(roomId).filter((w) => w.agentId === want.lead && !w.lead && w.status !== 'archived').length : 0
     if (busy) throw new Error(`${files.find((a) => a.id === want.lead)?.name ?? want.lead} has ${busy === 1 ? 'an open workspace' : `${busy} open workspaces`}. Archive ${busy === 1 ? 'it' : 'them'} first, or pick another Lead.`)
+    want.roster = want.roster && [...new Set(want.roster)].filter((id) => ids.has(id))
+    // An agent the roster leaves off can't keep its open work: those workspaces would have no agent to run. A Lead's own
+    // workspace goes to the new Lead.
+    if (want.roster?.length) {
+      const kept = new Set((await this.resolve(roomId, want)).agents.map((a) => a.id))
+      const open = (id: string) => this.store.workspaces(roomId).some((w) => w.agentId === id && !w.lead && w.status !== 'archived')
+      const left = files.filter((a) => !kept.has(a.id) && open(a.id)).map((a) => a.name)
+      const who = left.length > 1 ? `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}` : left[0]
+      if (left.length) throw new Error(`${who} ${left.length === 1 ? 'has' : 'have'} open work. Archive it first, or keep ${left.length === 1 ? who : 'them'} on the team.`)
+    }
     // A choice Kernel would make anyway is left out, so the file only holds what the team decided.
     if (want.lead && (await this.resolve(roomId, { ...want, lead: undefined })).agents.find((a) => a.lead)?.id === want.lead) delete want.lead
     if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? NO_REVIEWER) === want.reviewer) delete want.reviewer
-    const opens = (id: string) => { const a = files.find((f) => f.id === id); return canOpenPr(a?.tools, a?.disallowedTools) }
-    want.members = want.members?.filter((id) => ids.has(id) && !opens(id))
-    want.helpers = want.helpers?.filter((id) => ids.has(id) && opens(id))
+    const byDefault = (id: string) => { const a = files.find((f) => f.id === id); return !!a && takesTasksByDefault(a) }
+    want.members = want.members?.filter((id) => ids.has(id) && !byDefault(id))
+    want.helpers = want.helpers?.filter((id) => ids.has(id) && byDefault(id))
     const next: TeamPatch = {}
-    for (const k of ['lead', 'reviewer', 'members', 'helpers'] as const) {
+    for (const k of ['lead', 'reviewer', 'members', 'helpers', 'roster'] as const) {
       const value = Array.isArray(want[k]) && !(want[k] as string[]).length ? undefined : want[k]
       if (JSON.stringify(value ?? null) !== JSON.stringify(repo.team?.[k] ?? null)) (next as Record<string, unknown>)[k] = value ?? null
     }
@@ -261,7 +339,8 @@ export class Team extends Feature {
     if (!agent?.builtIn) throw new Error(`${agent?.name ?? agentId} already has a file in .claude/agents.`)
     if (!this.o.starterDir) throw new Error("Kernel's own agents aren't available in this build.")
     const which = agent.builtIn
-    const files = await loadAgents(room.path)
+    // A personal agent's name counts too, so the copy doesn't hide it in this room.
+    const files = await this.loadTeamFiles(room.path)
     const free = async (id: string) => !files.some((a) => a.id === id) && !(await readFile(join(room.path, '.claude', 'agents', `${id}.md`)).then(() => true, () => false))
     const names = which === 'lead' ? ['rowan', 'lead', 'rowan-lead'] : ['theo', 'reviewer', 'theo-reviewer']
     let id: string | undefined
@@ -295,6 +374,7 @@ export class Team extends Feature {
     const was = await this.agents(roomId)
     if (was.some((a) => a.id === id)) throw new Error(`${was.find((a) => a.id === id)!.name} is already on the team.`)
     if (!(await seatStarterTeam(this.o.starterDir, room.path, [id])).length) throw new Error(`.claude/agents already has a file named ${id}.md.`)
+    await this.joinRoster(roomId, id)
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list, was)
     const def = list.find((a) => a.id === id)
@@ -305,6 +385,7 @@ export class Team extends Feature {
   private async restore(roomId: string, agentId: string): Promise<AgentDef> {
     const room = this.mustRoom(roomId)
     await restoreAgent(room.path, agentId)
+    await this.joinRoster(roomId, agentId)
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list)
     const def = list.find((a) => a.id === agentId)

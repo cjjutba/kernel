@@ -79,6 +79,15 @@ const noCanvas = [
   'WorkspaceHireServersDisabled',
   'WorkspaceHireServersMissing',
   'WorkspaceHireServersMany',
+  // A new chat waiting for setup, drawn in design/redesign/ (KERNEL-430).
+  'SetupRunning',
+  'SetupFollowUp',
+  'SetupEditQueued',
+  'SetupPanelHidden',
+  'SetupFailed',
+  'SetupStopped',
+  'SetupSentAnyway',
+  'SetupDone',
 ]
 
 describe('fixtures', () => {

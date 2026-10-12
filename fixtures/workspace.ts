@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -207,6 +207,32 @@ const toolCalls: ChatItem[] = [
   tool('c6', 'Run Playwright', 'pnpm playwright test invoices', { durationMs: 41_000, output: '4 passed (38.2s)' }),
   ...tableItems.slice(-2)
 ]
+
+/** The messages in the setup wait shots (KERNEL-430): a pasted screenshot with a question, then a follow-up with a pasted log. */
+const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
+const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
+
+/** Setup's log as main sends it: still running, failed with code 1, or stopped. */
+function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
+  const out = (line: string, stream: 'stdout' | 'stderr' = 'stdout'): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line, stream }] })
+  const lines = [out('$ pnpm install'), out('Lockfile is up to date, resolution step is skipped'), out('Packages: +1204'), out('Progress: resolved 1204, reused 1198, downloaded 6, added 940')]
+  if (end === 'failed') return [...lines, out('gyp ERR! build error', 'stderr'), out('ERR_PNPM_LIFECYCLE  better-sqlite3@11.8.1 install: exit status 1', 'stderr'), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }]
+  if (end === 'stopped') return [...lines, { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: null }]
+  return lines
+}
+
+/** A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped). */
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+  const started = Date.now() - 42_000
+  const setupRun = status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
+  return {
+    workspaces: withWorkspace(f, ids.table, { status, setupRun }),
+    items: { [ids.tableChat]: [] },
+    queue: { [ids.tableChat]: queue },
+    push: [...f.push, ...setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed'), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
+    ui: { ...open, rightPanel: o.panel ?? true, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
+  }
+}
 
 /** Composer shots: the same screen, with the composer already holding something. */
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
@@ -965,6 +991,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },
     ui: open
+  })),
+  // KERNEL-430: a new chat waiting for setup. The message waits as a bubble, one line says where setup stands, and its log is in the Setup tab.
+  SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
+  SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
+  // Edit pulled the only queued message back into the box.
+  SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
+  SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
+  SetupFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1 })),
+  SetupStopped: scene((f) => setupWait(f, 'failed', [setupAsk], { end: null })),
+  SetupSentAnyway: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
+    items: { [ids.tableChat]: [{ kind: 'note', id: 'sw-note', ts: at(10, 2), text: 'Setup failed, sent anyway' }, { kind: 'user', id: 'sw-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+  })),
+  SetupDone: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
+    items: { [ids.tableChat]: [{ kind: 'note', id: 'sd-note', ts: at(10, 1, 12), text: 'Setup finished in 1:12' }, { kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },

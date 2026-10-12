@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
-  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
+  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
