@@ -6,7 +6,8 @@ import { chatProvider, providerOf } from '@shared/providers'
 import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
 import { shellId } from '../services/pty'
-import { titleText } from '../services/titles'
+import { askCodexTitle, askTitle, titleText } from '../services/titles'
+import { claudeExecutable } from '../services/providers/binary'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -67,6 +68,30 @@ export class Chats extends Feature {
    * once (a provider without the Haiku id, no bundled CLI) tends to keep failing, so the retries stop (`nameChat`).
    */
   private nameMisses = new Map<string, number>()
+  /** Chats whose naming failure is in the main log already, so a chat that keeps failing logs it once (KERNEL-624). */
+  private nameFailLogged = new Set<string>()
+
+  /** The naming request on each provider. Tests swap them for stubs. */
+  askClaude: typeof askTitle = askTitle
+  askCodex: typeof askCodexTitle = askCodexTitle
+
+  /**
+   * A name for a conversation (KERNEL-624): Haiku on the active Claude account, or when that brings back no answer, Codex's
+   * small model on the active Codex account. The chat's own provider doesn't matter, so naming never needs Claude.
+   * Undefined when the answer is no usable name. Throws with each provider's reason when neither answered.
+   */
+  async titleFor(text: string, o: { cwd: string; current?: string }): Promise<string | undefined> {
+    const p = this.k.providers
+    let claude: string
+    try {
+      return await this.askClaude(text, { ...o, env: p.claudeEnv(), bin: claudeExecutable(this.settings.providers?.claude) })
+    } catch (e) { claude = (e as Error)?.message ?? String(e) }
+    const bin = p.binary('codex').path
+    if (!bin) throw new Error(`Claude: ${claude}. Codex: Kernel could not find Codex.`)
+    try {
+      return await this.askCodex(text, { ...o, bin, home: p.codexHome(), apiKey: p.apiKey('codex') })
+    } catch (e) { throw new Error(`Claude: ${claude}. Codex: ${(e as Error)?.message ?? String(e)}`) }
+  }
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
   private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
@@ -83,7 +108,7 @@ export class Chats extends Feature {
    * Names an auto-named chat (KERNEL-202, amends D-089). Until it has a name, it takes the title Claude Code writes into its
    * transcript a few seconds after the first prompt. The SDK sends no event for it, so Kernel looks on replies, at most every
    * few seconds, and at the end of each turn. At the end of a turn Kernel also asks Haiku for a name from the whole
-   * conversation when the chat still has none, or when its count of finished turns reaches 1, 3, 10 or 30. A name the user
+   * conversation (`titleFor`) when the chat still has none, or when its count of finished turns reaches 1, 3, 10 or 30. A name the user
    * typed, even while a request is in flight, is never changed. A request that fails leaves the name. A refresh is tried once
    * more at the next turn end, then waits for the next point on the schedule. A chat with no name tries at each turn end and
    * stops after 3 misses in a row, until /clear or the next start.
@@ -120,7 +145,13 @@ export class Chats extends Feature {
     if (!turns || !(unnamed || RENAME_AT.some((at) => at > done && at <= turns))) return
     this.naming.add(chat.id)
     try {
-      const title = await this.k.titleFor(titleText(items), { cwd: ws.path, current: unnamed ? undefined : before.title }).catch(() => undefined)
+      const title = await this.titleFor(titleText(items), { cwd: ws.path, current: unnamed ? undefined : before.title }).catch((e) => {
+        if (!this.stopped && !this.nameFailLogged.has(chat.id)) {
+          this.nameFailLogged.add(chat.id)
+          console.warn(`[chats] could not name chat ${chat.id}: ${(e as Error)?.message ?? e}`)
+        }
+        return undefined
+      })
       if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
       const now = this.store.chat(chat.id)
       if (!now || !this.autoNamed(now) || now.title !== before.title) return

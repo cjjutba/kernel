@@ -27,7 +27,7 @@ async function setup() {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
-  k.titleFor = async () => undefined
+  k.chats.titleFor = async () => undefined
   k.github = { info: async () => null, merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const room = await k.addRoom(repo)
   const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
