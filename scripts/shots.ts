@@ -45,6 +45,14 @@ async function openRows(page: Page, rows: string[]) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceScrolledUp is a long chat read from higher up. The scroll position is the transcript's own, so wheel it up like a reader would.
+async function scrollUp(page: Page) {
+  await page.locator('.ws-scroll').hover()
+  await page.mouse.wheel(0, -600)
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
 async function stepToSecondQuestion(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
@@ -156,7 +164,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
-  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
+  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
+  WorkspaceScrolledUp: scrollUp
 }
 
 async function capture(name: string): Promise<boolean> {

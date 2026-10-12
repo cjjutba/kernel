@@ -53,6 +53,9 @@ button.ws-issue:hover { background: var(--surface-3); }
 .cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
 /* transcript */
+/* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
+.ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.icon-btn.ws-jump { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: 32px; height: 32px; border: 1px solid var(--line-3); border-radius: 50%; background: var(--surface); }
 .ws-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 16px 32px 8px; }
 .thread { width: 100%; max-width: 760px; margin: auto auto 0; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */

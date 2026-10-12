@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, 
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Icon, Spinner, type IconName } from '../../ui'
+import { Icon, IconButton, Spinner, type IconName } from '../../ui'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
@@ -300,19 +300,38 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const scroller = useRef<HTMLDivElement>(null)
   const end = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
-  const onScroll = () => { const el = scroller.current; if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX }
+  // The Scroll to bottom button mirrors `pinned`. State changes only when it flips, so scrolling doesn't render the transcript on every event.
+  const [away, setAway] = useState(false)
+  const awayNow = useRef(false)
+  const pin = (at: boolean) => {
+    pinned.current = at
+    if (awayNow.current === at) { awayNow.current = !at; setAway(!at) }
+  }
+  const sync = () => { const el = scroller.current; if (el) pin(el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX) }
+  // The button's smooth scroll passes through "away" on its way down, which must not unpin or bring the button back.
+  // It ends when the scroll lands, or when the reader takes over.
+  const gliding = useRef(false)
+  const onScroll = () => { if (!gliding.current) sync() }
+  const release = () => { gliding.current = false }
+  const landed = () => { gliding.current = false; sync() }
+  const toEnd = () => {
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+    gliding.current = smooth
+    pin(true)
+    end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
+  }
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
     end.current?.scrollIntoView({ block: 'end' })
     return requestAnimationFrame(() => { if (pinned.current) end.current?.scrollIntoView({ block: 'end' }) })
   }
   // A chat opens at its end.
-  useLayoutEffect(() => { pinned.current = true; const frame = follow(); return () => cancelAnimationFrame(frame) }, [chat.id])
+  useLayoutEffect(() => { gliding.current = false; pin(true); const frame = follow(); return () => cancelAnimationFrame(frame) }, [chat.id])
   // Sending a message follows it even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const sent = followsSend(last)
   useEffect(() => {
-    if (sent) pinned.current = true
+    if (sent) pin(true)
     if (!pinned.current) return
     const frame = follow()
     return () => cancelAnimationFrame(frame)
@@ -354,19 +373,22 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const editMessage = useCallback((text: string) => edit.current(text), [])
 
   return (
-    <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll}>
-      {empty && (
-        <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
-          onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
-      )}
-      <div className="thread" style={empty ? { display: 'none' } : undefined}>
-        {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
-        {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
-        {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
-        {ws && <LocalMergeRow ws={ws} />}
-        {running && !planWaits && <Elapsed since={since} />}
-        <div ref={end} />
+    <div className="ws-chat">
+      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onWheel={release} onTouchStart={release} onPointerDown={release} onKeyDown={release}>
+        {empty && (
+          <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
+            onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
+        )}
+        <div className="thread" style={empty ? { display: 'none' } : undefined}>
+          {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
+          {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
+          {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
+          {ws && <LocalMergeRow ws={ws} />}
+          {running && !planWaits && <Elapsed since={since} />}
+          <div ref={end} />
+        </div>
       </div>
+      {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
     </div>
   )
 })
