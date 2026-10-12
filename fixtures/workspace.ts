@@ -1533,6 +1533,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceHistoryButtons: scene(() => ({
     ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
+  WorkspaceHistoryButtonsNarrow: scene(() => ({
+    ui: { ...open, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceHistoryButtonsHidden: scene(() => ({
     ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),

@@ -278,6 +278,15 @@ async function hoverRow(page: Page, row: string) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceHistoryButtonsNarrow is the sidebar at its 200px minimum, where Hide sidebar, Back and Forward have the least room (KERNEL-643).
+async function narrowSidebar(page: Page) {
+  const handle = page.getByRole('separator', { name: 'Resize sidebar' })
+  await handle.focus()
+  await page.keyboard.press('Home')
+  await handle.blur()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
@@ -295,6 +304,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   HeaderBranchTooltip: hoverTitle,
   TurnFilesHover: hoverAndFocusRows,
   PanelResize: hoverSplitHandle,
+  WorkspaceHistoryButtonsNarrow: narrowSidebar,
   PanelTabsOverflow: narrowPanel,
   NewWorkspaceFromGitHub: openIssuesTab,
   NewWorkspaceFromNone: openIssuesTab,

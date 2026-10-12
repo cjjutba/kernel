@@ -15,6 +15,7 @@ const noCanvas = [
   'SettingsProvidersMcpSignInFailed', // Providers, Personal's line after Sign in to all failed on one server (KERNEL-627)
   'SettingsMcpNeededNotice', // the notice after adding an account that needs MCP sign-ins (KERNEL-627)
   'WorkspaceHistoryButtons', // the sidebar strip with Back lit and Forward disabled (KERNEL-643)
+  'WorkspaceHistoryButtonsNarrow', // the sidebar dragged to its 200px minimum, with Back and Forward both on (KERNEL-643)
   'WorkspaceHistoryButtonsHidden', // the same screen with the sidebar hidden: Back and Forward after Show sidebar (KERNEL-643)
   'WorkspaceTabStates',
   'WorkspaceSharedImageZoom', // the shared image zoomed to 200%, with the zoom control beside Comment (KERNEL-598)
