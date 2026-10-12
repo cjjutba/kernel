@@ -86,7 +86,7 @@ export interface OpenApp {
 }
 
 export interface Integration {
-  id: 'github' | 'linear' | 'vercel' | 'remote'
+  id: 'github' | 'linear'
   name: string
   connected: boolean
   detail: string

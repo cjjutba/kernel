@@ -227,6 +227,18 @@ describe('loadAppSettings', () => {
   })
 })
 
+describe('settings nothing read (KERNEL-540)', () => {
+  it('loads a file with Voice briefs and team.addNewAgents without them', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ version: 2, experimental: { voice: true, walking: false }, team: { addNewAgents: false, defaultTemplate: 'pair' } }))
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj')
+    expect(saved.experimental).toEqual({ walking: false })
+    expect(saved.team).toEqual({ defaultTemplate: 'pair' })
+    expect('voice' in resolved.experimental).toBe(false)
+    expect('addNewAgents' in resolved.team).toBe(false)
+  })
+})
+
 describe('open to (replaces the default home view)', () => {
     const load = async (general?: Record<string, unknown>) => {
       const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
