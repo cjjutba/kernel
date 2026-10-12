@@ -57,6 +57,7 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `TeamUpdate` | Team update cards in Rowan's chat | `screens/workspace/cards/TeamUpdateCard.tsx` |
 | `TeamUpdateShared` | Team update with a shared file card under the teammate's row (KERNEL-301) | `screens/workspace/cards/TeamUpdateCard.tsx` |
 | `TeamUpdateMerge` | Team update rows with Merge: ready (`Merge #162`), a reviewer's row, blocked ("Waiting for Theo's approval"), Merging and Merged (KERNEL-351) | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| `TeamUpdateReview` | Team update rows for the review pipeline: "Merged automatically" with why and a link to the PR, "Still blocked after 2 review rounds" with what is open, and "Skipped the UX review to save usage" on a ready row (KERNEL-551) | `screens/workspace/cards/TeamUpdateCard.tsx` |
 | `LeadPrs` | The Lead's right panel with the PRs tab: "2 ready to merge" in the header, Ready to merge and Still open (KERNEL-354) | `screens/workspace/Panels.tsx` |
 | `LeadPrsEmpty` | The Lead's right panel with no open PRs (KERNEL-354) | `screens/workspace/Panels.tsx` |
 | `LeadPrsMerging` | A PR merging keeps its row in Ready to merge, with muted Merging (KERNEL-411) | `pr/LeadPrs.tsx`, `pr/MergeButton.tsx` |

@@ -69,7 +69,7 @@ const shopSteps: RoomSetupStep[] = [
   { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'ok' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
-  { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Rowan and Theo from Kernel', state: 'ok', brought: 3 }
+  { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Rowan from Kernel', state: 'ok', brought: 3 }
 ]
 /** KERNEL-477: the code host read from the checkout, after its first step. A folder with no remote has no push step. */
 const hostSteps = (first: RoomSetupStep, host: string, folder: string, o: { push: boolean }): RoomSetupStep[] => [
@@ -686,9 +686,10 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } }
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the room opens.
+  // KERNEL-555: Rowan is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
   RoomSetupTeam: scene((f) => {
     const r = roomsScene(f)
-    return { ...r, rooms: [...f.rooms, shop], agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew }, push: [{ type: 'room.setup', roomId: shop.id, steps: shopSteps }], ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } } }
+    return { ...r, rooms: [...f.rooms, shop], agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew.filter((a) => a.id !== 'kernel-reviewer') }, push: [{ type: 'room.setup', roomId: shop.id, steps: shopSteps }], ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } } }
   }),
   Issues: scene((f) => issuesScene(f)),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),

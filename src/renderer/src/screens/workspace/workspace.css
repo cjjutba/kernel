@@ -87,7 +87,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-foot .msg-acts { margin-left: 0; }
 .msg-more { position: relative; display: inline-flex; }
 .msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
-.msg-reply .reply-files { margin-top: 6px; }
+.msg-reply .tf { margin-top: 8px; }
+.msg-reply .tf + .msg-foot { margin-top: 0; }
 .md { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
@@ -163,7 +164,32 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The image a Read image row opened, the chip a message draws. The negative margin keeps the row as tall as its neighbours, and a long name is clipped rather than push the row's note off. */
 .step-chip { display: flex; min-width: 0; }
 .step-chip .msg-chip { margin: -2px 0; max-width: 100%; overflow: hidden; white-space: nowrap; }
-.file-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-2); font: 11.5px var(--mono); color: var(--ink-2); }
+/* The turn files card (KERNEL-586): what a turn created, edited and deleted. A card, a 36px header, then 30px rows 2px apart in 6px of padding, like a menu. A row is a button that opens that file's diff. */
+.tf { overflow: hidden; }
+.tf-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; border-bottom: 1px solid var(--line-2); }
+.tf-c { font-size: 13px; color: var(--ink-2); }
+.tf-h .tf-n { margin-left: auto; }
+.tf-b { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.tf-r { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; white-space: nowrap; }
+.tf-r:hover { background: var(--surface-3); }
+/* The name never gives way to the folder: the folder takes what is left and is cut off first. */
+.tf-nm { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+.tf-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: var(--muted); }
+.tf-mk { flex: none; width: 56px; text-align: right; font-size: 12px; color: var(--muted); }
+.tf-n { display: flex; flex: none; gap: 6px; font: 11.5px var(--mono); font-variant-numeric: tabular-nums; }
+.tf-n > span { display: block; text-align: right; white-space: nowrap; }
+.tf-n > .add { width: 42px; }
+.tf-n > .del { width: 38px; }
+.tf-r[data-gone] .tf-nm { color: var(--muted); text-decoration: line-through; }
+.tf-r:hover .tf-nm, .tf-r:focus-visible .tf-nm { color: var(--ink); }
+.tf-r[data-gone]:hover .tf-nm, .tf-r[data-gone]:focus-visible .tf-nm { color: var(--ink-2); }
+.tf-more, .tf-chev { color: var(--muted); }
+.tf-chev { display: inline-flex; flex-shrink: 0; transition: transform 0.12s; }
+.tf-chev[data-open='true'] { transform: rotate(180deg); }
+.tf-more .tf-nm { flex: 1; max-width: none; text-align: left; color: var(--muted); }
+.tf-more:hover .tf-nm, .tf-more:focus-visible .tf-nm { color: var(--ink-2); }
+/* With no reply, the card sits in the thread's 12px gap under the fold, and the time under it is 10px away. */
+.thread > .tf + .meta { margin-top: -2px; }
 .meta { font-size: 12px; color: var(--muted); }
 .running { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--mono); color: var(--muted); }
 .interrupted { align-self: flex-start; font: 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }

@@ -83,11 +83,35 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
   return blocks
 }
 
-/** The Changed chips under a reply: the first two files by name, with their path for the icon, then one chip for the rest. */
-export function fileChips(files: ChangedFile[]): { name: string; path?: string; added: number; removed: number }[] {
-  const name = (f: ChangedFile) => f.path.split('/').pop() ?? f.path
-  const shown: { name: string; path?: string; added: number; removed: number }[] = files.slice(0, 2).map((f) => ({ name: name(f), path: f.path, added: f.added, removed: f.removed }))
-  const more = files.slice(2)
-  if (more.length) shown.push({ name: `+${more.length} more`, added: more.reduce((n, f) => n + f.added, 0), removed: more.reduce((n, f) => n + f.removed, 0) })
-  return shown
+/** One row of the turn files card: the file's name, its folder, what happened to it and what a screen reader says (KERNEL-586). */
+export interface TurnFileRow { path: string; name: string; dir: string; marker?: 'New' | 'Deleted' | 'Renamed'; deleted: boolean; added: number; removed: number; label: string }
+
+const WHAT: Record<ChangedFile['status'], string> = { A: 'new', '?': 'new', D: 'deleted', R: 'renamed', M: 'edited' }
+const MARKER: Partial<Record<ChangedFile['status'], TurnFileRow['marker']>> = { A: 'New', '?': 'New', D: 'Deleted', R: 'Renamed' }
+
+/** "31 added, 12 removed". A side that is 0 is left out. */
+export const countsLabel = (added: number, removed: number) => [added ? `${added} added` : '', removed ? `${removed} removed` : ''].filter(Boolean).join(', ')
+
+const sum = (rows: { added: number; removed: number }[]) => ({ added: rows.reduce((n, r) => n + r.added, 0), removed: rows.reduce((n, r) => n + r.removed, 0) })
+
+function turnFileRow(f: ChangedFile): TurnFileRow {
+  const cut = f.path.lastIndexOf('/')
+  return {
+    path: f.path, name: f.path.slice(cut + 1), dir: cut < 0 ? '' : f.path.slice(0, cut), marker: MARKER[f.status], deleted: f.status === 'D', added: f.added, removed: f.removed,
+    label: [f.path, WHAT[f.status], countsLabel(f.added, f.removed)].filter(Boolean).join(', ')
+  }
+}
+
+/** Up to this many files show in full. One more and the card shows `FOLD_SHOWN` and folds the rest, so the fold never hides a single file. */
+const FOLD_AT = 6
+const FOLD_SHOWN = 5
+
+/** The turn files card: its title and totals, the files in the order given, and the rows a fold hides with their totals. */
+export function turnFiles(files: ChangedFile[]): { title: string; added: number; removed: number; shown: TurnFileRow[]; hidden: TurnFileRow[]; hiddenAdded: number; hiddenRemoved: number } {
+  const rows = files.map(turnFileRow)
+  const fold = rows.length > FOLD_AT
+  const hidden = fold ? rows.slice(FOLD_SHOWN) : []
+  const { added, removed } = sum(rows)
+  const more = sum(hidden)
+  return { title: `${rows.length} ${rows.length === 1 ? 'file' : 'files'} changed`, added, removed, shown: fold ? rows.slice(0, FOLD_SHOWN) : rows, hidden, hiddenAdded: more.added, hiddenRemoved: more.removed }
 }

@@ -2043,6 +2043,15 @@
       "x": 4560,
       "y": 28600
     },
+    "SettingsRoomReviews.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Reviews",
+      "w": 1440,
+      "x": 0,
+      "y": 29900
+    },
     "NewWorkspaceFromGitHub.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2443,6 +2452,7 @@
     "SettingsRoomInstructions.dc.html",
     "SettingsRoomPermissions.dc.html",
     "SettingsRoomPermissionsMode.dc.html",
+    "SettingsRoomReviews.dc.html",
     "SettingsEnvironment.dc.html",
     "SettingsRoomEnvironment.dc.html",
     "SettingsEnvironmentAdd.dc.html",

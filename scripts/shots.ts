@@ -132,6 +132,15 @@ async function hoverChatRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// TurnFilesHover is the card with wiring.ts hovered and Home.tsx focused from the keyboard: focus lands on the first row and Down moves it to the fourth,
+// which is what makes the ring a keyboard ring (KERNEL-586).
+async function hoverAndFocusRows(page: Page) {
+  await page.locator('.tf-r').first().focus()
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+  await page.locator('.tf-r').nth(1).hover()
+  await page.waitForTimeout(300)
+}
+
 // NewWorkspaceFromGitHub and NewWorkspaceFromNone are the From popover on its Issues tab. The tab is local to the modal (KERNEL-471).
 async function openIssuesTab(page: Page) {
   await page.getByRole('tab', { name: 'Issues' }).click()
@@ -193,12 +202,21 @@ async function typeApiKey(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// RoomSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
+async function openReviewer(page: Page) {
+  await page.getByRole('button', { name: 'Reviewer' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
+  TurnFilesHover: hoverAndFocusRows,
   PanelResize: hoverSplitHandle,
   PanelTabsOverflow: narrowPanel,
   NewWorkspaceFromGitHub: openIssuesTab,
