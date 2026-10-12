@@ -88,7 +88,9 @@ describe("a repo's own agents (KERNEL-397)", () => {
 
     const list = (await call('list_agents', {})).text
     expect(list).toContain('kernel-lead: Rowan, Lead (the Lead, you).')
-    expect(list).toContain("architect: Architect, Architect (helper, doesn't take tasks). Designs the system. Writes no code.")
+    // A helper is a name on the helpers line, not a line of its own (KERNEL-554).
+    expect(list).toContain("Helpers, which don't take tasks: Architect.")
+    expect(list).not.toContain('architect:')
     expect(list).not.toContain('kernel-reviewer')
     expect(await call('create_workspace', { agent: 'architect', title: 'Design', brief: 'Design it.' })).toEqual({
       isError: true, text: "Not created: Architect is a helper in this room and doesn't take tasks. Use an id from list_agents: api (Api, Backend), web (Web, Frontend)."

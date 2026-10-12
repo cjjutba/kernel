@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, AgentReach, Approval, Decision } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
-import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { agentList, kernelTools, NO_TEAMMATES, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { LEAD_RULE } from '../src/main/services/handoff'
+import { callTool } from '../src/main/services/providers/codex/tools'
 import { tempRepo } from './helpers'
 
-// KERNEL-476: a hire that should open pull requests gets Edit and Write, and hire_agent says where the new agent landed and
+// KERNEL-476: a new agent that should open pull requests gets Edit and Write, and create_agent says where it landed and
 // which MCP servers it can reach. The SDK is scripted so the room's MCP check lists `servers` and no Claude Code starts.
 const sdk = vi.hoisted(() => ({ servers: [] as unknown[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
@@ -22,7 +24,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 
 const PR_TOOLS = 'tools: Read, Edit, Write, Bash, Grep, Glob'
 
-/** hire_agent with a user who answers the card with `answer`, a team of `team` after the save, and the servers `reach` gives. */
+/** create_agent with a user who answers the card with `answer`, a team of `team` after the save, and the servers `reach` gives. */
 function hireTool(o: { answer: Decision | null; team?: (saved: { id: string; tools?: string[] }) => AgentDef[]; reach?: AgentReach }) {
   const askUser = vi.fn<KernelToolDeps['askUser']>(async () => o.answer)
   const saved: Parameters<KernelToolDeps['hireAgent']>[0][] = []
@@ -34,17 +36,18 @@ function hireTool(o: { answer: Decision | null; team?: (saved: { id: string; too
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false as const,
     ...(o.reach ? { reach } : {})
   } satisfies KernelToolDeps
-  const tool = kernelTools(deps).find((t) => t.name === 'hire_agent')!
+  const tools = kernelTools(deps)
+  const tool = tools.find((t) => t.name === 'create_agent')!
   const run = async (args: object) => {
     const r = await tool.handler(args as never, {})
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
-  return { run, askUser, saved, reach, card: () => askUser.mock.calls[0]?.[0].agentFile }
+  return { run, tools, askUser, saved, reach, card: () => askUser.mock.calls[0]?.[0].agentFile }
 }
 
 const agent = (id: string, more: Partial<AgentDef>): AgentDef => ({ id, name: id[0].toUpperCase() + id.slice(1), role: 'Agent', description: '', lead: false, prompt: '', file: `/repo/.claude/agents/${id}.md`, ...more })
 
-describe('hire_agent', () => {
+describe('create_agent', () => {
   it("gives a hire with no tools line its role's tools, so a Designer can open PRs, and says it takes tasks", async () => {
     const reach: AgentReach = { reach: ['figma'], blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }] }
     const h = hireTool({ answer: { behavior: 'allow' }, reach, team: (a) => [agent(a.id, { role: 'Designer', tools: a.tools, member: true })] })
@@ -92,9 +95,48 @@ describe('hire_agent', () => {
     expect((await h.run({ id: 'lumi', description: 'Designer.', prompt: 'x' })).text).toBe('The user did not approve this agent.')
     expect(h.saved).toEqual([])
   })
+
+  // A resumed Codex thread keeps the tools it started with, so a Lead thread from before KERNEL-554 still calls the old name.
+  it('shows the card and saves the agent when a Codex Lead calls it by its old name, hire_agent', async () => {
+    const h = hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: true })] })
+    expect(h.tools.map((t) => t.name)).not.toContain('hire_agent')
+    const r = await callTool(h.tools, 'kernel_hire_agent', { id: 'lumi', description: 'Designer.', prompt: 'You are Lumi.' })
+    expect(h.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'agent', title: 'Add lumi to the team' }), undefined)
+    expect(h.saved.map((a) => a.id)).toEqual(['lumi'])
+    expect(r).toEqual({ success: true, contentItems: [{ type: 'inputText', text: 'Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins the team and takes tasks.' }] })
+    expect(await callTool(h.tools, 'kernel_fire_agent', {})).toEqual({ success: false, contentItems: [{ type: 'inputText', text: 'Kernel has no tool called kernel_fire_agent.' }] })
+  })
 })
 
-describe('hiring in a real room', () => {
+// KERNEL-554: the Lead checks each task against the team, offers to create an agent when nobody fits, and never builds a
+// task itself.
+describe('a plan that needs an agent the team lacks', () => {
+  it('lists members in full and 30 plugin helpers as one line of names', () => {
+    const helpers = Array.from({ length: 30 }, (_, i) => agent(`plug-${i}`, { name: `Plug ${i}`, origin: 'plugin', member: false, description: 'A plugin agent with a long description. '.repeat(5) }))
+    const team = [
+      agent('rowan', { role: 'Lead', lead: true, description: 'Plans.' }), agent('noor', { role: 'Backend', member: true, description: 'Builds the API.' }),
+      agent('theo', { role: 'Reviewer', reviewer: true, member: false, description: 'Reviews PRs.' }), ...helpers
+    ]
+    const lines = agentList(team).split('\n')
+    expect(lines).toEqual([
+      'rowan: Rowan, Lead (the Lead, you). Plans.',
+      'noor: Noor, Backend. Builds the API.',
+      'theo: Theo, Reviewer (reviews PRs). Reviews PRs.',
+      `Helpers, which don't take tasks: ${helpers.map((a) => a.name).join(', ')}.`
+    ])
+    expect(agentList(team)).not.toContain('A plugin agent')
+  })
+
+  it('tells the Lead to check the team before asking, to offer a new agent, and never to build a task itself', () => {
+    expect(LEAD_RULE).toContain('Before you ask for plan approval or suggest a hand-off, check each task against mcp__kernel__list_agents.')
+    expect(LEAD_RULE).toContain('"Give it to Noor" for the closest teammate and "Create a payments engineer agent"')
+    expect(LEAD_RULE).toContain('When nobody on the team takes tasks, stop at the first task')
+    expect(LEAD_RULE).toContain('whether to create an agent with create_agent or to add a starter agent in Team. Never build a task yourself.')
+    expect(LEAD_RULE).not.toMatch(/hire/i)
+  })
+})
+
+describe('creating an agent in a real room', () => {
   it("writes a Designer that takes tasks, and lists the servers it reaches after the room's first check", async () => {
     const repo = await tempRepo({ 'README.md': '# app\n', '.mcp.json': JSON.stringify({ mcpServers: { figma: {}, neon: {} } }), '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -112,14 +154,26 @@ describe('hiring in a real room', () => {
     ]
     const cards: Approval['agentFile'][] = []
     const deps: KernelToolDeps = { ...k.lead.leadToolDeps(room.id, lead, chat), askUser: async (o) => { cards.push(o.agentFile); return { behavior: 'allow' } } }
-    const hire = kernelTools(deps).find((t) => t.name === 'hire_agent')!
-    const run = async (args: object) => ((await hire.handler(args as never, {})).content[0] as { text: string }).text
+    const leadTools = kernelTools(deps)
+    const call = async (name: string, args: object) => {
+      const r = await leadTools.find((t) => t.name === name)!.handler(args as never, {})
+      return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+    }
+    const run = async (args: object) => (await call('create_agent', args)).text
+
+    // Only the Lead so far: list_agents says how to get a teammate, and create_workspace builds nothing (KERNEL-554).
+    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nNobody on this team takes tasks yet. Before planning work, ask the user whether to create an agent with create_agent or to add a starter agent in Team.')
+    const before = k.store.workspaces().length
+    expect(await call('create_workspace', { agent: 'kai', title: 'Checkout', brief: 'Build checkout.' })).toEqual({ isError: true, text: NO_TEAMMATES })
+    expect(await call('create_workspace', { agent: 'rowan', title: 'Checkout', brief: 'Build checkout.' })).toMatchObject({ isError: true })
+    expect(k.store.workspaces()).toHaveLength(before)
 
     // Just for the user by default, so the file goes to ~/.claude/agents (KERNEL-466).
     expect(await run({ id: 'lumi', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Lumi. Open a PR with your fixes.' }))
       .toBe(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}, just for the user on this Mac. Lumi joins the team and takes tasks. Lumi can reach no MCP servers besides Kernel's own.`)
     expect(await readFile(join(home, '.claude', 'agents', 'lumi.md'), 'utf8')).toContain(PR_TOOLS)
     expect((await k.team.agents(room.id)).find((a) => a.id === 'lumi')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
+    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nlumi: Lumi, Designer. Designer. Checks every screen against DESIGN.md.')
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
     expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(

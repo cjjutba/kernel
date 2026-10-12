@@ -355,7 +355,7 @@ const ROLES: { match: RegExp; role: string; tools: string[] }[] = [
 
 /**
  * The role a new agent's name and description suggest, and the tools it gets when nobody wrote a tools line: a reviewer
- * reads, and every other role can open a pull request (KERNEL-476). New agent and hire_agent both use it.
+ * reads, and every other role can open a pull request (KERNEL-476). New agent and create_agent both use it.
  */
 export function hireDefaults(text: string): { role?: string; tools: string[] } {
   const kind = ROLES.find((r) => r.match.test(text))

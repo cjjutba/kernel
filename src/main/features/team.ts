@@ -257,7 +257,7 @@ export class Team extends Feature {
     for (const a of list) {
       if (known[a.id]) continue
       bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
-      // A new agent file, from hire_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
+      // A new agent file, from create_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
       // Kernel's own Rowan has no file to come from.
       if (!a.retired && !a.builtIn && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
     }

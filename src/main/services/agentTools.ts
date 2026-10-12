@@ -199,7 +199,7 @@ export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[],
 
 /**
  * The MCP servers an agent's tools line and disallowedTools reach in the room, and the ones the line names that it can't
- * use, for the hire card and hire_agent's result (KERNEL-476). A server is reached when the agent may use any of its tools
+ * use, for the new agent card and create_agent's result (KERNEL-476). A server is reached when the agent may use any of its tools
  * and nothing says it can't be used, so pending and unreported servers count, as in `missingServers`. A missing server is
  * only named once `complete` says the list is whole, as in `mcpWarnings`. Kernel's own server is never listed.
  */

@@ -71,8 +71,8 @@ export class Mcp extends Feature {
   }
 
   /**
-   * The servers an agent can reach in the room and the ones its tools line names that it can't use, for the hire card and
-   * hire_agent's result (KERNEL-476). For a Claude agent in a room no probe has listed yet, it starts one, so a server no
+   * The servers an agent can reach in the room and the ones its tools line names that it can't use, for the new agent card
+   * and create_agent's result (KERNEL-476). For a Claude agent in a room no probe has listed yet, it starts one, so a server no
    * file names can be told apart from a claude.ai connector. `wait` waits for that probe, and without it the answer is
    * what the room knows now.
    */

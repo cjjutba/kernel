@@ -175,7 +175,7 @@ describe('agent tools', () => {
     expect(mcpWarnings(undefined, servers, { complete: true })).toEqual([])
   })
 
-  // KERNEL-476: the hire card and hire_agent's result list what a new agent can reach and what its file names but can't use.
+  // KERNEL-476: the new agent card and create_agent's result list what a new agent can reach and what its file names but can't use.
   it("lists the servers a tools line reaches and the ones it names but can't use, never Kernel's own", () => {
     const servers = [
       { name: 'figma', status: 'connected' }, { name: 'claude.ai Linear', status: 'needs-auth' }, { name: 'neon', status: 'failed' },

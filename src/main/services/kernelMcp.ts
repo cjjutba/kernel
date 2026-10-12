@@ -48,16 +48,16 @@ export interface KernelToolDeps {
    */
   messageWorkspace: (workspaceId: string, text: string) => Promise<{ ok: boolean; sent?: boolean; note: string }>
   /**
-   * `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. `questions` carries a
+   * `steps` and `agentFile` shape plan and new agent cards; the hand-off links come from `onWorkspace`. `questions` carries a
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
    * turn stops, as when the user writes in the message box instead, the card ends as expired and the answer is null (KERNEL-496).
    */
   askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
-  /** Saves a hired agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
+  /** Saves the Lead's new agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
    * The MCP servers an agent can reach in the room, and the ones its tools line names that it can't use. `wait` waits for
-   * the room's first check. Left out, hire_agent says nothing about servers (KERNEL-476).
+   * the room's first check. Left out, create_agent says nothing about servers (KERNEL-476).
    */
   reach?: (agent: AgentDef, o?: { wait?: boolean }) => Promise<AgentReach>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
@@ -165,20 +165,36 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | { refusal
   const list = takers(team)
   return list
     ? { reason: 'unknown', refusal: `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.` }
-    : { reason: 'no-teammates', refusal: `Not created: this team has no teammates yet. Propose one with hire_agent.` }
+    : { reason: 'no-teammates', refusal: NO_TEAMMATES }
 }
 
 /** The agents the Lead can hand a task to, as refusals list them. */
 const takers = (team: AgentDef[]) => team.filter((a) => !a.lead && takesTasks(a)).map((a) => `${a.id} (${a.name}, ${a.role})`).join(', ')
 
-/** What list_agents adds after an agent's role: who leads, who reviews and who doesn't take tasks (KERNEL-397). */
+/** create_workspace's refusal in a room where nobody takes tasks (KERNEL-554). */
+export const NO_TEAMMATES = 'Not created: this team has no teammates yet. Ask the user whether to create one with create_agent or to add a starter agent in Team, and build nothing yourself.'
+
+/** What list_agents adds after an agent's role: who leads and who reviews (KERNEL-397). */
 function roleTag(a: AgentDef): string {
   if (a.lead) return ' (the Lead, you)'
   if (isReviewer(a)) return takesTasks(a) ? ' (reviews PRs, takes tasks)' : ' (reviews PRs)'
-  return takesTasks(a) ? '' : " (helper, doesn't take tasks)"
+  return ''
 }
 
-/** Where hire_agent's new agent landed on the team, as the room resolved it (KERNEL-476). */
+/**
+ * list_agents' answer: the Lead, the reviewer and every member in full, then the helpers as one line of names, so a room with
+ * 30 plugin agents doesn't fill the Lead's prompt (KERNEL-554). With no member it says how to get one.
+ */
+export function agentList(team: AgentDef[]): string {
+  const full = team.filter((a) => a.lead || isReviewer(a) || takesTasks(a))
+  const helpers = team.filter((a) => !full.includes(a))
+  const lines = full.map((a) => `${a.id}: ${a.name}, ${a.role}${roleTag(a)}. ${a.description}`)
+  if (helpers.length) lines.push(`Helpers, which don't take tasks: ${helpers.map((a) => a.name).join(', ')}.`)
+  if (!team.some((a) => !a.lead && takesTasks(a))) lines.push('Nobody on this team takes tasks yet. Before planning work, ask the user whether to create an agent with create_agent or to add a starter agent in Team.')
+  return lines.join('\n')
+}
+
+/** Where create_agent's new agent landed on the team, as the room resolved it (KERNEL-476). */
 function joinedNote(a: AgentDef | undefined, id: string): string {
   if (!a) return `${id} joins the team.`
   if (isReviewer(a)) return `${a.name} joins the team and reviews PRs${takesTasks(a) ? ' and takes tasks' : ''}.`
@@ -195,7 +211,7 @@ const BLOCKED: Record<AgentReach['blocked'][number]['why'], string> = {
   missing: 'is not a server in this room'
 }
 
-/** The MCP servers hire_agent's new agent can reach, and the ones its file names that it can't use (KERNEL-476). */
+/** The MCP servers create_agent's new agent can reach, and the ones its file names that it can't use (KERNEL-476). */
 function reachNote(name: string, r: AgentReach): string {
   const out = [r.reach.length ? `MCP servers ${name} can reach: ${r.reach.join(', ')}.` : `${name} can reach no MCP servers besides Kernel's own.`]
   if (r.blocked.length) {
@@ -277,10 +293,7 @@ export function kernelTools(d: KernelToolDeps) {
     return ` ${tracker ? trackerName(tracker) : 'The issue tracker'} marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
   }
   return [
-    tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
-      const agents = await d.agents()
-      return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}${roleTag(a)}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
-    }),
+    tool('list_agents', 'List the agents in this room with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
     tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
@@ -342,7 +355,7 @@ export function kernelTools(d: KernelToolDeps) {
       if (!takesTasks(pick) && !(review_of && isReviewer(pick))) {
         bus.track({ name: 'handoff.refused', reason: 'helper' })
         const list = takers(team)
-        return refuse(`${pick.name} is a helper in this room and doesn't take tasks${isReviewer(pick) ? ', only reviews with review_of' : ''}.${list ? ` Use an id from list_agents: ${list}.` : ' Propose a teammate with hire_agent.'}`)
+        return refuse(`${pick.name} is a helper in this room and doesn't take tasks${isReviewer(pick) ? ', only reviews with review_of' : ''}.${list ? ` Use an id from list_agents: ${list}.` : ' No one on this team takes tasks yet, so ask the user whether to create a teammate with create_agent or to add a starter agent in Team.'}`)
       }
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
       // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
@@ -521,18 +534,18 @@ export function kernelTools(d: KernelToolDeps) {
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),
-    tool('hire_agent', 'Propose a new agent file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
+    tool('create_agent', 'Create a new agent by proposing its file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
       scope: z.enum(['me', 'team']).optional()
     }, async ({ scope: asked, ...a }, extra) => {
       // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
       if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
-      // With no tools line, a hire gets its role's, so one that should open PRs names Edit and Write. A line the Lead wrote
+      // With no tools line, a new agent gets its role's, so one that should open PRs names Edit and Write. A line the Lead wrote
       // stays as written, since Kernel never widens it on a guess (KERNEL-476).
-      const hire = { ...a, tools: a.tools?.length ? a.tools : hireDefaults(a.role?.trim() || `${a.id} ${a.description}`).tools }
+      const made = { ...a, tools: a.tools?.length ? a.tools : hireDefaults(a.role?.trim() || `${a.id} ${a.description}`).tools }
       const path = `.claude/agents/${a.id}.md`
-      const body = renderAgentFile(hire)
+      const body = renderAgentFile(made)
       const servers = await d.reach?.(agentFromFile(path, body)).catch(() => undefined)
       // The card starts on "Just for me" unless the Lead proposes the team, and the user's choice on it wins (KERNEL-466).
       const proposed = asked ?? 'me'
@@ -540,7 +553,7 @@ export function kernelTools(d: KernelToolDeps) {
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile }, signalOf(extra))
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
       let done: string | AgentChangePr
-      try { done = await d.hireAgent(hire, decision.scope ?? proposed) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
+      try { done = await d.hireAgent(made, decision.scope ?? proposed) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
       if (typeof done !== 'string') {
         if (done.error) return text(`Committed ${path} in workspace ${done.workspaceId}, but the pull request didn't open: ${done.error} Tell the user to click Create PR there.`)
         return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds ${path}, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)

@@ -55,12 +55,12 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
     } catch (e) { setError(cleanError(e)) }
   })
 
-  // Hand the draft to Rowan to improve in his own chat. He proposes the final file with hire_agent, and it comes back as an approval card.
+  // Hand the draft to Rowan to improve in his own chat. He proposes the final file with create_agent, and it comes back as an approval card.
   const refine = () => draft && run('refine', async () => {
     setError(null)
     try {
       // The question joins the room's newest chat with Rowan, or starts one (KERNEL-405). The answer lands on that tab.
-      const { chatId } = await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
+      const { chatId } = await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with create_agent.\n\n${text}` })
       await openLeadChat(roomId, chatId)
     } catch (e) { setError(cleanError(e)) }
   })
