@@ -37,6 +37,15 @@ describe('telemetry events', () => {
     }
   })
 
+  it('sends the agent warnings about unreadable files and MCP servers (KERNEL-432)', () => {
+    for (const kind of ['unreadable-file', 'mcp-missing', 'mcp-failed', 'mcp-needs-auth', 'mcp-off']) expect(checkEvent({ name: 'agent.warning', kind }), kind).toBeUndefined()
+    expect(checkEvent({ name: 'agent.warning', kind: 'mcp-linear' })).toMatch(/kind/)
+  })
+
+  it('sends the warning about an agent written as a subagent (KERNEL-465)', () => {
+    expect(checkEvent({ name: 'agent.warning', kind: 'looks-like-subagent' })).toBeUndefined()
+  })
+
   it('sends agent counts as ranges', () => {
     expect([0, 1, 5, 6, 20, 21, 400].map(countRange)).toEqual(['0', '1-5', '1-5', '6-20', '6-20', '21+', '21+'])
   })

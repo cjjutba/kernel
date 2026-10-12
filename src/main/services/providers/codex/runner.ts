@@ -7,14 +7,20 @@ import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL } from '../../plans'
 import { decide, rulesOf, saveAlwaysAllow, type Step } from '../../permissions'
+import { toolPolicy } from '../../agentTools'
+import { codexStatus } from '../../mcp'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { codexEnv, KERNEL_VERSION } from './client'
 import { initializeParams, Rpc, RpcError } from './rpc'
-import { callTool, CODEX_TOOL_PREFIX, toolOutput, toolSpecs } from './tools'
+import { callTool, CODEX_TOOL_PREFIX, mcpOverrides, toolOutput, toolSpecs } from './tools'
+import type { JsonValue } from './protocol/serde_json/JsonValue'
 import type { CommandExecutionRequestApprovalParams } from './protocol/v2/CommandExecutionRequestApprovalParams'
 import type { CommandExecutionRequestApprovalResponse } from './protocol/v2/CommandExecutionRequestApprovalResponse'
+import type { ConfigReadParams } from './protocol/v2/ConfigReadParams'
+import type { ConfigReadResponse } from './protocol/v2/ConfigReadResponse'
 import type { DynamicToolCallParams } from './protocol/v2/DynamicToolCallParams'
+import type { McpServerStatusUpdatedNotification } from './protocol/v2/McpServerStatusUpdatedNotification'
 import type { FileChangeRequestApprovalParams } from './protocol/v2/FileChangeRequestApprovalParams'
 import type { FileChangeRequestApprovalResponse } from './protocol/v2/FileChangeRequestApprovalResponse'
 import type { GetAccountRateLimitsResponse } from './protocol/v2/GetAccountRateLimitsResponse'
@@ -48,6 +54,9 @@ export interface CodexStart {
   /** Kernel's own tools for this agent, offered as dynamic tools. */
   tools: SdkMcpToolDefinition<any>[]
   personality: CodexPersonality
+  /** The MCP servers the room switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
+  disabled?: string[]
+  aliases?: Record<string, string>
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
@@ -134,6 +143,10 @@ export class CodexRunner implements Runner {
   /** File changes by item id, which their approval request names only by id. */
   private readonly changes = new Map<string, Extract<ThreadItem, { type: 'fileChange' }>>()
   private ended = false
+  /** Servers Codex reported a startup status for. A tool call tells the room how the others are doing (KERNEL-464). */
+  private readonly reported = new Set<string>()
+  /** What tool calls last said of each server Codex reported nothing for, so a run of calls tells the room once. */
+  private readonly called = new Map<string, boolean>()
 
   constructor(private readonly host: RunnerHost, private readonly o: CodexStart) {
     const chat = host.chat()
@@ -213,7 +226,8 @@ export class CodexRunner implements Runner {
     await this.rpc.request('initialize', initializeParams(KERNEL_VERSION), { timeoutMs: 60_000 })
     this.rpc.notify('initialized', {})
     this.gitDir = await gitCommonDir(ws.path).catch(() => undefined)
-    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality }
+    const config = await this.mcpConfig(ws.path)
+    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality, ...(config ? { config } : {}) }
     if (this.threadId) {
       try {
         const r = await this.rpc.request<ThreadStartResponse>('thread/resume', { threadId: this.threadId, ...settings }, { timeoutMs: 60_000 })
@@ -228,6 +242,46 @@ export class CodexRunner implements Runner {
     this.threadId = r.thread.id
     this.host.managed(r.thread.id)
     return r.thread.id
+  }
+
+  /**
+   * The agent file's limits on Codex's MCP servers, and the servers the room switched off, as the thread's config
+   * (KERNEL-451, KERNEL-464). Codex says which servers it has for this folder. When it can't, the chat says what doesn't
+   * hold, rather than failing to start.
+   */
+  private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
+    const agent = this.host.agent
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases })
+    const off = this.o.disabled ?? []
+    if (!policy && !off.length) return undefined
+    try {
+      const r = await this.rpc!.request<ConfigReadResponse>('config/read', { cwd } satisfies ConfigReadParams, { timeoutMs: 30_000 })
+      const servers = r?.config?.mcp_servers
+      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, off)
+      return Object.keys(config).length ? config : undefined
+    } catch {
+      const what = policy ? `${agent?.name ?? 'this agent'}'s file doesn't limit them` : 'the ones switched off in this room are on'
+      this.host.item({ kind: 'note', id: `codex-mcp-${Date.now()}`, ts: Date.now(), text: `Kernel couldn't read Codex's MCP servers, so ${what} in this chat.` })
+      return undefined
+    }
+  }
+
+  /** Codex says how a server's start went. The room keeps it (KERNEL-464). */
+  private mcpStarted(p: McpServerStatusUpdatedNotification) {
+    const status = codexStatus(p.status, p.failureReason)
+    if (!status || !p.name) return
+    this.reported.add(p.name)
+    this.host.mcpStatus([{ name: p.name, status, ...(p.error ? { error: p.error } : {}) }])
+  }
+
+  /**
+   * A tool call on a server Codex reported nothing for says whether the server works: it connected if the call went
+   * through, else it failed with the call's error. The room hears when that changes (KERNEL-464).
+   */
+  private mcpCalled(server: string, ok: boolean, error?: string) {
+    if (this.reported.has(server) || this.called.get(server) === ok) return
+    this.called.set(server, ok)
+    this.host.mcpStatus([{ name: server, status: ok ? 'connected' : 'failed', ...(!ok && error ? { error } : {}) }])
   }
 
   private async turn(parts: ChatPart[]) {
@@ -277,6 +331,7 @@ export class CodexRunner implements Runner {
         return
       }
       case 'account/rateLimits/updated': this.host.mergeLimits(codexLimits(params.rateLimits as RateLimitSnapshot)); return
+      case 'mcpServer/startupStatus/updated': this.mcpStarted(params as McpServerStatusUpdatedNotification); return
       case 'error': {
         const info = params.error?.codexErrorInfo
         if (info === 'unauthorized') this.host.failed('auth', { notify: true })
@@ -320,7 +375,9 @@ export class CodexRunner implements Runner {
       case 'plan': this.planText = item.text; return
       case 'commandExecution': return this.finish(item.id, item.status === 'completed', item.aggregatedOutput ?? '')
       case 'fileChange': return this.finish(item.id, item.status === 'completed', item.changes.map((c) => c.diff).join('\n'))
-      case 'mcpToolCall': return this.finish(item.id, item.status === 'completed', item.error ? item.error.message : (item.result?.content ?? []).map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n'))
+      case 'mcpToolCall':
+        if (item.status !== 'inProgress') this.mcpCalled(item.server, item.status === 'completed', item.error?.message)
+        return this.finish(item.id, item.status === 'completed', item.error ? item.error.message : (item.result?.content ?? []).map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n'))
       case 'dynamicToolCall':
         if (item.tool === `${CODEX_TOOL_PREFIX}request_plan_approval`) this.planAsked = true
         return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))

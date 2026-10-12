@@ -6,8 +6,9 @@ import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
-import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
+import { discoverMcp } from '../src/main/services/mcp'
+import { aliasesInRoom, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -46,6 +47,55 @@ describe('repo settings files', () => {
     expect(await discoverMcp(repo, repo, next.disabled!.mcp)).toEqual([
       { name: 'Figma', source: 'project', enabled: false }, { name: 'Linear', source: 'project', enabled: true }
     ])
+  })
+
+  // KERNEL-464: every place Claude Code and Codex read MCP servers from, read only.
+  it("finds the user's servers for this repo in ~/.claude.json and Codex's in its config.toml, and writes neither", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    // Claude Code keys a project by its folder with links resolved, which /var is on a Mac.
+    const claude = JSON.stringify({
+      mcpServers: { github: { command: 'gh-mcp' }, linear: { url: 'https://user' } },
+      projects: { [await realpath(repo)]: { mcpServers: { linear: { url: 'https://local' }, sentry: { command: 'sentry-mcp' } } }, '/elsewhere': { mcpServers: { secret: {} } } }
+    })
+    await writeFile(join(home, '.claude.json'), claude)
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { linear: {}, figma: {} } }))
+    await mkdir(join(home, '.codex'))
+    const codex = ['model = "gpt-6"', '[mcp_servers.linear]', 'command = "linear-mcp"', '[mcp_servers.notion]', 'url = "https://notion"', 'enabled = false', '[profiles.fast]', 'model = "x"', ''].join('\n')
+    await writeFile(join(home, '.codex', 'config.toml'), codex)
+    // The room's own entry wins over the repo's, which wins over the user's list, as in Claude Code.
+    expect(await discoverMcp(repo, home, ['figma', 'notion'])).toEqual([
+      { name: 'linear', source: 'local', enabled: true }, { name: 'sentry', source: 'local', enabled: true },
+      { name: 'figma', source: 'project', enabled: false }, { name: 'github', source: 'user', enabled: true },
+      { name: 'linear', source: 'user', provider: 'codex', enabled: true }, { name: 'notion', source: 'user', provider: 'codex', enabled: false, status: 'disabled' }
+    ])
+    // An account's own Codex home is read instead.
+    const account = await mkdtemp(join(tmpdir(), 'kernel-codex-'))
+    await writeFile(join(account, 'config.toml'), '[mcp_servers.jira]\ncommand = "jira-mcp"\n')
+    expect((await discoverMcp(repo, home, [], { codexHome: account })).filter((s) => s.provider)).toEqual([{ name: 'jira', source: 'user', provider: 'codex', enabled: true }])
+    expect([await readFile(join(home, '.claude.json'), 'utf8'), await readFile(join(home, '.codex', 'config.toml'), 'utf8')]).toEqual([claude, codex])
+  })
+
+  it('finds nothing in a config file that is missing or broken (KERNEL-464)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), '{ "mcpServers": ')
+    await mkdir(join(home, '.codex'))
+    await writeFile(join(home, '.codex', 'config.toml'), '[mcp_servers.linear\n')
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: ['not', 'a', 'table'] }))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), JSON.stringify({ projects: { [repo]: { mcpServers: { local: {} } } } }))
+    expect(await discoverMcp(repo, home, [])).toEqual([{ name: 'local', source: 'local', enabled: true }])
+  })
+
+  it('reads the room\'s MCP aliases at once, from both files, alias by alias (KERNEL-464)', async () => {
+    const repo = await tempRepo()
+    expect(aliasesInRoom(repo)).toEqual({})
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } } }, true)
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'linear-mine' } } })
+    expect(aliasesInRoom(repo)).toEqual({ linear: 'linear-mine', figma: 'Figma' })
+    expect(aliasesInRoom(repo)).toEqual((await loadRepoSettings(repo)).mcp?.aliases)
   })
 
   it('reads what the room switched off at once, from both files, so a toggle reaches the next session (KERNEL-226)', async () => {
@@ -109,6 +159,53 @@ describe('repo settings files', () => {
     expect(rs.workspace).toEqual({ baseRef: 'origin/dev' })
     expect(rs.pr).toEqual({ resolveInstructions: '# Shared' })
     expect(rs.sources).toEqual({ 'workspace.baseRef': 'shared', 'pr.resolveInstructions': 'shared' })
+  })
+
+  it('reads and writes the tracker, the merge method, MCP aliases and what each agent may use, name by name (KERNEL-432)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    await saveRepoSettings(repo, { tracker: { kind: 'github' }, pr: { mergeMethod: 'rebase' }, mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } }, agents: { unlistedTools: 'hide', allow: { kai: ['linear'], noor: ['figma'] } } }, true)
+    const shared = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
+    for (const text of ['[tracker]\nkind = "github"', 'merge_method = "rebase"', '[mcp.aliases]\nlinear = "claude_ai_Linear"', '[agents]\nunlisted_tools = "hide"', '[agents.kai]\nallow = [ "linear" ]']) expect(shared).toContain(text)
+    // The personal file overrides one alias and one agent's list, and the shared file's other names show through.
+    let rs = await saveRepoSettings(repo, { tracker: { kind: 'none' }, mcp: { aliases: { linear: 'linear-mine' } }, agents: { allow: { kai: ['sentry'] } } })
+    expect(rs.tracker).toEqual({ kind: 'none' })
+    expect(rs.pr).toEqual({ mergeMethod: 'rebase' })
+    expect(rs.mcp).toEqual({ aliases: { linear: 'linear-mine', figma: 'Figma' } })
+    expect(rs.agents).toEqual({ unlistedTools: 'hide', allow: { kai: ['sentry'], noor: ['figma'] } })
+    expect(rs.sources).toEqual({
+      'tracker.kind': 'override', 'pr.mergeMethod': 'shared', 'mcp.aliases.linear': 'override', 'mcp.aliases.figma': 'shared',
+      'agents.unlistedTools': 'shared', 'agents.allow.kai': 'override', 'agents.allow.noor': 'shared'
+    })
+    // A null, a blank alias or an empty list removes one name, and a table left empty goes.
+    rs = await saveRepoSettings(repo, { mcp: { aliases: { linear: null } }, agents: { allow: { kai: [] } } })
+    expect(rs.mcp).toEqual({ aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } })
+    expect(rs.agents?.allow).toEqual({ kai: ['linear'], noor: ['figma'] })
+    expect((await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "none"')
+    rs = await saveRepoSettings(repo, { pr: { mergeMethod: null }, mcp: { aliases: { linear: ' ', figma: null } }, agents: { unlistedTools: null, allow: { kai: null, noor: null } } }, true)
+    expect([rs.pr, rs.mcp, rs.agents]).toEqual([undefined, undefined, undefined])
+    expect((await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "github"')
+  })
+
+  it('leaves out a tracker, merge method, alias or allowance it does not know (KERNEL-432)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    await mkdir(join(repo, '.kernel'))
+    await writeFile(join(repo, '.kernel', 'settings.toml'), [
+      '[tracker]', 'kind = "trello"', '[pr]', 'merge_method = "fast-forward"', '[mcp.aliases]', 'linear = 3', 'figma = " "', 'sentry = "Sentry"',
+      '[agents]', 'unlisted_tools = "maybe"', '[agents.kai]', 'allow = "linear"', '[agents.noor]', 'allow = ["", "figma"]', ''
+    ].join('\n'))
+    const rs = await loadRepoSettings(repo)
+    expect([rs.tracker, rs.pr]).toEqual([undefined, undefined])
+    expect(rs.mcp).toEqual({ aliases: { sentry: 'Sentry' } })
+    expect(rs.agents).toEqual({ allow: { noor: ['figma'] } })
+    expect(rs.sources).toEqual({ 'mcp.aliases.sentry': 'shared', 'agents.allow.noor': 'shared' })
+  })
+
+  it("reads and writes the team's roster in [team] (KERNEL-432)", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    expect((await saveTeamSettings(repo, { roster: ['kai', 'noor'] })).team).toEqual({ roster: ['kai', 'noor'] })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[team]\nroster = ["kai", "noor"]\n')
+    expect((await loadRepoSettings(repo)).sources).toEqual({ 'team.roster': 'shared' })
+    expect((await saveTeamSettings(repo, { roster: [] })).team).toBeUndefined()
   })
 
   it("picks the room's remote, then the app's, then origin (KERNEL-190)", () => {

@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -37,7 +37,7 @@ export interface KernelApi {
   'rooms.add': { req: { path: string; name?: string }; res: Room }
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
-  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
+  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Room }
   /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
   'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
   /** The room icon as a data URL, or null for the letter. */
@@ -139,8 +139,11 @@ export interface KernelApi {
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
-  /** Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`). */
-  'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean }; res: Chat }
+  /**
+   * Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`).
+   * `mode` is the chat's permission mode (KERNEL-432).
+   */
+  'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }; res: Chat }
   'chats.rename': { req: { chatId: string; title: string }; res: Chat }
   'chats.close': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
@@ -227,7 +230,9 @@ export interface KernelApi {
   /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
-  'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
+  'scripts.stop': { req: { workspaceId: string; kind: 'run' | 'setup'; name?: string }; res: Ok }
+  /** Send anyway: a failed setup is skipped and the messages waiting for it go out (KERNEL-430). */
+  'scripts.skipSetup': { req: { workspaceId: string }; res: Ok }
   /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
   'scripts.replay': { req: { workspaceId: string }; res: Ok }
 
@@ -284,7 +289,11 @@ export interface KernelApi {
   /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
   'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
   'env.reveal': { req: { roomId?: string; name: string }; res: string }
-  'mcp.list': { req: { roomId?: string }; res: McpServer[] }
+  /**
+   * The room's MCP servers for one provider, Claude's when `provider` is unset, with the last status Kernel heard. `probe`
+   * waits for a fresh check of Claude's servers. Without it, the first list for a room starts one (KERNEL-464).
+   */
+  'mcp.list': { req: { roomId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
   'integrations.connect': { req: { id: Integration['id']; token?: string }; res: Integration }
@@ -356,8 +365,6 @@ export interface KernelApi {
   'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
-  /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
-  'system.trafficLights': { req: { at: 'sidebar' | 'header' }; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
   'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
 
@@ -391,6 +398,15 @@ export interface KernelApi {
   'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
 }
 
+/**
+ * Channels whose types are settled before anything answers them (KERNEL-432). The ticket that builds one moves it into
+ * KernelApi with its handler, so no window can call it, and no NotImplemented stub is needed, until then.
+ */
+export interface PlannedApi {
+  /** Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding. */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
+}
+
 export type Channel = keyof KernelApi
 
 /** Pushed from main to renderer on 'kernel:event'. */
@@ -421,6 +437,8 @@ export type PushEvent =
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
+  /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
+  | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */

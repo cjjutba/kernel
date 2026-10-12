@@ -298,8 +298,8 @@ export function Sidebar() {
 
   return (
     <nav ref={nav} aria-label="Sidebar" className="sidebar" style={{ width }}>
-      {/* The traffic lights end near x 70. The toggle sits just right of them, where the header's Show sidebar sits when hidden. */}
-      <div className="drag" style={{ height: 42, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 70 }}>
+      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
+      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
         <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
       </div>
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>

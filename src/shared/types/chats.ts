@@ -1,3 +1,5 @@
+import type { PermissionMode } from './settings'
+import type { TrackerKind } from './trackers'
 import type { ChangedFile } from './workspaces'
 
 /** The agent CLI a chat runs on: Claude Code through the Agent SDK, or Codex through `codex app-server` (KERNEL-406). */
@@ -56,6 +58,8 @@ export interface Chat {
   model: string
   effort: Effort
   plan: boolean
+  /** The chat's own permission mode, picked in the composer. Unset follows the room's, then the app's. Plan mode stays `plan` (KERNEL-432). */
+  mode?: PermissionMode
   /** Set on a fork: the chat and the transcript item it was forked after. */
   forkOf?: { chatId: string; itemId: string }
   /** Context window use, 0 to 100 (WorkspaceContext.png). */
@@ -158,7 +162,7 @@ export type ChatPart =
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
-  | { type: 'issue'; name: string; title: string; url?: string; source: 'linear' | 'github' }
+  | { type: 'issue'; name: string; title: string; url?: string; source: TrackerKind }
   /** + > Link workspaces: another workspace the agent can read and diff. */
   | { type: 'workspace'; name: string; workspaceId: string; branch: string; path: string; prNumber?: number; prUrl?: string }
 
@@ -262,8 +266,21 @@ export interface BuiltinCommand {
   aliases?: string[]
 }
 
+/**
+ * An MCP server a room's agents can reach (Settings > Skills and MCP). `enabled` is the room's switch. Since KERNEL-464:
+ * - `source`: where the server is defined. `local` is the user's entry for this repo in `~/.claude.json`, which Claude Code
+ *   reads over `project` (`.mcp.json`) and `user`. `claudeai`, `plugin` and `managed` are only known from a status report.
+ * - `provider`: unset for Claude Code's servers. `codex` for the `[mcp_servers]` in Codex's `config.toml`.
+ * - `status`: what the provider last said, unset until a probe or a session has. `error` is why it failed, when it said.
+ */
 export interface McpServer {
   name: string
   enabled: boolean
-  source: 'user' | 'project'
+  source: 'user' | 'project' | 'local' | 'claudeai' | 'plugin' | 'managed'
+  provider?: Provider
+  status?: McpStatus
+  error?: string
 }
+
+/** An MCP server's connection as Claude Code's `mcpServerStatus()` reports it. Codex's startup states map onto it (KERNEL-464). */
+export type McpStatus = 'connected' | 'pending' | 'failed' | 'needs-auth' | 'disabled'

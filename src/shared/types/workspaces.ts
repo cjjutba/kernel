@@ -1,5 +1,6 @@
 import type { ReviewVerdict } from './chats'
 import type { PrBlocked } from './pullRequests'
+import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
 /** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
@@ -12,11 +13,14 @@ export type PrState =
   | 'none' | 'creating' | 'draft' | 'open' | 'checks' | 'cifail' | 'changes' | 'conflict' | 'resolving'
   | 'ready' | 'merging' | 'merged' | 'closed'
 
-/** Where a workspace started from (NewWorkspaceFrom.png). */
+/**
+ * Where a workspace started from (NewWorkspaceFrom.png). An issue's `tracker` is the one it came from (KERNEL-432). A source
+ * saved before has none, and its id tells: `#41` is a GitHub issue, anything else Linear.
+ */
 export type WorkspaceSource =
   | { kind: 'pr'; number: number; title: string }
   | { kind: 'branch'; branch: string }
-  | { kind: 'issue'; id: string; title: string; url?: string }
+  | { kind: 'issue'; id: string; title: string; url?: string; tracker?: TrackerKind }
 
 export interface DiffStat {
   files: number
@@ -83,7 +87,12 @@ export interface Workspace {
   archivedAt?: number
   /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
   waitsFor?: WaitsFor
+  /** The setup script's last run, for the chat's setup line and the note when it passes (KERNEL-430). */
+  setupRun?: SetupRun
 }
+
+/** When the setup script started and how it ended: an exit code, null when it was stopped, or `timeout`. No `endedAt` while it runs. */
+export interface SetupRun { startedAt: number; endedAt?: number; end?: number | null | 'timeout' }
 
 /**
  * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't
