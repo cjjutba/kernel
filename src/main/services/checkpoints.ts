@@ -1,7 +1,7 @@
 import { copyFile, mkdtemp, readdir, rm, rmdir, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { Checkpoint, DiffStat } from '@shared/types'
+import type { ChangedFile, Checkpoint, DiffStat } from '@shared/types'
 import { exec, run, SLOW_MS } from './exec'
 import { freeBranch } from './worktrees'
 
@@ -71,16 +71,26 @@ export async function worktreeTree(cwd: string): Promise<string> {
   try { return await withTempIndex(cwd, { index: true }, write) } catch { return withTempIndex(cwd, { empty: true }, write) }
 }
 
-async function treeStat(cwd: string, from: string, to: string): Promise<DiffStat> {
-  const out = await git(cwd, ['diff-tree', '-r', '--no-renames', '--numstat', from, to])
-  const stat: DiffStat = { files: 0, added: 0, removed: 0 }
-  for (const line of out.split('\n').filter(Boolean)) {
-    const [a, d] = line.split('\t')
-    stat.files++
-    stat.added += Number(a) || 0
-    stat.removed += Number(d) || 0
+/** What changed between two trees: the totals, and a row per file with its status and line counts (KERNEL-584). */
+async function treeDiff(cwd: string, from: string, to: string): Promise<{ stat: DiffStat; files: ChangedFile[] }> {
+  // With -z, git prints every file's raw entry (`:modes shas status`, then the path) and then every file's numstat line.
+  const fields = (await git(cwd, ['diff-tree', '-r', '-z', '--no-renames', '--raw', '--numstat', from, to])).split('\0')
+  const files = new Map<string, ChangedFile>()
+  for (let i = 0; i < fields.length; i++) {
+    if (fields[i].startsWith(':')) {
+      const status = fields[i].split(' ')[4]
+      const path = fields[++i]
+      // A file that changed type, as into a symlink, reads as modified.
+      files.set(path, { path, status: status === 'A' || status === 'D' ? status : 'M', added: 0, removed: 0 })
+      continue
+    }
+    // A binary file's counts are `-`, and count as 0.
+    const m = /^([\d-]+)\t([\d-]+)\t(.*)$/s.exec(fields[i])
+    const file = m && files.get(m[3])
+    if (file) { file.added = Number(m[1]) || 0; file.removed = Number(m[2]) || 0 }
   }
-  return stat
+  const rows = [...files.values()]
+  return { stat: { files: rows.length, added: rows.reduce((n, f) => n + f.added, 0), removed: rows.reduce((n, f) => n + f.removed, 0) }, files: rows }
 }
 
 interface Stored { sha: string; turn: number; checkpoint: Checkpoint }
@@ -129,6 +139,11 @@ export function checkpointTitle(text: string): string {
  * The stat is what changed since the current checkpoint, or since HEAD for the first one.
  */
 export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: string; start?: boolean; ts?: number }): Promise<Checkpoint> {
+  return snapshotWithFiles(ws, o).then((s) => s.checkpoint)
+}
+
+/** A snapshot and the files it changed, the rows its stat counts. The start checkpoint has none (KERNEL-584). */
+export function snapshotWithFiles(ws: CheckpointWorkspace, o: { chatId: string; title: string; start?: boolean; ts?: number }): Promise<{ checkpoint: Checkpoint; files: ChangedFile[] }> {
   return serial(ws.id, async () => {
     const tree = await worktreeTree(ws.path)
     const all = await readAll(ws)
@@ -137,7 +152,7 @@ export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: st
     const prev = await revParse(ws.path, headRef(ws.id))
     const head = await revParse(ws.path, 'HEAD^{commit}')
     const from = prev ? `${prev}^{tree}` : head ? `${head}^{tree}` : EMPTY_TREE
-    const stat = start ? { files: 0, added: 0, removed: 0 } : await treeStat(ws.path, from, tree)
+    const { stat, files } = start ? { stat: { files: 0, added: 0, removed: 0 }, files: [] } : await treeDiff(ws.path, from, tree)
     const ts = o.ts ?? Date.now()
     const title = checkpointTitle(o.title) || `Turn ${turn}`
     const message = [title, '', `Kernel-Chat: ${o.chatId}`, `Kernel-Turn: ${turn}`, `Kernel-Time: ${ts}`, `Kernel-Stat: ${stat.files} ${stat.added} ${stat.removed}`, ...(start ? ['Kernel-Start: true'] : [])].join('\n') + '\n'
@@ -146,7 +161,7 @@ export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: st
     const ref = checkpointRef(ws.id, turn)
     await git(ws.path, ['update-ref', ref, sha])
     await git(ws.path, ['update-ref', headRef(ws.id), sha])
-    return { id: String(turn), workspaceId: ws.id, chatId: o.chatId, ts, title, stat, ref, current: true, ...(start ? { start: true } : {}) }
+    return { checkpoint: { id: String(turn), workspaceId: ws.id, chatId: o.chatId, ts, title, stat, ref, current: true, ...(start ? { start: true } : {}) }, files }
   })
 }
 
