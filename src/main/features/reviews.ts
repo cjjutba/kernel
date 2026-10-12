@@ -164,13 +164,17 @@ export class Reviews extends Feature {
    * A teammate's PR passed checks (KERNEL-549). While `pr.autoReview` is on, Kernel starts a review round on its head
    * (KERNEL-552): a review workspace with a chat per kind the first time, and after that a new chat for a kind it lacks and
    * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
-   * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. The Lead's own workspaces
-   * and reviews get none.
+   * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. Except when the user
+   * archived the review workspace before every kind reported: then the kinds with no verdict on the head run again in a new
+   * review workspace, in the same round (KERNEL-633). The Lead's own workspaces and reviews get none.
    */
   async onReady(workspaceId: string): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || this.isLeadWorkspace(of)) return
-    if (this.settings.pr.autoReview === false || this.starting.has(of.id) || this.roundOf(of)?.head === (of.prHead ?? '')) return
+    if (this.settings.pr.autoReview === false || this.starting.has(of.id)) return
+    const last = this.roundOf(of)
+    const again = last?.head === (of.prHead ?? '') ? last : undefined
+    if (again && (this.openReview(of) || !this.unreported(of, again).length)) return
     // Before any await, so an update composed meanwhile reads the review as in progress.
     this.starting.add(of.id)
     try {
@@ -178,11 +182,22 @@ export class Reviews extends Feature {
       const { plan, rounds } = await this.planFor(of)
       const now = this.store.workspace(of.id)
       if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || this.stopped) return
+      if (again) {
+        const run = plan.filter((p) => this.unreported(now, again).includes(p.kind))
+        if (run.length && !this.openReview(now)) await this.startReview(now, run)
+        return
+      }
       const round = await this.nextRound(now, plan, rounds)
-      // Still blocked after the last round `[review] rounds` allows. The Lead's update brings it to the user.
-      if (!round || this.stopped) return
+      if (this.stopped) return
+      // Still blocked after the last round `[review] rounds` allows. The Lead's update brings it to the user, by the same
+      // `rounds` this read, saved on the round so the two agree after `[review] rounds` changes (KERNEL-633).
+      if (!round) {
+        const at = this.roundOf(this.mustWs(of.id))
+        if (at && at.rounds !== rounds) this.updateWs(of.id, { reviewRound: { ...at, rounds } })
+        return
+      }
       const run = plan.filter((p) => !round.kept?.includes(p.kind) && !round.skipped?.includes(p.kind))
-      const open = this.store.workspaces(of.roomId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
+      const open = this.openReview(of)
       if (open) await this.reviewAgain(open, now, run)
       else if (run.length) await this.startReview(now, run)
       // Read again after the awaits, so a verdict saved meanwhile isn't lost. A kept approval now counts for the new head.
@@ -197,6 +212,17 @@ export class Reviews extends Feature {
     } finally {
       this.starting.delete(of.id)
     }
+  }
+
+  /** The PR's newest review workspace still open. */
+  private openReview(of: Workspace): Workspace | undefined {
+    return this.store.workspaces(of.roomId).filter((r) => r.reviewOf === of.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)[0]
+  }
+
+  /** Kinds `round` ran, none it skipped, with no verdict on the PR's head, as after the review workspace was archived (KERNEL-633). */
+  private unreported(of: Workspace, round: ReviewRound): ReviewKind[] {
+    const { current } = reviewVerdicts(of)
+    return round.kinds.filter((k) => !round.skipped?.includes(k) && !current.some((v) => lensOf(v) === k))
   }
 
   /** The review workspace for a PR: one worktree and one setup run, with a chat per kind, each held until setup passes. */
@@ -315,15 +341,18 @@ export class Reviews extends Feature {
     }
     const ordered = (set: Set<ReviewKind>) => REVIEW_KINDS.map((k) => k.id).filter((k) => set.has(k))
     const open = reviews[0]
-    const inProgress = reviewing.size > 0 || held.size > 0 || this.starting.has(ws.id)
+    // A held kind counts as in progress, so a merge waits for it, but nothing waits on it to say what the others found (KERNEL-633).
+    const running = reviewing.size > 0 || this.starting.has(ws.id)
+    const inProgress = running || held.size > 0
     // The last round reached `[review] rounds` with blockers on its head, which Kernel won't send back again.
     const round = this.roundOf(ws)
-    const left = round && round.n >= round.rounds && !inProgress ? kindStates({ ...ws, prHead: round.head }).blocking : []
+    const left = round && round.n >= round.rounds && !running ? kindStates({ ...ws, prHead: round.head }).blocking : []
     const skipped = round && round.head === ws.prHead ? round.skipped ?? [] : []
     return {
       approved: s.approved, blocking: s.blocking, blockers: s.blocking.length > 0,
       reviewing: ordered(reviewing),
       inProgress,
+      ...(this.starting.has(ws.id) ? { starting: true } : {}),
       waiting: s.waiting,
       stale: verdicts.length > 0 && current.length === 0,
       ...(held.size ? { held: ordered(held) } : {}),
