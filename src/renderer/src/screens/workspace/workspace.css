@@ -136,11 +136,14 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* A row with something to open fills under the pointer and on focus (KERNEL-375). The padding gives the fill room and the margin
    cancels it, so text and icons stay where they were. The fill is the button only, never the opened body under it. */
 .trow-btn:not(:disabled):hover, .trow-btn:not(:disabled):focus-visible { background: var(--surface-3); }
-/* The chevron takes its room at rest, so a row never shifts when it appears, and an inert row keeps it hidden so the notes line up.
-   The button's padding is cancelled by its margin, so the focus ring clears the icon and the row stays where it was. */
-.chev.step-chev { flex-shrink: 0; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
-.trow-btn:hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
-.step-chev[data-idle] { visibility: hidden; }
+/* The icon slot is 15px wide. On hover and focus a row that can open swaps its icon for the chevron in that slot, as the sidebar does
+   for rooms (KERNEL-562, KERNEL-207), and an open row keeps the chevron. Opacity rather than display, so the slot keeps its size and
+   nothing moves. The chevron sits on the icon's own 15px box, from the slot's top. An inert row has no chevron, so its icon stays. */
+.step-slot { position: relative; flex-shrink: 0; width: 15px; }
+.step-slot > :not(.step-chev) { transition: opacity 0.12s; }
+.chev.step-chev { position: absolute; top: 0; left: 0; width: 15px; height: 15px; align-items: center; justify-content: center; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
+.trow-btn:not(:disabled):hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
+.trow-btn:not(:disabled):hover .step-slot > :not(.step-chev), .trow-btn:focus-visible .step-slot > :not(.step-chev), .trow-btn[aria-expanded='true'] .step-slot > :not(.step-chev) { opacity: 0; }
 /* An open row lines up under its label, past the 15px icon and the 10px gap. */
 .step-body { display: flex; flex-direction: column; gap: 4px; margin-left: 25px; }
 .step-body[data-compact] { margin-left: 0; }
