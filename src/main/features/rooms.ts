@@ -189,7 +189,7 @@ export class Rooms extends Feature {
         await seatStarterTeam(this.o.starterDir, room.path, req.team)
       }
       const list = await this.k.team.agents(room.id)
-      bus.push({ type: 'agents', roomId: room.id, agents: list })
+      bus.push({ type: 'agents', roomId: room.id, agents: this.k.team.listed(room.id, list) })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
       // Personal and plugin agents join every room, so they count toward a roster even when the repo brought none.
       const roster = await this.k.team.rosterOf(room.id)

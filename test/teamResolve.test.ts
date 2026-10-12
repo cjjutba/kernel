@@ -5,6 +5,7 @@ import type { AgentDef, TeamConfig } from '@shared/types'
 import { agentFromFile } from '../src/main/services/agents'
 import { loadBuiltins } from '../src/main/services/builtins'
 import { adviseRoster, resolveTeam, writtenAsSubagent } from '../src/main/services/teamResolve'
+import { reviewerChoice } from '@shared/team'
 
 // KERNEL-397: one team per room, whatever shape its .claude/agents folder has. Kernel's Rowan fills a missing Lead, and
 // since KERNEL-553 no built-in agent fills a missing reviewer: Kernel's code review runs instead (KERNEL-549).
@@ -50,6 +51,13 @@ describe('resolveTeam', () => {
     }
     // Neither names a missing agent, with the starter folder or without it.
     expect(warningsOf((await team([KAI], { reviewer: 'kernel-reviewer' }, { starters: false })).agents)).toEqual({})
+  })
+
+  it("shows the reviewer agent in the pickers, else No reviewer when [team] says none, else Kernel's code review", async () => {
+    expect(reviewerChoice((await team([KAI, THEO])).agents)).toBe('theo')
+    for (const [config, shown] of [[undefined, 'kernel-reviewer'], [{ reviewer: 'kernel-reviewer' }, 'kernel-reviewer'], [{ reviewer: 'none' }, 'none'], [{ reviewer: 'ghost' }, 'kernel-reviewer']] as const) {
+      expect(reviewerChoice((await team([KAI], config)).agents, config)).toBe(shown)
+    }
   })
 
   it("keeps Kernel's Theo off every team, named Theo for the review workspaces it ran", async () => {

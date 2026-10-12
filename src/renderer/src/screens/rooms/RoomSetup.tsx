@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AgentDef, TeamPatch } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
@@ -34,6 +34,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const steps = useStore((s) => (roomId ? s.roomSetup[roomId] : undefined))
   const agents = useStore((s) => (roomId ? s.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
+  const rs = useStore((s) => (roomId ? s.roomSettings[roomId] : undefined))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
   // A warning never stops the room opening, but it stops Brief Rowan right away, so the user sees it (KERNEL-437).
@@ -43,7 +44,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
   const warnings = team.flatMap((a) => (a.warnings ?? []).map((w) => `${a.name}: ${lower(warningText(w))}`))
   const leadNow = team.find((a) => a.lead)?.id ?? KERNEL_LEAD
-  const reviewerNow = team.find((a) => a.reviewer)?.id ?? NO_REVIEWER
+  const reviewerNow = reviewerChoice(team, rs?.team)
   const [lead, setLead] = useState<string>()
   const [reviewer, setReviewer] = useState<string>()
   const [busy, run] = useBusy()
@@ -63,6 +64,8 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   // with something to look at waits for Open the room.
   const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
   useEffect(() => { if (finished && !failed && !warned && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, warned, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The repo's [team], read once setup has its files, so a repo that turns review off shows No reviewer (KERNEL-553).
+  useEffect(() => { if (review && roomId) void call('settings.room', { roomId }).then((r) => actions.settings.setRoom(roomId, r)).catch(() => undefined) }, [review, roomId])
   const recheck = () => run('recheck', async () => {
     if (!roomId) return
     try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
