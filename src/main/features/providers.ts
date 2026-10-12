@@ -227,6 +227,7 @@ export class Providers extends Feature {
     const next = { path: o.path !== undefined ? o.path.trim() : cur.path, useSystem: o.useSystem ?? cur.useSystem }
     await this.k.config.setSettings({ providers: { [provider]: next } })
     if (provider === 'codex') this.codexModels = undefined
+    this.k.team.forgetOffers(provider)
     // A process runs the executable it started with, so the next turn picks up the new one.
     this.sessions.restartProvider(provider)
     return this.status(provider)
@@ -809,6 +810,7 @@ export class Providers extends Feature {
     // Chats held for the old account's Keychain prompt run on the new one (KERNEL-618).
     if (provider === 'claude') this.k.account.keychainDone()
     if (provider === 'codex') this.codexModels = undefined
+    this.k.team.forgetOffers(provider)
     this.sessions.restartProvider(provider)
     this.k.account.applyLimits(this.store.meta<RateLimit[]>('limits') ?? [])
     // The account menu shows the new account, and the plan defaults follow its plan (KERNEL-225).

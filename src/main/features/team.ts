@@ -42,6 +42,11 @@ export class Team extends Feature {
   /** Plugin agents, as Claude Code listed them once this launch (KERNEL-463). Unset until the list comes back. */
   private plugins?: AgentDef[]
   private pluginsAsked = false
+  /**
+   * What each provider offers, as last asked. A sign-in check takes a CLI start, so a team read doesn't ask again until
+   * something real changes it: a sign-in or sign-out, another executable, Codex's model list (`forgetOffers`, KERNEL-634).
+   */
+  private offers = new Map<Provider, Promise<string[] | 'signed-out' | undefined>>()
 
   stop() {
     for (const close of this.agentWatchers.values()) close()
@@ -131,9 +136,9 @@ export class Team extends Feature {
   }
 
   /**
-   * Flags each agent whose file pins a model no signed-in provider offers (KERNEL-550). Every read asks again, so signing in
-   * clears the warning on the next one. Only the providers the pins name are asked, so a team without a pin starts neither
-   * CLI. When Kernel can't tell, it flags nothing.
+   * Flags each agent whose file pins a model it can't run on (KERNEL-550): `model-unavailable` while the pin's provider is
+   * signed out, `model-unknown` while it is signed in but doesn't offer the model (KERNEL-634). Only the providers the pins
+   * name are asked, so a team without a pin starts neither CLI. When Kernel can't tell, it flags nothing.
    */
   private async flagPins(agents: AgentDef[]): Promise<AgentDef[]> {
     const pins = new Map(agents.flatMap((a) => { const pin = pinOf(a); return pin ? [[a.id, pin] as const] : [] }))
@@ -143,15 +148,30 @@ export class Team extends Feature {
     return agents.map((a) => {
       const pin = pins.get(a.id)
       const models = pin && offered.get(pin.provider)
-      return !pin || !models || models.includes(pin.model) ? a : { ...a, warnings: [...(a.warnings ?? []), { kind: 'model-unavailable' as const }] }
+      if (!pin || !models || (models !== 'signed-out' && models.includes(pin.model))) return a
+      return { ...a, warnings: [...(a.warnings ?? []), { kind: models === 'signed-out' ? 'model-unavailable' as const : 'model-unknown' as const }] }
     })
   }
 
-  /** The models a provider offers now: Claude's MODELS or Codex's `model/list`, none while it is signed out, undefined when Kernel can't tell. */
-  private async offered(provider: Provider): Promise<string[] | undefined> {
-    const signedIn = await this.k.providers.signedIn(provider).catch(() => undefined)
-    if (!signedIn) return signedIn === false ? [] : undefined
-    return (await this.k.providers.models(provider).catch(() => undefined))?.map((m) => m.id)
+  /** The models a provider offers now: Claude's MODELS or Codex's `model/list`, `signed-out` while it is, undefined when Kernel can't tell. */
+  private offered(provider: Provider): Promise<string[] | 'signed-out' | undefined> {
+    const known = this.offers.get(provider)
+    if (known) return known
+    const ask = (async () => {
+      const signedIn = await this.k.providers.signedIn(provider).catch(() => undefined)
+      if (!signedIn) return signedIn === false ? 'signed-out' as const : undefined
+      return (await this.k.providers.models(provider).catch(() => undefined))?.map((m) => m.id)
+    })()
+    this.offers.set(provider, ask)
+    // Not knowing isn't kept, so the next read asks again.
+    void ask.then((r) => { if (r === undefined && this.offers.get(provider) === ask) this.offers.delete(provider) })
+    return ask
+  }
+
+  /** A provider's sign-in, executable or model list changed, so the next team read asks it again. Without one, every provider. */
+  forgetOffers(provider?: Provider) {
+    if (provider) this.offers.delete(provider)
+    else this.offers.clear()
   }
 
   /** Whether Room setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */
