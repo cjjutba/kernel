@@ -147,10 +147,12 @@ export class CodexRunner implements Runner {
   private isClosed = false
   private threadId?: string
   private turnId?: string
-  /** A turn is being started: its `turn/start` hasn't answered yet, so Stop has no turn id to interrupt. */
-  private starting = false
-  /** Stop was pressed while the turn was starting. It interrupts the turn as soon as Codex names it. */
-  private stopAsked = false
+  /**
+   * The turn being started: its `turn/start` hasn't answered yet, so Stop has no turn id to interrupt. `stopAsked` says Stop
+   * was pressed meanwhile, and interrupts the turn as soon as Codex names it. Each turn has its own, so a turn that ended in
+   * the chunk that answered its start can't clear the one queued straight after it (KERNEL-625).
+   */
+  private starting?: { stopAsked: boolean }
   private model: string
   private effort: Effort
   private plan: boolean
@@ -204,7 +206,7 @@ export class CodexRunner implements Runner {
     const threadId = this.threadId
     const turnId = this.turnId
     if (!this.rpc) return
-    if (!turnId && this.starting) { this.stopAsked = true; this.turnStop.abort(); return }
+    if (!turnId && this.starting) { this.starting.stopAsked = true; this.turnStop.abort(); return }
     if (!threadId || !turnId) return
     // The turn's cards end first. Codex 0.153.4 doesn't hold the interrupt for an open request: it clears the request.
     this.turnStop.abort()
@@ -327,15 +329,20 @@ export class CodexRunner implements Runner {
 
   private async turn(parts: ChatPart[]) {
     this.turnStop = new AbortController()
-    this.stopAsked = false
-    this.starting = true
-    try { await this.startTurn(parts) } finally { this.starting = false }
-    if (this.stopAsked) { this.stopAsked = false; await this.interrupt() }
+    const start = (this.starting = { stopAsked: false })
+    let turnId: string | undefined
+    let current = false
+    try { turnId = await this.startTurn(parts) } finally { current = this.starting === start; if (current) this.starting = undefined }
+    // A turn queued while this one's start was answered is the chat's turn now, so this one's id and Stop are stale.
+    if (!current) return
+    if (turnId) this.turnId = turnId
+    if (start.stopAsked) await this.interrupt()
   }
 
-  private async startTurn(parts: ChatPart[]) {
+  /** Starts a turn and returns its id. */
+  private async startTurn(parts: ChatPart[]): Promise<string | undefined> {
     const threadId = await this.ready!
-    if (this.isClosed) return
+    if (this.isClosed) return undefined
     // The thread is up: the chat resumes it by this id from now on, and the turn shows as working.
     this.host.sessionStarted(threadId)
     this.planText = undefined
@@ -345,7 +352,7 @@ export class CodexRunner implements Runner {
       threadId, input: toCodexInput(parts), model: this.model, effort, summary: 'auto', approvalPolicy: 'untrusted', sandboxPolicy: this.sandbox(),
       collaborationMode: { mode: this.plan ? 'plan' : 'default', settings: { model: this.model, reasoning_effort: effort, developer_instructions: null } }
     }, { timeoutMs: 60_000 })
-    this.turnId = r.turn.id
+    return r.turn.id
   }
 
   /** A turn that couldn't start: the thread is gone, or the process failed. */

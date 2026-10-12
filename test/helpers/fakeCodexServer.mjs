@@ -6,6 +6,8 @@
 //   { "request": method, "params": {...} }  a request to Kernel, waiting for its answer
 //   { "complete": "completed" | "failed" | "interrupted", "error": {...} }   the turn's end
 //   { "wait": "interrupt" }                 waits for turn/interrupt, then ends the turn as interrupted
+//   { "complete": ..., "withStart": true }  as the first step: turn/start's answer, turn/started and turn/completed go out
+//                                           in one write, so Kernel reads them in one chunk (KERNEL-625)
 // FAKE_CODEX_START_MS holds turn/start's answer that long, as a slow Codex does, so Stop can come before the turn has an id.
 // turn/interrupt ends the running turn at any step, as Codex 0.153.4 does: a request still waiting for Kernel's answer is
 // cleared with serverRequest/resolved, and the turn completes as interrupted (KERNEL-563).
@@ -51,9 +53,11 @@ async function play(threadId, turnId, script) {
   complete(threadId, turnId, turn.stopped ? 'interrupted' : 'completed')
 }
 
+const completed = (threadId, turnId, status, error = null) => ({ method: 'turn/completed', params: { threadId, turn: { id: turnId, items: [], itemsView: 'summary', status, error, startedAt: 1, completedAt: 2, durationMs: 1200 } } })
+
 function complete(threadId, turnId, status, error = null) {
   if (running?.turnId === turnId) running = undefined
-  send({ method: 'turn/completed', params: { threadId, turn: { id: turnId, items: [], itemsView: 'summary', status, error, startedAt: 1, completedAt: 2, durationMs: 1200 } } })
+  send(completed(threadId, turnId, status, error))
 }
 
 createInterface({ input: process.stdin }).on('line', (line) => {
@@ -74,8 +78,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     // Text that isn't a script gets one reply, FAKE_CODEX_REPLY or "Done.".
     try { script = JSON.parse(params.input?.[0]?.text ?? '') } catch { script = [{ notify: 'item/completed', params: { item: { type: 'agentMessage', id: `msg-${turnId}`, text: process.env.FAKE_CODEX_REPLY ?? 'Done.', phase: 'final_answer' } } }] }
     const start = () => {
-      send({ id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } })
-      send({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } })
+      const answer = { id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } }
+      const started = { method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } }
+      const first = Array.isArray(script) ? script[0] : undefined
+      if (first?.withStart) return void process.stdout.write([answer, started, completed(params.threadId, turnId, first.complete)].map((m) => JSON.stringify(m) + '\n').join(''))
+      send(answer)
+      send(started)
       void play(params.threadId, turnId, Array.isArray(script) ? script : [])
     }
     const slow = Number(process.env.FAKE_CODEX_START_MS ?? 0)
