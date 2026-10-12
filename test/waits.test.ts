@@ -805,7 +805,7 @@ describe('a wait on work in another room', () => {
     const rowan = (await k.team.agents(room.id)).find((a) => a.lead)!
     const tools = kernelTools(k.lead.leadToolDeps(room.id, rowan, lead))
     const call = async (name: string, input: object) => ((await tools.find((t) => t.name === name)!.handler(input as never, {})).content[0] as { text: string }).text
-    const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or a Linear issue key.`
+    const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or an issue key.`
     expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: [ivy.id] })).toBe(`Not created: ${missing(ivy.id)}`)
     expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: ['#12'] })).toBe(`Not created: ${missing('#12')}`)
     const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id })
