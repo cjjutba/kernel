@@ -167,8 +167,12 @@ function terminalPresets(): Fixture {
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
-/** A workspace whose run script hasn't run, so the Run tab shows its empty state with the Run button under the icon (KERNEL-512). */
-const idleRun = (f: Fixture): Fixture => ({ ...f, push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run') })
+/** A workspace whose room has a run script that hasn't run, so the Run tab shows its empty state with the Run button under the icon, and a collapsed bar keeps its Run (KERNEL-512). */
+const idleRun = (f: Fixture): Fixture => ({
+  ...f,
+  push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+  roomSettings: { ...f.roomSettings, [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
+})
 
 /** The same fixture with the bottom pane folded to its tab bar, in Rowan's chats and in teammates' workspaces (KERNEL-513). */
 const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
