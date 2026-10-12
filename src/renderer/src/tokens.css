@@ -229,19 +229,19 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .selectable { user-select: text; }
 
 /* Scrollbars (KERNEL-597, KERNEL-602). Every scroll area, vertical or horizontal, draws the same thin thumb: 6px, rounded, no track, --line-4, on the area's
-   edge. It is invisible until the pointer is over the area or it scrolls (scrollIdle.ts sets data-scrolling), and fades in over 150ms and out over 300ms.
+   edge. It is invisible until the area is in use (scrollIdle.ts sets data-scrolling while it scrolls, the pointer moves over it or its scrollbar is held, and
+   for a second after), and fades in over 150ms and out over 300ms. A pointer resting on the area does not keep it, so :hover plays no part.
    Chromium can't transition a scrollbar part, so the colour is a registered <color> custom property on the scroller, which it can, and the thumb reads it.
    It has to inherit, since a scrollbar part takes its style from its scroller the way a child does, and one that doesn't inherit reads as its initial
-   value there. Every element declares its own, so a scroller never takes its parent's. :hover is on every ancestor of the pointer too, which only matters
-   to the ones that scroll. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would switch these rules off. Areas that hide theirs (.tab-strip,
-   .bd-filter, .tm-filter) say scrollbar-width: none. The transition sits at no specificity, so an element's own `transition` replaces it: one that scrolls
+   value there. Every element declares its own, so a scroller never takes its parent's. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would
+   switch these rules off. Areas that hide theirs (.tab-strip, .bd-filter, .tm-filter) say scrollbar-width: none. The transition sits at no specificity, so an element's own `transition` replaces it: one that scrolls
    and declares its own must list --scroll-thumb too. */
 @property --scroll-thumb { syntax: '<color>'; inherits: true; initial-value: transparent; }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--scroll-thumb); }
 :where(*) { --scroll-thumb: transparent; transition: --scroll-thumb 300ms ease-out; }
-:where(*:hover, [data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: 150ms; }
+:where([data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: 150ms; }
 @media (prefers-reduced-motion: reduce) { :where(*) { transition-duration: 0s; } }
 
 /* shell */
