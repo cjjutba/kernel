@@ -40,6 +40,13 @@ describe('the limit banner with two providers (KERNEL-406)', () => {
     expect(codex?.sub).toContain('Agents on Claude Code keep working.')
   })
 
+  it('offers a signed-in API key account, which has no windows, and not one that is signed out (KERNEL-523)', () => {
+    const key: AccountProfile = { id: 'key', provider: 'claude', label: 'Billing', cli: false, auth: 'apiKey', active: false, signedIn: true }
+    const withKey = [accounts[0], key, accounts[2]]
+    expect(bannerFor(input({ usage: [claudeLimit], accounts: withKey, codexInUse: true }))?.switchAccount).toEqual({ provider: 'claude', accountId: 'key', label: 'Billing' })
+    expect(bannerFor(input({ usage: [claudeLimit], accounts: [accounts[0], { ...key, signedIn: false }], codexInUse: true }))?.switchAccount).toBeUndefined()
+  })
+
   it("counts only the active account's windows", () => {
     const onWork = accounts.map((a) => (a.provider === 'claude' ? { ...a, active: a.id === 'work' } : a))
     expect(bannerFor(input({ usage: [claudeLimit], accounts: onWork, codexInUse: true }))).toBeNull()

@@ -54,6 +54,8 @@ export interface ClaudeStart {
   prompt: string
   /** The workspace's variables, before `sessionEnv` takes the API keys out. */
   env: Record<string, string>
+  /** The active account's credential (`Providers.claudeEnv`), which `sessionEnv` adds after that (KERNEL-523). */
+  credential?: Record<string, string>
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
@@ -136,7 +138,7 @@ export class ClaudeRunner implements Runner {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: this.abort,
-      env: sessionEnv(o.env, {}, { agentTeams: host.settings().models?.agentTeams }),
+      env: sessionEnv(o.env, o.credential ?? {}, { agentTeams: host.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
       // A process that may run in Bypass permissions runs its commands in the sandbox, and the chat says when Claude Code
       // runs them without it (KERNEL-458). Kernel's hooks and canUseTool still decide first.
@@ -737,11 +739,18 @@ export function muteShadowedWarning(proc: Pick<NodeJS.Process, 'listeners' | 're
 /** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
 const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
 
-/** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
-  const env = { ...base, ...extra } as Record<string, string>
+/**
+ * Sessions bill the account the user picked (D-018, KERNEL-523). An API key or auth token in `base`, from the Mac or the
+ * workspace, would bill the API instead, so it goes. `account` is the active account's credential (`Providers.claudeEnv`):
+ * nothing for the CLI's own login, a `setup-token` token, or an API key account's key. A key also drops any OAuth token,
+ * so the key is what pays.
+ */
+export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
+  const env = { ...base } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
+  if (account.ANTHROPIC_API_KEY) delete env.CLAUDE_CODE_OAUTH_TOKEN
+  Object.assign(env, account)
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
