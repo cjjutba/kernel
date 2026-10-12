@@ -1436,6 +1436,22 @@ export const workspaceFixtures: Record<string, Fixture> = {
       approvals: [pending('question', 'rowan', { workspaceId: ids.lead, title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     }, { model: 'claude-opus-5-5' })
   }),
+  // A sign-in link in the question and in an option's description wraps inside the card, and the AskUserQuestion call has no row of its own above it (KERNEL-591).
+  WorkspaceQuestionUrl: scene((f) => {
+    const url = 'https://claude.ai/oauth/authorize?code=true&client_id=9d1c250a-e61b-44d9-88ed-5944d1962f5e&response_type=code&redirect_uri=https%3A%2F%2Fconsole.anthropic.com%2Foauth%2Fcode%2Fcallback&scope=org%3Acreate_api_key+user%3Aprofile+user%3Ainference&code_challenge=Zk3n0r1a8Xw5pQ2sT7vB9cD4eF6gH1jK3lM5nP7qR9s&code_challenge_method=S256&state=Yb2cD4eF6gH8iJ0kL2mN4oP6qR8sT0uV'
+    const question = `Please sign in to Claude to continue. Open this link in your browser and paste the code it shows: ${url}`
+    const options = [
+      { label: 'I have signed in', description: `The code came from ${url}` },
+      { label: 'Use an API key instead' }
+    ]
+    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'noor' }, 'Download button', [
+      userMsg('qu1', 'Build T-15b from the approved plan.', true),
+      tool('qu-t1', 'Read the PDF renderer', 'cat src/pdf/render.ts', { name: 'Read' }),
+      tool('qu-ask', 'AskUserQuestion', JSON.stringify({ questions: [{ question, options }] }), { name: 'AskUserQuestion', status: 'running', input: { questions: [{ question, options }] } })
+    ], {
+      approvals: [pending('question', 'noor', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+    })
+  }),
   WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('qs1', 'Build T-15b from the approved plan.', true),
     ...folded('qs', 6, 0),
