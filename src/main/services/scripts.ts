@@ -57,13 +57,14 @@ async function leavesWorktree(worktreeRoot: string, to: string): Promise<boolean
  * Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. `entries` are exact paths and
  * patterns (KERNEL-245), resolved by `resolveFilesToCopy`, which keeps every file inside the repo once symlinks are
  * followed and names the entries it refused. Each copy must also land inside the worktree, so a symlink the worktree
- * checked out can't carry it out (KERNEL-209). A worktree an archive already removed gets nothing.
+ * checked out can't carry it out (KERNEL-209). A file `exclude` names stays behind (KERNEL-449). A worktree an archive
+ * already removed gets nothing.
  */
-export async function copyLocalFiles(repo: string, worktree: string, entries: string[]): Promise<{ copied: string[]; refused: string[] }> {
+export async function copyLocalFiles(repo: string, worktree: string, entries: string[], exclude: string[] = []): Promise<{ copied: string[]; refused: string[] }> {
   const copied: string[] = [], refused: string[] = []
   const worktreeRoot = await realpath(worktree).catch(() => undefined)
   if (!worktreeRoot) return { copied, refused }
-  for (const { path, from } of await resolveCopySources(repo, entries, refused)) {
+  for (const { path, from } of await resolveCopySources(repo, entries, refused, exclude)) {
     const to = join(worktree, path)
     try {
       if (await leavesWorktree(worktreeRoot, to)) { refused.push(path); continue }

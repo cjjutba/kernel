@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { PrInfo } from '@shared/types'
 import {
-  batchQuery, blockedOf, checksOf, fingerprintOf, infoOf, matchesCheck, parseBatch, prNote, prQuery, prStateOf, readFailure, resolveFile,
+  batchQuery, blockedOf, checksOf, fingerprintOf, ghCanPush, infoOf, matchesCheck, parseBatch, prNote, prQuery, prStateOf, readFailure, resolveFile,
   type PrView, type RollupItem
 } from '../src/main/services/github'
 import { DEFAULT_SETTINGS, loadRepoSettings, prInstructions, saveRepoSettings } from '../src/main/services/settings'
 import type { Workspace } from '@shared/types'
+import type { ExecResult } from '../src/main/services/exec'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -183,5 +184,26 @@ describe("the room's optional_checks", () => {
     expect((await loadRepoSettings(repo)).pr?.optionalChecks).toEqual(['codecov*'])
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '')
     expect((await loadRepoSettings(repo)).pr?.optionalChecks).toEqual(['Vercel*'])
+  })
+})
+
+describe("gh's push permission (KERNEL-460)", () => {
+  const answer = (r: Partial<ExecResult>) => {
+    const calls: string[][] = []
+    const cmd = async (c: string, args: string[]): Promise<ExecResult> => { calls.push([c, ...args]); return { code: 0, stdout: '', stderr: '', ...r } }
+    return { cmd, calls }
+  }
+  it("reads the repo's permissions.push for gh's login", async () => {
+    const yes = answer({ stdout: 'true\n' })
+    expect(await ghCanPush('acme/app', yes.cmd)).toBe(true)
+    expect(yes.calls).toEqual([['gh', 'api', 'repos/acme/app', '--jq', '.permissions.push']])
+    expect(await ghCanPush('acme/app', answer({ stdout: 'false\n' }).cmd)).toBe(false)
+  })
+  it("tells a repo gh can't see from a question gh couldn't answer", async () => {
+    expect(await ghCanPush('acme/gone', answer({ code: 1, stderr: 'gh: Not Found (HTTP 404)\n' }).cmd)).toBeNull()
+    expect(await ghCanPush('acme/app', answer({ code: 1, stderr: 'error connecting to api.github.com\n' }).cmd)).toBeUndefined()
+    expect(await ghCanPush('acme/app', answer({ code: 127, stderr: 'spawn gh ENOENT' }).cmd)).toBeUndefined()
+    // Signed out, GitHub sends no permissions at all.
+    expect(await ghCanPush('acme/app', answer({ stdout: '\n' }).cmd)).toBeUndefined()
   })
 })

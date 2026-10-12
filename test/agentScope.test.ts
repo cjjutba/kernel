@@ -209,7 +209,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     await expect(h['agents.create']({ roomId: room.id, draft, scope: 'team' })).rejects.toThrow("can't open pull requests on this room's code host")
     k.github = host
     k.store.saveRoom({ ...k.store.room(room.id)!, host: 'local' })
-    await expect(h['agents.create']({ roomId: room.id, draft, scope: 'team' })).rejects.toThrow(/merges locally/)
+    await expect(h['agents.create']({ roomId: room.id, draft, scope: 'team' })).rejects.toThrow("can't open pull requests on this room's code host")
     expect(count()).toBe(before)
     await clean(repo)
   })
@@ -256,14 +256,15 @@ describe('who an agent change is for (KERNEL-466)', () => {
     let pending = await card()
     expect(pending.agentFile).toMatchObject({ path: '~/.claude/agents/lumi.md', scope: 'me' })
     k.approvals.decide(pending.id, { behavior: 'allow' })
-    expect(await asked).toBe(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}. lumi joins the user's team on this Mac, in every room.`)
+    const saved = await asked
+    expect(saved.startsWith(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}, just for the user on this Mac. Lumi joins the team`)).toBe(true)
 
     // Rowan proposes the team, and the user keeps it for themselves.
     asked = call({ id: 'nia', description: 'Docs writer.', prompt: 'You are Nia.', scope: 'team' })
     pending = await card()
     expect(pending.agentFile).toMatchObject({ path: '.claude/agents/nia.md', scope: 'team' })
     k.approvals.decide(pending.id, { behavior: 'allow', scope: 'me' })
-    expect(await asked).toMatch(/^Saved .*nia\.md\./)
+    expect(await asked).toMatch(/^Saved .*nia\.md, just for the user on this Mac\./)
 
     // And the other way round: the user sends Rowan's personal hire to the team.
     asked = call({ id: 'ivy', description: 'QA. Runs the tests.', prompt: 'You are Ivy.' })

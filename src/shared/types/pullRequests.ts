@@ -1,5 +1,6 @@
+import type { MergeMethod } from './settings'
 import type { TrackerKind } from './trackers'
-import type { PrState } from './workspaces'
+import type { DiffStat, PrState } from './workspaces'
 
 export interface PrCheck {
   name: string
@@ -49,6 +50,26 @@ export interface PrInfo {
   blocked?: PrBlocked
   /** When GitHub last saw the PR change: a push, a review, a comment. */
   updatedAt?: string
+  /** What git says before a local merge, in a room with no GitHub (KERNEL-467). Such a PR has no number or url. */
+  local?: LocalMerge
+}
+
+/** A branch that merges on the Mac, read from git: how far it is from its base and what would merge (KERNEL-467). */
+export interface LocalMerge {
+  /** Commits on the branch that the base doesn't have. */
+  ahead: number
+  /** Commits on the base that the branch doesn't have. The merge goes ahead anyway when nothing conflicts. */
+  behind: number
+  /** The branch's committed changes since it left the base, which is what merges. */
+  stat: DiffStat
+  /** The room's merge method. */
+  method: MergeMethod
+  /**
+   * The folder that has the base branch checked out, if one does. `dirty` lists, with their `git status` letters, its tracked
+   * files with uncommitted changes and its untracked files where the merge would write. Kernel moves that folder along with
+   * the branch, so it merges only while `dirty` is empty.
+   */
+  checkout?: { path: string; dirty: { status: string; path: string }[] }
 }
 
 /** GitHub's mergeStateStatus on a ready PR: BLOCKED with a review required, BEHIND, or BLOCKED for another rule (KERNEL-388). */

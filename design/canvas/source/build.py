@@ -125,6 +125,8 @@ for n,st in [
     ('IssuesEmpty','empty'),
     ('IssuesConnect','connect'),
     ('IssuesError','error'),
+    ('IssuesGitHub','github'),
+    ('IssuesNoTracker','notracker'),
 ]: emit(n, is_.replace('%%STATE%%',st), 'issues')
 tr=rd('_Try.dc.html')
 for n,mode,title in [
@@ -225,6 +227,8 @@ for n,m in [
     ('NewWorkspace','none'),
     ('NewWorkspaceBranch','branch'),
     ('NewWorkspaceFrom','from'),
+    ('NewWorkspaceFromGitHub','from-github'),
+    ('NewWorkspaceFromNone','from-none'),
     ('NewWorkspaceModel','model'),
     ('NewWorkspacePlus','plus'),
 ]:
@@ -242,6 +246,7 @@ for n,k in [
     ('ConfirmDiscard','discard'),
     ('ConfirmRetire','retire'),
     ('TelemetryAsk','telemetry'),
+    ('ConfirmIssueTaken','taken'),
     ('ConfirmBypass','bypass'),
 ]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard','bypass') else None)
 su=rd('Setup.dc.html')
@@ -260,6 +265,12 @@ for n,k in [
     ('SetupPermissions','perm'),
     ('SetupPermissionsNoAuto','permnoauto'),
 ]: emit(n, su.replace('%%CASE%%',k), None)
+# KERNEL-441: Room setup says which code host the repo has: GitHub (owner/repo), or Local when it has no GitHub remote.
+rh=rd('RoomSetupHost.dc.html')
+for n,k in [
+    ('RoomSetupGitHub','github'),
+    ('RoomSetupLocal','local'),
+]: emit(n, rh.replace('%%HOST%%',k), None)
 se=rd('Settings.dc.html')
 # KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
 # KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
@@ -301,6 +312,8 @@ for n,pg in [
     ('SettingsEnvironmentAdd','r-env-add'),
     ('SettingsBigTerminal','bigterm'),
     ('SettingsRoomIcon','r-icon'),
+    ('SettingsRoomTracker','r-tracker'),
+    ('SettingsRoomTrackerNone','r-tracker-none'),
 ]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 # KERNEL-336: grouped chats. A chat is a sidebar row and its tabs are conversations inside it. KERNEL-338 builds the first eleven screens, KERNEL-339 the last two.

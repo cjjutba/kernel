@@ -34,7 +34,7 @@ Developers who already use Claude Code and want several agents working on one re
 ## Principles
 
 - Real events only. A status in Kernel never comes from a timer.
-- You stay in control: plans need approval, risky commands need approval, nothing merges by itself.
+- You stay in control: plans need approval and nothing merges by itself. You pick how much agents do without asking, from Manual to Bypass permissions, and Never allow, network off and protected branches hold in every mode.
 - Everything is plain files where possible (agents, settings, scripts), so the setup works outside Kernel too.
 - Quiet design. Color means something or it isn't there.
 

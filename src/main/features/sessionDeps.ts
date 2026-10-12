@@ -1,6 +1,6 @@
 import type { Kernel } from '../kernel'
 import type { SessionDeps } from '../services/sessions'
-import { disabledInRoom } from '../services/settings'
+import { aliasesInRoom, disabledInRoom } from '../services/settings'
 
 /**
  * What Sessions calls back into Kernel for (KERNEL-324). A new reaction to a finished turn goes in `onTurnDone`, where the
@@ -15,12 +15,20 @@ export function sessionDeps(k: Kernel): SessionDeps {
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
     codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
+    aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
+    onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
+    availability: (chat, ws, wants) => k.permissions.forChat(chat, ws, wants),
     envFor: (ws) => k.env.envFor(ws),
     allowInRoom: (roomId, rule) => {
       const room = k.store.room(roomId)
       if (room && !room.allow?.includes(rule)) k.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
+    },
+    roomTools: (roomId) => k.store.room(roomId)?.allowTools ?? [],
+    allowToolInRoom: (roomId, rule) => {
+      const room = k.store.room(roomId)
+      if (room && !room.allowTools?.includes(rule)) k.store.saveRoom({ ...room, allowTools: [...(room.allowTools ?? []), rule] })
     },
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).

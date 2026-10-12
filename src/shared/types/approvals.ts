@@ -1,4 +1,4 @@
-import type { AgentScope } from './agents'
+import type { AgentReach, AgentScope } from './agents'
 
 export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 
@@ -41,10 +41,11 @@ export interface Approval {
   /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
   planFile?: string
   /**
-   * Agent approvals: the file the Lead wants to write (WorkspaceHire.png), and who the Lead proposes it for, `me` unless it
-   * says (KERNEL-466). The user's choice on the card is the decision's `scope`.
+   * Agent approvals: the file the Lead wants to write (WorkspaceHire.png), the MCP servers it would reach
+   * (WorkspaceHireServers.png, KERNEL-476), and who the Lead proposes it for, `me` unless it says (KERNEL-466). The user's
+   * choice on the card is the decision's `scope`.
    */
-  agentFile?: { path: string; text: string; scope?: AgentScope }
+  agentFile?: { path: string; text: string; servers?: AgentReach; scope?: AgentScope }
   /**
    * Tool approvals for a tool the agent's file doesn't list, which Kernel asks about instead of blocking (KERNEL-432).
    * `server` is set for an MCP server's tool.

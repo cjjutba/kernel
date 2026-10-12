@@ -66,6 +66,7 @@ const P = {
   chat: 'M2.5 4a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 13.5 4v5.5A1.5 1.5 0 0 1 12 11H7l-3 2.5V11A1.5 1.5 0 0 1 2.5 9.5Z',
   chevrons: 'm5 6 3-3 3 3M5 10l3 3 3-3',
   forward: 'm3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5',
+  arrowRight: 'M2.5 8h11M9.5 4l4 4-4 4',
   eyeoff: 'M2.5 8s2-4 5.5-4c1 0 1.9.3 2.7.8M13.5 8s-2 4-5.5 4c-1 0-1.9-.3-2.7-.8M3 3l10 10',
   reply: 'M13 3.5v4a2 2 0 0 1-2 2H3.5M6 7 3.5 9.5 6 12',
   sidebar: 'M4 3h8a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 4 3ZM6.5 3v10',
@@ -78,6 +79,8 @@ const P = {
   // Board.dc.html draws this at 10px ("You approve this step"); scaled 1.6x to the 16px grid.
   lock: 'M4.48 7.2h7.04a1.6 1.6 0 0 1 1.6 1.6v3.52a1.6 1.6 0 0 1-1.6 1.6H4.48a1.6 1.6 0 0 1-1.6-1.6V8.8a1.6 1.6 0 0 1 1.6-1.6ZM5.12 7.2V5.28a2.88 2.88 0 0 1 5.76 0V7.2',
   warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1',
+  // A check row that failed, as SettingsRoomGitPushFailed.dc.html draws it (KERNEL-437).
+  xCircle: 'M13.6 8a5.6 5.6 0 1 1-11.2 0 5.6 5.6 0 0 1 11.2 0ZM6 6l4 4M10 6l-4 4',
   // The composer's + menu and model picker (D-093).
   clip: 'M10.5 4.6 5.8 9.3a1.3 1.3 0 0 0 1.8 1.8l5-5a2.6 2.6 0 0 0-3.7-3.7l-5 5a3.9 3.9 0 0 0 5.5 5.5l4.1-4.1',
   book: 'M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.5c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.5',

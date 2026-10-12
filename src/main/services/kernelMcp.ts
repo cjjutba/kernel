@@ -1,12 +1,13 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentChangePr, AgentDef, AgentScope, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, notMergeable } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
-import { renderAgentFile } from './agents'
+import { canOpenPr } from './agentTools'
+import { agentFromFile, hireDefaults, renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
 import { archiveSkip, CLOSED_PR } from './archiveGuard'
@@ -44,9 +45,14 @@ export interface KernelToolDeps {
    * `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. `questions` carries a
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407).
    */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: { path: string; text: string; scope?: AgentScope } }) => Promise<Decision | null>
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }) => Promise<Decision | null>
   /** Saves a hired agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
+  /**
+   * The MCP servers an agent can reach in the room, and the ones its tools line names that it can't use. `wait` waits for
+   * the room's first check. Left out, hire_agent says nothing about servers (KERNEL-476).
+   */
+  reach?: (agent: AgentDef, o?: { wait?: boolean }) => Promise<AgentReach>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
   /** Merges the workspace's PR as the Merge button does, refusing with the reason when it can't merge (KERNEL-349). */
@@ -143,6 +149,35 @@ function roleTag(a: AgentDef): string {
   if (a.lead) return ' (the Lead, you)'
   if (isReviewer(a)) return takesTasks(a) ? ' (reviews PRs, takes tasks)' : ' (reviews PRs)'
   return takesTasks(a) ? '' : " (helper, doesn't take tasks)"
+}
+
+/** Where hire_agent's new agent landed on the team, as the room resolved it (KERNEL-476). */
+function joinedNote(a: AgentDef | undefined, id: string): string {
+  if (!a) return `${id} joins the team.`
+  if (isReviewer(a)) return `${a.name} joins the team and reviews PRs${takesTasks(a) ? ' and takes tasks' : ''}.`
+  if (takesTasks(a)) return `${a.name} joins the team and takes tasks.`
+  if (!canOpenPr(a.tools, a.disallowedTools)) return `${a.name} joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on ${a.name}'s profile in Team.`
+  return `${a.name} joins as a helper and doesn't take tasks.`
+}
+
+const BLOCKED: Record<AgentReach['blocked'][number]['why'], string> = {
+  failed: 'failed to connect',
+  'needs-auth': 'needs the user to sign in with /mcp in Claude Code',
+  disabled: 'is switched off in Claude Code, and /mcp turns it on',
+  off: 'is switched off in this room, in Settings, Skills and MCP',
+  missing: 'is not a server in this room'
+}
+
+/** The MCP servers hire_agent's new agent can reach, and the ones its file names that it can't use (KERNEL-476). */
+function reachNote(name: string, r: AgentReach): string {
+  const out = [r.reach.length ? `MCP servers ${name} can reach: ${r.reach.join(', ')}.` : `${name} can reach no MCP servers besides Kernel's own.`]
+  if (r.blocked.length) {
+    const many = r.blocked.length > 1
+    out.push(`${name} can't use ${many ? `${r.blocked.length} servers` : 'a server'} its file names.`)
+    for (const b of r.blocked) out.push(`${b.name} ${BLOCKED[b.why]}${b.suggestion ? `, but ${b.suggestion} may be the one it means` : ''}.`)
+    out.push(`Don't hand ${name} work that needs ${many ? 'those' : 'it'} until the user fixes that.`)
+  }
+  return out.join(' ')
 }
 
 /** What the Lead's server tells the model, next to the tools. */
@@ -443,25 +478,34 @@ export function kernelTools(d: KernelToolDeps) {
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),
-    tool('hire_agent', "Propose a new agent file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which.", {
+    tool('hire_agent', 'Propose a new agent file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which. Leave tools out for the role\'s defaults: Read, Grep and Glob for a reviewer, and Read, Edit, Write, Bash, Grep and Glob for everyone else. An agent takes tasks only when its tools include Bash, and Edit or Write. Name each MCP server it needs in tools, as mcp__<server>.', {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
       scope: z.enum(['me', 'team']).optional()
     }, async ({ scope: asked, ...a }) => {
       // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
       if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
+      // With no tools line, a hire gets its role's, so one that should open PRs names Edit and Write. A line the Lead wrote
+      // stays as written, since Kernel never widens it on a guess (KERNEL-476).
+      const hire = { ...a, tools: a.tools?.length ? a.tools : hireDefaults(a.role?.trim() || `${a.id} ${a.description}`).tools }
+      const path = `.claude/agents/${a.id}.md`
+      const body = renderAgentFile(hire)
+      const servers = await d.reach?.(agentFromFile(path, body)).catch(() => undefined)
       // The card starts on "Just for me" unless the Lead proposes the team, and the user's choice on it wins (KERNEL-466).
       const proposed = asked ?? 'me'
-      const agentFile = { path: `${proposed === 'me' ? '~/' : ''}.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }), scope: proposed }
+      const agentFile = { path: `${proposed === 'me' ? '~/' : ''}${path}`, text: body, scope: proposed, ...(servers ? { servers } : {}) }
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
-      const scope = decision.scope ?? proposed
-      try {
-        const done = await d.hireAgent(a, scope)
-        if (typeof done === 'string') return text(`Saved ${done}. ${a.id} joins the user's team on this Mac, in every room.`)
-        if (done.error) return text(`Committed .claude/agents/${a.id}.md in workspace ${done.workspaceId}, but the pull request didn't open: ${done.error} Tell the user to click Create PR there.`)
-        return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds .claude/agents/${a.id}.md, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)
-      } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
+      let done: string | AgentChangePr
+      try { done = await d.hireAgent(hire, decision.scope ?? proposed) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
+      if (typeof done !== 'string') {
+        if (done.error) return text(`Committed ${path} in workspace ${done.workspaceId}, but the pull request didn't open: ${done.error} Tell the user to click Create PR there.`)
+        return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds ${path}, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)
+      }
+      const joined = await d.agents().then((list) => list.find((x) => x.id === a.id), () => undefined)
+      // Asked again, since the room's first check may have finished while the card was up.
+      const reach = await d.reach?.(joined ?? agentFromFile(path, body), { wait: true }).catch(() => undefined)
+      return text([`Saved ${done}, just for the user on this Mac.`, joinedNote(joined, a.id), reach ? reachNote(joined?.name ?? a.id, reach) : ''].filter(Boolean).join(' '))
     })
   ]
 }
