@@ -89,7 +89,7 @@
 /* The scrolling list in the sidebar frame, in the app and in Settings (KERNEL-597). The frame pads 0 8px 0 10px, so the list bleeds out to its edges and
    pads itself back: the scrollbar lands on the column's right edge and rows stay where they were. The scrollbar is 6px and takes layout width, so the
    right padding is 8px less that, and the gutter is always held so rows line up with the ones above whether or not the list scrolls. The thumb itself,
-   hidden until hover or scroll and fading, is the app-wide scrollbar in tokens.css (KERNEL-602). */
+   shown only while the list scrolls and fading out after, is the app-wide scrollbar in tokens.css (KERNEL-602). */
 .sb-scroll { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; margin: 0 -8px 0 -10px; padding: 0 2px 0 10px; }
 /* The resize handle sits just outside the column, on the panel's 8px edge, so it never covers the thumb. Its glow stays on the panel's border. */
 .sidebar > .resize-handle[data-edge='right'] { right: -8px; }

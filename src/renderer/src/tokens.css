@@ -229,8 +229,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .selectable { user-select: text; }
 
 /* Scrollbars (KERNEL-597, KERNEL-602). Every scroll area, vertical or horizontal, draws the same thin thumb: 6px, rounded, no track, --line-4, on the area's
-   edge. It is invisible until the area is in use (scrollIdle.ts sets data-scrolling while it scrolls, the pointer moves over it or its scrollbar is held, and
-   for a second after), and fades in over 150ms and out over 300ms. A pointer resting on the area does not keep it, so :hover plays no part.
+   edge. It is invisible until the area scrolls (scrollIdle.ts sets data-scrolling while it scrolls or its scrollbar is held, and for 800ms after), and fades in over
+   150ms and out over 200ms. Moving the pointer over the area, or resting it there, does not show it, so :hover plays no part. The sidebar's .sb-scroll and
+   every scroll area in the main content take this one block and behave alike.
    Chromium can't transition a scrollbar part, so the colour is a registered <color> custom property on the scroller, which it can, and the thumb reads it.
    It has to inherit, since a scrollbar part takes its style from its scroller the way a child does, and one that doesn't inherit reads as its initial
    value there. Every element declares its own, so a scroller never takes its parent's. ::-webkit-scrollbar only: scrollbar-width or scrollbar-color would
@@ -240,7 +241,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { border-radius: 3px; background: var(--scroll-thumb); }
-:where(*) { --scroll-thumb: transparent; transition: --scroll-thumb 300ms ease-out; }
+:where(*) { --scroll-thumb: transparent; transition: --scroll-thumb 200ms ease-out; }
 :where([data-scrolling]) { --scroll-thumb: var(--line-4); transition-duration: 150ms; }
 @media (prefers-reduced-motion: reduce) { :where(*) { transition-duration: 0s; } }
 
