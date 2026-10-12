@@ -1,8 +1,10 @@
 import { createConnection } from 'node:net'
-import { exec } from './exec'
-import { ghAuth } from './github'
+import { exec, type ExecResult } from './exec'
+import { ghAuth, ghCanPush } from './github'
 import { bundledClaude } from './providers/binary'
-import type { PreflightCheck } from '@shared/types'
+import { rcFile, type ShellRead } from './shellPath'
+import { githubRepoOf } from './worktrees'
+import type { PreflightCheck, PushCheck, PushCheckRow, RoomSetupStep } from '@shared/types'
 
 export const MIN_CLAUDE = '2.1.80'
 
@@ -65,11 +67,14 @@ export const MIN_GIT = '2.38'
 /**
  * The checks behind the "Getting Kernel ready" screens, in canvas order with git before the GitHub CLI. Only Claude sign-in,
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
- * `run` and `claude` are for tests: a stubbed command runner and the session binary's path.
+ * `shell` is what `refreshPath` just read, and `env` the environment it left. `run`, `claude` and `env` are for tests: a
+ * stubbed command runner, the session binary's path and the variables Bedrock and Vertex are read from.
  */
-export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string } }): Promise<PreflightCheck[]> {
+export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string }; shell?: ShellRead; env?: NodeJS.ProcessEnv }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
+  // First, since it explains anything below that's missing.
+  if (o.shell?.timedOut) checks.push(shellCheck(o.shell))
   const bin = o.claude === undefined ? sessionClaude() : o.claude
   // A first run of a freshly installed binary can be slow while macOS scans it, hence the long timeout.
   const v = bin ? await run(bin, ['--version'], { timeoutMs: 60000 }) : null
@@ -86,7 +91,9 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   }
 
   // Signing in is checked with the same binary, so a broken one shows one failure, not two.
-  if (bin && version) {
+  const cloud = cloudCheck(o.env ?? process.env)
+  if (bin && version && cloud) checks.push(cloud)
+  else if (bin && version) {
     const a = await run(bin, ['auth', 'status'], { timeoutMs: 15000 })
     let status: { loggedIn?: boolean; subscriptionType?: unknown } = {}
     try { status = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
@@ -98,7 +105,7 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   // Only while a role in Settings, Models and effort runs on Codex, so a Claude-only setup sees the checks it always did.
   if (o.codex) checks.push(await codexCheck(o.codex.bin, run))
   checks.push(await gitCheck(run))
-  checks.push(await ghCheck(run))
+  checks.push(await ghCheck(run, o.shell))
 
   if (o.hookServerUp) checks.push({ id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: `localhost:${o.hookPort}` })
   else {
@@ -108,6 +115,31 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
     checks.push({ id: 'hooks', ok: false, blocking: true, title: `Port ${o.hookPort} is taken`, detail: `${who} is using it. Kernel can listen on ${next} and update your hooks.`, fix: { action: 'use-next-port' } })
   }
   return checks
+}
+
+/** A warning, since Kernel still has the launch PATH and the usual install folders. The note is where to look (KERNEL-448). */
+function shellCheck(shell: ShellRead): PreflightCheck {
+  const rc = rcFile(shell.shell)
+  const s = Math.max(1, Math.round(shell.timeoutMs / 1000))
+  return {
+    id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out',
+    detail: `Kernel reads PATH and proxy settings from your login shell and gave up after ${s} second${s === 1 ? '' : 's'}. Tools from nvm, or a proxy set in \`${rc}\`, may be missing until it can.`,
+    note: `Look in \`${rc}\` for a slow command, or one that waits for an answer, like an update prompt.`,
+    fix: { action: 'recheck' }
+  }
+}
+
+/** Claude Code's own test for a switch like CLAUDE_CODE_USE_BEDROCK. */
+const switchedOn = (v: string | undefined) => /^(1|true|yes|on)$/i.test(v?.trim() ?? '')
+
+/**
+ * Claude Code on Bedrock or Vertex bills the cloud account and skips the Claude sign-in, so this row takes Signed in's
+ * place. Only the Mac's environment can switch it on (KERNEL-247), and the shell read is how a Finder launch gets it.
+ */
+function cloudCheck(env: NodeJS.ProcessEnv): PreflightCheck | null {
+  if (switchedOn(env.CLAUDE_CODE_USE_BEDROCK)) return { id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', ...(env.AWS_REGION ? { meta: env.AWS_REGION } : {}) }
+  if (switchedOn(env.CLAUDE_CODE_USE_VERTEX)) return { id: 'auth', ok: true, blocking: true, title: 'Using Vertex AI from your shell', detail: 'Agents bill your Google Cloud account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_VERTEX` is set in your shell.', ...(env.CLOUD_ML_REGION ? { meta: env.CLOUD_ML_REGION } : {}) }
+  return null
 }
 
 /** Codex runs only the roles set to it, so a missing or signed-out Codex is a warning, never a block (KERNEL-406). */
@@ -131,8 +163,16 @@ async function gitCheck(run: typeof exec): Promise<PreflightCheck> {
   return { id: 'git', ok: true, blocking: false, title: 'Git', detail: 'Found on your PATH', meta: `git ${version}` }
 }
 
+/** "the keyring", "`GH_TOKEN` in your shell" or "gh's config file", from gh's `tokenSource`. */
+function ghSource(source: string | undefined): string | undefined {
+  if (source === 'keyring') return 'the keyring'
+  if (source === 'GH_TOKEN' || source === 'GITHUB_TOKEN') return `\`${source}\` in your shell`
+  if (source?.includes('/')) return 'gh\'s config file'
+  return undefined
+}
+
 /** gh only matters for pull requests, so every failure here is a warning. */
-async function ghCheck(run: typeof exec): Promise<PreflightCheck> {
+async function ghCheck(run: typeof exec, shell?: ShellRead): Promise<PreflightCheck> {
   const auth = await ghAuth(run)
   if (auth.state === 'missing') return { id: 'gh', ok: false, blocking: false, title: 'GitHub CLI not found', detail: 'Pull requests need gh. Everything else works without it.', fix: { command: 'brew install gh' } }
   if (auth.state === 'signed-out') return { id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } }
@@ -140,5 +180,110 @@ async function ghCheck(run: typeof exec): Promise<PreflightCheck> {
   const meta = /gh version (\d+\.\d+(?:\.\d+)?)/.exec(gh.stdout)?.[1]
   if (auth.state === 'offline') return { id: 'gh', ok: false, blocking: false, title: 'Can\'t reach GitHub', detail: 'gh is signed in, but GitHub didn\'t answer. Pull requests need it, so check again once you\'re online.', fix: { command: 'gh auth status' }, meta: meta && `gh ${meta}` }
   // ConnectRepo reads the login back out of "Signed in as <login>".
-  return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: auth.login ? `Signed in as ${auth.login}` : 'Signed in', meta: meta && `gh ${meta}` }
+  const from = ghSource(auth.source)
+  const detail = auth.login ? `Signed in as ${auth.login}${from ? `, from ${from}` : ''}` : 'Signed in'
+  // A token gh uses is one Kernel passed on (shellPath.ts). One Kernel left out is still worth saying, since the terminal's gh uses it.
+  const left = shell?.ghToken && !shell.ghToken.passed ? shell.ghToken.name : undefined
+  const note = auth.source === 'GH_TOKEN' || auth.source === 'GITHUB_TOKEN'
+    ? 'Kernel passes it on because gh has no stored login.'
+    : left ? `\`${left}\` is set in your shell. Kernel leaves it out, because gh would use it instead of this login.` : undefined
+  return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail, ...(note ? { note } : {}), meta: meta && `gh ${meta}` }
+}
+
+// ---------- a room's push check (KERNEL-460)
+
+/** How long each network step of the push check may take, in ms. */
+export const PUSH_CHECK_MS = 20_000
+
+/**
+ * What git prints when the remote answered and refused a login, or git had none to give: no saved login over HTTPS with
+ * prompts off, a wrong one, an SSH key the host doesn't accept, or GitHub's 403 for a login that can't write.
+ */
+const LOGIN_REFUSED = /terminal prompts disabled|could not read (?:Username|Password)|Authentication failed|Invalid username or (?:password|token)|Permission denied \(publickey|Permission to \S+ denied|returned error: 40[13]|Repository not found/i
+
+/** The advice git adds under every failure to reach a remote, which says nothing about this one. */
+const BOILERPLATE = /^(Please make sure you have the correct access rights|and the repository exists\.)$/
+
+/** What git printed, for the box under a failed row: its first lines, where it names the problem. */
+function gitSaid(r: ExecResult, what: string): string {
+  if (r.timedOut) return `${what} didn't answer in ${PUSH_CHECK_MS / 1000} seconds.`
+  const lines = (r.stderr.trim() || r.stdout.trim()).split('\n').map((l) => l.trim()).filter((l) => l && !BOILERPLATE.test(l))
+  return lines.slice(0, 3).join('\n') || `${what} failed (${r.code}).`
+}
+
+/** How git logs in to a remote URL. `other` is a folder or a protocol with no login, like `file://`. */
+function transportOf(url: string): 'https' | 'ssh' | 'other' {
+  if (/^https?:\/\//i.test(url)) return 'https'
+  return /^ssh:\/\/|^[^/\s]+@[^:/\s]+:/.test(url) ? 'ssh' : 'other'
+}
+
+/**
+ * Whether git can push from `cwd` to `remote`, asked before an agent needs to (SettingsRoomGit*.png). Reach is
+ * `git ls-remote`. Push is gh's permission on a GitHub repo and a dry-run push to a branch that doesn't exist, which logs in
+ * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `run` is for tests.
+ */
+export async function checkPush(cwd: string, remote: string, o: { run?: typeof exec; now?: () => number } = {}): Promise<PushCheck | null> {
+  const run = o.run ?? exec
+  const url = (await run('git', ['-C', cwd, 'remote', 'get-url', '--push', remote], { timeoutMs: 15000 })).stdout.trim()
+  if (!url) return null
+  const repo = githubRepoOf(url)
+  const via = transportOf(url)
+  const asked = `git ls-remote ${remote}`
+  const done = (reach: PushCheckRow, push: PushCheckRow, login?: string): PushCheck => ({ remote, ...(repo ? { repo } : {}), ...(login ? { login } : {}), reach, push, at: (o.now ?? Date.now)() })
+
+  const ls = await run('git', ['-C', cwd, 'ls-remote', remote, 'HEAD'], { timeoutMs: PUSH_CHECK_MS })
+  // A host that refused the login was reached. Its fix is the login's, so the push row says so.
+  const refused = ls.code !== 0 && !ls.timedOut && LOGIN_REFUSED.test(ls.stderr)
+  if (ls.code !== 0 && !refused) {
+    return done({ state: 'fail', detail: asked, output: gitSaid(ls, asked), note: 'Check your connection or VPN, then check again.' }, { state: 'unchecked', detail: 'Needs a reachable remote' })
+  }
+  const reach: PushCheckRow = { state: 'ok', detail: asked }
+
+  // gh only knows GitHub. An offline gh still names its login, which is enough to say git isn't using it.
+  const auth = repo ? await ghAuth(run) : undefined
+  const login = auth?.state === 'ok' || auth?.state === 'offline' ? auth.login : undefined
+  const canPush = repo && auth?.state === 'ok' ? await ghCanPush(repo, run) : undefined
+  const cantWrite = (): PushCheckRow => ({ state: 'fail', detail: `${login ?? 'gh'} can only read ${repo}. Ask its owner for write access.` })
+
+  // A checkout with no commit has nothing to push, so only gh can answer.
+  const hasCommit = refused || (await run('git', ['-C', cwd, 'rev-parse', '--verify', '--quiet', 'HEAD'], { timeoutMs: 15000 })).code === 0
+  if (!hasCommit) {
+    if (canPush === true) return done(reach, { state: 'ok', detail: `From gh, signed in as ${login}` }, login)
+    if (canPush === false) return done(reach, cantWrite(), login)
+    return done(reach, { state: 'unchecked', detail: 'Needs a first commit' }, login)
+  }
+  const dry = refused ? ls : await run('git', ['-C', cwd, 'push', '--dry-run', '--no-verify', '--recurse-submodules=no', remote, `HEAD:refs/heads/kernel-push-check-${Date.now()}`], { timeoutMs: PUSH_CHECK_MS })
+  if (dry.code === 0) {
+    const from = login && canPush === true ? `From gh, signed in as ${login}` : via === 'https' ? 'From git\'s saved login' : via === 'ssh' ? 'From your SSH key' : 'A dry-run push worked'
+    return done(reach, { state: 'ok', detail: from }, login)
+  }
+  const said = gitSaid(dry, 'git push --dry-run')
+  if (dry.timedOut || !LOGIN_REFUSED.test(dry.stderr)) return done(reach, { state: 'fail', detail: 'A dry-run push failed.', output: said }, login)
+  if (canPush === false) return done(reach, cantWrite(), login)
+  if (canPush === null) return done(reach, { state: 'fail', detail: `${login} can't see ${repo} on GitHub.`, output: said }, login)
+  // gh's login works for git over HTTPS once gh is git's credential helper (KERNEL-437's fix).
+  if (repo && via === 'https') {
+    if (login) return done(reach, { state: 'fail', detail: `gh is signed in as ${login}, but git isn't using that login.`, fix: 'gh auth setup-git' }, login)
+    if (auth?.state === 'missing') return done(reach, { state: 'fail', detail: 'git has no GitHub login, and gh isn\'t installed to give it one.', fix: 'brew install gh && gh auth login' })
+    return done(reach, { state: 'fail', detail: 'git has no GitHub login, and gh isn\'t signed in.', fix: 'gh auth login' })
+  }
+  return done(reach, { state: 'fail', detail: via === 'ssh' ? 'The remote didn\'t accept your SSH key.' : 'The remote refused git\'s login.', output: said }, login)
+}
+
+/**
+ * The Check push access step of room setup for a check's result (RoomSetup.png, RoomSetupWarnings.png). A failure is a
+ * warning there, since a warning never blocks setup, while Settings, Room, Git shows the same result as a red x (KERNEL-437).
+ * Every field is set, so a recheck that passes clears the last warning's.
+ */
+export function pushStepOf(c: PushCheck): Pick<RoomSetupStep, 'state' | 'title' | 'detail' | 'output' | 'fix'> {
+  const to = c.repo ?? c.remote
+  if (c.reach.state === 'fail') return { state: 'warn', title: `Git can't reach ${c.remote}`, detail: c.reach.note ?? '', output: c.reach.output, fix: { action: 'recheck' } }
+  if (c.push.state === 'fail') {
+    const d = c.push.detail
+    // One sentence takes the consequence on its end, as the drawing has it. Two already say what to do.
+    const detail = /\.\s/.test(d) ? d : d.replace(/\.?$/, ', so agents can\'t push yet.')
+    return { state: 'warn', title: `Git can't push to ${to}`, detail, output: c.push.output, fix: { ...(c.push.fix ? { command: c.push.fix } : {}), action: 'recheck' } }
+  }
+  const detail = c.push.state === 'unchecked' ? c.push.detail : c.login && c.push.detail.startsWith('From gh') ? `${c.login} can push to ${to}` : `git can push to ${to}`
+  return { state: 'ok', title: 'Check push access', detail, output: undefined, fix: undefined }
 }

@@ -19,6 +19,7 @@ import { ResizeHandle } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
 import { SIDEBAR_HIDE_BELOW, SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit, useSidebarWidth } from './useSidebarWidth'
 import { liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -173,7 +174,8 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, run] = useBusy()
-  const g = workspaceGlyph(ws, { waiting, running })
+  const local = useLocalMerge(ws)
+  const g = workspaceGlyph(ws, { waiting, running, local })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
@@ -298,8 +300,8 @@ export function Sidebar() {
 
   return (
     <nav ref={nav} aria-label="Sidebar" className="sidebar" style={{ width }}>
-      {/* The traffic lights end near x 70. The toggle sits just right of them, where the header's Show sidebar sits when hidden. */}
-      <div className="drag" style={{ height: 42, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 70 }}>
+      {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
+      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
         <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
       </div>
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>

@@ -1,3 +1,5 @@
+import type { AgentReach } from './agents'
+
 export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 
 /** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
@@ -38,8 +40,11 @@ export interface Approval {
   steps?: PlanStep[]
   /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
   planFile?: string
-  /** Agent approvals: the file the Lead wants to write (WorkspaceHire.png). */
-  agentFile?: { path: string; text: string }
+  /**
+   * Agent approvals: the file the Lead wants to write (WorkspaceHire.png), and the MCP servers it would reach
+   * (WorkspaceHireServers.png, KERNEL-476).
+   */
+  agentFile?: { path: string; text: string; servers?: AgentReach }
   /**
    * Tool approvals for a tool the agent's file doesn't list, which Kernel asks about instead of blocking (KERNEL-432).
    * `server` is set for an MCP server's tool.

@@ -357,6 +357,7 @@ describe('Jira in a room (KERNEL-474)', () => {
 
   it('connects an account after Jira accepts it, keeps it encrypted, and lists the room\'s issues from it', async () => {
     const { h, room, dataDir, calls } = await kernel((c) => c.path === '/rest/api/3/myself' ? me : { issues: [raw('PROJ-7')] })
+    expect(await h['issues.tracker']({ roomId: room.id })).toEqual({ kind: 'jira' })
     await expect(h['issues.list']({ roomId: room.id, query: '' })).rejects.toThrow(NO_JIRA)
     expect(await h['jira.test']()).toBeNull()
     expect(await h['jira.connect']({ site: 'https://acme.atlassian.net/jira', email: ' sam@acme.com ', token: ' jira_tok ' })).toEqual(account)
@@ -387,6 +388,7 @@ describe('Jira in a room (KERNEL-474)', () => {
   it('uses Jira only when the room says so', async () => {
     const { h, room, dataDir, calls } = await kernel(() => ({ issues: [raw('PROJ-7')] }), '[jira]\nproject = "PROJ"\n')
     await saveJiraAccount(dataDir, CREDS, cipher)
+    expect(await h['issues.tracker']({ roomId: room.id })).toEqual({ kind: 'none' })
     expect(await h['issues.list']({ roomId: room.id, query: '' })).toEqual([])
     expect(calls).toEqual([])
   })

@@ -19,7 +19,7 @@ import { claudeSignedIn, readAccount } from './services/account'
 import { stopAllScripts } from './services/scripts'
 import { EnvStore } from './services/env'
 import { githubAvatar, RoomIcons } from './services/roomIcons'
-import { gh, type GitHub } from './services/github'
+import { gh, type CodeHost } from './services/github'
 import { Overlaps } from './services/overlap'
 import type { KernelOptions } from './features/options'
 import { channels } from './features/channels'
@@ -45,13 +45,16 @@ import { Waits } from './features/waits'
 import { Chats } from './features/chats'
 import { Lead } from './features/lead'
 import { Tools } from './features/tools'
+import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
 import { Prs } from './features/prs'
+import { CodeHosts } from './features/codeHost'
 import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
 import { Telemetry } from './features/telemetry'
 import { BaseWatch } from './features/baseWatch'
 import { Providers } from './features/providers'
+import { Permissions } from './features/permissions'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -118,13 +121,16 @@ export class Kernel {
   readonly chats = new Chats(this)
   readonly lead = new Lead(this)
   readonly tools = new Tools(this)
+  readonly mcp = new Mcp(this)
   readonly sharing = new Sharing(this)
   readonly prs = new Prs(this)
+  readonly codeHost = new CodeHosts(this)
   readonly autoArchive = new AutoArchive(this)
   readonly reviews = new Reviews(this)
   readonly telemetry = new Telemetry(this)
   readonly baseWatch = new BaseWatch(this)
   readonly providers = new Providers(this)
+  readonly permissions = new Permissions(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -146,8 +152,8 @@ export class Kernel {
   accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = () => readAccount(this.providers.binary('claude').path)
   /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
   signedInReader: () => Promise<boolean> = () => claudeSignedIn(this.providers.binary('claude').path, this.providers.claudeEnv())
-  /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
-  github: GitHub = gh
+  /** The GitHub calls behind the PR methods, for the rooms `codeHost.hostFor` sends to GitHub. Tests swap it for a stub. */
+  github: CodeHost = gh
 
   constructor(readonly o: KernelOptions) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
@@ -182,6 +188,7 @@ export class Kernel {
     this.settings = resolved
     this.o.onSettings?.(this.settings)
     this.telemetry.start()
+    this.permissions.start()
     await this.hooks.start()
     this.prs.start()
     void this.workspaces.countChanges()
@@ -284,7 +291,8 @@ export class Kernel {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
-      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers())
+      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
+      this.permissions.handlers(), this.mcp.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)
