@@ -18,8 +18,7 @@ export type KernelVar = keyof typeof KERNEL_VARS
 
 /** What scripts get on top of `KERNEL_VARS`. They win over a variable of the same name in scripts only. */
 export const SCRIPT_VARS = {
-  PORT: 'The same as KERNEL_PORT, for tools that read PORT.',
-  FORCE_COLOR: 'Set to 0, so the output panel gets plain text.'
+  PORT: 'The same as KERNEL_PORT, for tools that read PORT.'
 } as const
 
 /**

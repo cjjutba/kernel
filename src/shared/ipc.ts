@@ -308,6 +308,8 @@ export interface KernelApi {
   'scripts.skipSetup': { req: { workspaceId: string }; res: Ok }
   /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
   'scripts.replay': { req: { workspaceId: string }; res: Ok }
+  /** Resizes a running script's terminal. The next run of the same script starts at this size, and at `SCRIPT_COLS` by `SCRIPT_ROWS` before any (KERNEL-655). */
+  'scripts.resize': { req: { workspaceId: string; kind: ScriptKind; name?: string; cols: number; rows: number }; res: Ok }
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
@@ -618,15 +620,21 @@ export type PushEvent =
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
   /** A script's lines from the last 50 ms, in order, so a chatty script is about 20 pushes a second (KERNEL-216). */
   | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; lines: Pick<ScriptLine, 'line' | 'stream'>[] }
+  /**
+   * A script's terminal output from the last 50 ms, as it printed it: colors, `\r` redraws and all, for a terminal view.
+   * `script.output` carries the same output as plain lines (KERNEL-655).
+   */
+  | { type: 'script.data'; workspaceId: string; kind: ScriptKind; name?: string; data: string }
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
   /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
   | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
   /**
    * Everything main kept of a workspace's scripts, in place of what the window has: the lines, each script's exit code by
-   * `scriptKey` (absent while it runs), and each running run script's URL by name. Sent on the push stream like the lines
-   * themselves, so none is shown twice or missed (KERNEL-340).
+   * `scriptKey` (absent while it runs), each running run script's URL by name, and each script's terminal output by
+   * `scriptKey`, its last `TERMINAL_KEEP` characters (KERNEL-655). Sent on the push stream like the lines themselves, so
+   * none is shown twice or missed (KERNEL-340).
    */
-  | { type: 'script.state'; workspaceId: string; lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string> }
+  | { type: 'script.state'; workspaceId: string; lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string>; data: Record<string, string> }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
