@@ -104,7 +104,7 @@ describe('[team] roster', () => {
 
     // Ids that name nobody, and repeats, aren't kept.
     let team = await h['agents.setTeam']({ roomId: room.id, team: { roster: ['dev10', 'dev11', 'dev11', 'ghost'] }, from: 'setup' })
-    expect(team.map((a) => a.id)).toEqual(['kernel-lead', 'dev10', 'dev11', 'kernel-reviewer'])
+    expect(team.map((a) => a.id)).toEqual(['kernel-lead', 'dev10', 'dev11'])
     expect(await settings()).toContain('\n[team]\nroster = ["dev10", "dev11"]\n')
     expect(await k.team.rosterOf(room.id)).toEqual({ agents: 13, needed: false, suggested: DEVS })
 
@@ -120,7 +120,7 @@ describe('[team] roster', () => {
 
     // No roster is every agent again.
     team = await h['agents.setTeam']({ roomId: room.id, team: { roster: null } })
-    expect(team).toHaveLength(16)
+    expect(team).toHaveLength(15)
     expect(await settings()).not.toContain('[team]')
   })
 
@@ -131,7 +131,7 @@ describe('[team] roster', () => {
 
   it("doesn't ask with 12 agents or fewer, and keeps a subagent the user makes a teammate", async () => {
     const { h, room, seat, settings } = await setUp([agent('api'), agent('web', 'tools: Read, Edit, Write, Bash\n', 'You build the UI.'), agent('architect', '', 'You design.')])
-    expect(seat).toMatchObject({ detail: 'Api, Architect, Web from .claude/agents, Rowan and Theo from Kernel', brought: 3, roster: { agents: 3, needed: false, suggested: ['api', 'web'] } })
+    expect(seat).toMatchObject({ detail: 'Api, Architect, Web from .claude/agents, Rowan from Kernel', brought: 3, roster: { agents: 3, needed: false, suggested: ['api', 'web'] } })
     const team = await h['agents.setTeam']({ roomId: room.id, team: { members: ['api', 'web', 'architect'] } })
     expect(team.find((a) => a.id === 'architect')).toMatchObject({ member: true })
     expect(team.find((a) => a.id === 'architect')?.warnings).toBeUndefined()
