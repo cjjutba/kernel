@@ -4,6 +4,7 @@
 //   node scripts/archive-frames.ts after       this checkout's code
 //   node scripts/archive-frames.ts before      the code this branch was cut from (origin/main at that time), built in a temporary git worktree that is removed afterwards
 //   node scripts/archive-frames.ts table       the before and after results of the last runs, as a markdown table
+//   node scripts/archive-frames.ts clean       removes the rooms and worktrees the runs made in the temp folder
 //
 //   --only chat-row,last-tab   run some paths (ids are in `paths` below)
 //   --where screen,chat,history   run some placements: the item on screen, another chat open, History open
@@ -793,23 +794,25 @@ const readResults = (label: string): Result[] => (existsSync(results(label)) ? J
 export function table(): string {
   const before = readResults('before')
   const after = readResults('after')
-  const keys = [...new Set([...before, ...after].map((r) => `${r.id}|${r.where}`))]
+  const keys = [...new Set([...before, ...after].filter((r) => paths.some((p) => p.id === r.id)).map((r) => `${r.id}|${r.where}`))]
   const order = (k: string) => paths.findIndex((p) => p.id === k.split('|')[0]) * 10 + ['screen', 'chat', 'history'].indexOf(k.split('|')[1])
-  const cell = (r?: Result) => (r ? `${r.verdict === 'PASS' ? 'pass' : r.verdict === 'FAIL' ? 'FAIL' : 'ERROR'}: ${r.sequence.length ? r.sequence.map((s) => s.replace(/^old$/, 'item').replace(/^dest$/, 'New chat with Rowan')).join(' > ') : r.lines[0]}` : 'not run')
+  const word = (s: string) => (s === 'old' ? 'the item' : s === 'dest' ? 'New chat with Rowan' : s)
+  const cell = (r?: Result) => (r ? `${r.verdict === 'PASS' ? 'pass' : r.verdict === 'FAIL' ? 'FAIL' : 'ERROR'}: ${r.sequence.length ? r.sequence.map(word).join(', then ') : (r.lines[0] ?? '').replace(/\s+/g, ' ')}` : 'not run')
   const rows = keys.sort((a, b) => order(a) - order(b)).map((k) => {
     const [id, where] = k.split('|') as [string, Where]
     const def = paths.find((p) => p.id === id)
     const find = (list: Result[]) => list.find((r) => r.id === id && r.where === where)
     return `| ${def?.name ?? id} | ${WHERE_WORDS[where]} | ${cell(find(before))} | ${cell(find(after))} |`
   })
-  return ['| Path | Window | origin/main | This branch |', '| --- | --- | --- | --- |', ...rows].join('\n')
+  return ['| Path | Window | Before (origin/main when the branch was cut) | After (this branch) |', '| --- | --- | --- | --- |', ...rows].join('\n')
 }
 
 async function main() {
   const args = process.argv.slice(2).filter((a) => a !== '--')
   const label = args[0]
   if (label === 'table') { console.log(table()); return }
-  if (label !== 'before' && label !== 'after') throw new Error('Say which code to test: node scripts/archive-frames.ts before|after|table')
+  if (label === 'clean') { await reap(); rmSync(BASE, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); console.log(`Removed ${BASE}`); return }
+  if (label !== 'before' && label !== 'after') throw new Error('Say which code to test: node scripts/archive-frames.ts before|after|table|clean')
   const value = (name: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined }
   const only = value('only')?.split(',')
   const wheres = value('where')?.split(',') as Where[] | undefined
