@@ -1,4 +1,4 @@
-import type { AgentDef, LinearFilter, LinearIssue, LinearScope, LinearStateType, Workspace } from '@shared/types'
+import type { AgentDef, ChatPart, GithubIssue, GithubIssueDetail, LinearFilter, LinearIssue, LinearScope, LinearStateType, Workspace } from '@shared/types'
 import type { IssueStateShape } from '../../icons'
 
 /**
@@ -170,4 +170,52 @@ export const joinFits = (fits: string[]) => (fits.length < 2 ? fits.join('') : `
 /** The Linear workspace's name from an issue's URL, for the header ("Linear · cj-jutba"). */
 export function workspaceSlug(url: string | undefined): string | undefined {
   try { return url ? new URL(url).pathname.split('/')[1] || undefined : undefined } catch { return undefined }
+}
+
+// ---------- GitHub Issues (KERNEL-471)
+
+/**
+ * What narrows a GitHub list. It isn't saved between launches: a room's labels and milestones are its own, so a leftover one would
+ * hide issues in the next room with nothing saying why. A repo that never assigns issues has nothing under Mine, so the list opens on All.
+ */
+export interface GithubFilter { mine: boolean; label?: string; milestone?: string }
+
+export const DEFAULT_GITHUB_FILTER: GithubFilter = { mine: false }
+
+/** "maya-chen" becomes "MC" and "cjjutba" "CJ": a login splits at its dashes, dots and underscores the way a name splits at spaces. */
+export const loginInitials = (login: string) => initials(login.replace(/[-_.]+/g, ' '))
+
+/** Most recently updated first. A GitHub list has one group, Open, so this is its whole order. */
+export const byUpdated = (issues: GithubIssue[]): GithubIssue[] => {
+  const time = (i: GithubIssue) => Date.parse(i.updatedAt) || 0
+  return [...issues].sort((a, b) => time(b) - time(a) || b.number - a.number)
+}
+
+/** The issues the label and the milestone leave, before Mine or All splits them. The counts on the pills come from this. */
+export const narrowGithub = (issues: GithubIssue[], f: GithubFilter): GithubIssue[] =>
+  issues.filter((i) => (!f.label || i.labels.includes(f.label)) && (!f.milestone || i.milestone === f.milestone))
+
+/** The label and milestone names the list offers, in order, with the chosen one kept even when the search left it out. */
+export const labelsOf = (issues: GithubIssue[], keep?: string): string[] =>
+  [...new Set([...issues.flatMap((i) => i.labels), ...(keep ? [keep] : [])])].sort((a, b) => a.localeCompare(b))
+export const milestonesOf = (issues: GithubIssue[], keep?: string): string[] =>
+  [...new Set([...issues.flatMap((i) => (i.milestone ? [i.milestone] : [])), ...(keep ? [keep] : [])])].sort((a, b) => a.localeCompare(b))
+
+/** The row's label pills: two, and "+1" for the rest. */
+export const rowLabels = (labels: string[]): { shown: string[]; more: string } =>
+  ({ shown: labels.slice(0, 2), more: labels.length > 2 ? `+${labels.length - 2}` : '' })
+
+/** The empty state's sentence for a GitHub list: "Nothing in acme/app fits Mine, bug and "webhook"." */
+export function describeGithub(f: GithubFilter, query: string, where: string): { where: string; fits: string[] } {
+  const q = query.trim()
+  return { where, fits: [f.mine ? 'Mine' : '', f.label ?? '', f.milestone ?? '', q ? `"${q}"` : ''].filter(Boolean) }
+}
+
+/** Plan with Rowan's first message for a GitHub issue, the same as Linear's: the issue chip, its description and how to hand it off. */
+export function githubPlanParts(issue: GithubIssueDetail): ChatPart[] {
+  const description = issue.body.trim() || 'The issue has no description.'
+  return [
+    { type: 'issue', name: issue.id, title: issue.title, url: issue.url, source: 'github' },
+    { type: 'text', text: `${description}\n\nWhen you hand it off, pass ${issue.id} as issue to create_workspace.` }
+  ]
 }

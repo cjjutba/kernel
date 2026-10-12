@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -51,6 +51,55 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
     prs: prInfo(prState, { number: 147, url: 'https://github.com/samrivera/client-a/pull/147', title: 'feat(home): ask about requests and PRs' }),
     ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   }))
+
+/**
+ * KERNEL-478: a branch that merges on the Mac, as design/redesign/PrLocal*.png draws it. Noor's discount code branch in the Shop room, a local
+ * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The room's merge
+ * method is a squash, and `merged` is the commit it left on main.
+ */
+type LocalState = 'ready' | 'behind' | 'conflict' | 'merging' | 'merged' | 'dirty'
+const SHOP = '/Users/you/Projects/shop'
+const localFiles: ChangedFile[] = [
+  { path: 'src/checkout/DiscountField.tsx', status: 'A', added: 58, removed: 0 },
+  { path: 'src/checkout/CheckoutForm.tsx', status: 'M', added: 21, removed: 4 },
+  { path: 'src/checkout/cart.ts', status: 'M', added: 34, removed: 6 },
+  { path: 'src/db/discounts.ts', status: 'A', added: 41, removed: 0 },
+  { path: 'src/db/schema.ts', status: 'M', added: 12, removed: 0 },
+  { path: 'src/api/checkout.ts', status: 'M', added: 18, removed: 2 },
+  { path: 'test/discounts.test.ts', status: 'A', added: 76, removed: 0 },
+  { path: 'test/cart.test.ts', status: 'M', added: 44, removed: 3 }
+]
+const localScene = (state: LocalState) => scene((f) => {
+  const behind = { ready: 0, merging: 0, merged: 0, dirty: 0, behind: 4, conflict: 2 }[state]
+  const conflicts = state === 'conflict' ? ['src/checkout/cart.ts', 'src/db/schema.ts'] : []
+  const dirty = state === 'dirty' ? [{ status: 'M', path: 'package.json' }, { status: 'M', path: 'src/app/layout.tsx' }, { status: '??', path: 'notes.md' }] : []
+  const prState: Workspace['prState'] = state === 'behind' || state === 'dirty' ? 'ready' : state
+  const merged = state === 'merged'
+  return {
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
+    workspaces: withWorkspace(f, ids.table, {
+      name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'noor', title: 'Add a discount code to checkout', prState,
+      stat: { files: 8, added: 304, removed: 15 }, ...(merged ? { mergedAt: at(10, 44), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {})
+    }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Discount code field' } : c)),
+    items: { [ids.tableChat]: [
+      userMsg('lm-u', 'Add a discount code field to checkout. It takes a code, checks it against a discounts table and shows the new total under the subtotal. Keep the cart tests passing, and add tests for a percent code, a fixed code and an unknown code.'),
+      ...folded('lm', 14, 3),
+      { kind: 'text', id: 'lm-x', ts: at(10, 42), text: 'Checkout has a discount code field now. A valid code shows the new total under the subtotal, and an unknown code says "Code not found".\n\nThe branch has 3 commits. This repo has no GitHub remote, so there is no pull request. Kernel merges the branch into `main` on this Mac.' },
+      { kind: 'result', id: 'lm-r', ts: at(10, 43), durationMs: 72_000, ok: true },
+      ...(merged ? [{ kind: 'note' as const, id: 'lm-note', ts: at(10, 44), text: 'Squashed into main as 4e1b9c2.', pr: 'merged' as const }] : [])
+    ] },
+    changes: { [ids.table]: localFiles },
+    // The Run tab before the script has run, as the PNGs draw it (WorkspaceRunEmpty).
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+    prs: { [ids.table]: {
+      workspaceId: ids.table, number: 0, url: '', title: '', state: state === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40),
+      local: { ahead: 3, behind, stat: { files: 8, added: 304, removed: 15 }, method: 'squash', checkout: { path: SHOP, dirty } }
+    } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  }
+})
 
 /** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
 function runScripts(): Fixture {
@@ -146,6 +195,9 @@ const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
+/** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
+const codexModels = ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+
 const userMsg = (id: string, text: string, plan = false): ChatItem =>
   ({ kind: 'user', id, ts: at(10, 27), parts: [{ type: 'text', text }, ...(plan ? [{ type: 'file' as const, name: 'plan.md', path: 'docs/plan.md', lines: 42 }] : [])] })
 
@@ -207,6 +259,32 @@ const toolCalls: ChatItem[] = [
   tool('c6', 'Run Playwright', 'pnpm playwright test invoices', { durationMs: 41_000, output: '4 passed (38.2s)' }),
   ...tableItems.slice(-2)
 ]
+
+/** The messages in the setup wait shots (KERNEL-430): a pasted screenshot with a question, then a follow-up with a pasted log. */
+const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
+const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
+
+/** Setup's log as main sends it: still running, failed with code 1, or stopped. */
+function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
+  const out = (line: string, stream: 'stdout' | 'stderr' = 'stdout'): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line, stream }] })
+  const lines = [out('$ pnpm install'), out('Lockfile is up to date, resolution step is skipped'), out('Packages: +1204'), out('Progress: resolved 1204, reused 1198, downloaded 6, added 940')]
+  if (end === 'failed') return [...lines, out('gyp ERR! build error', 'stderr'), out('ERR_PNPM_LIFECYCLE  better-sqlite3@11.8.1 install: exit status 1', 'stderr'), { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }]
+  if (end === 'stopped') return [...lines, { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: null }]
+  return lines
+}
+
+/** A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped). */
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+  const started = Date.now() - 42_000
+  const setupRun = status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
+  return {
+    workspaces: withWorkspace(f, ids.table, { status, setupRun }),
+    items: { [ids.tableChat]: [] },
+    queue: { [ids.tableChat]: queue },
+    push: [...f.push, ...setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed'), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
+    ui: { ...open, rightPanel: o.panel ?? true, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
+  }
+}
 
 /** Composer shots: the same screen, with the composer already holding something. */
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
@@ -920,6 +998,24 @@ export const scriptTrust: ScriptTrust = {
   installScripts: [{ name: 'postinstall', command: 'node scripts/postinstall.js' }, { name: 'prepare', command: 'husky install' }]
 }
 
+/** Lumi's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
+const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
+
+/** Rowan's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
+const hireScene = (tools: string[], servers?: AgentReach) => scene((f) => ({
+  ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
+    userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
+    { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
+    tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
+    { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
+  ], {
+    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), text: [
+      '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
+    ].join('\n') } }), ...f.approvals]
+  }, { plan: false, model: 'claude-opus-5-5' }),
+  changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
+}))
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -947,6 +1043,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },
     ui: open
+  })),
+  // KERNEL-430: a new chat waiting for setup. The message waits as a bubble, one line says where setup stands, and its log is in the Setup tab.
+  SetupRunning: scene((f) => setupWait(f, 'setup', [setupAsk])),
+  SetupFollowUp: scene((f) => setupWait(f, 'setup', [setupAsk, setupFollow])),
+  // Edit pulled the only queued message back into the box.
+  SetupEditQueued: scene((f) => setupWait(f, 'setup', [], { composer: { parts: [...setupAsk.parts, ...setupFollow.parts], draft: '' } })),
+  SetupPanelHidden: scene((f) => setupWait(f, 'setup', [setupAsk], { panel: false })),
+  SetupFailed: scene((f) => setupWait(f, 'failed', [setupAsk], { end: 1 })),
+  SetupStopped: scene((f) => setupWait(f, 'failed', [setupAsk], { end: null })),
+  SetupSentAnyway: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 8), end: 1 } }),
+    items: { [ids.tableChat]: [{ kind: 'note', id: 'sw-note', ts: at(10, 2), text: 'Setup failed, sent anyway' }, { kind: 'user', id: 'sw-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, ...setupLog('failed'), { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+  })),
+  SetupDone: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
+    items: { [ids.tableChat]: [{ kind: 'note', id: 'sd-note', ts: at(10, 1, 12), text: 'Setup finished in 1:12' }, { kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
@@ -1032,6 +1148,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
   ], {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
+  })),
+  // KERNEL-459: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex.
+  WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I want to save a few sample PDFs where you can open them.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm pdf:export --out ~/Documents/invoices' }, title: 'Run pnpm pdf:export --out ~/Documents/invoices', detail: 'Saves three sample invoices as PDF.', reason: 'The classifier wants you to decide: writes outside the workspace' }), ...f.approvals]
+  }, { mode: 'auto' })),
+  WorkspacePermReasonCodex: scene((f) => ({
+    ...scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+      userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+      ...folded('p', 11, 2),
+      { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. The embedded font comes from a package I have not installed yet.' },
+      { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+    ], {
+      approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm add @fontsource/inter' }, title: 'Run pnpm add @fontsource/inter', detail: 'Installs the font package the renderer embeds.', reason: 'Codex runs it outside its sandbox' }), ...f.approvals]
+    }, { provider: 'codex', model: 'gpt-6-astra', effort: 'medium', mode: 'acceptEdits' }),
+    models: { codex: codexModels }
   })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApproved: scene(planApproved),
@@ -1263,19 +1399,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     shared: sharedFiles().filter((x) => x.workspaceId !== ids.table), sharedData: sharedStills
   })),
   TeamUpdateShared: scene((f) => teamUpdateShared(f)),
-  WorkspaceHire: scene((f) => ({
-    ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
-      userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
-      { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
-      tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
-      { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
-    ], {
-      approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', text: [
-        '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'
-      ].join('\n') } }), ...f.approvals]
-    }, { plan: false, model: 'claude-opus-5-5' }),
-    changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
-  })),
+  WorkspaceHire: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)']),
+  // The servers row on the hire card (KERNEL-484). The PNG draws Lumi with Figma reached and Linear needing sign-in. The other states are
+  // the ones the engine reports (`AgentReach.blocked`), one fixture each, for screenshots only.
+  WorkspaceHireServers: hireScene(hireTools(['figma', 'linear']), { reach: ['figma'], blocked: [{ name: 'linear', why: 'needs-auth' }] }),
+  WorkspaceHireServersReached: hireScene(hireTools(['figma', 'linear']), { reach: ['figma', 'linear'], blocked: [] }),
+  WorkspaceHireServersFailed: hireScene(hireTools(['figma', 'neon']), { reach: ['figma'], blocked: [{ name: 'neon', why: 'failed' }] }),
+  WorkspaceHireServersOff: hireScene(hireTools(['figma', 'playwright']), { reach: ['figma'], blocked: [{ name: 'playwright', why: 'off' }] }),
+  WorkspaceHireServersDisabled: hireScene(hireTools(['figma', 'sentry']), { reach: ['figma'], blocked: [{ name: 'sentry', why: 'disabled' }] }),
+  WorkspaceHireServersMissing: hireScene(hireTools(['linear', 'figma']), { reach: ['linear'], blocked: [{ name: 'figma', why: 'missing', suggestion: 'figma-dev' }] }),
+  WorkspaceHireServersMany: hireScene(hireTools(['figma', 'claude_ai_Linear', 'neon', 'playwright']), {
+    reach: ['figma', 'github', 'notion', 'sentry', 'claude_ai_Slack'],
+    blocked: [{ name: 'claude_ai_Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'playwright', why: 'off' }]
+  }),
   WorkspacePRMenu: scene(() => ({ ui: { ...open, menu: 'pr' } })),
   WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
   WorkspaceCIFailed: prScene('cifail', [
@@ -1335,6 +1471,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
+  // A branch that merges on the Mac, in a room with no GitHub (KERNEL-478, design/redesign/PrLocal*.png).
+  PrLocalReady: localScene('ready'),
+  PrLocalBehind: localScene('behind'),
+  PrLocalConflict: localScene('conflict'),
+  PrLocalMerging: localScene('merging'),
+  PrLocalMerged: localScene('merged'),
+  PrLocalDirty: localScene('dirty'),
   // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the chat header in both states (KERNEL-425).
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
@@ -1372,7 +1515,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return {
       settings: { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } },
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
-      models: { codex: ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 })) },
+      models: { codex: codexModels },
       ui: { ...open, menu: 'model' }
     }
   }),

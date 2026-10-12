@@ -20,14 +20,16 @@ import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
+import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
-import { Transcript, TranscriptSkeleton } from './Transcript'
+import { SetupWait } from './SetupWait'
+import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
-import { githubIssueUrl, isGithubKey } from './issueKey'
+import { githubIssueUrl, issueTracker } from './issueKey'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
@@ -128,7 +130,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const diffs = tabs?.diffs ?? NO_TABS
   const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
-  const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
+  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -174,7 +178,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // Rowan's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
-  const blocked = setup || ws.status === 'failed' || !!banner?.blocks
+  // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
+  // banner doesn't say it a second time.
+  const setupWait = (setup || ws.status === 'failed') && chat?.kind !== 'terminal' && empty
+  const banner = setupWait && found?.id === 'setup' ? undefined : found
+  // Setup without a held chat (a teammate's brief still on its way) keeps the box shut, so nothing goes out before setup does.
+  const blocked = (setup && !heldForSetup) || !!banner?.blocks
 
   const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
@@ -250,11 +259,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
                 : text
                   ? <TextView name={text.name} text={text.text} />
-                : setup
-                  ? <TranscriptSkeleton branch={ws.branch} />
-                  // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
-                  : ws.status === 'failed' && empty
-                    ? <div className="grow" />
+                // A chat waiting for setup shows what waits and where setup stands, not a skeleton or the New chat suggestions.
+                : setupWait
+                  ? <SetupWait ws={ws} chat={chat} />
                   : showNewChat
                     ? <NewLeadChat roomId={ws.roomId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
@@ -277,6 +284,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
           </div>
+          {ownPr && <LocalMergeInfo ws={ws} />}
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>
@@ -319,12 +327,16 @@ function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
   )
 }
 
-/** The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, a GitHub issue opens its page. A GitHub key with no page to open is plain text. */
+/**
+ * The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, in the workspace's
+ * room, and a GitHub issue opens its page. A key with no page to open is plain text.
+ */
 function IssueKey({ ws, room }: { ws: WorkspaceModel; room?: Room }) {
   const source = ws.source
   if (source?.kind !== 'issue') return null
-  if (!isGithubKey(source.id)) return <button type="button" className="ws-issue" aria-label={`Open Linear issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id })}>{source.id}</button>
-  const url = githubIssueUrl(source, room)
+  const tracker = issueTracker(source)
+  if (tracker === 'linear') return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id, roomId: ws.roomId })}>{source.id}</button>
+  const url = tracker === 'github' ? githubIssueUrl(source, room) : source.url
   if (!url) return <span className="ws-issue" title={source.title}>{source.id}</span>
   return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => void call('system.openExternal', { url })}>{source.id}</button>
 }

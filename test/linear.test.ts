@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
+import type { Cipher } from '../src/main/services/env'
 import { kernelTools } from '../src/main/services/kernelMcp'
-import { saveLinearToken } from '../src/main/services/integrations'
+import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
 import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
@@ -195,32 +196,134 @@ describe('moving an issue to In Progress', () => {
   })
 })
 
+/** Stands in for safeStorage, which doesn't work under ELECTRON_RUN_AS_NODE. Its output never holds the text it was given. */
+const cipher: Cipher = { encrypt: (t) => `enc:${Buffer.from([...t].reverse().join('')).toString('base64')}`, decrypt: (d) => [...Buffer.from(d.slice(4), 'base64').toString()].reverse().join('') }
+/** A Keychain that is there but refuses, as safeStorage does when the user denies access. */
+const refusing: Cipher = { encrypt: () => { throw new Error('denied') }, decrypt: () => { throw new Error('denied') } }
+
+describe('the saved Linear token (KERNEL-445)', () => {
+  const dataDir = () => mkdtemp(join(tmpdir(), 'kernel-data-'))
+  const onDisk = async (dir: string) => ({
+    text: await readFile(join(dir, 'integrations.json'), 'utf8'),
+    mode: (await stat(join(dir, 'integrations.json'))).mode & 0o777
+  })
+
+  it('round trips through the Keychain and never writes the token in the clear', async () => {
+    const dir = await dataDir()
+    await saveLinearToken(dir, '  lin_secret  ', cipher)
+    const file = await onDisk(dir)
+    expect(file.text).not.toContain('lin_secret')
+    expect(JSON.parse(file.text)).toEqual({ linearTokenEncrypted: cipher.encrypt('lin_secret') })
+    expect(file.mode).toBe(0o600)
+    expect(await storedLinearToken(dir, cipher)).toBe('lin_secret')
+    // No temp file is left next to it.
+    expect(await readdir(dir)).toEqual(['integrations.json'])
+    await saveLinearToken(dir, '', cipher)
+    expect(JSON.parse((await onDisk(dir)).text)).toEqual({})
+    expect(await storedLinearToken(dir, cipher)).toBeUndefined()
+  })
+
+  it('encrypts a plain text token on its first read', async () => {
+    const dir = await dataDir()
+    await writeFile(join(dir, 'integrations.json'), JSON.stringify({ linearToken: 'lin_old' }), { mode: 0o644 })
+    expect(await storedLinearToken(dir, cipher)).toBe('lin_old')
+    const file = await onDisk(dir)
+    expect(file.text).not.toContain('lin_old')
+    expect(JSON.parse(file.text)).toEqual({ linearTokenEncrypted: cipher.encrypt('lin_old') })
+    expect(file.mode).toBe(0o600)
+    expect(await storedLinearToken(dir, cipher)).toBe('lin_old')
+  })
+
+  it('leaves one encrypted file when several first reads land together', async () => {
+    const dir = await dataDir()
+    await writeFile(join(dir, 'integrations.json'), JSON.stringify({ linearToken: 'lin_old' }))
+    expect(await Promise.all([1, 2, 3, 4].map(() => storedLinearToken(dir, cipher)))).toEqual(['lin_old', 'lin_old', 'lin_old', 'lin_old'])
+    expect(JSON.parse((await onDisk(dir)).text)).toEqual({ linearTokenEncrypted: cipher.encrypt('lin_old') })
+    expect(await readdir(dir)).toEqual(['integrations.json'])
+  })
+
+  it('falls back to a file only the user can read without the Keychain', async () => {
+    for (const c of [undefined, refusing]) {
+      const dir = await dataDir()
+      await writeFile(join(dir, 'integrations.json'), '{}', { mode: 0o644 })
+      await saveLinearToken(dir, 'lin_plain', c)
+      const file = await onDisk(dir)
+      expect(JSON.parse(file.text)).toEqual({ linearToken: 'lin_plain' })
+      expect(file.mode).toBe(0o600)
+      expect(await storedLinearToken(dir, c)).toBe('lin_plain')
+      // A read that can't encrypt leaves the plain text file as it was.
+      expect(JSON.parse((await onDisk(dir)).text)).toEqual({ linearToken: 'lin_plain' })
+    }
+  })
+
+  it('reads an encrypted token it can\'t decrypt as none', async () => {
+    const dir = await dataDir()
+    await saveLinearToken(dir, 'lin_secret', cipher)
+    expect(await storedLinearToken(dir)).toBeUndefined()
+    expect(await storedLinearToken(dir, refusing)).toBeUndefined()
+    expect(await storedLinearToken(dir, cipher)).toBe('lin_secret')
+  })
+
+  it('reads a missing or odd file as no token', async () => {
+    const dir = await dataDir()
+    expect(await storedLinearToken(dir, cipher)).toBeUndefined()
+    for (const text of ['not json', 'null', '[]', '{"linearToken":42}', '{"linearTokenEncrypted":42}']) {
+      await writeFile(join(dir, 'integrations.json'), text)
+      expect(await storedLinearToken(dir, cipher)).toBeUndefined()
+    }
+  })
+})
+
 describe('Linear in the kernel', () => {
   const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
-  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor.'
+  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.'
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 
   /**
    * A Kernel on a temp repo with Rowan and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
-   * The room names its Linear team, so with a token its tracker is Linear (KERNEL-462).
+   * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The room names its
+   * Linear team, so with a token its tracker is Linear (KERNEL-462).
    */
-  async function kernel(answer: (c: Call) => unknown, o: { token?: string } = { token: 'lin_stored' }) {
+  async function kernel(answer: (c: Call) => unknown, o: { token?: string; plain?: boolean; cipher?: Cipher } = { token: 'lin_stored' }) {
     vi.stubEnv('LINEAR_API_KEY', '')
     const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    if (o.token) await saveLinearToken(dataDir, o.token)
+    if (o.token) await saveLinearToken(dataDir, o.token, o.plain ? undefined : o.cipher)
     const l = linear(answer)
-    const k = new Kernel({ dataDir, home, fetch: l.fetch })
+    const k = new Kernel({ dataDir, home, fetch: l.fetch, cipher: o.cipher })
     kernels.push(k)
     await k.start()
     const sent: { chatId: string; parts: ChatPart[] }[] = []
     k.sessions.send = async (chatId, parts) => { sent.push({ chatId, parts }); return { queued: false } }
     const room = await k.addRoom(repo)
-    return { k, room, calls: l.calls, sent }
+    return { k, room, calls: l.calls, sent, dataDir }
   }
+
+  const scope = () => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] } })
+
+  it('moves a plain text token into the Keychain on the first Linear call, and saves a new one encrypted (KERNEL-445)', async () => {
+    const { k, calls, dataDir } = await kernel(scope, { token: 'lin_old', plain: true, cipher })
+    await k.handlers()['linear.scope']()
+    expect(calls[0].auth).toBe('lin_old')
+    expect(await readFile(join(dataDir, 'integrations.json'), 'utf8')).not.toContain('lin_old')
+    await k.handlers()['linear.scope']()
+    expect(calls[1].auth).toBe('lin_old')
+    expect(await k.handlers()['integrations.connect']({ id: 'linear', token: 'lin_new' })).toMatchObject({ id: 'linear', connected: true })
+    expect(await readFile(join(dataDir, 'integrations.json'), 'utf8')).not.toContain('lin_new')
+    await k.handlers()['linear.scope']()
+    expect(calls.at(-1)!.auth).toBe('lin_new')
+  })
+
+  it('uses LINEAR_API_KEY when the saved token can\'t be decrypted (KERNEL-445)', async () => {
+    const { k, calls, dataDir } = await kernel(scope, { cipher: refusing })
+    await saveLinearToken(dataDir, 'lin_other_mac', cipher)
+    vi.stubEnv('LINEAR_API_KEY', 'lin_env')
+    await k.handlers()['linear.scope']()
+    expect(calls[0].auth).toBe('lin_env')
+  })
 
   /** The Lead's create_workspace, run against the kernel as Rowan's chat would. */
   async function createWorkspace(k: Kernel, roomId: string, args: Record<string, string>) {

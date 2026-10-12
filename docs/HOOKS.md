@@ -2,6 +2,8 @@
 
 Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button adds them (CheckHooks, Settings > Hooks). Each start, a port change and an approval timeout change rewrite Kernel's out-of-date entries that are already there, and never add any. Code: `src/main/services/hooksInstaller.ts`.
 
+When the write fails because the folder isn't writable (EACCES), the disk is read-only (EROFS), or `settings.json` links into a folder Kernel can't write (the Nix store), Check hooks names the cause and gives one command to fix it. Kernel never writes through such a link. Check hooks also says when hooks can't run: managed settings set `allowManagedHooksOnly` or `disableAllHooks`, which Kernel never edits, or the user's own file sets `disableAllHooks`, which Turn hooks on removes after the first backup. See KERNEL-461.
+
 Each entry is a command hook that pipes the payload to the server with curl (D-050):
 
 ```

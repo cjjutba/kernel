@@ -40,7 +40,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 const flush = () => new Promise((r) => setTimeout(r, 30))
 /** Releases fetch, fast-forward and may rerun setup, which takes a while when the whole suite runs at once. */
 const SLOW = { timeout: 10_000 }
-const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
+const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}. Open a PR for each task.`
 const prInfo = (state: PrState, number: number): PrInfo => ({ workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title: `PR ${number}`, state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
 /**
@@ -778,5 +778,59 @@ describe('waits, the rules', () => {
     expect(waitBroken(wait, [ws('a'), ws('b', { prState: 'closed' })])).toBe('b')
     expect(waitBroken(wait, [ws('a'), ws('b', { status: 'archived', prState: 'merged' })])).toBeUndefined()
     expect(waitBroken(wait, [ws('a')])).toBe('b')
+  })
+})
+
+// KERNEL-442 pins where waits stop today: at the room. Linked rooms (docs/decisions/KERNEL-442.md) change the first two.
+describe('a wait on work in another room', () => {
+  /** A second room on a repo of its own, with Ivy on its team, and Ivy's workspace there with PR #`number` open. */
+  async function otherRoom(k: Kernel, gh: { prs: Map<string, PrInfo> }, number: number) {
+    const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/ivy.md': AGENT('ivy') })
+    const api = await k.rooms.addRoom(repo)
+    await trustRoom(k, api.id)
+    const ivy = await k.workspaces.createWorkspace(api.id, { prompt: 'Add the invoices endpoint', agentId: 'ivy', title: `Invoices endpoint ${number}` })
+    gh.prs.set(ivy.branch, prInfo('open', number))
+    return k.prs.refreshPr(ivy.id)
+  }
+
+  it("is refused by the Lead's tools, which see only their own room", async () => {
+    const { k, room, lead, gh } = await setup()
+    const ivy = await otherRoom(k, gh, 12)
+    const rowan = (await k.team.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead.leadToolDeps(room.id, rowan, lead))
+    const call = async (name: string, input: object) => ((await tools.find((t) => t.name === name)!.handler(input as never, {})).content[0] as { text: string }).text
+    const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or a Linear issue key.`
+    expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: [ivy.id] })).toBe(`Not created: ${missing(ivy.id)}`)
+    expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: ['#12'] })).toBe(`Not created: ${missing('#12')}`)
+    const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id })
+    expect(await call('wait_for_merge', { workspace_id: kai.id, on: [ivy.id] })).toBe(`Not set: ${missing(ivy.id)}`)
+    expect(await call('list_workspaces', {})).not.toContain(ivy.id)
+    await k.stop()
+  })
+
+  it('set on the feature, stays held when that PR merges, since the merge finds the waiter but settling reads only its room', async () => {
+    const { k, room, lead, gh } = await setup()
+    const ivy = await otherRoom(k, gh, 12)
+    const w = await k.workspaces.createWorkspace(room.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id, waitFor: [ivy.id] })
+    expect(w.waitsFor).toMatchObject({ on: [ivy.id], held: true })
+    gh.prs.set(ivy.branch, prInfo('merged', 12))
+    expect((await k.prs.refreshPr(ivy.id)).prState).toBe('merged')
+    expect(k.waits.waitersOn(ivy.id).map((x) => x.id)).toEqual([w.id])
+    await k.waits.settleWait(w.id)
+    expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ on: [ivy.id], held: true })
+    expect(queue(k, chatOf(k, w))).toEqual([['Show invoices', 'lead']])
+    expect(users(k, chatOf(k, w))).toEqual([])
+    await k.stop()
+  })
+
+  it('still breaks, and tells the Lead, when that PR closes without merging', async () => {
+    const { k, room, lead, gh } = await setup()
+    const ivy = await otherRoom(k, gh, 12)
+    const w = await k.workspaces.createWorkspace(room.id, { prompt: 'Show invoices', agentId: 'kai', title: 'Invoice list', leadChatId: lead.id, waitFor: [ivy.id] })
+    gh.prs.set(ivy.branch, prInfo('closed', 12))
+    await k.prs.refreshPr(ivy.id)
+    await vi.waitFor(() => expect(pending(k).filter((e) => e.kind === 'wait.broken' && e.workspaceId === w.id)).toHaveLength(1), SLOW)
+    expect(k.store.workspace(w.id)?.waitsFor?.held).toBe(true)
+    await k.stop()
   })
 })

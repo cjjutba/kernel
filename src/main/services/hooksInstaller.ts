@@ -1,9 +1,12 @@
 import { constants } from 'node:fs'
-import { readFile, writeFile, mkdir, copyFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import { access, readFile, writeFile, mkdir, copyFile, lstat, realpath, rename, rm, stat } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { kernelHookMatcher, tokenArg } from '@shared/hookEntry'
+import type { HookProblem } from '@shared/types'
+import { shellQuote } from './health'
+import { tildify } from './rooms'
 
 /**
  * Events Kernel installs a hook for. Tool events take a "*" matcher; the rest take none.
@@ -110,30 +113,93 @@ async function backupOnce(file: string) {
   try { await copyFile(file, file + '.kernel-backup', constants.COPYFILE_EXCL) } catch (e: any) { if (e.code !== 'EEXIST' && e.code !== 'ENOENT') throw e }
 }
 
+/** A write of the settings file that failed in a way Check hooks explains (KERNEL-461). */
+export type HookWriteProblem = Extract<HookProblem, { kind: 'not-writable' | 'read-only' | 'symlink' }>
+
+/** Kernel couldn't write Claude Code's settings file, and the one step that fixes it. The settings file is unchanged. */
+export class HooksFileError extends Error {
+  constructor(readonly problem: HookWriteProblem) {
+    super(problem.kind === 'not-writable' ? `Kernel can't write to ${problem.dir}. Run ${problem.fix} in Terminal, then install again.`
+      : problem.kind === 'read-only' ? `${problem.dir} is on a read-only disk. Run ${problem.fix} in Terminal, then install again.`
+      : `${problem.file} links to a read-only file. Replace the link with a copy, then install again: ${problem.fix.replace('\n', ' ')}`)
+  }
+}
+
+/** A path in a command the user pastes: ~ for home, quoted when it has to be. */
+function arg(p: string): string {
+  const t = tildify(p)
+  if (/^[\w@%+=:,./~-]+$/.test(t)) return t
+  return t.startsWith('~/') ? `"$HOME"${shellQuote(t.slice(1))}` : shellQuote(t)
+}
+
+/** The folder a disk is mounted at: the highest folder above `p`, or above the nearest one that exists, on the same device. */
+export async function mountPoint(p: string): Promise<string> {
+  const dev = async (d: string) => (await stat(d).catch(() => null))?.dev
+  let dir = resolve(p)
+  let own = await dev(dir)
+  while (own === undefined && dir !== dirname(dir)) { dir = dirname(dir); own = await dev(dir) }
+  while (dir !== dirname(dir) && (await dev(dirname(dir))) === own) dir = dirname(dir)
+  return dir
+}
+
+/** EACCES and EROFS become the error that names their fix. Anything else stays as it is. */
+async function explain(e: unknown, file: string): Promise<unknown> {
+  const err = e as NodeJS.ErrnoException & { dest?: string }
+  if (err?.code !== 'EACCES' && err?.code !== 'EROFS') return e
+  // The folder the write needed: the temp file's, the backup's, or the parent of one Kernel had to make.
+  const dir = dirname(err.dest ?? err.path ?? file)
+  if (err.code === 'EACCES') return new HooksFileError({ kind: 'not-writable', code: err.code, file: tildify(file), dir: tildify(dir), fix: `sudo chown -R "$USER" ${arg(dir)}` })
+  const mount = await mountPoint(dir)
+  return new HooksFileError({ kind: 'read-only', code: err.code, dir: tildify(dir), disk: basename(mount) || mount, fix: `sudo mount -uw ${arg(mount)}` })
+}
+
 /**
- * Writes a temp file next to the target and renames it over, so Claude Code never reads half a file and a write of its own
- * lands whole, before or after ours. A symlinked settings file keeps its link: the write goes to the file it points at.
- * The hooks carry the token, so group and others lose read access (KERNEL-206).
+ * A settings file that links into a folder Kernel can't write, like the Nix store, is left alone, with an error that says how
+ * to replace the link with a copy. A link into a folder Kernel can write, like a stow checkout, is written through.
+ */
+async function refuseReadOnlyLink(file: string, target: string) {
+  if (!(await lstat(file).catch(() => null))?.isSymbolicLink()) return
+  const code = await access(dirname(target), constants.W_OK).then(() => undefined, (e: NodeJS.ErrnoException) => e.code)
+  if (code !== 'EACCES' && code !== 'EROFS') return
+  const nix = target.startsWith('/nix/store/')
+  throw new HooksFileError({ kind: 'symlink', code, file: tildify(file), store: nix ? '/nix/store' : tildify(dirname(target)), nix, fix: `rm ${arg(file)} &&\ncp ${arg(target)} ${arg(file)}` })
+}
+
+/**
+ * Keeps the first backup, then writes a temp file next to the target and renames it over, so Claude Code never reads half a
+ * file and a write of its own lands whole, before or after ours. A symlinked settings file keeps its link: the write goes to
+ * the file it points at, unless that file sits in a folder Kernel can't write. The hooks carry the token, so group and others
+ * lose read access (KERNEL-206). The owner keeps write access, so a copy of a read-only file stays one Claude Code can write.
+ * A folder the account can't write or a read-only disk throws a HooksFileError (KERNEL-461).
  */
 async function writeAtomic(file: string, settings: Settings) {
   const target = await realpath(file).catch(() => file)
-  const mode = await stat(target).then((s) => s.mode & 0o700, () => 0o600)
-  await mkdir(dirname(target), { recursive: true })
+  await refuseReadOnlyLink(file, target)
+  const mode = await stat(target).then((s) => (s.mode & 0o700) | 0o600, () => 0o600)
   const tmp = `${target}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
   try {
+    await backupOnce(file)
+    await mkdir(dirname(target), { recursive: true })
     await writeFile(tmp, JSON.stringify(settings, null, 2) + '\n', { mode, flag: 'wx' })
     await rename(tmp, target)
-  } catch (e) { await rm(tmp, { force: true }); throw e }
+  } catch (e) { await rm(tmp, { force: true }); throw await explain(e, file) }
 }
 
 /** Writes ~/.claude/settings.json, keeping the first backup next to it. */
 export async function installHooks(file: string, port: number, approvalTimeoutSec: number, token: string): Promise<string[]> {
   assertWritable(file)
-  const current = await readSettings(file)
-  await backupOnce(file)
-  const next = withKernelHooks(current, port, approvalTimeoutSec, token)
+  const next = withKernelHooks(await readSettings(file), port, approvalTimeoutSec, token)
   await writeAtomic(file, next)
   return installedEvents(next, token)
+}
+
+/** CheckHooksOff "Turn hooks on": takes disableAllHooks out of the file, after the first backup. Writes nothing when it isn't set. */
+export async function turnHooksOn(file: string): Promise<boolean> {
+  const { disableAllHooks, ...rest } = await readSettings(file)
+  if (disableAllHooks === undefined) return false
+  assertWritable(file)
+  await writeAtomic(file, rest)
+  return true
 }
 
 /**
@@ -145,16 +211,13 @@ export async function refreshHooks(file: string, port: number, approvalTimeoutSe
   const next = withCurrentKernelHooks(await readSettings(file), port, approvalTimeoutSec, token)
   if (!next) return false
   assertWritable(file)
-  await backupOnce(file)
   await writeAtomic(file, next)
   return true
 }
 
 export async function uninstallHooks(file: string) {
   assertWritable(file)
-  const current = await readSettings(file)
-  await backupOnce(file)
-  await writeAtomic(file, withoutKernelHooks(current))
+  await writeAtomic(file, withoutKernelHooks(await readSettings(file)))
 }
 
 export async function hookStatus(file: string, token: string) { return installedEvents(await readSettings(file), token) }

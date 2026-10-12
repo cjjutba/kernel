@@ -1,22 +1,34 @@
 import { basename, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import type { KernelApi } from '@shared/ipc'
-import type { AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
+import type { AgentOrigin, AgentStatus, NewRoomRequest, PushCheck, Room, RoomSetupStep } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { PAUSE_KEEPS } from '../services/sessions'
 import { KERNEL_HOOK_EVENTS } from '../services/hooksInstaller'
-import { loadRepoSettings, localSettingsOwn } from '../services/settings'
-import { defaultBranch, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
+import { DEFAULT_BASE_REF, loadRepoSettings, localSettingsOwn } from '../services/settings'
+import { defaultBranch, onRemote, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
+import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
+import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installRunsRepoCode, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
+
+/** Where Room setup says a room's agents came from, when it asks for a roster (RoomSetupRoster.png). */
+const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
 export class Rooms extends Feature {
+  /** By room id, the last push check, null for a room that had no remote (KERNEL-460). */
+  private readonly pushChecks = new Map<string, PushCheck | null>()
+  /** By room id, the push check running now, so a second ask waits for it. */
+  private readonly checking = new Map<string, Promise<PushCheck | null>>()
+  /** By room id, the setup steps last published, so Check again on room setup can update its step. */
+  private readonly setups = new Map<string, { steps: RoomSetupStep[]; publish: () => void }>()
+
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
     if (existing) return existing
@@ -66,7 +78,10 @@ export class Rooms extends Feature {
     return room
   }
 
-  /** The six steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no checkout. */
+  /**
+   * The steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no
+   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460).
+   */
   private async setupRoom(room: Room, req: NewRoomRequest) {
     const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
     const steps: RoomSetupStep[] = [
@@ -78,6 +93,7 @@ export class Rooms extends Feature {
       { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
     ]
     const publish = () => bus.push({ type: 'room.setup', roomId: room.id, steps: steps.map((s) => ({ ...s })) })
+    this.setups.set(room.id, { steps, publish })
     const update = (id: RoomSetupStep['id'], patch: Partial<RoomSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
     const step = async (id: RoomSetupStep['id'], fn: () => Promise<Partial<RoomSetupStep> | void>) => {
       const started = Date.now()
@@ -106,34 +122,56 @@ export class Rooms extends Feature {
       if (inited) return { detail: `Git initialized in ${tildify(room.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
+    const remote = await this.k.config.remoteFor(room.path)
+    if ((await exec('git', ['-C', room.path, 'remote', 'get-url', '--push', remote])).code === 0) {
+      steps.splice(steps.findIndex((s) => s.id === 'agents'), 0, { id: 'push', title: 'Check push access', detail: '', state: 'wait' })
+      publish()
+    }
+    // Not a step of its own: reading two files can't fail setup, and Room setup lists what it found under the team.
+    await this.findInstructionConflicts(room.id).catch(() => undefined)
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
       // The install command runs the repo's own install scripts, though, and those still wait for the user (KERNEL-260, D-078).
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length) await this.k.trust.trustCurrent(room)
+      // So does an install that runs the repo's own code, as `bundle install` runs the Gemfile (KERNEL-444).
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length && !(await installRunsRepoCode(room.path))) await this.k.trust.trustCurrent(room)
     })
     await step('install', async () => {
-      const { command, reason } = await installCommand(room.path)
+      const { command, reason, runsRepoCode } = await installCommand(room.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
-      // The install would run the repo's install scripts. Trusting them runs it (KERNEL-260).
-      if (await this.k.trust.holdInstall(room)) return { detail: "Skipped until you trust this repo's install scripts" }
+      // A repo whose settings have nothing to trust never asks, so an install that runs its code is left to the user (KERNEL-444).
+      if (runsRepoCode && !(await this.k.trust.trustState(room)).subject) return { detail: `Skipped: ${command} runs this repo's code, so run it yourself if you trust it` }
+      // The install would run the repo's install scripts, or its own code. Trusting them runs it (KERNEL-260).
+      if (await this.k.trust.holdInstall(room, runsRepoCode)) return { detail: runsRepoCode ? "Skipped until you trust this repo's scripts" : "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
     })
     await step('copy', async () => {
-      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
+      const { files } = await loadRepoSettings(room.path)
+      const present = (await resolveFilesToCopy(room.path, files.copy, [], files.exclude)).map((f) => f.path)
       if (!present.length) return { detail: 'No local files to copy' }
-      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
+      const detail = present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ')
+      // A copied file that looks like production warns, by name, and the room still opens (KERNEL-449).
+      const production = (await this.k.config.production(room)).map((h) => h.path)
+      return production.length ? { state: 'warn' as const, detail, production } : { detail }
     })
     await step('hooks', async () => {
       const status = await this.k.hooks.hooksStatus()
       if (!status.installed) throw new Error('Kernel hooks are not in your Claude settings yet. Open Check hooks in the sidebar to install them.')
     })
+    // A push that can't work is a warning here, never a failure, so the room still opens (KERNEL-437).
+    if (steps.some((s) => s.id === 'push')) {
+      await step('push', async () => {
+        const c = await this.runPushCheck(room.id)
+        return c ? pushStepOf(c) : { detail: 'No remote to push to' }
+      })
+    }
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
     // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
+    // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
       const brought = (await agentFiles(room.path)).length
       if (!brought) {
@@ -143,11 +181,75 @@ export class Rooms extends Feature {
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: list })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
+      // Personal and plugin agents join every room, so they count toward a roster even when the repo brought none.
+      const roster = await this.k.team.rosterOf(room.id)
+      if (roster.needed) {
+        const where = [...new Set(list.filter((a) => !a.builtIn).map((a) => AGENT_PLACES[a.origin ?? 'project']))]
+        const places = where.length > 1 ? `${where.slice(0, -1).join(', ')} and ${where[where.length - 1]}` : where[0]
+        return { detail: `${roster.agents} agents found in ${places}`, ...(brought ? { brought } : {}), roster }
+      }
       const own = list.filter((a) => !a.builtIn).map((a) => a.name)
       const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
-      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}) }
+      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
+  }
+
+  /** Runs the room's push check, or waits for the one running, and keeps the result (KERNEL-460). */
+  private runPushCheck(roomId: string): Promise<PushCheck | null> {
+    let running = this.checking.get(roomId)
+    if (running) return running
+    const room = this.mustRoom(roomId)
+    running = (async () => {
+      try {
+        const c = await checkPush(room.path, await this.k.config.remoteFor(room.path))
+        this.pushChecks.set(roomId, c)
+        return c
+      } finally { this.checking.delete(roomId) }
+    })()
+    this.checking.set(roomId, running)
+    return running
+  }
+
+  /**
+   * Whether git can push from the room (Settings, Room, Git): the last result while it is for the room's current remote,
+   * else a new one. `recheck` always runs it again, and updates Check push access while room setup shows it.
+   */
+  async pushCheck(roomId: string, recheck = false): Promise<PushCheck | null> {
+    // No remote is asked again each time, since it costs one local git call and the room's section has no Check again.
+    const last = this.pushChecks.get(roomId)
+    if (!recheck && last && last.remote === await this.k.config.remoteFor(this.mustRoom(roomId).path)) return last
+    const setup = recheck ? this.setups.get(roomId) : undefined
+    const shown = setup?.steps.find((s) => s.id === 'push')
+    if (!setup || !shown) return this.runPushCheck(roomId)
+    Object.assign(shown, { state: 'run', meta: 'running' })
+    setup.publish()
+    try {
+      const c = await this.runPushCheck(roomId)
+      Object.assign(shown, { meta: undefined }, c ? pushStepOf(c) : { state: 'ok', detail: 'No remote to push to' })
+      return c
+    } catch (e) {
+      Object.assign(shown, { state: 'warn', meta: undefined, detail: (e as Error).message, fix: { action: 'recheck' } })
+      throw e
+    } finally { setup.publish() }
+  }
+
+  /**
+   * Reads the repo's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md for rules that fight Kernel's workflow and keeps them on the
+   * room (KERNEL-452). The branches are the ones Kernel's agents never commit or push to, and the base is where teammates'
+   * worktrees start, as `createWorkspace` picks it. The files are never written.
+   */
+  async findInstructionConflicts(roomId: string): Promise<Room> {
+    const room = this.mustRoom(roomId)
+    const repo = await loadRepoSettings(room.path)
+    const remote = await this.k.config.remoteFor(room.path, repo)
+    const set = repo.workspace.baseRef ?? (this.settings.workspace.baseRef === DEFAULT_BASE_REF ? undefined : this.settings.workspace.baseRef)
+    const base = onRemote(set ?? `${remote}/${room.defaultBranch}`, remote)
+    const instructionConflicts = await scanInstructions(room.path, { branches: [room.defaultBranch, ...this.settings.permissions.protectedBranches], base })
+    // Read again after the scan, so a change that landed meanwhile stays.
+    const next = this.store.saveRoom({ ...this.mustRoom(roomId), instructionConflicts })
+    bus.push({ type: 'room', room: next })
+    return next
   }
 
   /**
@@ -179,7 +281,7 @@ export class Rooms extends Feature {
     return room
   }
 
-  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>>): Promise<Room> {
+  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'permissionMode'>>): Promise<Room> {
     const before = this.mustRoom(roomId)
     // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
     if (patch.archived && !before.archived) {
@@ -192,6 +294,8 @@ export class Rooms extends Feature {
     }
     const room = this.store.saveRoom({ ...before, ...patch })
     bus.push({ type: 'room', room })
+    // The room's mode moves its live chats now (KERNEL-447).
+    if ('permissionMode' in patch && patch.permissionMode !== before.permissionMode) this.sessions.applyModes()
     return room
   }
 
@@ -244,6 +348,8 @@ export class Rooms extends Feature {
     await this.k.shared.remove(shared)
     await this.k.trust.forgetRoom(roomId)
     this.k.team.forgetRoom(roomId)
+    this.pushChecks.delete(roomId)
+    this.setups.delete(roomId)
   }
 
   handlers() {
@@ -257,6 +363,7 @@ export class Rooms extends Feature {
       'rooms.remove': async ({ roomId, deleteWorktrees }) => { await this.removeRoom(roomId, deleteWorktrees); return { ok: true } },
       'rooms.inspectFolder': async ({ path }) => inspectFolder(path, this.home),
       'rooms.recentFolders': async () => recentFolders(this.store.rooms().map((r) => r.path), this.home),
+      'rooms.pushCheck': async ({ roomId, recheck }) => this.pushCheck(roomId, recheck),
       'github.repos': async ({ query }) => listRepos(query),
       'rooms.setPaused': async ({ roomId, paused }) => (paused ? this.pauseRoom(roomId, 'you') : this.resumeRoom(roomId))
     } satisfies Partial<Handlers>
