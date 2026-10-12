@@ -17,7 +17,7 @@ export interface Room {
   paused: boolean
   /** Who paused it. A limit pause lifts itself when the limit resets (FloorLimit.png). */
   pausedBy?: 'you' | 'limit'
-  /** Agent ids in desk order. Agents past the last desk sit in the overflow strip (FloorFull.png). */
+  /** Agent ids in order. Saved data from the floor's desks; it only orders Team's shirts now. */
   desks?: string[]
   /** Hidden from the sidebar, still listed on Rooms. */
   hidden?: boolean

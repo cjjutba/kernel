@@ -828,7 +828,7 @@ export class Lead extends Feature {
         const message = messageOf(text, parts)
         this.userSpoke(chat.id)
         await this.sessions.send(chat.id, message)
-        // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
+        // The activity line for the brief, with the brief quoted under it.
         const to = this.store.workspace(chat.workspaceId)?.agentId
         const name = (await this.k.team.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
         const quote = parts ? message.map((p) => (p.type === 'text' ? p.text : p.name)).join(' ').replace(/\s+/g, ' ').trim() : text

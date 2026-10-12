@@ -1,6 +1,6 @@
 import type { AgentDef, AgentStatus, AgentWarning, Room, Task, TaskColumn, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
-import { lookFor, overflowShirt, seating } from './looks'
+import { lookFor, overflowShirt, shirtOrder } from './looks'
 
 /** The word on the Team list and the profile. Statuses are words, never dots (DESIGN.md). */
 export const STATUS_WORD: Record<AgentStatus, string> = {
@@ -21,8 +21,8 @@ export const FILTERS: { id: FilterId; label: string; states: AgentStatus[] | nul
 
 /** The shirt color of the agent's avatar. The look follows file order, not the place in the room's order, so it stays when an agent moves. */
 export function shirtOf(agent: AgentDef, team: AgentDef[], room?: Pick<Room, 'desks'>): string {
-  const { seated, overflow } = seating(team, room)
-  if (seated.some((a) => a.id === agent.id)) return lookFor(agent, Math.max(0, team.filter((a) => !a.retired).findIndex((a) => a.id === agent.id))).shirt
+  const { first, overflow } = shirtOrder(team, room)
+  if (first.some((a) => a.id === agent.id)) return lookFor(agent, Math.max(0, team.filter((a) => !a.retired).findIndex((a) => a.id === agent.id))).shirt
   return agent.look?.shirt ?? overflowShirt(Math.max(0, overflow.findIndex((a) => a.id === agent.id)))
 }
 

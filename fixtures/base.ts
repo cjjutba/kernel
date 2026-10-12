@@ -1,7 +1,7 @@
 import type { AgentDef, Approval, ChatItem, FileEntry, Room, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 
-// The seed every fixture starts from. Names, branches and times follow the canvas (Main.png, Workspace.png).
+// The seed every fixture starts from. Names, branches and times follow the canvas (Home.png, Workspace.png).
 
 /** Local time on the canvas day, so clocks read 10:55, 11:01 like the PNGs. */
 export const at = (h: number, m: number, s = 0) => new Date(2026, 9, 7, h, m, s).getTime()
@@ -89,7 +89,7 @@ const tableSource = [
   '  return (', '    <table className="w-full text-sm" aria-label="Invoices">'
 ].join('\n') + '\n'
 
-/** Pending in other rooms, so the Inbox shows 3 while Client A's floor shows nothing waiting (Main.png). */
+/** Pending in other rooms, so the Inbox shows 3 while Client A shows nothing waiting (Inbox.png). */
 const waiting: Approval[] = [
   { id: 'ap-migrate', kind: 'tool', source: 'sdk', roomId: ids.roomB, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
   { id: 'ap-plan', kind: 'plan', source: 'sdk', roomId: ids.roomOwn, agentId: 'rowan', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },

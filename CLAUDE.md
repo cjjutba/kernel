@@ -79,7 +79,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 
 ## Lanes
 
-Issues carry one lane label: Engine, Workspace, Team, Floor, Platform. During the Build phase each lane runs in its own Conductor workspace, so lanes must not edit each other's files. Phase order: Bring-up (KERNEL-5, 6, 7), Contracts (KERNEL-8, 9), Build (KERNEL-10 to 29), Integrate and ship (KERNEL-30, 31).
+Issues carry one lane label: Engine, Workspace, Team, Platform. During the Build phase each lane runs in its own Conductor workspace, so lanes must not edit each other's files. Phase order: Bring-up (KERNEL-5, 6, 7), Contracts (KERNEL-8, 9), Build (KERNEL-10 to 29), Integrate and ship (KERNEL-30, 31).
 
 ## Models
 

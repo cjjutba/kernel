@@ -80,7 +80,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect((await k.leadChat(room.id)).id).toBe(lead.id)
     expect(k.statusOf(room.id)).toEqual({ rowan: 'idle', kai: 'idle' })
 
-    // A brief logs the line the floor's briefing sequence starts from (FloorSent.png).
+    // A brief logs an activity line with the brief quoted.
     const logged: ActivityEvent[] = []
     const onActivity = (e: ActivityEvent) => logged.push(e)
     bus.on('activity', onActivity)
