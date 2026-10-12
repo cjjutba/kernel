@@ -1048,6 +1048,124 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
   return { ...rest, shared: sharedFiles(), sharedData: sharedStills }
 }
 
+/**
+ * KERNEL-599: the chat rail, as design/redesign/ChatRail*.png draw it. Noor's chat on PR #147 for KERNEL-155 holds 18 messages, each with a short turn,
+ * and the 14th has the long reply. ChatRail and ChatRailOpen are read from the 14th message (the shot script scrolls it under the tab row), ChatRailNarrow is
+ * at the bottom with the right panel open.
+ */
+type RailRound = [ask: string, reply: string, tools: number, thoughts: number, seconds: number, clock: [number, number]]
+const RAIL_LONG_REPLY = [
+  'PR #147 no longer conflicts with main. I merged origin/main into the branch and pushed it normally, with no force push.',
+  '',
+  '**What I did**',
+  '',
+  '- **Reset:** put the branch back on the pushed commit, 7c2c03f, and dropped the local rebase.',
+  '- **Merge:** merged origin/main (f565c3d). The only conflict was `docs/DECISIONS.md`. Main\'s D-136 stays as it is, and my entry follows it as **D-137**.',
+  '- **Renumber commit (1440439):** my code comments that cited D-136 now cite D-137, 12 lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`.',
+  '- **Checks:** `pnpm typecheck` passes, and `pnpm test` passes with 901 passed and 4 skipped.',
+  '',
+  '**PR state**',
+  '',
+  'GitHub reports the PR as mergeable, with merge state `BLOCKED`. When I checked once, Vercel had passed and the Release note check was still running. I didn\'t wait for it.',
+  '',
+  '**What\'s left**',
+  '',
+  '- **Release note check:** still running on Vercel\'s side. I\'ll look again before I stop.',
+  '- **PR body:** updated to D-137 and D-138, and it lists the renumber commit.',
+  '- **Review:** Theo hasn\'t been asked yet.',
+  '',
+  '**Next**',
+  '',
+  'I will check the Release note check again and tell you when it passes.'
+].join('\n')
+const railRounds: RailRound[] = [
+  ['Home and Inbox keep asking about requests and the PRs, find out why', 'Inbox builds its rows from two lists that share one query, so a request and its PR land in the same row. That is why both keep asking.', 6, 2, 184, [12, 8]],
+  ['Where does Inbox build its rows?', 'In `inbox.ts`, in `buildRows`. Home reads the same function through the store.', 2, 0, 21, [12, 11]],
+  ['Keep requests and PRs in separate lists', 'Done. Requests and PRs now come from two queries, and each list sorts on its own.', 5, 1, 142, [12, 16]],
+  ['Add a test for the stale PR row', 'Added `inbox.test.ts` cases for a PR that merged while its row was open. Both pass.', 4, 1, 96, [12, 21]],
+  ['Run typecheck and the tests', 'Both pass. 887 tests passed and 4 were skipped.', 2, 0, 74, [12, 24]],
+  ['Open the PR when it\'s green', 'Opened PR #147. Checks started.', 3, 0, 38, [12, 27]],
+  ['Checks failed on #147, can you look?', 'One check failed, Vercel\'s build, with a rate limit error. Nothing in the code failed.', 3, 1, 52, [12, 31]],
+  ['The Vercel build is rate limited, leave it alone', 'Understood, I left it. It will pass when the limit resets.', 1, 0, 9, [12, 33]],
+  ['Rebase onto main', 'Rebased onto origin/main. One conflict in `docs/DECISIONS.md`, which I resolved.', 5, 2, 131, [12, 38]],
+  ['Theo wants the empty state to say what\'s missing', 'The empty state now says "No requests yet" or "No PRs yet", whichever list is empty.', 4, 1, 88, [12, 44]],
+  ['Reword that in plain words', 'Reworded. It reads "Nothing asked of you yet" for requests and "No open PRs" for PRs.', 2, 0, 27, [12, 47]],
+  ['Squash the last two commits', 'Squashed them into one commit.', 2, 0, 18, [12, 51]],
+  ['Why did the rebase drop my D-136 entry?', 'The rebase took main\'s version of `docs/DECISIONS.md`, which already had a D-136. Mine was in the conflict and lost.', 3, 1, 232, [13, 1]],
+  ['Change of method for the conflict on PR #147. The repo\'s guard hook blocks force pushes, so don\'t rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check kernel.ts against #149, run typecheck and test, and update the PR body.', RAIL_LONG_REPLY, 9, 12, 232, [13, 1]],
+  ['Show me the renumber commit', 'It\'s 1440439. It changes 12 comment lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`, and no code.', 1, 1, 21, [13, 4]],
+  ['Check the Release note check, then tell me', 'It\'s still running. Vercel passed on the last push.', 2, 0, 34, [13, 6]],
+  ['Did Theo review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],
+  ['Ping him again if there\'s nothing by 13:30, and tell me when PR #147 is ready to merge so I can tell Rowan.', 'Will do. Right now PR #147 passes checks and has no conflicts, so only Theo\'s review is missing. I\'ll ask him again at 13:30 and write to you the moment he approves, with the PR number so you can merge from the panel.', 0, 0, 77, [13, 9]]
+]
+const railChat = (): ChatItem[] => railRounds.flatMap(([ask, reply, tools, thoughts, secs, clock], i): ChatItem[] => [
+  { kind: 'user', id: `rc-u${i}`, ts: at(...clock) - secs * 1000, parts: [{ type: 'text', text: ask }] },
+  ...folded(`rc${i}`, tools, thoughts),
+  { kind: 'text', id: `rc-x${i}`, ts: at(...clock), text: reply },
+  { kind: 'result', id: `rc-r${i}`, ts: at(...clock), durationMs: secs * 1000, ok: true }
+]).concat({ kind: 'note', id: 'rc-note', ts: at(13, 9, 30), text: 'PR #147 passed checks and has no conflicts.' })
+const railScene = (panel = false): Fixture => {
+  const f = panel ? panelScene('changes', { open: true }) : headerScene('ready', [])
+  return { ...f, items: { ...f.items, [ids.tableChat]: railChat() } }
+}
+
+/**
+ * ChatRailLead: Rowan's chat with 11 things to list, 6 of them Team updates. The updates are the ones the PNG's rail names, and each row of each is the engine's own wording.
+ * Noor's PR #161 and Kai's #162 can merge, so the newest card offers Merge for both, and #150 is in History.
+ */
+const railLead = (f: Fixture): Partial<Fixture> => {
+  const row = tuRow, ev = tuEv
+  const ask = (id: string, text: string, m: number): ChatItem => ({ kind: 'user', id, ts: at(20, m), parts: [{ type: 'text', text }] })
+  const answer = (id: string, text: string, secs: number, m: number): ChatItem[] => [
+    { kind: 'text', id: `${id}-x`, ts: at(20, m), text },
+    { kind: 'result', id: `${id}-r`, ts: at(20, m), durationMs: secs * 1000, ok: true }
+  ]
+  const kai = (events: TeamUpdateRow['events']) => row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', events)
+  const noor = (events: TeamUpdateRow['events']) => row('ws-176', 'noor', 'Noor', 'Rowan asks when a brief is unclear', events)
+  const items: ChatItem[] = [
+    ask('rl-u1', 'Plan the week: what\'s ready, what\'s blocked?', 0),
+    ...answer('rl-u1', 'Three tasks are in flight. Noor has the Linear service, Kai has the composer focus and Theo is free to review. Nothing is blocked yet.', 42, 0),
+    ask('rl-u2', 'Who can take KERNEL-189?', 1),
+    ...answer('rl-u2', 'Noor can, once KERNEL-163 merges.', 11, 1),
+    tuCard('rl-t3', 2, [noor([ev('pr.opened', 'Opened PR #161')])]),
+    ...answer('rl-t3', 'Noor opened PR #161. I will ask Theo to review it once checks pass.', 15, 2),
+    ask('rl-u4', 'Ask Kai to fix the composer focus', 3),
+    ...answer('rl-u4', 'Kai has it.', 9, 3),
+    tuCard('rl-t5', 4, [kai([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162')])]),
+    ...answer('rl-t5', 'Kai opened PR #162 for the composer focus.', 12, 4),
+    ask('rl-u6', 'Ask Theo to review #161 and #162', 5),
+    ...answer('rl-u6', 'Theo is reviewing both PRs.', 14, 5),
+    tuCard('rl-t7', 6, [row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Rowan asks when a brief is unclear', [ev('review', 'Approved PR #161', true)]), kai([ev('turn', 'Finished a turn')])]),
+    ...answer('rl-t7', 'Theo approved #161. #162 is still in review.', 18, 6),
+    tuCard('rl-t8', 8, [row('ws-163', 'noor', 'Noor', "Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])]),
+    { kind: 'result', id: 'rl-t8-r', ts: at(20, 9), durationMs: 4 * 60_000 + 9_000, ok: true },
+    tuCard('rl-t9', 14, [kai([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
+    ...answer('rl-t9', 'Nothing in Kai\'s code failed. Vercel\'s build rate limit is the only failure on PR #162.', 10, 15),
+    tuCard('rl-t10', 15, [kai([ev('turn', 'Finished a turn'), ev('turn', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true)]), noor([ev('pr.opened', 'Opened PR #161'), ev('pr.ready', 'Ready to merge', true)])]),
+    { kind: 'result', id: 'rl-t10-r', ts: at(20, 16), durationMs: 55_000, ok: true },
+    ask('rl-u11', 'What can I merge?', 30),
+    ...answer('rl-u11', 'Two PRs are ready to merge, #162 from Kai and #161 from Noor. #158 waits for Theo\'s review. Merge from the PRs tab, or tell me which one and I will.', 12, 31)
+  ]
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', items, {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+  const { approvals: _none, ...rest } = s
+  const issue = (key: string, title: string): Partial<Workspace> => ({ title, source: { kind: 'issue', id: key, title } })
+  const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
+  return {
+    ...rest,
+    ui: { ...rest.ui!, rightPanel: false, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } },
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Kernel' } : r)),
+    chats: [tab('chat-lead-week', 'Plan the week', 1), tab('chat-lead-inbox', 'Inbox rows', 2), tab('chat-lead-linear', 'Linear setup', 3), ...(s.chats ?? f.chats)],
+    workspaces: [
+      ...(s.workspaces ?? f.workspaces),
+      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 'New chats focus the composer, and ⌘L focuses it') }),
+      tuWork('ws-176', 'noor', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 'Rowan asks when a brief is unclear') }),
+      tuWork('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
+      tuWork('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', "Linear service, contracts and Rowan's issue link") })
+    ],
+    prs: { 'ws-182': tuInfo('ws-182', 162, 'h162'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
+  }
+}
+
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
@@ -1338,6 +1456,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
+  // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Rowan's chat with Team updates listed, and the chat at its
+  // end with the right panel open, where the rail takes the side padding. The scroll and the hover are local to the transcript and the rail, so scripts/shots.ts does them.
+  ChatRail: railScene(),
+  ChatRailOpen: railScene(),
+  ChatRailLead: scene((f) => railLead(f)),
+  ChatRailNarrow: railScene(true),
   WorkspaceCheckpoints: scene(() => ({
     checkpoints: { [ids.table]: checkpoints },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: true, toolsOpen: false } }

@@ -290,7 +290,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 
 Every Floor row, plus Board, BoardEmpty and TaskDetail, is hidden (D-104). For SidebarRoomMenu, the app's room menu also has a Team item (KERNEL-165).
 
-TeamUpdateShared, TeamUpdateMerge, TeamUpdateReview, the LeadPrs screens, the PrLocal screens (a local merge, KERNEL-441), the Panel screens (the right panel’s split, toolbar and overflow, KERNEL-512) and the ChatRail screens (the rail for jumping back to a message, KERNEL-535) are drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and their PNGs are also copied to `design/screens/` so `pnpm shots:compare` can find them. The ChatRail screens are design only until the build issue lands, so they have no fixtures yet.
+TeamUpdateShared, TeamUpdateMerge, TeamUpdateReview, the LeadPrs screens, the PrLocal screens (a local merge, KERNEL-441), the Panel screens (the right panel’s split, toolbar and overflow, KERNEL-512) and the ChatRail screens (the rail for jumping back to a message, KERNEL-535) are drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and their PNGs are also copied to `design/screens/` so `pnpm shots:compare` can find them.
 
 RoomSetupGitHub and RoomSetupLocal (KERNEL-441) add the Code host row to Room setup, after the first step. RoomSetupGitHub also keeps the push check row from RoomSetup, and RoomSetupLocal leaves it out. KERNEL-477 builds the row. The other room setup screens are not redrawn, so their fixtures leave the row out. The PrLocal screens have fixtures in `fixtures/workspace.ts` (KERNEL-478).
 
