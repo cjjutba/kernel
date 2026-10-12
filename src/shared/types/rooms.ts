@@ -1,4 +1,4 @@
-import type { AgentDraft } from './agents'
+import type { AgentDraft, RosterAdvice } from './agents'
 import type { PermissionMode } from './settings'
 
 export type RoomKind = 'repo' | 'folder' | 'scratch'
@@ -96,6 +96,11 @@ export interface RoomSetupStep {
   error?: string
   /** On the agents step: how many agent files the repo already had, so Room setup shows the team for review (KERNEL-397). */
   brought?: number
+  /**
+   * On the agents step: whether to ask for a roster, and who Kernel would pick (KERNEL-465). It counts the user's personal
+   * and plugin agents too, since they join every room (KERNEL-463).
+   */
+  roster?: RosterAdvice
 }
 
 /** A repo on the user's GitHub account (ConnectRepo.png). */

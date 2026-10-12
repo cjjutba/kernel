@@ -26,7 +26,7 @@ const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
 const AGENTS = {
   '.claude/agents/architect.md': '---\nname: architect\ndescription: >-\n  Designs the system.\n  Writes no code.\ntools: Read, Grep, Glob\n---\nYou design.',
-  '.claude/agents/api.md': '---\nname: api\ndescription: Backend engineer. Builds the API.\n---\nYou build the API.',
+  '.claude/agents/api.md': '---\nname: api\ndescription: Backend engineer. Builds the API.\n---\nYou build the API and open a PR.',
   '.claude/agents/web.md': '---\nname: web\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou build the UI.'
 }
 
@@ -186,7 +186,8 @@ describe("a repo's own agents (KERNEL-397)", () => {
     await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), rowan.replace('lead: true\n', ''))
     const team = await k.agents(room.id)
     expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Lead', true], ['rowan', 'Rowan', false], ['kernel-reviewer', 'Theo', false], ['web', 'Web', false]])
-    expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-lead' }])
+    // Its prompt has no pull request workflow either, so it starts as a helper (KERNEL-465).
+    expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-subagent' }, { kind: 'looks-like-lead' }])
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     await rm(join(repo, '.claude', 'agents', 'rowan.md'))
@@ -196,7 +197,7 @@ describe("a repo's own agents (KERNEL-397)", () => {
 // KERNEL-463: the user's own agents in ~/.claude/agents and Claude Code's plugin agents join every room's team, read the
 // way the repo's files are. Kernel never writes either.
 const PERSONAL = {
-  '.claude/agents/scout.md': '---\nname: scout\ndescription: Researcher. Finds prior art before a task starts.\n---\nYou are Scout.',
+  '.claude/agents/scout.md': '---\nname: scout\ndescription: Researcher. Finds prior art, then opens a PR.\n---\nYou are Scout.',
   // The repo has a web.md too, and the repo's file wins, as it does in Claude Code.
   '.claude/agents/my-web.md': '---\nname: web\ndescription: My own frontend agent.\nmodel: opus\n---\nYou are my web.'
 }
@@ -207,8 +208,8 @@ const plugin = (home: string) => ({
   '.claude/plugins/installed_plugins.json': JSON.stringify({ version: 2, plugins: { 'kit@market': [{ scope: 'user', installPath: join(home, KIT), version: '1.0.0' }] } }),
   [join(KIT, '.claude-plugin', 'plugin.json')]: JSON.stringify({ name: 'kit', agents: ['./extra/writer.md', '../outside.md'] }),
   [join(KIT, 'agents', 'code-reviewer.md')]: '---\nname: code-reviewer\ndescription: Reviews code for bugs and security problems.\ntools: Read, Grep, Glob\nmodel: sonnet\n---\nYou review code.',
-  [join(KIT, 'agents', 'builder.md')]: '---\nname: builder\ndescription: Builds features end to end.\n---\nYou build features.',
-  [join(KIT, 'extra', 'writer.md')]: '---\nname: writer\ndescription: Writes the docs.\n---\nYou write docs.',
+  [join(KIT, 'agents', 'builder.md')]: '---\nname: builder\ndescription: Builds features end to end and opens a PR.\n---\nYou build features.',
+  [join(KIT, 'extra', 'writer.md')]: '---\nname: writer\ndescription: Writes the docs and opens a PR.\n---\nYou write docs.',
   // Listed in plugin.json, but outside the plugin's folder.
   [join(dirname(KIT), 'outside.md')]: '---\nname: outside\ndescription: Not the plugin\'s.\n---\nYou are outside.'
 })
@@ -217,8 +218,8 @@ const LISTED = [
   { name: 'general-purpose', description: 'General-purpose agent.' },
   { name: 'scout', description: 'Researcher.' },
   { name: 'kit:code-reviewer', description: 'Reviews code for bugs and security problems.', model: 'sonnet' },
-  { name: 'kit:builder', description: 'Builds features end to end.' },
-  { name: 'kit:writer', description: 'Writes the docs.' },
+  { name: 'kit:builder', description: 'Builds features end to end and opens a PR.' },
+  { name: 'kit:writer', description: 'Writes the docs and opens a PR.' },
   { name: 'kit:outside', description: "Not the plugin's." },
   { name: 'gone:helper', description: 'From a plugin that left no folder.' }
 ]
