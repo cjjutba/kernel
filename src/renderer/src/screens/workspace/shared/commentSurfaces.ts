@@ -1,4 +1,4 @@
-import type { SharedAnchor, SharedComment } from '@shared/types'
+import type { SharedAnchor } from '@shared/types'
 import { call } from '../../../api'
 import { hoverLabel, imageCropRect, pageCropRect, pinSpot, within, type Spot } from './comment'
 import type { Rect } from './cover'
@@ -13,8 +13,8 @@ export interface Surface {
   hover(p: Spot): Promise<{ outline: Rect; label: string } | null>
   /** What a click at the point comments on, or null where the click is not on the file. `at` is where the pin goes. */
   pick(p: Spot): Promise<{ anchor: SharedAnchor; at: Spot } | null>
-  /** Where each earlier comment's pin is now, null where it can't be shown. */
-  spots(comments: SharedComment[]): Promise<(Spot | null)[]>
+  /** Where each earlier comment's pin is now, null where it can't be shown. A pin being written has only its anchor, which is all this reads. */
+  spots(comments: { anchor: SharedAnchor }[]): Promise<(Spot | null)[]>
   /** The picture to send with the comment, or null to send none. */
   crop(anchor: SharedAnchor, at: Spot): Promise<Picture | null>
 }

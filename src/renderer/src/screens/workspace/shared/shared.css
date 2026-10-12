@@ -42,8 +42,16 @@
 .shared-area { position: relative; flex: 1; min-height: 0; box-sizing: border-box; display: flex; justify-content: center; padding: 16px; overflow: hidden; background: var(--aside); }
 .shared-area[data-kind='pdf'] { padding: 16px 16px 0; }
 .shared-area[data-kind='markdown'] { padding: 0; overflow-y: auto; align-items: flex-start; background: var(--panel); }
-.shared-area[data-kind='image'] { align-items: center; }
 .shared-area > img { display: block; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-sm); border: 1px solid var(--line-3); }
+/* An image sits in a scroller that fills the area. At Fit the CSS fits it to the frame, and zoomed it has the size the hook gives it and the scroller scrolls (KERNEL-598). */
+.shared-area[data-kind='image'] { padding: 0; }
+.shared-zoom { position: absolute; inset: 0; box-sizing: border-box; display: flex; padding: 16px; overflow: hidden; }
+.shared-zoom[data-zoomed] { overflow: auto; }
+.shared-zoom > img { display: block; flex-shrink: 0; margin: auto; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-sm); border: 1px solid var(--line-3); user-select: none; -webkit-user-drag: none; }
+.shared-zoom[data-zoomed] > img { max-width: none; max-height: none; }
+.shared-zoom[data-pan='ready'] { cursor: grab; }
+.shared-zoom[data-pan='on'] { cursor: grabbing; }
+.shared-zoom:focus-visible { outline-offset: -2px; }
 /* where a page runs: the stage fills the area, the frame is as wide as the width asks and always full height. The native view sits over the
    frame's inside, so the border and the still are only seen while a menu or modal covers it. */
 .sv-stage { position: relative; flex: 1; min-width: 0; display: flex; justify-content: center; }
@@ -75,6 +83,14 @@
 .shared-md .codeblock .btn { opacity: 0; }
 .shared-md .codeblock:hover .btn, .shared-md .codeblock:focus-within .btn { opacity: 1; }
 .shared-outside { margin: 0; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* the zoom control in an image's toolbar (KERNEL-598): minus, the percent drawn, plus, in one hairline box the height of Comment beside it */
+.shared-zoom-ctl { display: inline-flex; align-items: center; height: 26px; box-sizing: border-box; padding: 0 1px; border: 1px solid var(--line-3); border-radius: var(--r-sm); }
+.shared-zoom-ctl .icon-btn { width: 22px; height: 22px; border-radius: 5px; }
+.shared-zoom-ctl [aria-disabled='true'] { opacity: 0.55; cursor: default; }
+.shared-zoom-ctl .icon-btn[aria-disabled='true']:hover { color: var(--muted); }
+.shared-zoom-pct { min-width: 46px; height: 22px; padding: 0 4px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-2); font: 12px var(--mono); }
+.shared-zoom-pct:hover:not([aria-disabled='true']) { background: var(--surface-3); }
 
 /* comment mode (KERNEL-311: WorkspaceSharedComment.png and the rest) */
 .shared-comment { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; font-weight: 500; }

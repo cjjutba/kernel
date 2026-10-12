@@ -9,6 +9,8 @@ import { CommentLayer } from './CommentLayer'
 import { imageSurface, markdownSurface } from './commentSurfaces'
 import { PreviewSurface, type PreviewWidth } from './PreviewSurface'
 import { clock, useRead, useSharer, versionOf } from './shared'
+import { useImageZoom } from './useImageZoom'
+import { ZoomControl } from './ZoomControl'
 import './shared.css'
 
 const WIDTHS: { value: PreviewWidth; label: string }[] = [{ value: 'desktop', label: 'Desktop' }, { value: 'tablet', label: 'Tablet' }, { value: 'phone', label: 'Phone' }]
@@ -18,7 +20,7 @@ const WIDTHS: { value: PreviewWidth; label: string }[] = [{ value: 'desktop', la
  * for a page, Open in Preview for a PDF and Show in Finder, then the file (WorkspaceSharedHtml.png and the others). The tab follows the latest
  * version until an older one is picked. A page and a PDF go in `PreviewSurface`; an image and Markdown are drawn here. A PDF has no live view
  * and so nothing to reload (KERNEL-306): Open in Preview takes the place of Reload on the canvas. Comment, for everything but a PDF, turns on comment
- * mode: `CommentLayer` over the file (KERNEL-311).
+ * mode: `CommentLayer` over the file (KERNEL-311). An image has a zoom control beside Comment and opens at Fit (KERNEL-598).
  */
 export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sharedId: string }) {
   const file = useStore((s) => s.shared[sharedId])
@@ -46,6 +48,9 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
   const layer = useRef<HTMLDivElement>(null)
   const img = useRef<HTMLImageElement>(null)
   const doc = useRef<HTMLDivElement>(null)
+  const area = useRef<HTMLDivElement>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const zoom = useImageZoom({ enabled: file.kind === 'image', versionKey: String(version.n), area, scroller, img, commenting })
   const imageAt = useMemo(() => imageSurface(() => layer.current, () => img.current), [])
   const markdownAt = useMemo(() => markdownSurface(() => layer.current, () => doc.current?.querySelector<HTMLElement>('.shared-md') ?? null), [])
   const ready = page || (file.kind === 'image' && !!read.dataUrl) || (file.kind === 'markdown' && read.text !== undefined)
@@ -70,6 +75,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         </span>
         {page && <span className="shared-width"><SegmentedControl label="Preview width" value={width} onChange={(w) => setWidth(w as PreviewWidth)} options={WIDTHS} /></span>}
         <span className="grow" />
+        {file.kind === 'image' && <ZoomControl zoom={zoom} />}
         {!pdf && (
           <button ref={toggle} type="button" className="shared-comment" aria-pressed={commenting} disabled={!ready} onClick={() => setCommenting(!commenting)}>
             <Icon name="comment" size={13} stroke={1.4} />Comment
@@ -80,10 +86,17 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         <Button className="small" icon="folder" onClick={reveal}>Show in Finder</Button>
       </div>
       <div className="shared-body">
-        <div className="shared-area" data-kind={file.kind}>
+        <div ref={area} className="shared-area" data-kind={file.kind}>
           {(page || pdf) && <PreviewSurface workspaceId={workspaceId} file={file} version={version} width={width} again={again} comment={page ? { on: commenting, by, archived, onExit: stop } : undefined} />}
-          {file.kind === 'image' && read.dataUrl && <img ref={img} src={read.dataUrl} alt={file.title} />}
-          {file.kind === 'image' && read.dataUrl && commenting && <CommentLayer layerRef={layer} kind="image" file={file} version={version} by={by} archived={archived} surface={imageAt} onExit={stop} />}
+          {file.kind === 'image' && read.dataUrl && (
+            <div
+              ref={scroller} className="shared-zoom" data-zoomed={zoom.zoomed || undefined} data-pan={zoom.pannable && !commenting ? (zoom.dragging ? 'on' : 'ready') : undefined}
+              {...(zoom.pannable ? { role: 'group', tabIndex: 0, 'aria-label': `${file.title} at ${zoom.label}` } : {})} {...zoom.scrollerProps}
+            >
+              <img ref={img} src={read.dataUrl} alt={file.title} draggable={false} style={zoom.imgStyle} onLoad={zoom.onLoad} />
+            </div>
+          )}
+          {file.kind === 'image' && read.dataUrl && commenting && <CommentLayer layerRef={layer} kind="image" file={file} version={version} by={by} archived={archived} surface={imageAt} onExit={stop} watch={zoom.moved} onWheel={zoom.scrollBy} />}
           {file.kind === 'markdown' && read.text !== undefined && (
             <div ref={doc} className="shared-doc">
               <Markdown className="md-doc shared-md selectable" text={read.text} />
