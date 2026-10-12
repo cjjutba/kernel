@@ -18,7 +18,7 @@ import './banners.css'
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   notify: 'Setting up', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
-  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving'
+  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching'
 }
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
@@ -40,6 +40,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.roomId)?.name : undefined))
   const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
   const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
+  const switchAtLimit = useStore((s) => s.settings?.accounts.switchAtLimit[chat ? chatProvider(chat) : 'claude'])
   const dismissed = useLimitDismissed()
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -49,7 +50,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, switchAtLimit, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -103,7 +104,10 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       })
       case 'terminal': return run(id, 'Could not open Terminal', () => call('app.openTerminal', { cwd: ws.path, command: 'claude /login' }))
       case 'signIn': return run(id, 'Could not sign in', async () => actions.account.set(await call('account.signIn', undefined)))
-      case 'switchAccount': return view.switchAccount && run(id, 'Could not switch accounts', async () => actions.accounts.set(await call('accounts.switch', { provider: view.switchAccount!.provider, accountId: view.switchAccount!.accountId, reason: 'banner' })))
+      case 'switchAccount': return view.switchAccount && run(id, 'Could not switch accounts', async () => {
+        actions.accounts.set(await call('accounts.switch', { provider: view.switchAccount!.provider, accountId: view.switchAccount!.accountId, reason: 'banner' }))
+        if (view.dismissKey) dismissLimitBanner(view.dismissKey)
+      })
       case 'providers': return go({ name: 'settings', page: 'providers', tab: 'codex' })
       case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {

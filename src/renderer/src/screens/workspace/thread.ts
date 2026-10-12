@@ -62,7 +62,11 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
     body.forEach((i, n) => { if (i.kind === 'text') lastText = n })
     const before = body.slice(0, lastText < 0 ? body.length : lastText)
     const folded = before.filter(work)
-    const rest = [...before.filter((i) => !work(i)), ...body.slice(lastText < 0 ? body.length : lastText)]
+    // A note the turn began with ("Now on Personal", KERNEL-568) stays above the work it announces, not below its folded row.
+    const first = before.findIndex(work)
+    const opening: ChatItem[] = first < 0 ? [] : before.slice(0, first).filter((i) => i.kind === 'note')
+    const rest = [...before.filter((i) => !work(i) && !opening.includes(i)), ...body.slice(lastText < 0 ? body.length : lastText)]
+    for (const item of opening) blocks.push({ kind: 'item', item })
     const tools = folded.filter((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool')
     if (tools.length) blocks.push({ kind: 'group', id: `group-${tools[0].id}`, tools, messages: folded.length - tools.length, items: folded })
     else for (const item of folded) blocks.push({ kind: 'item', item })
