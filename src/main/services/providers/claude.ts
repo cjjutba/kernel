@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
-import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
+import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort, UnlistedTools } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -60,6 +60,8 @@ export interface ClaudeStart {
   root?: string
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
   aliases?: Record<string, string>
+  /** The room's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
+  access?: { unlisted: UnlistedTools; allow: string[] }
   /** The mode the session starts in (`effectiveMode`). */
   mode: RunMode
   /**
@@ -105,7 +107,7 @@ export class ClaudeRunner implements Runner {
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
     // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
-    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases })
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
@@ -131,6 +133,9 @@ export class ClaudeRunner implements Runner {
         verdict: (command) => hookVerdict({ tool: 'Bash', command }, this.rules()),
         roomAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
+        askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
+        unlisted: o.access?.unlisted ?? 'ask',
+        gates: () => host.settings().hooks,
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
@@ -249,6 +254,23 @@ export class ClaudeRunner implements Runner {
       }
     }
     return awaitDecision(asking, { kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, detail: d.detail, reason, activity: d.title }, signal)
+  }
+
+  /**
+   * An MCP tool from a server the agent file doesn't list, in a room whose `unlisted_tools` is `ask` (KERNEL-537). The user
+   * answers inside the hook as for Always ask, and Always allow on the card saves the room's tool rule.
+   */
+  private askToolFromHook(tool: string, input: unknown, reason: string, signal: AbortSignal): Promise<SyncHookJSONOutput> {
+    const host = this.host
+    const d = describeTool(tool, input)
+    const asking = {
+      ask: async (a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }) => {
+        const decision = await host.ask(a, o)
+        saveAlwaysAllow(host, { tool, input }, decision)
+        return decision
+      }
+    }
+    return awaitDecision(asking, { kind: 'tool', toolName: tool, input, title: d.title, detail: d.detail, reason, activity: d.title }, signal)
   }
 
   private async consume() {
@@ -622,8 +644,14 @@ function kernelHooks(o: {
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
+  /** Asks the user about an MCP tool the file doesn't list, for `unlisted_tools = "ask"` (KERNEL-537). */
+  askTool?: (tool: string, input: unknown, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
+  /** The room's `[agents] unlisted_tools`. `ask` when unset. */
+  unlisted?: UnlistedTools
+  /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
+  gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, handoff, tools } = o
+  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, handoff, tools, askTool, unlisted = 'ask', gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -668,16 +696,29 @@ function kernelHooks(o: {
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] }, { matcher: ROOM_TOOLS, hooks: [roomTool] })
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {
-    const gate: HookCallback = async (input) => {
+    const gate: HookCallback = async (input, _id, { signal }) => {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
+      // An MCP server the file doesn't list, and disallowedTools doesn't take away: a room rule lets it through, and with
+      // `unlisted_tools = "ask"` the user decides. `hide` refuses it as before (KERNEL-537).
+      if (tool.startsWith('mcp__') && !tools.disallows(tool)) {
+        if (roomAllows(tool, tool_input)) return ROOM_ALLOWS
+        if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
+      }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       const why = tools.disallows(tool)
         ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`
         : `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.`
       return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
     }
-    hooks.PreToolUse!.push({ hooks: [gate] })
+    hooks.PreToolUse!.push({ hooks: [gate], timeout: HOLD_TIMEOUT_SEC })
+  }
+  if (gates) {
+    const team = teamGates(gates)
+    hooks.PostToolUse!.push({ matcher: 'Bash', hooks: [team.onBash] })
+    hooks.TaskCreated!.push({ hooks: [team.onTaskCreated] })
+    hooks.TaskCompleted!.push({ hooks: [team.onTaskCompleted] })
+    hooks.TeammateIdle!.push({ hooks: [team.onIdle] })
   }
   if (handoff) {
     // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
@@ -687,6 +728,60 @@ function kernelHooks(o: {
     hooks.Stop!.push({ hooks: [atStop] })
   }
   return hooks
+}
+
+/** A command that runs a test suite, for Block TaskCompleted without test output (KERNEL-537). */
+export const TEST_COMMAND = /(^|[\s;&|(])((p?npm|yarn|bun|pnpm)\s+(run\s+)?test(:\S+)?|npx\s+(vitest|jest|playwright\s+test)|vitest|jest|pytest|py\.test|go\s+test|cargo\s+(nextest\s+run|test)|mix\s+test|rspec|phpunit|dotnet\s+test|swift\s+test|xcodebuild\b[^;&|]*\btest|(\.\/)?gradlew?\s+test|mvn\s+(\S+\s+)*test|make\s+(check|test)|deno\s+test|bundle\s+exec\s+(rspec|rake\s+test)|python3?\s+-m\s+(pytest|unittest))\b/
+
+/** How many times in a row Keep idle teammates working sends one teammate back while no task finishes, so it can't loop. */
+export const IDLE_NUDGES = 3
+
+/**
+ * Settings, Hooks gates for Kernel's own sessions (KERNEL-537), read from `gates` each time so a switch applies at once.
+ * Block TaskCompleted without test output refuses a task marked done when no test command ran in the session since the
+ * last task finished, once per task: a teammate's own commands may not reach this session, so a second try goes through.
+ * Keep idle teammates working sends a teammate that goes idle back while the task list has open
+ * tasks, at most `IDLE_NUDGES` times in a row. Claude Code reads `decision: 'block'` and feeds `reason` to the agent.
+ */
+export function teamGates(gates: () => AppSettings['hooks'] | undefined): { onBash: HookCallback; onTaskCreated: HookCallback; onTaskCompleted: HookCallback; onIdle: HookCallback } {
+  let tested = false
+  const open = new Map<string, string>()
+  const asked = new Set<string>()
+  const nudges = new Map<string, number>()
+  const block = (reason: string): SyncHookJSONOutput => ({ decision: 'block', reason })
+  return {
+    onBash: async (input) => {
+      const command = String(((input as { tool_input?: { command?: unknown } }).tool_input)?.command ?? '')
+      if (TEST_COMMAND.test(command)) tested = true
+      return {}
+    },
+    onTaskCreated: async (input) => {
+      const t = input as { task_id?: string; task_subject?: string }
+      if (t.task_id) open.set(t.task_id, t.task_subject ?? t.task_id)
+      return {}
+    },
+    onTaskCompleted: async (input) => {
+      const t = input as { task_id?: string; task_subject?: string }
+      const key = t.task_id ?? t.task_subject ?? ''
+      if (gates()?.requireTestOutput && !tested && !asked.has(key)) {
+        asked.add(key)
+        return block(`Run the tests before you mark "${t.task_subject ?? t.task_id ?? 'this task'}" done, and include their output. No test command ran since the last task finished. Kernel's Settings, Hooks asks for test output.`)
+      }
+      tested = false
+      if (t.task_id) open.delete(t.task_id)
+      nudges.clear()
+      return {}
+    },
+    onIdle: async (input) => {
+      const name = (input as { teammate_name?: string }).teammate_name ?? 'teammate'
+      if (!gates()?.keepTeammatesWorking || !open.size) return {}
+      const n = nudges.get(name) ?? 0
+      if (n >= IDLE_NUDGES) return {}
+      nudges.set(name, n + 1)
+      const list = [...open.values()].slice(0, 5).map((s) => `"${s}"`).join(', ')
+      return block(`The task list still has open tasks: ${list}${open.size > 5 ? ` and ${open.size - 5} more` : ''}. Claim one with TaskList and TaskUpdate and keep working. Kernel's Settings, Hooks keeps idle teammates working.`)
+    }
+  }
 }
 
 /** What a PreToolUse hook answers for a step a room's Always allow rule covers (KERNEL-454). */
