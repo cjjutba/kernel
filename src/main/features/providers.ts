@@ -1130,11 +1130,23 @@ export class Providers extends Feature {
   async setMcpIgnored(provider: Provider, accountId: string, server: string, ignored: boolean) {
     const name = server.trim()
     if (!name) throw new Error('Name the MCP server to ignore.')
+    await this.writeMcpIgnored(provider, accountId, (list) => {
+      const rest = list.filter((s) => s !== name)
+      return ignored ? [...rest, name] : rest
+    })
+  }
+
+  /** Ignores several MCP servers on an account in one write to `accounts.json`, for Set up this account (KERNEL-660). */
+  async ignoreMcp(provider: Provider, accountId: string, servers: string[]) {
+    const names = servers.map((s) => s.trim()).filter(Boolean)
+    await this.writeMcpIgnored(provider, accountId, (list) => [...new Set([...list, ...names])])
+  }
+
+  private async writeMcpIgnored(provider: Provider, accountId: string, change: (list: string[]) => string[]) {
     const file = this.load()
     const at = accountId === CLI_ACCOUNT ? (file[provider].cli ??= {}) : this.stored(provider, accountId)
     if (!at) throw new Error('That account is no longer in Kernel.')
-    const rest = (at.mcpIgnored ?? []).filter((s) => s !== name)
-    const next = ignored ? [...rest, name].sort() : rest
+    const next = change(at.mcpIgnored ?? []).sort()
     if (next.length) at.mcpIgnored = next
     else delete at.mcpIgnored
     await this.save()
@@ -1145,7 +1157,7 @@ export class Providers extends Feature {
    * Signs one MCP server in on an account (`accounts.mcpSignIn`), one sign-in at a time per provider like Add account. On
    * Claude: `claude mcp login` in its folder, which opens the browser. A user-added server's new sign-in is shared with every
    * login at once. A claude.ai connector finishes on claude.ai and loads from the account's next session, so it stays listed
-   * until the next check. On Codex: `mcpCodexSignIn`.
+   * until the next check. On Codex: `mcpCodexSignIn`. Either way the account is checked again after (`Mcp.signedIn`, KERNEL-660).
    */
   async mcpSignIn(provider: Provider, accountId: string, server: string): Promise<AccountProfile[]> {
     const name = server.trim()
@@ -1168,14 +1180,14 @@ export class Providers extends Feature {
       if (list) this.mcpSignIns.set(accountId, list.filter((s) => s.server !== name))
       this.shareMcp({ force: true })
     }
-    void this.k.mcp.pushAccounts()
+    this.k.mcp.signedIn('claude', accountId, name)
     return this.pushList()
   }
 
   /**
    * Signs one MCP server in on a Codex account through Codex's own MCP OAuth in its home (`loginCodexMcp`, KERNEL-646). Kernel
    * opens the page Codex gives. Codex keeps the token where every Codex account reads it (KERNEL-646.md), so the server is
-   * ready on each of them, which `Mcp.signedIn` records until their next check.
+   * ready on each of them, which `Mcp.signedIn` records until their next check, and checks this account again (KERNEL-660).
    */
   private async mcpCodexSignIn(accountId: string, name: string): Promise<AccountProfile[]> {
     const home = this.codexMcpHome(accountId)
@@ -1188,8 +1200,7 @@ export class Providers extends Feature {
       throw e
     } finally { this.adding.delete('codex') }
     step({ step: 'done' })
-    this.k.mcp.signedIn('codex', name)
-    void this.k.mcp.pushAccounts()
+    this.k.mcp.signedIn('codex', accountId, name)
     return this.pushList()
   }
 
