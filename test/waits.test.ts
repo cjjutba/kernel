@@ -39,7 +39,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 const flush = () => new Promise((r) => setTimeout(r, 30))
 /** Releases fetch, fast-forward and may rerun setup, which takes a while when the whole suite runs at once. */
 const SLOW = { timeout: 10_000 }
-const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
+const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}. Open a PR for each task.`
 const prInfo = (state: PrState, number: number): PrInfo => ({ workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title: `PR ${number}`, state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
 /**

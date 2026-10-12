@@ -67,7 +67,7 @@ async function nextSent(call: Call): Promise<string> {
   return value.message.content[0].text
 }
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -77,7 +77,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}), ...(hooks.usage ? { usage: hooks.usage } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
+    store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor, aliasesFor: hooks.aliasesFor, onMcp: hooks.onMcp,
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -319,7 +319,8 @@ describe('session runner (SDK scripted)', () => {
 
   it("says once when the agent file lists an MCP server the session doesn't have", async () => {
     const agent = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'mcp__linear', 'mcp__kernel__submit_review'] } as AgentDef
-    const servers = [{ name: 'kernel', status: 'connected' }, { name: 'claude_ai_Linear', status: 'connected' }]
+    // Claude Code lists a claude.ai connector by its own name, and its tools by the name made from it (KERNEL-464).
+    const servers = [{ name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'claude.ai Linear', status: 'connected', source: 'claudeai' }]
     const { call, options, store, chat } = await setup('acceptEdits', { agent })
     for (let i = 0; i < 2; i++) call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none', mcp_servers: servers })
     await flush()
@@ -329,6 +330,39 @@ describe('session runner (SDK scripted)', () => {
     ok.call.feed({ type: 'system', subtype: 'init', session_id: ok.options.sessionId, apiKeySource: 'none', mcp_servers: servers })
     await flush()
     expect(ok.store.items(ok.chat.id).filter((i) => i.kind === 'note')).toEqual([])
+  })
+
+  // KERNEL-464: a server whose name matches but that can't be used says why, and every init's statuses reach the room.
+  it('says why a listed MCP server the session has can\'t be used, and tells the room each init\'s statuses', async () => {
+    const agent = { id: 'noor', name: 'Noor', role: 'Backend', description: 'APIs.', lead: false, prompt: 'You build.', file: '/r/noor.md', tools: ['Read', 'mcp__neon', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma', 'mcp__linear__get_issue', 'mcp__claude_ai_Gmail'] } as AgentDef
+    const reports: unknown[][] = []
+    // The room heard from a probe that the Gmail connector is up, before this session's first init lists it.
+    const room = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
+    const { call, options, store, chat } = await setup('acceptEdits', {
+      agent, disabledFor: () => ({ skills: [], mcp: ['figma'] }), aliasesFor: () => ({ linear: 'claude.ai Linear' }),
+      onMcp: (_ws, provider, list) => { reports.push([provider, list]); return [...room, ...list] }
+    })
+    const servers = [
+      { name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'neon', status: 'failed', source: 'user' }, { name: 'claude.ai Notion', status: 'needs-auth', source: 'claudeai' },
+      { name: 'fal-ai', status: 'disabled', source: 'user' }, { name: 'claude.ai Linear', status: 'connected', source: 'claudeai' }, { name: 'odd', status: 'warming' }
+    ]
+    for (let i = 0; i < 2; i++) call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none', mcp_servers: servers })
+    await flush()
+    expect(store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual([[
+      "This agent's file lists mcp__neon, but the MCP server neon failed to connect.",
+      "This agent's file lists mcp__claude_ai_Notion__search, but the MCP server claude.ai Notion needs you to sign in. Sign in with /mcp in Claude Code.",
+      "This agent's file lists mcp__fal-ai, but the MCP server fal-ai is switched off in Claude Code. Turn it on with /mcp.",
+      "This agent's file lists mcp__figma, but the MCP server figma is switched off in this room. Turn it on in Settings, Skills and MCP."
+    ].join(' ')])
+    // Every init reports, with a status Kernel doesn't know left out.
+    expect(reports).toHaveLength(2)
+    expect(reports[0]).toEqual(['claude', servers.slice(0, 5)])
+    // The tools line reads through the room's aliases.
+    const unmatched = options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
+    const gate = unmatched[unmatched.length - 1] as HookCallback
+    const use = (tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 't', { signal: new AbortController().signal } as never)
+    expect(await use('mcp__claude_ai_Linear__get_issue')).toEqual({})
+    expect(await use('mcp__claude_ai_Linear__save_issue')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
   })
   it('holds follow-ups while a turn runs and sends them in order when it ends', async () => {
     const { sessions, call, options, chat, kinds } = await setup()

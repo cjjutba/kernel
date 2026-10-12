@@ -15,11 +15,12 @@ import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
 import { BOOT_UPDATE_MS, readNotes, Updater } from './updater'
 import { dataDirs, moveToDev, openBy, type DataDirs } from './dataDir'
-import { isInstalledCopy, loginItemSettings } from './loginItem'
+import { isInstalledCopy, loginItemSettings, offerMove, replaceBox, runsFrom, type CopyInfo } from './loginItem'
 import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
+import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
@@ -272,6 +273,17 @@ app.whenReady().then(async () => {
       ;(globalThis as { kernelPreview?: PreviewHost }).kernelPreview = preview
     }
   } else {
+    const copy: CopyInfo = { packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') }
+    // A copy outside Applications can't update itself, so it offers once to move there before anything opens. Electron
+    // relaunches the moved copy, and this one stops here (KERNEL-443).
+    const offer = await offerMove({
+      copy,
+      headless,
+      dataDir: app.getPath('userData'),
+      show: async (box) => (await dialog.showMessageBox(box)).response,
+      move: () => app.moveToApplicationsFolder({ conflictHandler: (c) => c === 'existsAndRunning' || dialog.showMessageBoxSync(replaceBox) === 0 })
+    })
+    if (offer === 'moved') return app.quit()
     // Only a packaged, signed app can update itself. Dev runs report no update. scripts/release.sh writes the version's
     // notes into the build for What's new (KERNEL-154).
     const updater = app.isPackaged
@@ -279,7 +291,8 @@ app.whenReady().then(async () => {
           current: app.getVersion(),
           dataDir: app.getPath('userData'),
           engine: electronUpdater.autoUpdater,
-          notesFile: join(app.getAppPath(), 'out', 'release-notes', `${app.getVersion()}.md`)
+          notesFile: join(app.getAppPath(), 'out', 'release-notes', `${app.getVersion()}.md`),
+          outside: runsFrom(copy)
         })
       : undefined
     // Every quit goes through here: it asks while agents work and waits for the stop (KERNEL-214).
@@ -298,7 +311,7 @@ app.whenReady().then(async () => {
     })
     // Draws shared HTML in locked-down views and thumbnails shared files for their cards (KERNEL-303).
     preview = new PreviewHost({ window: mainWindow, file: (id, n) => kernel.sharedFile(id, n), push: (e) => bus.push(e), dev: !app.isPackaged })
-    const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
+    const installed = isInstalledCopy(copy)
     // Usage data goes out only from a packaged release built with a key, after the user says yes, and never from a smoke
     // test, a fixture or headless run, or when DO_NOT_TRACK=1 or KERNEL_TELEMETRY=0 is set (KERNEL-397).
     const sends = app.isPackaged && !smokeTest && !fixtureName && !headless && !!__KERNEL_TELEMETRY__.key && process.env.DO_NOT_TRACK !== '1' && process.env.KERNEL_TELEMETRY !== '0'
@@ -311,6 +324,7 @@ app.whenReady().then(async () => {
       inBackground: () => !mainWindow()?.isFocused(),
       probeNetwork: () => probeNetwork(),
       refreshPath,
+      claudeAgents,
       // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
       cipher: safeStorage.isEncryptionAvailable()
         ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }
