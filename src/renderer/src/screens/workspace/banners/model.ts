@@ -102,11 +102,14 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const active = accounts.find((a) => a.active)?.id ?? 'cli'
   const usage = i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === active)
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
-  // Another signed-in account of this provider with no rejected window takes over with one click.
-  const alt = accounts.find((a) => !a.active && a.signedIn && !i.usage.some((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === a.id && rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
+  // Another signed-in account of this provider with no rejected window takes over with one click. A subscription goes before
+  // an API key, which a switch starts paying for (KERNEL-524). A key has no windows, so none of them is rejected.
+  const spare = accounts.filter((a) => !a.active && a.signedIn && !i.usage.some((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === a.id && rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
+  const alt = spare.find((a) => a.auth !== 'apiKey') ?? spare[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
   const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
   const keepGoing = i.codexInUse ? ` Agents on ${otherName} keep working.` : ''
+  const billed = alt?.auth === 'apiKey' ? ` ${alt.label} is billed per token.` : ''
 
   // A worktree deleted outside Kernel has nowhere to run anything, so it says so first, like a failed setup (KERNEL-291).
   if (ws.folderGone) return {
@@ -159,7 +162,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const held = i.codexInUse ? `Agents on ${providerName} wait until it resets.` : 'Every room is paused.'
     return {
       id: 'weekly', kind: 'limit', title: `You've used your ${named('weekly limit')}`,
-      sub: weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${i.codexInUse ? keepGoing : ''}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.',
+      sub: `${weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${keepGoing}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.'}${billed}`,
       actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'Open /usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt }] : []), ...switchAction],
       blocks: !alt, limit: weekly.type, switchAccount
     }
@@ -170,7 +173,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const after = i.running ? `${name} finishes this step, then waits.` : `${name} finished this turn and stopped.`
     return {
       id: 'session', kind: 'limit', title: `You've hit your ${named('5-hour limit')}`,
-      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}`,
+      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}${billed}`,
       actions: alt
         ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : [{ id: 'queue' as const, label: 'Queue message' }]), ...switchAction]
         : [{ id: 'queue', label: 'Queue message' }, ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: true }] : [])],
