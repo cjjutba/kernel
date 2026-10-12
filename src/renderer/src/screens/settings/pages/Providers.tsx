@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
-import { actions, go, useStore } from '../../../store'
+import { actions, getState, go, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
-import { Button, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
+import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
@@ -13,6 +13,15 @@ import { AddAccount } from './AddAccount'
 
 const SYSTEM: Record<Provider, string> = { claude: 'Use system Claude', codex: 'Use system Codex' }
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
+
+/** "Google Drive" for the connector Claude Code lists as "claude.ai Google Drive". */
+const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, '')
+
+/** "Google Drive and Gmail", "Linear, Google Drive and Gmail". */
+const joinNames = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
+
+/** The labels of the provider's other accounts in the same claude.ai organization (`AccountProfile.sameOrg` holds their ids). */
+const sameOrg = (a: AccountProfile, accounts: AccountProfile[]) => accounts.filter((x) => a.sameOrg?.includes(x.id)).map((x) => x.label)
 
 /** A path under the home folder as Terminal shows it: `~/.codex/config.toml`. */
 export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
@@ -48,6 +57,18 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const sheetOpen = adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
   useFreshUsage(true)
+  // Claude Code lists each login's MCP servers that need a sign-in when the tab opens, once per login. Main keeps the answer on the account's row.
+  useEffect(() => {
+    if (provider !== 'claude') return
+    let stopped = false
+    void (async () => {
+      for (const a of getState().accounts.filter((x) => x.provider === 'claude' && x.signedIn && x.auth !== 'apiKey' && !x.legacyToken && x.mcpSignIns === undefined)) {
+        if (stopped) return
+        try { actions.accounts.set(await call('accounts.checkMcp', { provider: 'claude', accountId: a.id })) } catch { /* the row stays as it was */ }
+      }
+    })()
+    return () => { stopped = true }
+  }, [provider])
   const read = () => call('providers.status', { provider }).then(setStatus)
   useEffect(() => { void read().catch(() => undefined) }, [provider])
   useEffect(() => {
@@ -64,6 +85,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     if (target && !target.cli) return setRenewing(target)
     return act(a ? `signin:${a.id}` : 'signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider, ...(a ? { accountId: a.id } : {}) })); actions.accounts.set(await call('accounts.list', undefined)) })
   }
+  // One Sign in for the account's servers, one after another. Each opens the browser and finishes when Claude Code does. A claude.ai connector is finished on claude.ai, so the check afterwards can still list it.
+  const signInMcp = (a: AccountProfile) => act(`mcp:${a.id}`, `Could not sign in on ${a.label}`, async () => {
+    for (const m of a.mcpSignIns ?? []) actions.accounts.set(await call('accounts.mcpSignIn', { provider: 'claude', accountId: a.id, server: m.server }))
+    actions.accounts.set(await call('accounts.checkMcp', { provider: 'claude', accountId: a.id }))
+  })
   const stopRenaming = () => { if (renaming) renamed.current = renaming.id; setRenaming(null) }
   const saveName = (a: AccountProfile, value: string) => {
     if (value.trim() === a.label) return stopRenaming()
@@ -112,6 +138,23 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   )
                   : <span className="set-label">{a.label}</span>}
                 {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
+                {a.signedIn && !a.keychainWait && !!a.mcpSignIns?.length && (
+                  <span className="set-warn">
+                    <Icon name="warning" size={12} />
+                    Needs sign-in: {a.mcpSignIns.map((m) => serverName(m.server)).join(', ')}
+                    <button
+                      type="button" className="set-link" aria-label={`Sign in to ${joinNames(a.mcpSignIns.map((m) => serverName(m.server)))} on ${a.label}`}
+                      aria-busy={busy === `mcp:${a.id}` || undefined} disabled={busy !== null || sheetOpen} onClick={() => void signInMcp(a)}
+                    >{busy === `mcp:${a.id}` ? <><span className="spin" aria-hidden="true" />Signing in</> : 'Sign in'}</button>
+                  </span>
+                )}
+                {a.keychainWait && (
+                  <>
+                    <span className="set-warn"><Icon name="warning" size={12} />Waiting for Keychain access</span>
+                    <span className="set-warn-note">Allow Kernel in the macOS prompt to use this account.</span>
+                  </>
+                )}
+                {!a.active && !!sameOrg(a, accounts).length && <span className="set-avail"><Icon name="info" size={13} stroke={1.4} />Same organization as {joinNames(sameOrg(a, accounts))}</span>}
               </div>
               {editing
                 ? (
@@ -124,11 +167,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   <>
                     {a.active && a.signedIn && <span className="set-tag">Active</span>}
                     <div className="set-entry-actions">
-                      {!a.active && a.signedIn && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
+                      {!a.active && a.signedIn && !a.keychainWait && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
                       {!a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === `signin:${a.id}`} busyLabel="Signing in" disabled={busy !== null || sheetOpen} onClick={() => void signIn(a)}>Sign in</Button>}
                       {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
                       <Button id={`acct-rename-${a.id}`} variant="ghost" aria-label={`Rename ${a.label}`} disabled={busy !== null} onClick={() => setRenaming({ id: a.id, value: a.label })}>Rename</Button>
-                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
+                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && !a.keychainWait && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
                       {a.signedIn && a.legacyToken && <Button variant="ghost" aria-label={`Sign in again to ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setRenewing(a)}>Sign in again</Button>}
                       {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
                     </div>

@@ -241,6 +241,15 @@ async function openAddAccount(page: Page, signIn?: string) {
   await page.waitForTimeout(300)
 }
 
+// SettingsAddAccountDuplicate is the sheet after Sign in with Claude, once the engine has refused an account Kernel already has (KERNEL-619).
+async function addDuplicate(page: Page) {
+  await page.getByRole('button', { name: 'Add account' }).click()
+  await page.getByRole('button', { name: 'Sign in with Claude' }).click()
+  await page.getByText('That account is already in Kernel').waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // SettingsProvidersRename is Personal's name turned into its field. Whether a row is being renamed is local to the page.
 async function renamePersonal(page: Page) {
   await page.getByRole('button', { name: 'Rename Personal' }).click()
@@ -271,6 +280,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAddAccountBrowser: (page) => openAddAccount(page, 'Sign in with Claude'),
   SettingsAddAccountCodex: (page) => openAddAccount(page),
   SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 'Sign in with ChatGPT'),
+  SettingsAddAccountDuplicate: addDuplicate,
   SettingsProvidersRename: renamePersonal,
   SearchSwitchAccount: typeSwitch,
   GroupedChatArchive: hoverChatRow,

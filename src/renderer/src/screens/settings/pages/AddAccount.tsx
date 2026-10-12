@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
+import { Button, Icon, Modal, SegmentedControl, useBusy } from '../../../ui'
 
 type Kind = 'subscription' | 'apiKey'
 
@@ -11,6 +11,9 @@ const KEY_PAGE: Record<Provider, { host: string; url: string; placeholder: strin
   claude: { host: 'console.anthropic.com', url: 'https://console.anthropic.com/settings/keys', placeholder: 'sk-ant-' },
   codex: { host: 'platform.openai.com', url: 'https://platform.openai.com/api-keys', placeholder: 'sk-' }
 }
+
+/** The engine refuses a login Kernel already has with "That account is already in Kernel." (KERNEL-616). Trying again can't help, so the sheet says so and keeps its button. */
+const DUPLICATE = /already in Kernel/i
 
 /**
  * Add account, Sign in again for an added account (`signIn`, KERNEL-406, with its `accountId` since KERNEL-567), or Replace key
@@ -35,6 +38,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
   const name = claude ? 'Claude' : 'ChatGPT'
   const keyForm = !!replaceKey || (!signIn && kind === 'apiKey')
   const page = KEY_PAGE[provider]
+  const duplicate = !!failed && DUPLICATE.test(failed)
   const keyReady = !!apiKey.trim() && (!!replaceKey || !!label.trim())
   useEffect(() => () => actions.accounts.adding(null), [])
   useEffect(() => { if (codeShown) codeInput.current?.focus() }, [codeShown])
@@ -78,7 +82,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
         <span className="grow" />
         <Button variant="ghost" size="lg" disabled={busy === 'key'} onClick={close}>Cancel</Button>
         {keyForm && <Button variant="primary" size="lg" busy={busy === 'key'} busyLabel="Checking key" disabled={!keyReady || busy !== null} onClick={() => void saveKey()}>{replaceKey ? 'Replace key' : 'Add key'}</Button>}
-        {!keyForm && !started && <Button variant="primary" size="lg" busy={busy === 'start'} busyLabel="Opening" disabled={busy !== null} onClick={() => void start()}>{failed ? 'Try again' : `Sign in with ${name}`}</Button>}
+        {!keyForm && !started && <Button variant="primary" size="lg" busy={busy === 'start'} busyLabel="Opening" disabled={busy !== null} onClick={() => void start()}>{failed && !duplicate ? 'Try again' : `Sign in with ${name}`}</Button>}
         {!keyForm && started && step?.step === 'code' && codeShown && <Button variant="primary" size="lg" busy={busy === 'code'} busyLabel="Sending" disabled={!code.trim()} onClick={() => void sendCode()}>Send code</Button>}
       </>
     }>
@@ -111,10 +115,13 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
               : `Kernel opens ${name}’s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.`}
           </p>
         )}
-        {!keyForm && !started && failed && (
+        {!keyForm && !started && failed && !duplicate && (
           <div className="set-field">
             <p className="set-error" role="alert">The sign-in didn&rsquo;t finish. {failed}</p>
           </div>
+        )}
+        {!keyForm && !started && duplicate && (
+          <p className="set-result" data-state="fail" role="alert"><Icon name="xCircle" size={14} stroke={1.6} />{failed?.replace(/\.$/, '')}</p>
         )}
         {!keyForm && started && (
           <p className="set-help" role="status">Finish signing in in your browser.{step?.url && <> <button type="button" className="set-link" onClick={() => void call('system.openExternal', { url: step.url! })}>Open the page again</button></>}</p>
