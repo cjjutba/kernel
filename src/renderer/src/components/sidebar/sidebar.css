@@ -32,12 +32,14 @@
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }
-/* Hovering a workspace row, or reaching it by keyboard, swaps its diff totals for the archive button, the way Conductor does.
+/* Hovering a workspace row, or reaching it by keyboard, swaps its whole right end, the diff totals and the spinner, for the archive button, the way Conductor does. A chat row's spinner does the same.
    Selecting a row with the mouse leaves the totals. The name stops short of the button. */
 .ws-row { position: relative; }
-.ws-stat { font-size: 11px; display: inline-flex; gap: 6px; }
+.ws-stat { font-size: 11px; display: none; gap: 6px; }
+/* A PR number is no diff count and stays at any width. From 300px the counts take its place when a row has both, as they did before. */
+@container sidebar (min-width: 282px) { .ws-stat { display: inline-flex; } .ws-stat + .ws-pr { display: none; } }
 .ws-archive { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center; }
-.ws-row:hover .ws-right, .ws-row:has(:focus-visible) .ws-right, .ws-row.busy .ws-right { display: none; }
+.ws-row:hover .ws-right, .ws-row:has(:focus-visible) .ws-right, .ws-row.busy .ws-right, .chat-row:hover .ws-right, .chat-row:has(:focus-visible) .ws-right, .chat-row.busy .ws-right { display: none; }
 .ws-row:not([data-key]):hover .nav-item, .ws-row:not([data-key]):has(:focus-visible) .nav-item, .ws-row.busy:not([data-key]) .nav-item { padding-right: 32px; }
 .ws-row:hover .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
 .ws-row.busy .more { opacity: 1; }
@@ -75,23 +77,37 @@
 
 /* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
-/* A workspace under the chat that started it sits one level in, 12px past the chat's icon: the sub row's 20px plus 12px. Chat rows keep the sub row's padding. */
-.nav-item.nav-nested { padding-left: 32px; }
+/* A workspace under the chat that started it sits one level in, 18px past the chat's icon: the sub row's 20px plus 18px. Chat rows keep the sub row's padding (KERNEL-600). */
+.nav-item.nav-nested { padding-left: 38px; }
+/* A chat and the workspaces it started are one block, 8px under the block above: 5px here on top of the list's 3px gap. The workspaces no open chat owns form a block
+   of their own, and so does the Lead's row. A chat with workspaces to show carries data-guide, a 1px line 28px in, the centre of the chat's icon, from 24px down its
+   row to 15px above the block's end, so it stops beside the last workspace. It is --line-2, and --line-4 in the block that holds the open row, as the file tree's guides
+   are. A folded chat has no workspaces drawn and so no guide. */
+.nav-group { --guide: var(--line-2); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+.nav-group:has([aria-current='page']) { --guide: var(--line-4); }
+.nav-group[data-guide]::before { content: ''; position: absolute; z-index: 1; left: 28px; top: 24px; bottom: 15px; width: 1px; background: var(--guide); pointer-events: none; }
+/* The sidebar's width is the container the diff counts are measured against (KERNEL-601): they show at 300px or more. The list's content box is the sidebar's width less
+   the 10px and 8px of padding the frame gives it, so 300px is 282px here. */
+.sb-scroll { container: sidebar / inline-size; }
 
 /* Archive (KERNEL-580, DESIGN.md Motion). A row whose workspace was archived keeps its place and folds: opacity 1 to 0 over --archive-fade while its
    height and the 3px gap under it (the .nav-list gap, taken up by the negative margin) close to 0 over --archive-fold. The row keeps its size and is
    clipped, and min-height 0 lets the flex list shrink it below its content. It can't be clicked, and the sidebar drops it when the fold ends. All ease-out,
    in the frame the screen starts fading in. */
 .row-fold { pointer-events: none; min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: archive-fold var(--archive-fold) ease-out forwards, archive-fade var(--archive-fade) ease-out forwards; }
-@keyframes archive-fold { to { height: 0; margin-bottom: -3px; } }
+@keyframes archive-fold { to { height: 0; margin-top: 0; margin-bottom: -3px; } }
 @keyframes archive-fade { to { opacity: 0; } }
-/* The Lead's row opens in the chat row's place as that one folds, so the two heights add up to one row and the rows below stay put. */
+/* A block whose rows all fold goes as one box, so its 5px above and the 3px under it close with it: the rows keep only their fade. A block with rows left folds
+   row by row as before. */
+.nav-group:not(:has(> :not(.row-fold))) { pointer-events: none; min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: archive-fold var(--archive-fold) ease-out forwards; }
+.nav-group:not(:has(> :not(.row-fold))) > .row-fold { animation: archive-fade var(--archive-fade) ease-out forwards; }
+/* The Lead's row opens in the chat row's place as that one folds, so the two heights add up to one row and the rows below stay put. Its block carries the class. */
 .row-open { min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: archive-open var(--archive-fold) ease-out, archive-appear var(--archive-fade) ease-out; }
-@keyframes archive-open { from { height: 0; margin-bottom: -3px; } }
+@keyframes archive-open { from { height: 0; margin-top: 0; margin-bottom: -3px; } }
 @keyframes archive-appear { from { opacity: 0; } }
 /* A folding row keeps the fill it had while it fades. The destination's fill fades in over the same --archive-fade, the one selection change that does. */
 .nav-item[data-was-current] { background: var(--surface-3); color: var(--ink); }
 .nav-item[data-was-current] svg { color: var(--ink-2); }
 .nav-item[data-arrive] { animation: archive-arrive var(--archive-fade) ease-out; }
 @keyframes archive-arrive { from { background-color: transparent; color: var(--ink-2); } }
-@media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }
+@media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-group:not(:has(> :not(.row-fold))), .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }
