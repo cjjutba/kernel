@@ -13,10 +13,13 @@ import { freeBranch } from './worktrees'
  * What the drawer lists lives in the checkpoint commits themselves (trailers in the message), so the list is one
  * `for-each-ref` and survives restarts. `refs/kernel/checkpoint-head/<workspace>` points at the checkpoint the
  * worktree is at now: the newest one, or the one last reverted to.
+ *
+ * Each checkpoint also records its base, where HEAD meets the workspace's remote base, so a turn's files leave out what only
+ * arrived from that base since the last checkpoint (KERNEL-603).
  */
 
-/** The parts of a workspace checkpoints need. */
-export interface CheckpointWorkspace { id: string; name: string; path: string }
+/** The parts of a workspace checkpoints need. `baseRef` is the base it started from, as the workspace has it. */
+export interface CheckpointWorkspace { id: string; name: string; path: string; baseRef?: string }
 
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const GITLINK = '160000'
@@ -71,17 +74,24 @@ export async function worktreeTree(cwd: string): Promise<string> {
   try { return await withTempIndex(cwd, { index: true }, write) } catch { return withTempIndex(cwd, { empty: true }, write) }
 }
 
-/** What changed between two trees: the totals, and a row per file with its status and line counts (KERNEL-584). */
-async function treeDiff(cwd: string, from: string, to: string): Promise<{ stat: DiffStat; files: ChangedFile[] }> {
+/** A file's row, with the mode and blob it had on each side: `000000 000…` on the side it wasn't on. */
+interface DiffRow extends ChangedFile { was: string; now: string }
+
+/**
+ * What changed between two trees, a row per file with its status and line counts (KERNEL-584). `paths` limits it to those files,
+ * and `counts: false` skips the line counts.
+ */
+async function treeDiff(cwd: string, from: string, to: string, o: { paths?: string[]; counts?: boolean } = {}): Promise<DiffRow[]> {
   // With -z, git prints every file's raw entry (`:modes shas status`, then the path) and then every file's numstat line.
-  const fields = (await git(cwd, ['diff-tree', '-r', '-z', '--no-renames', '--raw', '--numstat', from, to])).split('\0')
-  const files = new Map<string, ChangedFile>()
+  const counts = o.counts === false ? [] : ['--numstat']
+  const fields = (await git(cwd, ['--literal-pathspecs', 'diff-tree', '-r', '-z', '--no-renames', '--raw', ...counts, from, to, ...(o.paths ? ['--', ...o.paths] : [])])).split('\0')
+  const files = new Map<string, DiffRow>()
   for (let i = 0; i < fields.length; i++) {
     if (fields[i].startsWith(':')) {
-      const status = fields[i].split(' ')[4]
+      const [srcMode, dstMode, src, dst, status] = fields[i].slice(1).split(' ')
       const path = fields[++i]
       // A file that changed type, as into a symlink, reads as modified.
-      files.set(path, { path, status: status === 'A' || status === 'D' ? status : 'M', added: 0, removed: 0 })
+      files.set(path, { path, status: status === 'A' || status === 'D' ? status : 'M', added: 0, removed: 0, was: `${srcMode} ${src}`, now: `${dstMode} ${dst}` })
       continue
     }
     // A binary file's counts are `-`, and count as 0.
@@ -89,11 +99,57 @@ async function treeDiff(cwd: string, from: string, to: string): Promise<{ stat: 
     const file = m && files.get(m[3])
     if (file) { file.added = Number(m[1]) || 0; file.removed = Number(m[2]) || 0 }
   }
-  const rows = [...files.values()]
-  return { stat: { files: rows.length, added: rows.reduce((n, f) => n + f.added, 0), removed: rows.reduce((n, f) => n + f.removed, 0) }, files: rows }
+  return [...files.values()]
 }
 
-interface Stored { sha: string; turn: number; checkpoint: Checkpoint }
+/**
+ * The remote-tracking ref of a workspace's base: `baseRef` when it is on a remote, else the upstream of the local branch it
+ * names. A local branch never counts by itself, since a current-branch chat may commit to it. None without a remote or once
+ * the ref is gone, and then turns list every change, as before (KERNEL-603).
+ */
+async function remoteBase(cwd: string, baseRef?: string): Promise<string | undefined> {
+  if (!baseRef) return undefined
+  for (const rev of [baseRef, `${baseRef}@{upstream}`]) {
+    const r = await exec('git', ['-C', cwd, 'rev-parse', '--verify', '--quiet', '--symbolic-full-name', rev])
+    if (r.code === 0 && r.stdout.trim().startsWith('refs/remotes/')) return r.stdout.trim()
+  }
+}
+
+/** Where `rev`'s history meets the remote base: the checkpoint's base. */
+async function baseOf(cwd: string, ref: string, rev: string): Promise<string | undefined> {
+  const r = await exec('git', ['-C', cwd, 'merge-base', rev, ref])
+  return r.code === 0 ? r.stdout.trim().split('\n')[0] || undefined : undefined
+}
+
+/**
+ * The files a turn changed, without what only arrived from the base (KERNEL-603). When the base moved forward between the two
+ * checkpoints, as when Kernel fast-forwards the worktree or the agent pulls, rebases or merges, a file that held the old base's
+ * content then and holds the new base's now came from the remote, and goes. Every other file stays, and one the base changed
+ * too is counted against the new base. The agent's edits and its unpushed commits differ from the new base, so they stay.
+ */
+async function turnDiff(cwd: string, from: string, to: string, was?: string, now?: string): Promise<ChangedFile[]> {
+  let rows = await treeDiff(cwd, from, to)
+  if (rows.length && was && now && was !== now) {
+    // A base git can't read any more lists the whole turn, as before.
+    rows = await withoutBase(cwd, rows, was, now, to).catch(() => rows)
+  }
+  return rows.map(({ path, status, added, removed }) => ({ path, status, added, removed }))
+}
+
+async function withoutBase(cwd: string, rows: DiffRow[], was: string, now: string, to: string): Promise<DiffRow[]> {
+  // A base that moved back or sideways, as after a reset or a rewritten main, brought nothing new, so the turn stays whole.
+  if ((await exec('git', ['-C', cwd, 'merge-base', '--is-ancestor', was, now])).code !== 0) return rows
+  const moved = new Map((await treeDiff(cwd, was, now, { counts: false })).map((b) => [b.path, b]))
+  const kept = rows.filter((r) => { const b = moved.get(r.path); return !b || r.was !== b.was || r.now !== b.now })
+  const recount = kept.filter((r) => { const b = moved.get(r.path); return b && r.now !== b.now }).map((r) => r.path)
+  if (!recount.length) return kept
+  const against = new Map((await treeDiff(cwd, now, to, { paths: recount })).map((r) => [r.path, r]))
+  return kept.map((r) => against.get(r.path) ?? r)
+}
+
+const statOf = (files: ChangedFile[]): DiffStat => ({ files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) })
+
+interface Stored { sha: string; turn: number; base?: string; checkpoint: Checkpoint }
 
 function trailer(body: string, key: string): string | undefined {
   return new RegExp(`^${key}: (.*)$`, 'm').exec(body)?.[1]?.trim()
@@ -111,7 +167,7 @@ async function readAll(ws: CheckpointWorkspace): Promise<Stored[]> {
     if (!Number.isInteger(turn)) continue
     const [files, added, removed] = (trailer(body, 'Kernel-Stat') ?? '0 0 0').split(' ').map(Number)
     list.push({
-      sha, turn,
+      sha, turn, base: trailer(body, 'Kernel-Base'),
       checkpoint: {
         id: String(turn), workspaceId: ws.id, chatId: trailer(body, 'Kernel-Chat') ?? '', ts: Number(trailer(body, 'Kernel-Time')) || 0,
         title: body.split('\n')[0] ?? '', stat: { files: files || 0, added: added || 0, removed: removed || 0 }, ref,
@@ -142,7 +198,10 @@ export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: st
   return snapshotWithFiles(ws, o).then((s) => s.checkpoint)
 }
 
-/** A snapshot and the files it changed, the rows its stat counts. The start checkpoint has none (KERNEL-584). */
+/**
+ * A snapshot and the files it changed, the rows its stat counts. The start checkpoint has none (KERNEL-584). Files that only
+ * arrived from the workspace's base since the last checkpoint aren't the turn's, and are left out (KERNEL-603).
+ */
 export function snapshotWithFiles(ws: CheckpointWorkspace, o: { chatId: string; title: string; start?: boolean; ts?: number }): Promise<{ checkpoint: Checkpoint; files: ChangedFile[] }> {
   return serial(ws.id, async () => {
     const tree = await worktreeTree(ws.path)
@@ -152,10 +211,16 @@ export function snapshotWithFiles(ws: CheckpointWorkspace, o: { chatId: string; 
     const prev = await revParse(ws.path, headRef(ws.id))
     const head = await revParse(ws.path, 'HEAD^{commit}')
     const from = prev ? `${prev}^{tree}` : head ? `${head}^{tree}` : EMPTY_TREE
-    const { stat, files } = start ? { stat: { files: 0, added: 0, removed: 0 }, files: [] } : await treeDiff(ws.path, from, tree)
+    const remote = await remoteBase(ws.path, ws.baseRef)
+    const base = remote && head ? await baseOf(ws.path, remote, head) : undefined
+    // A checkpoint saved before bases were recorded meets the base where the first checkpoint did. That base may be older,
+    // and leaves out less.
+    const was = prev && remote ? all.find((c) => c.sha === prev)?.base ?? await baseOf(ws.path, remote, prev) : base
+    const files = start ? [] : await turnDiff(ws.path, from, tree, was, base)
+    const stat = statOf(files)
     const ts = o.ts ?? Date.now()
     const title = checkpointTitle(o.title) || `Turn ${turn}`
-    const message = [title, '', `Kernel-Chat: ${o.chatId}`, `Kernel-Turn: ${turn}`, `Kernel-Time: ${ts}`, `Kernel-Stat: ${stat.files} ${stat.added} ${stat.removed}`, ...(start ? ['Kernel-Start: true'] : [])].join('\n') + '\n'
+    const message = [title, '', `Kernel-Chat: ${o.chatId}`, `Kernel-Turn: ${turn}`, `Kernel-Time: ${ts}`, `Kernel-Stat: ${stat.files} ${stat.added} ${stat.removed}`, ...(base ? [`Kernel-Base: ${base}`] : []), ...(start ? ['Kernel-Start: true'] : [])].join('\n') + '\n'
     const parent = prev ?? head
     const sha = (await git(ws.path, ['commit-tree', tree, ...(parent ? ['-p', parent] : [])], IDENTITY, message)).trim()
     const ref = checkpointRef(ws.id, turn)
