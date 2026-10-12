@@ -1,5 +1,6 @@
 /* New workspace modal (KERNEL-16). Values from design/canvas/project/NewWorkspace.dc.html. */
-.nw { background: var(--surface-2); }
+/* The shell does not clip it (below), so it rounds itself to the shell's inner radius, or its square box shows past the corners. */
+.nw { border-radius: calc(var(--r-xl) - 1px); background: var(--surface-2); }
 /* Its pickers open past the dialog's edges, so it never scrolls (D-080). It is short enough to fit any window Kernel allows. */
 .modal:has(.nw) { overflow: visible; }
 .nw-head { position: relative; display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--card-line); }
@@ -21,7 +22,7 @@
 /* At size 11 the glyph has about 3px of air each side of its box. Pull the model chevron in so the gap before it matches the gap before the effort label (canvas: 9px). */
 .nw-model > svg:last-child { margin: 0 -3px 0 -1px; }
 .nw-model > svg:last-child, .nw-room > svg:last-child { position: relative; top: -1px; color: var(--muted); }
-.nw[data-plan] .nw-head { background: var(--surface-2); }
+.nw[data-plan] .nw-head { border-radius: calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px) 0 0; background: var(--surface-2); }
 .nw-plus > .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
 .nw-plus > .icon-btn[aria-expanded='true'] { background: var(--card-line); }
 .nw-create { gap: 8px; height: 32px; padding: 0 14px; border-radius: 8px; }
