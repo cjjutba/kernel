@@ -21,7 +21,10 @@ const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching', switchBack: 'Switching', signInAccount: 'Signing in'
 }
 
-/** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
+/**
+ * The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down, and redraws at
+ * local midnight so a reset time read as "tomorrow" becomes "at 4:00 AM". Midnight changes only the wording, never a status.
+ */
 export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean, skipsSetup = false): BannerView | null {
   const usage = useStore((s) => s.usage)
   const account = useStore((s) => s.account)
@@ -49,6 +52,16 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [retry])
+  const [, setDay] = useState(0)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout>
+    const arm = () => {
+      const midnight = new Date().setHours(24, 0, 0, 0)
+      t = setTimeout(() => { setDay((d) => d + 1); arm() }, midnight - Date.now())
+    }
+    arm()
+    return () => clearTimeout(t)
+  }, [])
   if (!ws) return null
   return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, dismissed, switchAtLimit, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
