@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 import { createPrText } from './conventions'
@@ -115,7 +115,25 @@ export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSet
   s.models.effortByModel = effortMemory(s.models.effortByModel)
   s.models.roles = roleModels(s.models.roles, base.models.roles)
   s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
+  s.pr.autoMerge = autoMergeOf(s.pr.autoMerge, defaults.pr.autoMerge)
   return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
+}
+
+/** The most lines `pr.autoMerge.maxLines` may say. */
+const MAX_LINES = 100_000
+
+/**
+ * `pr.autoMerge` as Kernel reads it (KERNEL-556): on only when `on` is `true`, `maxLines` a whole number from 1, and
+ * `alwaysReview` a list of paths. A value of the wrong type takes the fallback's, so a hand-edited `"on": "yes"` stays off.
+ */
+export function autoMergeOf(v: unknown, fallback: AutoMerge): AutoMerge {
+  const t = isTable(v) ? v : {}
+  const lines = t.maxLines
+  return {
+    on: typeof t.on === 'boolean' ? t.on : fallback.on,
+    maxLines: Number.isInteger(lines) && (lines as number) >= 1 ? Math.min(lines as number, MAX_LINES) : fallback.maxLines,
+    alwaysReview: Array.isArray(t.alwaysReview) ? pathList(t.alwaysReview) : fallback.alwaysReview
+  }
 }
 
 /**
@@ -240,6 +258,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.models.effortByModel = effortMemory(next.models.effortByModel)
   next.models.roles = roleModels(next.models.roles, current.models.roles)
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
+  next.pr.autoMerge = autoMergeOf(next.pr.autoMerge, current.pr.autoMerge)
   return next
 }
 
@@ -354,6 +373,9 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+
+/** A list of repo paths: the text entries, trimmed, blank ones left out. */
+const pathList = (v: unknown): string[] => strings(v).map((p) => p.trim()).filter(Boolean)
 
 /** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
 const DEFAULT_COPY = ['.env', '.env.local']
@@ -573,6 +595,40 @@ export function reviewPolicyOf(text: string | undefined): { review: ReviewConfig
   let doc: Record<string, unknown> = {}
   try { if (text !== undefined) doc = parseToml(text) as Record<string, unknown> } catch { doc = {} }
   return { review: reviewOf(doc.review), team: teamValues(doc.team) }
+}
+
+/** The `[merge]` keys only the personal settings file may set, as the file names them (KERNEL-556). */
+const PERSONAL_MERGE = ['auto', 'max_lines'] as const
+
+/** What a shared settings file's `[merge]` table says: the paths it adds, and the personal keys it sets, which Kernel ignores. */
+function sharedMerge(doc: Record<string, unknown>): { alwaysReview: string[]; ignored: string[] } {
+  const t = isTable(doc.merge) ? doc.merge : {}
+  return { alwaysReview: pathList(t.always_review), ignored: PERSONAL_MERGE.filter((k) => t[k] !== undefined) }
+}
+
+/**
+ * The shared `.kernel/settings.toml`'s `[merge]` as a branch holds it (KERNEL-556). `always_review` adds paths a PR never
+ * merges by itself through. Auto-merge is each person's own, so `ignored` names the keys there that only the personal file
+ * may set. Kernel ignores them. No text, or text that doesn't parse, adds nothing.
+ */
+export function sharedMergeOf(text: string | undefined): { alwaysReview: string[]; ignored: string[] } {
+  let doc: Record<string, unknown> = {}
+  try { if (text !== undefined) doc = parseToml(text) as Record<string, unknown> } catch { doc = {} }
+  return sharedMerge(doc)
+}
+
+/**
+ * The user's auto-merge in one room (KERNEL-556): the app's `pr.autoMerge` with the personal file's `[merge]` over it. `auto`
+ * and `max_lines` replace the app's, and `always_review` adds to its list. `personal` says the personal file has a `[merge]`,
+ * which counts only once `localSettingsOwn` says the file is the user's own. `ignored` names what the shared file in the
+ * room's folder sets that only the personal file may. Read synchronously, since every push of a ready PR asks.
+ */
+export function autoMergeInRoom(repo: string, app: AutoMerge): { rules: AutoMerge; personal: boolean; ignored: string[] } {
+  const { ignored } = sharedMerge(readTomlSync(repoFile(repo, 'settings.toml')))
+  const own = readTomlSync(repoFile(repo, 'settings.local.toml')).merge
+  if (!isTable(own)) return { rules: app, personal: false, ignored }
+  const rules = autoMergeOf({ on: own.auto, maxLines: own.max_lines, alwaysReview: [...app.alwaysReview, ...pathList(own.always_review)] }, app)
+  return { rules, personal: true, ignored }
 }
 
 /**

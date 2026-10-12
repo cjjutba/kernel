@@ -1,4 +1,4 @@
-import { REVIEW_KINDS, type AppSettings, type PrBlocked, type PrCheck, type PrInfo, type PrState, type ReviewKind, type ReviewVerdict, type Workspace } from './types'
+import { REVIEW_KINDS, type AppSettings, type AutoMerge, type PrBlocked, type PrCheck, type PrInfo, type PrState, type ReviewKind, type ReviewVerdict, type Workspace } from './types'
 
 /**
  * Whether a PR may merge, one rule for every Merge button and the Lead's tools (KERNEL-115). Pure, so main and the
@@ -164,4 +164,79 @@ export function verdictPhrase(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHe
   if (s.blocking.length) return reviewPhrase({ blockers: { lenses: s.blocking, count: s.count } })
   if (s.approved.length) return reviewPhrase({ approved: s.approved })
   return reviewPhrase({ stale: true })
+}
+
+/**
+ * Paths a PR never merges by itself through, whatever any settings file says (KERNEL-556): Kernel's settings, the agents'
+ * files and instructions, and CI. The base branch's `[merge] always_review` and the user's own list add to them. Kernel
+ * matches them without case, as the Mac's disk does.
+ */
+export const ALWAYS_REVIEW: readonly string[] = ['.kernel/**', '.claude/agents/**', 'CLAUDE.md', 'AGENTS.md', '.github/workflows/**']
+
+/**
+ * What Kernel weighs before it merges a PR by itself (KERNEL-556). Main gathers it, and `autoMergeBlock` decides. `rules` is the
+ * user's own `pr.autoMerge` for the room. `pr` is GitHub's read of the PR now, null when there was none. `reviews`: the kinds
+ * of review its base branch's `[review]` requires of it, the kinds that approved its head commit or found blockers on it, and
+ * whether a review of it is still running. `diff`: the lines it adds and removes together, and the always-review paths among
+ * its files. Either one is missing when Kernel couldn't read it.
+ */
+export interface AutoMergeFacts {
+  rules: AutoMerge
+  /** The room merges on this Mac (KERNEL-467). */
+  local: boolean
+  /** Settings, Pull requests' "Require green checks to merge". */
+  requireGreen: boolean
+  pr?: PrInfo | null
+  reviews?: { required: ReviewKind[]; approved: ReviewKind[]; blocking: ReviewKind[]; running: boolean }
+  diff?: { lines: number; touched: string[] }
+}
+
+/**
+ * Why Kernel won't merge a PR by itself, or undefined when it may (KERNEL-556). Every condition has to hold: auto-merge on, a
+ * PR on GitHub rather than a local merge, green checks required and at least one check that decides the PR, all of them
+ * green, nothing GitHub blocks, every required kind of review approved the head commit and none found blockers on it, no
+ * review still running, under the line limit, and no always-review path changed. A fact Kernel couldn't read refuses too.
+ * A PR with no checks fails here though `allGreen([])` is true: nothing tested it.
+ */
+export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
+  if (!f.rules.on) return 'Auto-merge is off.'
+  if (f.local) return 'This room merges on this Mac, and auto-merge only merges pull requests on GitHub.'
+  const pr = f.pr
+  if (!pr) return "Kernel couldn't read the pull request from GitHub."
+  if (!f.requireGreen) return 'Require green checks to merge is off in Settings, Pull requests, and auto-merge needs it on.'
+  const checks = gatingChecks(pr.checks)
+  if (!checks.length) return 'It has no required checks, and auto-merge needs at least one to pass.'
+  if (!allGreen(checks)) return 'Not every required check has passed.'
+  if (pr.blocked) return blockedText(pr.blocked, pr.baseRef)
+  if (pr.state !== 'ready' || pr.conflictsUnknown) return "GitHub doesn't read it as ready to merge."
+  const r = f.reviews
+  if (!r) return "Kernel couldn't tell which reviews it needs."
+  if (r.blocking.length) return `${reviewsText(r.blocking)} found blockers on the latest commit.`
+  if (!r.required.length) return 'None of its reviews is required, and auto-merge needs a required review to approve it.'
+  const missing = r.required.filter((k) => !r.approved.includes(k))
+  if (missing.length) return `${reviewsText(missing)} ${missing.length === 1 ? "hasn't" : "haven't"} approved the latest commit.`
+  if (r.running) return 'A review of it is still running.'
+  const d = f.diff
+  if (!d) return "Kernel couldn't read what it changes."
+  if (d.lines > f.rules.maxLines) return `It changes ${d.lines} lines, more than the ${f.rules.maxLines} auto-merge allows.`
+  const [first, ...rest] = d.touched
+  if (!first) return undefined
+  return rest.length
+    ? `It changes ${first} and ${rest.length} other ${rest.length === 1 ? 'file' : 'files'} that always need a person's review.`
+    : `It changes ${first}, which always needs a person's review.`
+}
+
+/**
+ * Why Kernel merged a PR by itself, for the Team update (KERNEL-556), or undefined when it may not. `why` follows "since" in the
+ * Lead's text. `card` is the card's grey segment after "Merged automatically".
+ */
+export function autoMergeWhy(f: AutoMergeFacts): { why: string; card: string } | undefined {
+  if (autoMergeBlock(f) || !f.pr || !f.reviews || !f.diff) return undefined
+  const n = gatingChecks(f.pr.checks).length
+  const lines = `${f.diff.lines} ${f.diff.lines === 1 ? 'line' : 'lines'}`
+  const reviews = reviewsText(f.reviews.approved)
+  return {
+    why: `${reviews.charAt(0).toLowerCase()}${reviews.slice(1)} approved its latest commit, ${n === 1 ? 'its check' : `its ${n} required checks`} passed, it changes ${lines}, within the user's limit of ${f.rules.maxLines}, and it changes no path that always needs a person's review`,
+    card: `${kindsText(f.reviews.approved)} approved, checks passed, ${lines}`
+  }
 }

@@ -85,7 +85,12 @@ export interface TeamEvent {
   shared?: { sharedId: string; version: number; title: string; kind: SharedKind; source: string }
   /** `pr.blocked`: why GitHub won't merge the ready PR (KERNEL-401). */
   blocked?: PrBlocked
+  /** `pr.merged` by Kernel itself, and why auto-merge allowed it (KERNEL-556): `why` for the Lead, `card` for the card. */
+  auto?: AutoMerged
 }
+
+/** Why Kernel merged a PR by itself (`autoMergeWhy`, KERNEL-556). */
+export interface AutoMerged { why: string; card: string }
 
 /**
  * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Noor"). `held`: the brief hasn't gone out, as
@@ -155,7 +160,7 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.cifail': return `Checks failed on ${pr}.`
     case 'pr.changes': return `Changes were requested on ${pr}.`
     case 'pr.conflict': return `${upper(pr)} has conflicts with its base branch.`
-    case 'pr.merged': return `${upper(pr)} was merged.`
+    case 'pr.merged': return e.auto ? `Kernel merged ${pr} automatically, since ${e.auto.why}.` : `${upper(pr)} was merged.`
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
     case 'pr.blocked': return `GitHub won't merge ${pr} yet: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}.`
     case 'pr.unblocked': return `GitHub no longer blocks ${pr}.`
@@ -204,7 +209,7 @@ function cardText(e: TeamEvent): string {
     case 'pr.cifail': return 'Checks failed'
     case 'pr.changes': return 'Changes requested'
     case 'pr.conflict': return 'Has conflicts with its base branch'
-    case 'pr.merged': return e.pr ? `Merged PR #${e.pr}` : 'Merged'
+    case 'pr.merged': return e.auto ? 'Merged automatically' : e.pr ? `Merged PR #${e.pr}` : 'Merged'
     case 'pr.closed': return `Closed ${prOf(e)} without merging`
     case 'pr.blocked': return `Blocked on GitHub: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}`
     case 'pr.unblocked': return 'GitHub no longer blocks it'
@@ -393,6 +398,10 @@ export class LeadUpdates {
   private reading = new Map<string, number>()
   /** Teammates whose running turn set a wait of their own. Their updates wait for that turn to end (KERNEL-262). */
   private waitTurns = new Set<string>()
+  /** PRs Kernel is merging by itself, and why, until their merge push (KERNEL-556). */
+  private auto = new Map<string, AutoMerged>()
+  /** Why Kernel didn't merge a ready PR by itself with the user's auto-merge on, until the PR leaves ready (KERNEL-556). */
+  private refused = new Map<string, string>()
   private detached = false
   private seq = 0
   private off: () => void = () => undefined
@@ -471,6 +480,19 @@ export class LeadUpdates {
     if (ws && this.waitTurns.delete(ws.id)) this.rearm(ws)
   }
 
+  /**
+   * Kernel is merging the workspace's PR by itself, and `auto` says why, so its merge reads "Merged automatically" (KERNEL-556).
+   * Without `auto`, the merge it started failed.
+   */
+  autoMerging(workspaceId: string, auto?: AutoMerged) {
+    this.refused.delete(workspaceId)
+    if (auto) this.auto.set(workspaceId, auto)
+    else this.auto.delete(workspaceId)
+  }
+
+  /** Why Kernel didn't merge the ready PR by itself with auto-merge on. The ready to merge line says so (KERNEL-556). */
+  autoMergeRefused(workspaceId: string, why: string) { this.refused.set(workspaceId, why) }
+
   /** Kernel is reading the workspace's PR after a turn. Its updates wait until every read started has ended (`readPr`). */
   readingPr(workspaceId: string) { this.reading.set(workspaceId, (this.reading.get(workspaceId) ?? 0) + 1) }
 
@@ -483,6 +505,8 @@ export class LeadUpdates {
     if (this.detached) return
     const ws = this.d.store.workspace(workspaceId)
     if (ws) this.rearm(ws)
+    // A verdict about the PR waited for the read too (KERNEL-556).
+    for (const [key, p] of this.pending) if (p.events.some((e) => e.review?.of === workspaceId)) this.arm(key, p.roomId)
   }
 
   /**
@@ -542,6 +566,9 @@ export class LeadUpdates {
   private onPr(workspaceId: string, state: PrState) {
     const before = this.prev.get(workspaceId) ?? 'none'
     this.prev.set(workspaceId, state)
+    const auto = state === 'merged' ? this.auto.get(workspaceId) : undefined
+    if (state === 'merged') this.auto.delete(workspaceId)
+    if (state !== 'ready') this.refused.delete(workspaceId)
     const ws = this.d.store.workspace(workspaceId)
     if (!ws || this.d.isLead(ws)) return
     const opened = (before === 'none' || before === 'creating') && ON_GITHUB.includes(state) && state !== 'merged' && state !== 'closed'
@@ -557,7 +584,7 @@ export class LeadUpdates {
     // Ready again on the same head is how a PR usually falls behind its base: the base moved and GitHub checked it again.
     // The block, or its end, is the news then (KERNEL-401).
     if (again) this.blockedNews(ws)
-    if (kind && !again) this.add(ws, { kind })
+    if (kind && !again) this.add(ws, { kind, ...(auto ? { auto } : {}) })
     // A PR that moved on without news, as checks starting again, still waits for things to settle before its events go.
     else if (!opened) this.rearm(ws)
   }
@@ -620,7 +647,8 @@ export class LeadUpdates {
     if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) drop(key); return }
     const byChat = new Map<string, { chat: Chat; sources: Source[]; keys: string[]; quiet: boolean }>()
     for (const [key, p] of waiting) {
-      const quiet = !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || this.waitTurns.has(e.workspaceId))
+      // A verdict waits for its PR's read too, as auto-merge's, so it never calls a PR Kernel is merging ready to merge (KERNEL-556).
+      const quiet = !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || (!!e.review && this.reading.has(e.review.of)) || this.waitTurns.has(e.workspaceId))
       let t = this.d.target(roomId, p.owner)
       if (!t && this.d.open) {
         // No Lead tab is open. Once quiet, an update that needs the Lead opens one (KERNEL-365). The rest wait for the next
@@ -701,7 +729,8 @@ export class LeadUpdates {
           // Work from a closed tab of this chat is this chat's own, so its last merge reads like any other.
           const decided = decide({ ws, name, events: block.events, fromChat: source.from?.tab ? undefined : source.from?.title }, {
             review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id),
-            stateOf: (id) => { const of = this.d.store.workspace(id); return of && this.d.reviewState?.(of) }
+            stateOf: (id) => { const of = this.d.store.workspace(id); return of && this.d.reviewState?.(of) },
+            refused: (id) => this.refused.get(id)
           })
           block.wake = decided.wake
           block.todo = decided.todo
@@ -740,6 +769,8 @@ export class LeadUpdates {
         events: b.events.flatMap((e) => [
           { kind: e.kind, text: cardText(e), actionable: b.wake.has(e) },
           ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
+          // Why auto-merge allowed it, grey after "Merged automatically" (KERNEL-556).
+          ...(e.auto ? [{ kind: 'pr.review' as const, text: e.auto.card, actionable: false }] : []),
           ...(e.review?.stillBlocked ? [{ kind: 'pr.review' as const, text: stillBlockedText(e.review.stillBlocked), actionable: false }] : [])
         ]),
         ...(b.reply ? { reply: b.reply } : {}),
@@ -771,18 +802,25 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
 /**
  * What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer (for usage data), whether Kernel
  * starts reviews of a PR that passed checks by itself (on when unset), whether this merge was the last, and the reviews of
- * another workspace's PR by its id, for a verdict about it (KERNEL-549).
+ * another workspace's PR by its id, for a verdict about it (KERNEL-549), and why Kernel didn't merge a workspace's ready PR by
+ * itself with auto-merge on (KERNEL-556).
  */
-export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined }
+export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined; refused?: (id: string) => string | undefined }
 
 /**
  * The To do line for a PR that passed checks and every review approved. The review's own line says the same, so it shows once.
- * A kind the review round skipped to save usage is the user's to know (KERNEL-552).
+ * A kind the review round skipped to save usage is the user's to know (KERNEL-552). Rowan gives the user a short merge summary
+ * with it, and says why Kernel didn't merge it by itself when the user's auto-merge is on (`refused`, KERNEL-556).
  */
-function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = []): string {
+function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [], refused?: string): string {
   const left = skipped.length ? ` Kernel skipped ${reviewsOf(skipped)} to save usage.` : ''
-  return `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.${left} Tell the user it is ready to merge${skipped.length ? `, and that ${reviewsOf(skipped)} didn't run` : ''}.`
+  const auto = refused ? ` Auto-merge is on, and Kernel didn't merge it. ${refused}` : ''
+  const summary = ['what it changes', `which reviews ran${skipped.length ? ` and that ${reviewsOf(skipped)} didn't` : ''}`, ...(refused ? ["why Kernel didn't merge it"] : []), 'anything they should know']
+  return `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.${left}${auto} Tell the user it is ready to merge, with a short merge summary: ${summary.slice(0, -1).join(', ')}, and ${summary.at(-1)}.`
 }
+
+/** The To do line for a PR Kernel merged by itself (KERNEL-556). Its event's line says why. */
+const autoMergedTodo = (pr: string, url: string | undefined) => `Tell the user Kernel merged ${pr} automatically and why, in a line or two${url ? `, with its link ${url}` : ''}.`
 
 /**
  * The To do line for a PR still blocked after the review rounds `[review] rounds` allows (KERNEL-552). Kernel starts no more,
@@ -883,7 +921,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (r.lens && (state?.inProgress || state?.blockers)) break
         const kinds = state?.approved.length ? state.approved : [r.lens ?? 'code']
         // A PR GitHub still blocks is its author's to update, or the user's to know (KERNEL-401).
-        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped), true); break }
+        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped, c.refused?.(of.id)), true); break }
         const approver = r.lens ? reviewsText(kinds) : name
         if (!of?.prNumber) { wake(`${approver} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
         wake(`${approver} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
@@ -906,6 +944,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
       case 'wait.released': break
       case 'pr.merged':
+        // Kernel merged it by itself, so the user hears it from Rowan, even once the work is archived (KERNEL-556).
+        if (e.auto) wake(autoMergedTodo(pr, ws.prUrl), true)
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
       case 'pr.blocked': if (e.blocked) wake(blockedTodo(pr, name, at, e.blocked, ws.baseRef)); break
@@ -913,7 +953,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         const review = c.review
         // A review still to come, or one that found blockers, says what's next itself.
         if (review?.blockers || review?.inProgress) break
-        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped)); break }
+        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id))); break }
         if (review?.open || review?.stale) break
         wake(`GitHub no longer blocks ${pr}, so it is ready to merge. Tell the user.`)
         break
@@ -928,7 +968,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (review?.stillBlocked) { wake(stillBlockedTodo(pr, review.stillBlocked, name, true)); break }
         // A branch behind its base is updated first: the update makes a new head, which any review would have to see again (KERNEL-401).
         if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
-        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped)); break }
+        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id))); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // No review looked at this PR: auto review is off (KERNEL-115), or none of the room's reviews covers what it changes.
         if (!review?.open && !review?.stale) {
