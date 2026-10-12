@@ -154,7 +154,7 @@ const historyScene = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** Team.png and AgentProfile.png: six agents in Client A with the canvas's models, states and workspaces. Kai's recent work is four tasks. */
+/** Six agents in Client A with the canvas's models, states and workspaces. Kai's recent work is four tasks. */
 const teamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.roomA
   const who = (id: string, name: string, role: string, model: string, description: string, o: Partial<AgentDef> = {}): AgentDef =>
@@ -196,7 +196,7 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
 
 /**
  * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Rowan and Theo fill in (KERNEL-397).
- * Architect's tools can't open a PR, so it is a helper. TeamOwnAgents.png, AgentProfileBuiltIn.png and RoomSetupTeam.png.
+ * Architect's tools can't open a PR, so it is a helper. RoomSetupTeam.png and SettingsTeam.
  */
 const ownCrew: AgentDef[] = [
   {
@@ -579,7 +579,7 @@ const newWorkspaceFromIssues = (f: Fixture, roomId: string, issues: GithubIssueD
   ...homeScene(f), ...trackerRooms, githubIssues: { [ids.roomB]: issues },
   branches: ['origin/main', 'origin/dev', 'main'],
   settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
-  ui: { route: { name: 'team', roomId }, modal: { name: 'newWorkspace', roomId }, menu: 'from' }
+  ui: { route: { name: 'settings', page: 'room', roomId, section: 'agents' }, modal: { name: 'newWorkspace', roomId }, menu: 'from' }
 })
 
 /** The New chat the issue check held back in ConfirmIssueTaken (KERNEL-500). */
@@ -655,17 +655,16 @@ export const teamFixtures: Record<string, Fixture> = {
   }),
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
-  Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // No PNG: a new room with no agents offers the team templates.
-  TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'settings', page: 'room', roomId: clientC.id, section: 'agents' } } })),
-  // KERNEL-397: a repo's own agents, with Kernel's Rowan and Theo, a helper and its warning.
-  TeamOwnAgents: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  AgentProfile: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' } } })),
-  AgentProfileBuiltIn: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kernel-lead' } } })),
   NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
-  ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
+  // KERNEL-642: a repo's own agents in Settings, Agents: Architect's warning on its row, New agent and Add a starter agent at the top of In this repo, and Retired with Restore.
+  SettingsTeamOwnAgents: scene((f) => {
+    const t = ownTeamScene(f)
+    const retired: AgentDef = { id: 'scout', name: 'Scout', role: 'Research', description: 'Reads the repo and reports.', lead: false, reviewer: false, member: true, prompt: 'You research.', file: '.claude/retired-agents/scout.md', retired: true }
+    return { ...t, agents: { ...t.agents, [ids.roomA]: [...t.agents![ids.roomA], retired] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } }
+  }),
+  ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents', agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
   // KERNEL-438: someone else may be on the issue. New chat opens it when the issue it starts from has findings (KERNEL-500).
   ConfirmIssueTaken: scene((f) => ({
     ...teamScene(f),

@@ -5,7 +5,7 @@ import { actions, getState, useStore } from '../../store'
 import { openLeadChat } from '../../lead'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
-import './team.css'
+import './agent.css'
 
 type Step = 'describe' | 'draft' | 'done'
 

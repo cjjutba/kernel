@@ -3,7 +3,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { shortFile } from './model'
-import './team.css'
+import './agent.css'
 
 /**
  * ConfirmRetire.png. The file moves to .claude/retired-agents (D-003) and open workspaces go to the Lead, or a reviewer's

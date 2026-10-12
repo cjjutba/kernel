@@ -193,7 +193,7 @@ describe('prefers-contrast: more', () => {
 
 describe('no hardcoded colors', () => {
   // The character shirt, skin and hair colors are art, not UI chrome.
-  const looks = join(root, 'src/renderer/src/screens/team/looks.ts')
+  const looks = join(root, 'src/renderer/src/screens/agent/looks.ts')
   const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name)
     if (e.isDirectory()) return files(p)

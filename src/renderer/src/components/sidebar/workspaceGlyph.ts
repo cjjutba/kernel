@@ -1,7 +1,7 @@
 import type { AgentStatus, Approval, Workspace } from '@shared/types'
 import { headBlockers, kindStates } from '@shared/merge'
 import type { IconName } from '../../icons'
-import { STATUS_WORD } from '../../screens/team/model'
+import { STATUS_WORD } from '../../screens/agent/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
 import { BLOCKERS_STATUS, busyLabel, localStatus, PR_STATUS, type LocalStand, type PrAction, type PrTone } from '../../screens/workspace/pr/model'
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef } from '../src/shared/types'
-import { LOOKS, lookFor, overflowShirt, shirtOrder } from '../src/renderer/src/screens/team/looks'
-import { shirtOf } from '../src/renderer/src/screens/team/model'
+import { LOOKS, lookFor, overflowShirt, shirtOrder } from '../src/renderer/src/screens/agent/looks'
+import { shirtOf } from '../src/renderer/src/screens/agent/model'
 
 const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', description: '', lead, prompt: '', file: `${id}.md` })
 

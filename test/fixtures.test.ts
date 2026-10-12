@@ -8,6 +8,7 @@ const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
   'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
+  'SettingsTeamOwnAgents', // a repo's own agents in Settings, Agents: a warning on a row, Add a starter agent and New agent, and Retired with Restore (KERNEL-642)
   'SettingsAgents', // Settings, Agents with no room open: a personal agent and two plugin agents (KERNEL-641)
   'SettingsAgentEdit', // a personal agent's editor inside Settings, with Back to Agents (KERNEL-641)
   'SettingsAgentPlugin', // a plugin agent read only, with no Save changes or Retire (KERNEL-641)
@@ -63,7 +64,6 @@ const noCanvas = [
   'InboxTrustHeld', // a workspace held for script trust listed in the Inbox, its detail pane open on it (KERNEL-395)
   'LoadingError', // boot failed: the error and Try again (KERNEL-217)
   'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
-  'TeamEmpty',
   'QuickAskAnswered', // Ask Rowan reopened after a question, with the answer in (KERNEL-146)
   'QuickAskOpenChat',
   'QuickAskLeadGone',

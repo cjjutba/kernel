@@ -233,3 +233,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-mcp-ready { margin-left: auto; }
 .set-mcp-ready + .set-entry-actions:empty { display: none; }
 .set-mcp-summary .pill { height: 28px; font-size: 13px; }
+
+/* Add a starter agent (KERNEL-642): the menu hangs from its button, at the right of the section heading. */
+.set-starters { position: relative; display: inline-flex; }

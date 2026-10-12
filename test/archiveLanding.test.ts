@@ -50,7 +50,7 @@ describe("the room's front door (KERNEL-596)", () => {
     expect(frontDoor('r1', getState())).toEqual(door)
   })
 
-  it('is the room's Agents page when the room has no Lead, and reads a Lead from its workspaces before agents load', () => {
+  it('is the Agents page of a room with no Lead, and reads a Lead from its workspaces before agents load', () => {
     setState({ agents: { r1: [kai] } })
     expect(frontDoor('r1', getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
     setState({ agents: {} })

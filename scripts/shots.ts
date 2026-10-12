@@ -333,6 +333,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
   WorkspaceScrolledUp: scrollUp,
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
+  SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
   ChatRailLead: (page) => openRail(page, 'Kai, opened PR #162')
