@@ -207,12 +207,12 @@
 }
 :root {
   --r-sm: 6px; --r: 8px; --r-md: 10px; --r-lg: 12px; --r-xl: 14px;
-  --font: 'Inter Variable', 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font: 'Geist Variable', 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--canvas); color: var(--ink-2); font: 13px/1.45 var(--font); font-feature-settings: 'cv01', 'ss03'; -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
+body { background: var(--canvas); color: var(--ink-2); font: 13px/1.45 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; user-select: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--ink-2); }
