@@ -207,12 +207,12 @@ export function App() {
       if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
       // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }
-      if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
-      // ⌘N does the same, but not over a modal (it would reset the New chat prompt) or during onboarding.
-      if (e.key === 'n' && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+      // ⌘N and ⌘⇧N open New chat, and close it when it is already open (like Esc, so a draft is handled the same). Over any other modal they do nothing (it would reset that modal) and so do they during onboarding.
+      if (e.key.toLowerCase() === 'n' && !e.altKey && !e.ctrlKey) {
         e.preventDefault()
         const s = getState()
-        if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() })
+        if (s.ui.modal?.name === 'newWorkspace') actions.ui.closeModal()
+        else if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() })
       }
       // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
