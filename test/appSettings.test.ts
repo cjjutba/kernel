@@ -175,7 +175,7 @@ describe('loadAppSettings', () => {
   })
 
   it('pins a file with no mode to Accept edits, so a later default leaves it where it was', async () => {
-    const { saved, resolved } = await load({ version: 2, general: { menuBar: false } })
+    const { saved, resolved } = await load({ version: 2, general: { openAtLogin: true } })
     expect(saved.permissions).toEqual({ mode: 'acceptEdits' })
     expect(resolved.permissions.mode).toBe('acceptEdits')
     const auto = deepMerge(DEFAULT_SETTINGS('/home/cj'), { permissions: { mode: 'auto' } })
@@ -205,7 +205,7 @@ describe('loadAppSettings', () => {
   it('keeps an existing file with no mode on Accept edits, while a new install gets Auto (KERNEL-457)', async () => {
     const fresh = await load()
     // Sparse files of every shape an existing install can have: only the version, an unrelated group, or a permissions table with no mode.
-    for (const file of [{ version: 2 }, { version: 2, general: { menuBar: false } }, { version: 2, permissions: { network: false } }, { privacy: { telemetry: 'on' } }]) {
+    for (const file of [{ version: 2 }, { version: 2, general: { openAtLogin: true } }, { version: 2, permissions: { network: false } }, { privacy: { telemetry: 'on' } }]) {
       const existing = await load(file)
       expect(existing.resolved.permissions.mode).toBe('acceptEdits')
       expect(existing.saved.permissions).toMatchObject({ mode: 'acceptEdits' })
@@ -235,11 +235,20 @@ describe('open to (replaces the default home view)', () => {
     }
     it('opens where you left off for a saved home or last room, which every launch wrote without a choice', async () => {
       for (const homeView of ['home', 'lastRoom']) {
-        const g = await load({ homeView, menuBar: false })
+        const g = await load({ homeView, openAtLogin: true })
         expect(g.openTo).toBe('lastPlace')
         expect('homeView' in g).toBe(false)
-        expect(g.menuBar).toBe(false)
+        expect(g.openAtLogin).toBe(true)
       }
+    })
+    it('drops Show in menu bar and Show names instead of roles, which nothing read (KERNEL-536)', async () => {
+      const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+      await writeFile(file, JSON.stringify({ version: 2, general: { menuBar: false, sendWith: 'cmdEnter' }, team: { showNames: false, defaultTemplate: 'pair' } }))
+      const { saved, resolved } = await loadAppSettings(file, '/home/cj')
+      expect(saved.general).toEqual({ sendWith: 'cmdEnter' })
+      expect(saved.team).toEqual({ defaultTemplate: 'pair' })
+      expect('menuBar' in resolved.general).toBe(false)
+      expect('showNames' in resolved.team).toBe(false)
     })
     it('keeps Inbox', async () => {
       const g = await load({ homeView: 'inbox' })
