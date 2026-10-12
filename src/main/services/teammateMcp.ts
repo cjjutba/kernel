@@ -1,6 +1,5 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { kernelServer } from './kernelServer'
 import type { Workspace } from '@shared/types'
 import { isMerged, resolveTarget, waitRefusal } from './waits'
 
@@ -25,7 +24,7 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 export function teammateTools(d: TeammateToolDeps) {
   return [
     tool('wait_for_merge', "Tell Kernel you can't go on until another teammate's pull request merges. Kernel messages you when it merges, so end your turn right after.", {
-      on: z.string().min(1).describe('What you wait for: a PR number like "#164", a Linear issue key like "KERNEL-197", or a workspace id'),
+      on: z.string().min(1).describe('What you wait for: a PR number like "#164", an issue key like "PROJ-197", or a workspace id'),
       why: z.string().optional().describe('What you need from it, in a sentence. The Lead reads it')
     }, async ({ on, why }) => {
       const refuse = (m: string) => ({ ...text(`Not set: ${m}`), isError: true })
@@ -43,9 +42,4 @@ export function teammateTools(d: TeammateToolDeps) {
       } catch (e) { return refuse(e instanceof Error ? e.message : String(e)) }
     })
   ]
-}
-
-/** A teammate's own MCP server, named `kernel` like the Lead's and a reviewer's (`kernelServer`). */
-export function teammateMcpServer(d: TeammateToolDeps) {
-  return kernelServer(teammateTools(d))
 }

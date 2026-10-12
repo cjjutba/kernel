@@ -18,18 +18,23 @@ export async function tempRepo(files: Record<string, string> = { 'README.md': '#
 
 /**
  * A `gh` first on PATH that answers `gh issue list` with `list` and `gh issue view` with `view`, and fails anything else.
- * `calls` lists the issue commands it ran, by their arguments (KERNEL-462). `vi.unstubAllEnvs()` takes it off PATH.
+ * With `prs` it answers `gh pr list` too, and with `login` it is signed in as that user (KERNEL-479). `calls` lists the issue
+ * and PR commands it ran, by their arguments (KERNEL-462). `vi.unstubAllEnvs()` takes it off PATH.
  */
-export async function fakeGh(o: { list?: unknown; view?: unknown }) {
+export async function fakeGh(o: { list?: unknown; view?: unknown; prs?: unknown; login?: string }) {
   const bin = await mkdtemp(join(tmpdir(), 'kernel-gh-'))
   const log = join(bin, 'calls.log')
   await writeFile(join(bin, 'list.json'), JSON.stringify(o.list ?? []))
   await writeFile(join(bin, 'view.json'), JSON.stringify(o.view ?? {}))
+  await writeFile(join(bin, 'prs.json'), JSON.stringify(o.prs ?? []))
+  await writeFile(join(bin, 'auth.json'), JSON.stringify({ hosts: { 'github.com': [{ state: 'success', active: true, login: o.login ?? '' }] } }))
   await writeFile(join(bin, 'gh'), [
     '#!/bin/sh',
     `case "$1 $2" in`,
     `  "issue list") echo "$*" >> "${log}"; cat "${bin}/list.json" ;;`,
     `  "issue view") echo "$*" >> "${log}"; cat "${bin}/view.json" ;;`,
+    ...(o.prs ? [`  "pr list") echo "$*" >> "${log}"; cat "${bin}/prs.json" ;;`] : []),
+    ...(o.login ? [`  "auth status") cat "${bin}/auth.json" ;;`] : []),
     '  *) echo "not stubbed" >&2; exit 1 ;;',
     'esac',
     ''

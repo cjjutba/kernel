@@ -216,18 +216,40 @@ export async function branchExists(repo: string, branch: string): Promise<boolea
  * outside a repo, 127 when git can't start) is `unknown`, which must count as neither free nor safe to delete (KERNEL-276).
  */
 export async function branchState(repo: string, branch: string): Promise<'exists' | 'missing' | 'unknown'> {
-  const { code } = await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+  return refState(repo, `refs/heads/${branch}`)
+}
+
+async function refState(repo: string, ref: string): Promise<'exists' | 'missing' | 'unknown'> {
+  const { code } = await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', ref])
   return code === 0 ? 'exists' : code === 1 ? 'missing' : 'unknown'
 }
 
-/** Pick a branch name that does not exist yet by appending -2, -3... Throws when git can't say whether a name is taken. */
-export async function freeBranch(repo: string, wanted: string): Promise<string> {
+/**
+ * Pick a branch name that does not exist yet by appending -2, -3... A name `<remote>/<name>` has, as of the last fetch, is
+ * taken too, so Kernel never picks a branch someone else already pushed (KERNEL-479). Throws when git can't say whether a
+ * name is taken.
+ */
+export async function freeBranch(repo: string, wanted: string, remote = 'origin'): Promise<string> {
   for (let i = 1; ; i++) {
     const name = i === 1 ? wanted : `${wanted}-${i}`
-    const state = await branchState(repo, name)
+    const local = await branchState(repo, name)
+    const state = local === 'missing' ? await refState(repo, `refs/remotes/${remote}/${name}`) : local
     if (state === 'missing') return name
     if (state === 'unknown') throw new Error(`Kernel couldn't check whether the branch ${name} exists.`)
   }
+}
+
+/**
+ * The branch names on `remote` as it has them now, with `git ls-remote --heads`, within `timeoutMs`. Nothing when the repo
+ * has no such remote. Throws with git's first line, or the timeout, when the remote doesn't answer (KERNEL-479).
+ */
+export async function remoteBranches(repo: string, remote: string, timeoutMs: number): Promise<string[] | undefined> {
+  if ((await exec('git', ['-C', repo, 'remote', 'get-url', remote])).code !== 0) return undefined
+  // No terminal prompt: a remote that wants a password fails at once instead of waiting out the limit.
+  const r = await exec('git', ['-C', repo, 'ls-remote', '--heads', remote], { timeoutMs, env: { GIT_TERMINAL_PROMPT: '0' } })
+  if (r.timedOut) throw new Error(`no answer in ${Math.max(1, Math.round(timeoutMs / 1000))} seconds`)
+  if (r.code !== 0) throw new Error(r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? `git ls-remote exited with code ${r.code}`)
+  return r.stdout.split('\n').flatMap((l) => { const ref = l.split('\t')[1]?.trim(); return ref?.startsWith('refs/heads/') ? [ref.slice('refs/heads/'.length)] : [] })
 }
 
 /**
