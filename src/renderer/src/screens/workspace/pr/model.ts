@@ -6,6 +6,8 @@ import { stripRemote } from '../../settings/remote'
 export interface PrHeaderView {
   /** The `#42` link to GitHub. */
   link: boolean
+  /** A branch that merges on the Mac has no number to link, so a plain `→ main` pill stands in, with the base branch's name (KERNEL-478). */
+  pill?: string
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
   state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
   /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). */
@@ -20,7 +22,7 @@ export interface PrHeaderView {
 /** The header band: grey while nothing needs doing, green when it can merge, red when something needs fixing, violet once merged. */
 export type PrTone = 'idle' | 'ready' | 'fail' | 'merged'
 
-export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen'
+export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen' | 'update'
 
 /** An open PR's state in its word and the band's tone. `spin` means something runs: every place draws a spinner with the word. */
 export interface PrStatus { label: string; tone: PrTone; spin: boolean }
@@ -43,6 +45,102 @@ export const PR_STATUS = {
 /** The state's entry in `PR_STATUS`, or nothing for a state without one (none, ready, open, merged, closed). */
 export const prStatus = (state: PrState): PrStatus | undefined => (PR_STATUS as Partial<Record<PrState, PrStatus>>)[state]
 
+/**
+ * How a branch that merges on the Mac stands (KERNEL-478), read from the workspace's state and what git says in `PrInfo.local`.
+ * `behind` and `dirty` are two ways a ready branch can't merge cleanly yet: main moved on (grey, nothing failed), or the folder
+ * with main checked out has uncommitted changes, which Kernel never touches (red).
+ */
+export type LocalStand = 'none' | 'ready' | 'behind' | 'dirty' | 'conflict' | 'resolving' | 'merging' | 'merged'
+
+/** Where a branch merging on the Mac stands. Without a read yet, a ready branch reads ready. */
+export function localStand(state: PrState, info?: Pick<PrInfo, 'local'>): LocalStand {
+  switch (state) {
+    case 'merged': return 'merged'
+    case 'merging': return 'merging'
+    case 'resolving': return 'resolving'
+    case 'conflict': return 'conflict'
+    case 'ready': case 'open': {
+      const local = info?.local
+      if (local?.checkout?.dirty.length) return 'dirty'
+      return local && local.behind > 0 ? 'behind' : 'ready'
+    }
+    default: return 'none'
+  }
+}
+
+/**
+ * A local merge's word and tone in every place it shows: the band, the sidebar icon, the chat row's glyph. Merge conflicts,
+ * Resolving and Merging are `PR_STATUS`'s own entries, so a branch on the Mac reads like a PR on GitHub (KERNEL-417). `base` is the
+ * branch it merges into. `changed` is whether the workspace has files changed, for a branch with nothing committed yet.
+ */
+export function localStatus(stand: LocalStand, base: string, changed = true): PrStatus {
+  switch (stand) {
+    case 'ready': return { label: 'Ready to merge', tone: 'ready', spin: false }
+    case 'behind': return { label: `Behind ${base}`, tone: 'idle', spin: false }
+    case 'dirty': return { label: "Can't merge", tone: 'fail', spin: false }
+    case 'conflict': return PR_STATUS.conflict
+    case 'resolving': return PR_STATUS.resolving
+    // Merging keeps the green band and its word, as a PR does.
+    case 'merging': return { ...PR_STATUS.merging, label: 'Ready to merge' }
+    case 'merged': return { label: 'Merged', tone: 'merged', spin: false }
+    case 'none': return { label: changed ? 'Not committed yet' : 'No changes yet', tone: 'idle', spin: false }
+  }
+}
+
+/** The room's merge method, as the merge line says it at the right. */
+export const METHOD_WORD: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squash merge', merge: 'Merge commit', rebase: 'Rebase' }
+
+/** The merge line and the chat row's wording for how a merge landed. Shared with the PR toast. */
+export const LANDED: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** The folder as a person reads it: `~/Projects/shop`, as Settings writes a path. */
+export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
+
+/**
+ * The note under the merge line for a state that needs one, with the files it lists: Behind says how far, Merge conflicts names the
+ * files and the action, and a refused merge says what is wrong, that nothing merged, and the fix. `who` is the agent Resolve conflicts asks.
+ */
+export interface LocalNote { title: string; body: (string | { code: string })[]; files: { letter: string; path: string; why?: string }[] }
+export function localNote(stand: LocalStand, base: string, info: Pick<PrInfo, 'local' | 'conflicts'> | undefined, who = 'the agent'): LocalNote | undefined {
+  switch (stand) {
+    case 'behind': {
+      const n = info?.local?.behind ?? 0
+      return { title: `${base} has ${plural(n, 'new commit')}`, body: ["This branch doesn't have them yet. Update the branch, then merge."], files: [] }
+    }
+    case 'conflict': {
+      const files = info?.conflicts ?? []
+      return { title: `Merging into ${base} would conflict in ${plural(files.length, 'file')}`, body: [`Resolve conflicts asks ${who} to fix them on this branch.`], files: files.map((path) => ({ letter: 'C', path, why: 'both changed' })) }
+    }
+    case 'dirty': {
+      const checkout = info?.local?.checkout
+      const dirty = checkout?.dirty ?? []
+      return {
+        title: `Your ${base} checkout has uncommitted changes`,
+        body: [`Kernel only moves ${base} when `, ...(checkout ? [{ code: tilde(checkout.path) }, ' is clean'] : ['it is clean']), ', so nothing was merged. Commit or stash these files there, then try again.'],
+        files: dirty.map((f) => ({ letter: f.status === '??' ? 'U' : f.status, path: f.path }))
+      }
+    }
+    default: return undefined
+  }
+}
+
+/**
+ * The row that ends the transcript, in the same words as the PR rows: what the branch can do and why not. A merged branch has the
+ * engine's own note, "Squashed into main as 4e1b9c2.", and a branch that is working has no row.
+ */
+export function localRow(stand: LocalStand, base: string, info: Pick<PrInfo, 'local' | 'conflicts'> | undefined): string | undefined {
+  const local = info?.local
+  switch (stand) {
+    case 'ready': case 'merging': return `Ready to merge into ${base}. ${local?.ahead ?? 0} ahead, no conflicts.`
+    case 'behind': return `${base} has ${plural(local?.behind ?? 0, 'new commit')}. Update this branch before it merges.`
+    case 'conflict': return `Merging into ${base} would conflict in ${plural(info?.conflicts.length ?? 0, 'file')}.`
+    case 'dirty': return `Merge refused. ${local?.checkout ? tilde(local.checkout.path) : `The ${base} checkout`} has uncommitted changes.`
+    default: return undefined
+  }
+}
+
 /** Kernel saves a workspace's file count whenever it reads the changes. No files, or no count yet, means nothing to put in a PR. */
 export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 
@@ -51,7 +149,8 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
  * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349). `blocked`
  * is a ready PR GitHub won't merge yet, which reads Open as PrOpen.png draws it; Merge PR then says why (KERNEL-388).
  */
-export function headerView(state: PrState, changed = true, blocked = false): PrHeaderView {
+export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }): PrHeaderView {
+  if (local) return localHeaderView(local.stand, local.base, changed)
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
   const conflicts = { label: PR_STATUS.conflict.label, tone: 'fail', glyph: 'pr' } as const
@@ -78,10 +177,30 @@ export function headerView(state: PrState, changed = true, blocked = false): PrH
   }
 }
 
+/**
+ * A branch that merges on the Mac, in the header's own layout: the `→ main` pill where the PR number was, the state's word and
+ * the band's button. There is no Create PR, because the branch is what merges (KERNEL-441). Behind main is grey with a soft Update
+ * branch, not Merge, so the user never merges onto a base the branch hasn't seen. A refused merge takes a soft Try again.
+ */
+function localHeaderView(stand: LocalStand, base: string, changed: boolean): PrHeaderView {
+  const status = localStatus(stand, base, changed)
+  const view = { link: false, pill: base, caret: false, merged: false, archive: false, state: { label: status.label, tone: status.tone, glyph: stand === 'merged' ? 'merged' : 'branch' } } as const
+  switch (stand) {
+    case 'ready': return { ...view, button: { label: 'Merge', kind: 'primary', action: 'merge' } }
+    case 'behind': return { ...view, button: { label: 'Update branch', kind: 'secondary', action: 'update' } }
+    case 'dirty': return { ...view, button: { label: 'Try again', kind: 'secondary', action: 'merge' } }
+    case 'conflict': return { ...view, button: { label: 'Resolve conflicts', kind: 'strong', action: 'resolve' } }
+    case 'resolving': return { ...view, button: { label: PR_STATUS.resolving.label, kind: 'busy' } }
+    case 'merging': return { ...view, button: { label: PR_STATUS.merging.label, kind: 'busy' } }
+    case 'merged': return { ...view, merged: true }
+    case 'none': return view
+  }
+}
+
 /** The spinner label while an action's call is in flight. */
-export const busyLabel: Record<PrAction, string> = { create: 'Creating PR', resolve: 'Sending', merge: 'Merging', ready: 'Marking ready', reopen: 'Reopening' }
+export const busyLabel: Record<PrAction, string> = { create: 'Creating PR', resolve: 'Sending', merge: 'Merging', ready: 'Marking ready', reopen: 'Reopening', update: 'Sending' }
 /** The toast title when an action's call fails. */
-export const failTitle: Record<PrAction, string> = { create: 'Could not create the PR', resolve: 'Could not send to the agent', merge: 'Could not merge', ready: 'Could not mark it ready', reopen: 'Could not reopen' }
+export const failTitle: Record<PrAction, string> = { create: 'Could not create the PR', resolve: 'Could not send to the agent', merge: 'Could not merge', ready: 'Could not mark it ready', reopen: 'Could not reopen', update: 'Could not send to the agent' }
 /** The letter that runs an action with ⌘⇧ while its button shows (KERNEL-341). Reopen has none. */
 export const actionKey: Partial<Record<PrAction, string>> = { create: 'p', ready: 'p', merge: 'm', resolve: 'f' }
 
@@ -109,8 +228,6 @@ export function reviewLines(comments: ReviewComment[]): string[] {
 
 /** Unresolved review comments, for the "requested changes" card. */
 export const openComments = (pr?: PrInfo) => (pr?.comments ?? []).filter((c) => !c.resolved)
-
-const LANDED: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
 
 /**
  * The toast a PR state change earns: created, merged, or a create that ended without a PR. Failed calls toast where they are made.

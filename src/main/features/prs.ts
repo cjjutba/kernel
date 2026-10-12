@@ -1,4 +1,4 @@
-import type { MergeAllResult, MergeQueue, PrInfo, PrState, Workspace } from '@shared/types'
+import type { MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrState, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
@@ -12,6 +12,9 @@ import { Feature } from './feature'
 
 /** PR states whose next read is likely to differ soon, so the poll runs at its fast rate (KERNEL-388). */
 const MOVING: PrState[] = ['creating', 'checks', 'merging', 'resolving']
+
+/** How the chat says a local merge landed: "Squashed into main as 4e1b9c2." (KERNEL-467). */
+const LANDED_HERE: Record<MergeMethod, string> = { squash: 'Squashed into', merge: 'Merged into', rebase: 'Rebased onto' }
 
 /** Each workspace's pull request: opening, reading, merging and following its branch (KERNEL-330). */
 export class Prs extends Feature {
@@ -40,6 +43,7 @@ export class Prs extends Feature {
   async createPr(id: string, draft = false) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
+    if (this.isLocal(ws)) throw new Error('This room merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     const text = (await createTextFor((await this.prTexts(ws)).createInstructions, ws.path)) + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
@@ -61,7 +65,7 @@ export class Prs extends Feature {
     const host = this.host(ws.roomId)
     try {
       const optional = await this.optionalOf(ws.roomId)
-      return await host.info(cwd, ref, ws.id, { ...o, ...(optional.length ? { optional } : {}) })
+      return await host.info(cwd, ref, ws.id, { ...o, ...(this.isLocal(ws) ? { base: ws.baseRef } : {}), ...(optional.length ? { optional } : {}) })
     } catch (e) {
       if (e instanceof GhReadError && e.rateLimited) await this.limited(e, host, cwd)
       throw e
@@ -70,6 +74,9 @@ export class Prs extends Feature {
 
   /** Where the room's PRs live (KERNEL-453). */
   private host(roomId: string): CodeHost { return this.k.codeHost.hostFor(this.mustRoom(roomId)) }
+
+  /** The workspace's room has no GitHub, so its branch merges on the Mac (KERNEL-467). */
+  private isLocal(ws: Workspace) { return this.store.room(ws.roomId)?.host === 'local' }
 
   /** A read GitHub refused for its rate limit. The primary limit's reset comes from `gh api rate_limit`, which costs nothing. */
   private async limited(e: GhReadError, host: CodeHost, cwd: string) {
@@ -108,6 +115,24 @@ export class Prs extends Feature {
     this.setPrState(ws, 'resolving')
   }
 
+  /**
+   * Update branch, for a branch that merges on this Mac and has fallen behind its base (KERNEL-478): asks the agent to rebase
+   * onto it and re-run the tests. GitHub has its own button for a PR, so a room on GitHub refuses. Nothing changes state, so the
+   * band keeps reading Behind until the next read finds the branch caught up.
+   */
+  async updateBranch(id: string) {
+    const ws = this.mustWs(id)
+    if (!this.isLocal(ws)) throw new Error('Only a branch that merges on this Mac updates this way. GitHub updates a pull request.')
+    const chat = this.prChat(id)
+    if (!chat) throw new Error('This workspace has no chat.')
+    const info = await this.read(ws, ws.path, ws.branch)
+    const behind = info?.local?.behind ?? 0
+    const base = info?.baseRef ?? ws.baseRef
+    if (!behind) throw new Error(`This branch is up to date with ${base}.`)
+    this.k.lead.userSpoke(chat.id)
+    await this.sessions.send(chat.id, [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, rebase onto ${base}, resolve any conflicts and re-run the tests. Then say what you changed.` }])
+  }
+
   /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */
   private infos = new Map<string, { info: PrInfo; at: number }>()
   infoMs = 10_000
@@ -118,9 +143,13 @@ export class Prs extends Feature {
    */
   private async getPr(id: string) {
     const ws = this.mustWs(id)
-    if (!ws.prNumber) return null
-    // An archived workspace, opened from History, keeps its state and only shows what GitHub says now.
+    // A local merge has no number, and what it reads is the branch as it is now (KERNEL-467).
+    const local = this.isLocal(ws)
+    if (!ws.prNumber && !local) return null
+    // An archived workspace, opened from History, keeps its state and only shows what GitHub says now. Git says nothing
+    // about a local one that isn't on its workspace already.
     if (ws.status === 'archived') {
+      if (local) return null
       const info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch(() => null)
       if (info) bus.push({ type: 'pr.info', info })
       return info
@@ -157,14 +186,20 @@ export class Prs extends Feature {
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
     this.noteRead(id, ws, info)
-    if (info) { this.prints.set(id, fingerprintOf(info)); this.infos.set(id, { info, at: Date.now() }); this.cadence.ok() }
+    if (info) {
+      this.prints.set(id, fingerprintOf(info))
+      this.infos.set(id, { info, at: Date.now() })
+      // A read of git says nothing about GitHub's limits.
+      if (!this.isLocal(ws)) this.cadence.ok()
+    }
     const settle = o.settle ?? !this.agentBusy(ws)
     const hold = this.held(ws, settle)
     const state = this.nextState(ws, info, settle)
     const adopt = info && state !== 'none'
     const patch: Partial<Workspace> = {
       prState: state,
-      ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
+      // A local merge has no number or url to keep (KERNEL-467).
+      ...(adopt ? { ...(info.number ? { prNumber: info.number, prUrl: info.url } : {}), prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       // GitHub's word on merging a ready PR goes with the state, and a held state keeps the last one (KERNEL-388).
       ...(info && !hold ? { prBlocked: state === 'ready' ? info.blocked : undefined } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
@@ -175,25 +210,29 @@ export class Prs extends Feature {
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info, ws.prBlocked === 'behind')
-    if (next.prState !== ws.prState) {
-      this.changedAt = Date.now()
-      bus.push({ type: 'pr', workspaceId: id, state: next.prState })
-      bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
-      const text = prNote(next, info, this.mergedWith.get(id), remote)
-      if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
-      if (next.prState === 'merged') {
-        this.mergedWith.delete(id)
-        void this.overlaps.check(ws.roomId).catch(() => undefined)
-        // Main moved. A teammate with no PR yet hears it if that would conflict with its work (KERNEL-180).
-        void this.k.baseWatch.check(ws.roomId, { fetch: true }).catch(() => undefined)
-      }
-    }
+    if (next.prState !== ws.prState) this.moved(ws, next, prNote(next, info, this.mergedWith.get(id), remote))
     // A ready PR GitHub started or stopped blocking, its state the same, so nothing above told anyone (KERNEL-401). A PR that
     // becomes ready already blocked goes out with its 'pr' push, which the Lead and the Inbox read prBlocked on.
     if (ws.prState === 'ready' && next.prState === 'ready' && ws.prBlocked !== next.prBlocked) {
       bus.push({ type: 'pr.blocked', workspaceId: id, ...(next.prBlocked ? { blocked: next.prBlocked } : {}) })
     }
     return next
+  }
+
+  /** Tells the window, the room's activity and the chat that the PR moved from `ws`'s state to `next`'s. */
+  private moved(ws: Workspace, next: Workspace, text: string | undefined) {
+    const id = ws.id
+    this.changedAt = Date.now()
+    bus.push({ type: 'pr', workspaceId: id, state: next.prState })
+    bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
+    if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
+    if (next.prState === 'merged') {
+      this.mergedWith.delete(id)
+      void this.overlaps.check(ws.roomId).catch(() => undefined)
+      // Main moved. A teammate with no PR yet hears it if that would conflict with its work (KERNEL-180). A local merge moved
+      // it on this Mac, so there is nothing to fetch.
+      void this.k.baseWatch.check(ws.roomId, { fetch: !this.isLocal(ws) }).catch(() => undefined)
+    }
   }
 
   /** Creating and Resolving hold while the agent works, and `merging` while Kernel's merge runs. */
@@ -204,6 +243,8 @@ export class Prs extends Feature {
   /** The state a read moves the workspace to, after the holds. `info` null means GitHub found no PR. */
   private nextState(ws: Workspace, info: PrInfo | null, settle: boolean): PrState {
     if (this.held(ws, settle)) return ws.prState
+    // A local merge is final, and git can't tell a squashed branch from one that never merged (KERNEL-467).
+    if (ws.prState === 'merged' && this.isLocal(ws)) return 'merged'
     if (!info) return ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
     if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) return 'none'
     // A conflict holds until GitHub has checked the PR again. The rest of the read is real (KERNEL-283).
@@ -291,20 +332,33 @@ export class Prs extends Feature {
     const method = await this.k.codeHost.methodFor(this.mustRoom(ws.roomId))
     this.merging.add(id)
     this.setPrState(ws, 'merging')
+    let landed: { sha: string; base: string } | void
     try {
-      await this.host(ws.roomId).merge(ws.path, ws.branch, method)
+      landed = await this.host(ws.roomId).merge(ws.path, ws.branch, method, { base: ws.baseRef, title: ws.prTitle ?? ws.title })
       this.mergedWith.set(id, method)
       this.updateWs(id, { mergedWith: method })
     } catch (e) {
-      this.k.codeHost.forgetMergeMethods(ws.roomId)
+      this.k.codeHost.forgetMergeMethods(this.mustRoom(ws.roomId))
       this.merging.delete(id)
       await this.k.refreshPr(id, { settle: true }).catch(() => undefined)
       throw e
     }
     this.merging.delete(id)
+    if (landed) return this.landedHere(id, method, landed)
     // GitHub works out again whether every other PR into the base conflicts, so the poll follows them closely (KERNEL-388).
     this.pollSoon()
     return this.k.refreshPr(id, { settle: true })
+  }
+
+  /**
+   * A merge Kernel made on the Mac is done once git says so (KERNEL-467). Reading the branch again would find a squashed
+   * branch still ahead of its base, so the workspace moves to merged here, and the push drives `archiveMerged` (wiring.ts).
+   */
+  private landedHere(id: string, method: MergeMethod, landed: { sha: string; base: string }): Workspace {
+    const ws = this.mustWs(id)
+    const next = this.updateWs(id, { prState: 'merged', mergedAt: ws.mergedAt ?? Date.now(), mergeCommit: landed.sha })
+    this.moved(ws, next, `${LANDED_HERE[method]} ${landed.base} as ${landed.sha.slice(0, 7)}.`)
+    return next
   }
 
   /** How often and how long a merge re-reads a PR GitHub is still checking for conflicts, in ms. Tests shorten it. */
@@ -388,7 +442,7 @@ export class Prs extends Feature {
       await git(ws.path, 'checkout', '-b', free, ws.baseRef)
       return free
     })
-    const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined, mergeCommit: undefined })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
     this.note(id, `Continuing on ${branch} from ${stripRemote(ws.baseRef, remote)}. The chat stays.`)
     return next
@@ -493,9 +547,7 @@ export class Prs extends Feature {
     for (const [roomId, list] of rooms) {
       const room = this.store.room(roomId)
       if (!room) continue
-      let host: CodeHost
-      // A room whose host Kernel can't reach yet has no PR to read, and the other rooms are still read (KERNEL-453).
-      try { host = this.k.codeHost.hostFor(room) } catch { continue }
+      const host = this.k.codeHost.hostFor(room)
       if (!host.prs) { for (const ws of list) await this.readOne(ws, start); continue }
       if (this.cadence.paused()) continue
       // A branch switched by hand drops the old branch's PR, and the workspace is read on its own below (KERNEL-68).
@@ -659,6 +711,7 @@ export class Prs extends Feature {
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
       'pr.mergeAll': async ({ roomId, workspaceIds }) => this.mergeAll(roomId, workspaceIds),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
+      'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
       'github.status': async () => this.cadence.status(),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),

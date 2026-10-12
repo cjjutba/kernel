@@ -338,12 +338,15 @@ export async function repoMergeMethods(cwd: string): Promise<MergeMethod[]> {
 }
 
 /**
- * The calls Kernel makes for a workspace's PR, wherever the room's code is hosted. `gh` is GitHub's, the only one so far
- * (KERNEL-432). Tests swap it for a stub.
+ * The calls Kernel makes for a workspace's PR, wherever the room's code is hosted (KERNEL-432). `gh` is GitHub's, and tests
+ * swap it for a stub. A room with no GitHub gets the local one from `CodeHosts.hostFor` (KERNEL-467).
  */
 export interface CodeHost {
-  /** The full read of one PR. Null when there is none; rejects with GhReadError when GitHub couldn't be read. */
-  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string; optional?: string[] }) => Promise<PrInfo | null>
+  /**
+   * The full read of one PR. Null when there is none; rejects with GhReadError when GitHub couldn't be read. `base` is the
+   * workspace's base, which only a local merge reads: a PR on GitHub knows its own.
+   */
+  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string; optional?: string[]; base?: string }) => Promise<PrInfo | null>
   /**
    * Many PRs of the repo at `cwd` in one read, by number, with no review comments or conflicting files, and the rate limit.
    * A stub without it makes the poll read each PR in full, as before (KERNEL-388).
@@ -351,7 +354,11 @@ export interface CodeHost {
   prs?: (cwd: string, numbers: number[], o?: { optional?: string[] }) => Promise<{ infos: Map<number, PrInfo>; rate?: RateLimit }>
   /** GraphQL's rate limit, read for free, for when a read hit it without saying when it resets. */
   rateLimit?: (cwd: string) => Promise<RateLimit | undefined>
-  merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
+  /**
+   * Merges the PR. `base` and `title` are for a local merge, which also returns the commit it left on the base: a merge on
+   * GitHub is known once a read says so (KERNEL-467).
+   */
+  merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase', o?: { base?: string; title?: string }) => Promise<void | { sha: string; base: string }>
   /** The merge methods the repo at `cwd` allows. Rejects when the host couldn't say. A host without it takes any (KERNEL-468). */
   mergeMethods?: (cwd: string) => Promise<MergeMethod[]>
   ready: (cwd: string, ref: string) => Promise<void>
@@ -427,18 +434,21 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-/** Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. */
-export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string }
+/**
+ * Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. `source` is
+ * gh's `tokenSource`: "keyring", "GH_TOKEN", "GITHUB_TOKEN" or the path of gh's config file (KERNEL-448).
+ */
+export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string; source?: string }
 
 /** Reads `gh auth status --json hosts` for github.com's active account. Null when it isn't that JSON. */
 export function parseGhAuth(json: string): GhAuth | null {
-  let hosts: Record<string, { state?: string; error?: string; active?: boolean; login?: string }[]> | undefined
+  let hosts: Record<string, { state?: string; error?: string; active?: boolean; login?: string; tokenSource?: string }[]> | undefined
   try { hosts = (JSON.parse(json) as { hosts?: typeof hosts }).hosts } catch { return null }
   if (!hosts) return null
   const active = hosts['github.com']?.find((a) => a.active)
   if (!active) return { state: 'signed-out' }
   const login = active.login || undefined
-  if (active.state === 'success') return { state: 'ok', login }
+  if (active.state === 'success') return { state: 'ok', login, ...(active.tokenSource ? { source: active.tokenSource } : {}) }
   // GitHub rejecting the token is a 401. Any other error (no network, a timeout, an outage) leaves the sign-in standing.
   if (active.state === 'error' && /\b401\b|Bad credentials/.test(active.error ?? '')) return { state: 'signed-out', login }
   return { state: 'offline', login }

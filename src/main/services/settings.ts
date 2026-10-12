@@ -416,7 +416,7 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
     // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
     scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
-    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
+    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy', 'exclude'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
@@ -487,7 +487,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
-    files: { copy: files.copy ?? [...DEFAULT_COPY], symlinkNodeModules: files.symlinkNodeModules },
+    files: { copy: files.copy ?? [...DEFAULT_COPY], exclude: files.exclude ?? [], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),

@@ -7,7 +7,10 @@ import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { sessionEnv } from '../src/main/services/sessions'
+import { parse as parseToml } from 'smol-toml'
 import { readSetupEnv, setupEnvPath } from '../src/main/services/env'
+import { defaultRepoSettings } from '../src/main/services/rooms'
+import { workspaceSlug } from '../src/shared/kernelVars'
 import { setUp, tempRepo, trustRoom } from './helpers'
 
 // KERNEL-405: setup hands variables to the workspace through $KERNEL_ENV, like GitHub Actions' $GITHUB_ENV.
@@ -107,3 +110,28 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     expect(existsSync(file)).toBe(false)
   })
 })
+
+describe('One database per workspace (KERNEL-449)', () => {
+  it("gives setup the workspace's database and Compose names, and fills them into what setup hands on", async () => {
+    const { k, room, dataDir } = await roomWith('echo "$KERNEL_WORKSPACE_SLUG|$COMPOSE_PROJECT_NAME" > names.txt && echo DB=app_\\${KERNEL_WORKSPACE_SLUG} >> "$KERNEL_ENV"')
+    k.sessions.send = async () => ({ queued: false })
+    const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    expect(ws.status).toBe('ready')
+    const slug = workspaceSlug(ws)
+    expect(await readFile(join(ws.path, 'names.txt'), 'utf8')).toBe(`${slug}|${slug}\n`)
+    // The file keeps what setup wrote. Agents get it with the workspace's own name filled in.
+    expect(readSetupEnv(setupEnvPath(dataDir, ws.id)).vars).toEqual({ DB: 'app_${KERNEL_WORKSPACE_SLUG}' })
+    expect(sessionEnv(k.env.envFor(k.store.workspace(ws.id)!), {})).toMatchObject({ DB: `app_${slug}`, COMPOSE_PROJECT_NAME: slug })
+  })
+
+  it('shows the example in the settings file Kernel writes, as comments that change nothing', () => {
+    for (const setup of ['pnpm install', undefined]) {
+      const text = defaultRepoSettings(setup)
+      expect(parseToml(text)).toEqual(setup ? { files: { copy: ['.env', '.env.local'] }, scripts: { setup } } : { files: { copy: ['.env', '.env.local'] } })
+      expect(text).toContain(`#   setup = "${setup ? `${setup} && ` : ''}createdb $KERNEL_WORKSPACE_SLUG"`)
+      expect(text).toContain('#   archive = "dropdb --if-exists $KERNEL_WORKSPACE_SLUG"')
+      expect(text).toContain('#   DATABASE_URL=postgres://localhost:5432/${KERNEL_WORKSPACE_SLUG}')
+    }
+  })
+})
+

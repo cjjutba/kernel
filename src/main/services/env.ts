@@ -1,7 +1,10 @@
-import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { chmodSync, closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { isIP } from 'node:net'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { parseEnv } from 'node:util'
-import { ENV_NAME, isClaudeVar, isKernelVar, type KernelVar } from '@shared/kernelVars'
+import type { ProductionHint } from '@shared/types'
+import { ENV_NAME, isClaudeVar, isKernelVar, KERNEL_VARS, workspaceSlug, type KernelVar } from '@shared/kernelVars'
 
 /**
  * Turns a value into text that is safe to write to disk and back. The app passes Electron's `safeStorage`, which uses the
@@ -13,28 +16,38 @@ export interface Cipher {
 }
 
 /**
- * Every variable a process in a workspace gets, where a later layer wins: the Mac's environment, the app's variables, the
- * room's env files in list order, the room's variables, what the workspace's setup wrote to `$KERNEL_ENV` (KERNEL-405), then
- * Kernel's own (KERNEL-247).
+ * `${KERNEL_PORT}`, `${KERNEL_WORKSPACE_SLUG}` and Kernel's other names in a value, filled in from `kernel`. Only the braced
+ * form of Kernel's own names: `$NAME`, any other variable and commands stay as written, so a value can't read the Mac's
+ * environment or run anything (KERNEL-449).
+ */
+export const expandKernelVars = (value: string, kernel: Record<string, string>): string =>
+  value.replace(/\$\{(KERNEL_[A-Z_]+)\}/g, (all, name: string) => (Object.hasOwn(KERNEL_VARS, name) && Object.hasOwn(kernel, name) ? kernel[name] : all))
+
+/**
+ * Every variable a process in a workspace gets, where a later layer wins: Kernel's defaults, the Mac's environment, the
+ * app's variables, the room's env files in list order, the room's variables, what the workspace's setup wrote to
+ * `$KERNEL_ENV` (KERNEL-405), then Kernel's own (KERNEL-247). A default is what Kernel picks unless the user sets the name,
+ * like `COMPOSE_PROJECT_NAME`. Values the user wrote get `${KERNEL_*}` filled in (KERNEL-449). The Mac's are left alone.
  */
 export function buildEnv(l: {
   base: NodeJS.ProcessEnv
+  defaults?: Record<string, string>
   app?: Record<string, string>
   files?: Record<string, string>[]
   room?: Record<string, string>
   setup?: Record<string, string>
   kernel: Record<string, string>
 }): Record<string, string> {
-  const out: Record<string, string> = {}
+  const out: Record<string, string> = { ...l.defaults }
   for (const [k, v] of Object.entries(l.base)) if (v !== undefined) out[k] = v
-  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.setup ?? {}, l.kernel]) Object.assign(out, layer)
-  return out
+  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.setup ?? {}]) for (const [k, v] of Object.entries(layer)) out[k] = expandKernelVars(v, l.kernel)
+  return Object.assign(out, l.kernel)
 }
 
 /** Kernel's own variables for a workspace. The same set for sessions, scripts and terminals. */
 export const kernelVars = (ws: { id: string; name: string; path: string; port: number; branch: string; baseRef: string }, room: { path: string; defaultBranch?: string } | undefined): Record<KernelVar, string> => ({
   KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: room?.path ?? ws.path,
-  KERNEL_WORKSPACE_NAME: ws.name, KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: room?.defaultBranch ?? ''
+  KERNEL_WORKSPACE_NAME: ws.name, KERNEL_WORKSPACE_SLUG: workspaceSlug(ws), KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: room?.defaultBranch ?? ''
 })
 
 /** The file a workspace's setup writes NAME=value lines to, `$KERNEL_ENV` (KERNEL-405). Kept on archive, removed on Delete. */
@@ -142,6 +155,84 @@ export function readEnvFiles(dir: string, files: string[]): { path: string; miss
     const text = real ? readSmallFile(real) : null
     return text === null ? { path, missing: true, vars: {} } : { path, missing: false, vars: parseEnv(text) as Record<string, string> }
   })
+}
+
+/**
+ * The env file a room's agents, scripts and terminals read when neither settings file sets `[env] files`: the user's own
+ * file for Kernel, next to the `.env` they keep for themselves (KERNEL-449).
+ */
+export const ENV_KERNEL = '.env.kernel'
+
+/**
+ * Whether git tracks `name` in `repo`, by the index and without case, the way a case-insensitive disk reads it. Synchronous,
+ * for `envFor`, which only asks when the file changed. A folder with no `.git` tracks nothing. A git error counts as
+ * tracked, so the file waits like the repo's.
+ */
+export function trackedSync(repo: string, name: string): boolean {
+  if (!existsSync(join(repo, '.git'))) return false
+  const r = spawnSync('git', ['-C', repo, 'ls-files', '-z', '--', `:(icase)${name}`], { encoding: 'utf8', timeout: 3000 })
+  return r.status !== 0 || !!r.stdout
+}
+
+/** A file's identity and last change, to tell when it changed: inode, size and mtime. Null when Kernel wouldn't read it. */
+export function fileStamp(dir: string, path: string): string | null {
+  const real = envFilePath(dir, path)
+  if (!real) return null
+  try {
+    const st = statSync(real)
+    return st.isFile() && st.size <= MAX_ENV_FILE ? `${st.ino}:${st.size}:${st.mtimeMs}` : null
+  } catch { return null }
+}
+
+const LIVE_KEY = /^(sk|rk)_live_/
+const DB_SCHEMES = new Set(['postgres', 'postgresql', 'mysql', 'mysql2', 'mariadb', 'mongodb', 'mongodb+srv', 'redis', 'rediss', 'sqlserver', 'mssql', 'cockroachdb', 'libsql', 'prisma', 'prisma+postgres'])
+const ENV_NAMES = /^(.+_)?ENV(IRONMENT)?$/i
+const PRODUCTION = new Set(['production', 'prod', 'live'])
+
+/** A host on this Mac or its own network: loopback, a private address, `.local`, or one word like a Compose service's `db`. */
+function localHost(host: string): boolean {
+  const h = host.toLowerCase()
+  if (!h || h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') || h === 'host.docker.internal') return true
+  if (isIP(h) === 4) return /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|0\.0\.0\.0$)/.test(h)
+  if (isIP(h) === 6) return h === '::1' || h === '::' || /^(f[cd]|fe80:)/.test(h)
+  return !h.includes('.')
+}
+
+/** The hosts in a URL's authority, after any user and password: `a:1,b:2` names two. */
+const hostsOf = (authority: string) => authority.slice(authority.lastIndexOf('@') + 1).split(',').map((h) => (h.startsWith('[') ? h.slice(1, h.indexOf(']')) : h.replace(/:\d*$/, '')))
+
+/**
+ * The hosts a database URL names, or null when the value isn't one. A password may hold `/`, `?` or `#` unescaped, so the
+ * host is read both ways, up to the first of those and after the last `@`, and each counts.
+ */
+function databaseHosts(value: string): string[] | null {
+  const m = /^(?:jdbc:)?([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(value.trim())
+  if (!m || !DB_SCHEMES.has(m[1].toLowerCase())) return null
+  const rest = m[2]
+  const plain = rest.split(/[/?#]/)[0]
+  const afterAt = rest.slice(rest.lastIndexOf('@') + 1).split(/[/?#]/)[0]
+  return [...new Set([...hostsOf(plain), ...hostsOf(afterAt)])]
+}
+
+/** Why a variable looks like production, or nothing. Reads the value and never returns it (KERNEL-449). */
+export function productionWhy(name: string, value: string): ProductionHint['why'] | undefined {
+  const v = value.trim()
+  if (LIVE_KEY.test(v)) return 'live-key'
+  const hosts = databaseHosts(v)
+  if (hosts?.some((h) => !localHost(h))) return 'remote-database'
+  if (ENV_NAMES.test(name) && PRODUCTION.has(v.toLowerCase())) return 'production'
+  return undefined
+}
+
+/** How strongly each reason says production, first first. */
+const WHY_ORDER: ProductionHint['why'][] = ['live-key', 'remote-database', 'production']
+
+/** Each variable in an env file's text that looks like production, the strongest reasons first, then in file order. */
+export function productionHints(path: string, text: string): ProductionHint[] {
+  let vars: Record<string, string>
+  try { vars = parseEnv(text) as Record<string, string> } catch { return [] }
+  const hints = Object.entries(vars).flatMap(([name, value]) => { const why = productionWhy(name, value); return why ? [{ path, name, why }] : [] })
+  return hints.sort((a, b) => WHY_ORDER.indexOf(a.why) - WHY_ORDER.indexOf(b.why))
 }
 
 /** Names a plain object can't hold as its own, so a variable with one would be saved as nothing. */
