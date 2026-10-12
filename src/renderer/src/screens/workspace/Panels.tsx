@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
+import { bottomFolds, foldedWord } from './bottomPanel'
 import { actions, go, useStore, type State } from '../../store'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
@@ -328,11 +329,17 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <Button icon="play" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
       </div>
     )
+  // Nothing running and no output: the panel is its tab row alone and the files get the room (KERNEL-529).
+  const folds = bottomFolds({ tab: bottom, lines: lines.length, running: selectedRunning, setupBusy, starting: busy !== null, setupHolds: setupFolds(ws) })
   return (
-    <div className="bottom-panel" data-tall={setupFolds(ws) || undefined}>
+    <div className="bottom-panel" data-tall={setupFolds(ws) || undefined} data-folded={folds || undefined}>
       <div className="bottom-tabs">
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
+        {folds && bottom !== 'terminal' && <span className="bottom-word">{foldedWord(bottom, { noRun, noSetup, port: ws.port })}</span>}
         <span className="grow" />
+        {/* Folded, the row carries what the empty state did: add the missing script, or run setup. */}
+        {folds && ((bottom === 'run' && noRun) || (bottom === 'setup' && noSetup)) && <Button className="small" onClick={addScript}>{bottom === 'run' ? 'Add run script' : 'Add setup script'}</Button>}
+        {folds && bottom === 'setup' && !noSetup && ws.status !== 'failed' && <Button className="small" icon="play" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
         {bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
         {bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
@@ -347,7 +354,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         </div>
       )}
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
+      {bottom !== 'terminal' && !folds && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
         {lines.length
           ? lines.map((l) => <LogLine key={lineKey(l)} l={l} />)
           : empty}

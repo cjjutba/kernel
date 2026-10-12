@@ -123,6 +123,11 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Servers row (KERNEL-440): the hire card and the New agent review list the servers the new agent's file names, one pill each. A server that works shows its name. One that doesn't shows the amber triangle and the problem. A sentence under the row says what that means for Rowan's hand-offs.
 - Roster picker and rule conflicts (KERNEL-440): with more than about 12 agents, room setup asks who joins. The card has a search box, checkbox rows (name, role, tags, one description line, any warning) and "8 of 23 picked" with Clear and Pick the suggested 8. Kernel suggests the agents that can open pull requests. One written as a subagent with no pull request workflow starts unpicked as a Helper, with its warning. The list scrolls inside the card, so a half row shows at the bottom. The conflicts card lists each rule in CLAUDE.md or AGENTS.md that fights Kernel's workflow, with its file and line, next to what Kernel tells agents. Kernel never edits those files. Setup is taller than the window with these cards, so `RoomSetupRoster` and `RoomSetupConflicts` are drawn scrolled to the end.
 
+## Run panel (KERNEL-529)
+
+- On the Setup and Run tabs, with no output and nothing running or starting, the bottom panel folds to its tab row, so the files above get the room. The row says what it waits on in faint 12px: "No run script" with Add run script, "Idle, port N" with Run, "No setup script" with Add setup script, or "No output yet" with Run setup.
+- The first line of output opens it again. The Terminal tab never folds, and neither does a workspace still setting up or with a failed setup.
+
 ## Busy buttons
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
