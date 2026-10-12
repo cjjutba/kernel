@@ -180,8 +180,9 @@ export interface SessionDeps {
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
   /**
-   * A hold on every chat of a room or a provider lifted: a resume, back online or signed in, the launch checks done, or a
-   * chat's setup hold released. A chat `post` refused may take Kernel's message now (KERNEL-637).
+   * A hold on every chat of a room or a provider lifted: a resume, back online or signed in, the launch checks done, a
+   * chat's setup hold released, or a slot opened (`drainWaiting`). A chat `post` refused may take Kernel's message now
+   * (KERNEL-637, KERNEL-651).
    */
   onFreed?: () => void
 }
@@ -416,7 +417,6 @@ export class Sessions {
     if (!this.launching) return
     this.launching = false
     this.drainWaiting()
-    this.d.onFreed?.()
   }
 
   /**
@@ -942,6 +942,8 @@ export class Sessions {
     this.carryOn()
     // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
     this.pushReasons()
+    // A higher one frees room for Team updates that waited only for a slot (KERNEL-651).
+    this.d.onFreed?.()
   }
 
   /**

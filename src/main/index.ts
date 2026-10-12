@@ -344,6 +344,7 @@ app.whenReady().then(async () => {
       // MCP sign-ins are shared between Claude logins through the Keychain. A smoke test leaves the user's items alone (KERNEL-616).
       keychain: smokeTest ? undefined : macKeychain(),
       version: app.getVersion(),
+      log,
       updater,
       // A dev run has no updater and no notes in its build, so What's new reads the version's release file in the repo.
       currentNotes: app.isPackaged ? undefined : readNotes(join(app.getAppPath(), 'site', 'content', 'releases', `${app.getVersion()}.md`)),

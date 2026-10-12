@@ -1,5 +1,6 @@
 import type { AppUpdate, SharedFile } from '@shared/types'
 import type { Cipher } from '../services/env'
+import type { Log } from '../services/log'
 import type { Keychain } from '../services/providers/claudeHome'
 import type { AppSettings } from '../services/settings'
 import type { ShellRead } from '../services/shellPath'
@@ -69,4 +70,9 @@ export interface KernelOptions {
    * only when DO_NOT_TRACK and KERNEL_TELEMETRY=0 aren't set. Without it Kernel never sends, whatever Settings, Privacy says.
    */
   telemetry?: { key: string; host: string; os?: string; arch?: string }
+  /**
+   * Kernel's log, for lines worth keeping that aren't warnings or errors, like Team update delivery timings (KERNEL-651).
+   * The app passes its `Log`. Fixture runs and tests leave it out, and those lines go only to the console.
+   */
+  log?: Pick<Log, 'info'>
 }
