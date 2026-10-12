@@ -239,7 +239,7 @@ export interface KernelApi {
   /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
   'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
 
-  // board (KERNEL-18)
+  // tasks (KERNEL-18)
   'tasks.list': { req: { roomId: string }; res: Task[] }
 
   // home and inbox (KERNEL-17)

@@ -35,7 +35,6 @@ export interface AppSettings {
     /** The Open in app last picked, by its catalog id (KERNEL-427). Unset until the first pick. */
     openIn?: string
   }
-  floor: { style: 'isometric' | 'plan' | 'list'; nameTags: boolean; animate: boolean }
   appearance: { theme: Theme | 'system'; fontSize: 'default' | 'small' | 'large'; density: 'comfortable' | 'compact'; pointerCursors: boolean; reduceMotion: boolean }
   notifications: {
     permission: boolean; plan: boolean; merge: boolean; checkFailed: boolean; finished: boolean; idle: boolean

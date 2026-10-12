@@ -52,7 +52,7 @@ export interface Workspace {
   /** For current-branch workspaces: the commit that captures pre-existing changes. */
   baselineRef?: string
   source?: WorkspaceSource
-  /** Board task this workspace builds, for example "T-14". */
+  /** The task this workspace builds, for example "T-14". */
   taskId?: string
   /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
   leadChatId?: string
