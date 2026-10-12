@@ -25,7 +25,8 @@ import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
-import { Transcript, TranscriptSkeleton } from './Transcript'
+import { SetupWait } from './SetupWait'
+import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
 import { githubIssueUrl, isGithubKey } from './issueKey'
@@ -129,7 +130,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const diffs = tabs?.diffs ?? NO_TABS
   const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
-  const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  const found = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  // A chat waiting for setup holds its messages in main (KERNEL-430), so you can keep typing: they queue behind it.
+  const heldForSetup = useStore((s) => (chat ? !!s.queue[chat.id]?.length && s.queueWhy[chat.id] === 'setup' : false))
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
@@ -175,7 +178,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // Rowan's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
-  const blocked = setup || ws.status === 'failed' || !!banner?.blocks
+  // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
+  // banner doesn't say it a second time.
+  const setupWait = (setup || ws.status === 'failed') && chat?.kind !== 'terminal' && empty
+  const banner = setupWait && found?.id === 'setup' ? undefined : found
+  // Setup without a held chat (a teammate's brief still on its way) keeps the box shut, so nothing goes out before setup does.
+  const blocked = (setup && !heldForSetup) || !!banner?.blocks
 
   const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
@@ -251,11 +259,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
                 : text
                   ? <TextView name={text.name} text={text.text} />
-                : setup
-                  ? <TranscriptSkeleton branch={ws.branch} />
-                  // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
-                  : ws.status === 'failed' && empty
-                    ? <div className="grow" />
+                // A chat waiting for setup shows what waits and where setup stands, not a skeleton or the New chat suggestions.
+                : setupWait
+                  ? <SetupWait ws={ws} chat={chat} />
                   : showNewChat
                     ? <NewLeadChat roomId={ws.roomId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'

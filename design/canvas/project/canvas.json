@@ -47,6 +47,51 @@
       "x": 7600,
       "y": 0
     },
+    "CheckHooksNotWritable.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks \u00b7 folder not writable",
+      "w": 1440,
+      "x": 9120,
+      "y": 0
+    },
+    "CheckHooksReadOnly.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks \u00b7 read-only disk",
+      "w": 1440,
+      "x": 10640,
+      "y": 0
+    },
+    "CheckHooksSymlink.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks \u00b7 settings file is a link",
+      "w": 1440,
+      "x": 12160,
+      "y": 0
+    },
+    "CheckHooksManaged.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks \u00b7 managed settings",
+      "w": 1440,
+      "x": 13680,
+      "y": 0
+    },
+    "CheckHooksOff.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks \u00b7 hooks turned off",
+      "w": 1440,
+      "x": 15200,
+      "y": 0
+    },
     "CommandPalette.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -434,6 +479,15 @@
       "x": 7600,
       "y": 1300
     },
+    "RoomSetupWarnings.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a room with two warnings",
+      "w": 1440,
+      "x": 19760,
+      "y": 1300
+    },
     "Rooms.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -495,6 +549,15 @@
       "title": "Room \u00b7 Files to copy",
       "w": 1440,
       "x": 4560,
+      "y": 20800
+    },
+    "SettingsFilesProduction.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Files to copy \u00b7 production warning",
+      "w": 1440,
+      "x": 34960,
       "y": 20800
     },
     "SettingsGit.dc.html": {
@@ -569,6 +632,15 @@
       "x": 12160,
       "y": 20800
     },
+    "SettingsRoomDiskMeasuring.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 measuring disk",
+      "w": 1440,
+      "x": 33440,
+      "y": 20800
+    },
     "SettingsRoomGit.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -576,6 +648,24 @@
       "title": "Room \u00b7 Git",
       "w": 1440,
       "x": 13680,
+      "y": 20800
+    },
+    "SettingsRoomGitPushFailed.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Git \u00b7 push check failed",
+      "w": 1440,
+      "x": 30400,
+      "y": 20800
+    },
+    "SettingsRoomGitUnreachable.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Git \u00b7 remote unreachable",
+      "w": 1440,
+      "x": 31920,
       "y": 20800
     },
     "SettingsRoomScripts.dc.html": {
@@ -641,6 +731,15 @@
       "x": 9120,
       "y": 19500
     },
+    "SetupBedrock.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Using Bedrock from your shell",
+      "w": 1440,
+      "x": 18240,
+      "y": 1300
+    },
     "SetupClaudeMissing.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -659,6 +758,15 @@
       "x": 1520,
       "y": 1300
     },
+    "SetupGhIdentity.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "GitHub CLI login from the keyring",
+      "w": 1440,
+      "x": 13680,
+      "y": 1300
+    },
     "SetupGhSignedOut.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -668,6 +776,15 @@
       "x": 4560,
       "y": 1300
     },
+    "SetupGhToken.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "GitHub CLI login from GH_TOKEN",
+      "w": 1440,
+      "x": 15200,
+      "y": 1300
+    },
     "SetupPortBusy.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -675,6 +792,15 @@
       "title": "Hook port in use",
       "w": 1440,
       "x": 6080,
+      "y": 1300
+    },
+    "SetupShellTimeout.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Reading your shell timed out",
+      "w": 1440,
+      "x": 16720,
       "y": 1300
     },
     "SidebarRoomMenu.dc.html": {
@@ -1674,6 +1800,96 @@
       "x": 13680,
       "y": 15600
     },
+    "TeamWarnings.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Team \u00b7 servers an agent can't reach and files Kernel can't read",
+      "w": 1440,
+      "x": 0,
+      "y": 27300
+    },
+    "TeamPersonal.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Team \u00b7 Personal agents and what Kernel allows on top of a file",
+      "w": 1440,
+      "x": 1520,
+      "y": 27300
+    },
+    "AgentProfileServers.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent profile \u00b7 servers and what you allowed",
+      "w": 1440,
+      "x": 3040,
+      "y": 27300
+    },
+    "AgentProfileScope.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent profile \u00b7 saving a change, for me or for the team",
+      "w": 1440,
+      "x": 4560,
+      "y": 27300
+    },
+    "ConfirmRetireScope.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Retire an agent \u00b7 for me or for the team",
+      "w": 1440,
+      "x": 6080,
+      "y": 27300
+    },
+    "NewAgentDraftScope.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New agent \u00b7 Review the file, with servers and who gets it",
+      "w": 1440,
+      "x": 7600,
+      "y": 27300
+    },
+    "WorkspaceToolsGate.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Tools gate \u00b7 allow once, allow here or keep blocked",
+      "w": 1440,
+      "x": 9120,
+      "y": 27300
+    },
+    "WorkspaceHireServers.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Chat with Rowan \u00b7 hiring an agent, with servers and who gets it",
+      "w": 1440,
+      "x": 10640,
+      "y": 27300
+    },
+    "RoomSetupRoster.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a room with many agents \u00b7 pick the roster",
+      "w": 1440,
+      "x": 12160,
+      "y": 27300
+    },
+    "RoomSetupConflicts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a room \u00b7 repo rules that fight Kernel",
+      "w": 1440,
+      "x": 13680,
+      "y": 27300
+    },
     "SetupPermissions.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1923,6 +2139,14 @@
       "w": 600,
       "x": 0,
       "y": 25700
+    },
+    "row21": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "22 \u00b7 Agent capabilities, servers and rules",
+      "w": 600,
+      "x": 0,
+      "y": 27000
     }
   },
   "order": [
@@ -1932,14 +2156,24 @@
     "ConnectRepo.dc.html",
     "OpenFolder.dc.html",
     "CheckHooks.dc.html",
+    "CheckHooksNotWritable.dc.html",
+    "CheckHooksReadOnly.dc.html",
+    "CheckHooksSymlink.dc.html",
+    "CheckHooksManaged.dc.html",
+    "CheckHooksOff.dc.html",
     "SetupClaudeMissing.dc.html",
     "SetupClaudeOld.dc.html",
     "SetupGhSignedOut.dc.html",
     "SetupPortBusy.dc.html",
+    "SetupGhIdentity.dc.html",
+    "SetupGhToken.dc.html",
+    "SetupShellTimeout.dc.html",
+    "SetupBedrock.dc.html",
     "RoomSetup.dc.html",
     "RoomSetupTeam.dc.html",
     "RoomSetupGitHub.dc.html",
     "RoomSetupLocal.dc.html",
+    "RoomSetupWarnings.dc.html",
     "SetupPermissions.dc.html",
     "SetupPermissionsNoAuto.dc.html",
     "Home.dc.html",
@@ -2073,13 +2307,17 @@
     "SettingsScripts.dc.html",
     "SettingsPRs.dc.html",
     "SettingsFiles.dc.html",
+    "SettingsFilesProduction.dc.html",
     "SettingsHooks.dc.html",
     "SettingsIntegrations.dc.html",
     "SettingsExperimental.dc.html",
     "SettingsAbout.dc.html",
     "SettingsPrivacy.dc.html",
     "SettingsRoom.dc.html",
+    "SettingsRoomDiskMeasuring.dc.html",
     "SettingsRoomGit.dc.html",
+    "SettingsRoomGitPushFailed.dc.html",
+    "SettingsRoomGitUnreachable.dc.html",
     "SettingsRoomScripts.dc.html",
     "SettingsRoomInstructions.dc.html",
     "SettingsRoomPermissions.dc.html",
@@ -2118,7 +2356,17 @@
     "GroupedCloseLastTab.dc.html",
     "GroupedCloseLastTabAfter.dc.html",
     "GroupedAskRowan.dc.html",
-    "GroupedPalette.dc.html"
+    "GroupedPalette.dc.html",
+    "TeamWarnings.dc.html",
+    "TeamPersonal.dc.html",
+    "AgentProfileServers.dc.html",
+    "AgentProfileScope.dc.html",
+    "ConfirmRetireScope.dc.html",
+    "NewAgentDraftScope.dc.html",
+    "WorkspaceToolsGate.dc.html",
+    "WorkspaceHireServers.dc.html",
+    "RoomSetupRoster.dc.html",
+    "RoomSetupConflicts.dc.html"
   ],
   "pages": [],
   "title": "Kernel"
