@@ -92,7 +92,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     return
   }
   if (method === 'account/rateLimits/read' && apiKey) return send({ id, error: { code: -32600, message: 'chatgpt authentication required to read rate limits' } })
-  if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
+  // FAKE_CODEX_USED sets a home's 5-hour use, by CODEX_HOME and '' for none, with a reset an hour from now (KERNEL-568).
+  const used = JSON.parse(process.env.FAKE_CODEX_USED ?? '{}')[home ?? '']
+  const primary = used === undefined ? { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 } : { usedPercent: used, windowDurationMins: 300, resetsAt: Math.round(Date.now() / 1000) + 3600 }
+  if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
   // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in.
   if (method === 'account/read' && apiKey) return send({ id, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })
   if (method === 'account/read') return send({ id, result: { account: !home || existsSync(join(home, 'auth.json')) ? { type: 'chatgpt', email: process.env.FAKE_CODEX_EMAIL ?? 'cj@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true } })

@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -310,8 +310,8 @@ export interface KernelApi {
    * `usage` and `accounts` pushes. The account menu and Settings, Providers ask when they open (KERNEL-567).
    */
   'usage.get': { req: void; res: RateLimit[] }
-  /** "Notify me" on a limit banner: one notification when the limit resets. */
-  'usage.notifyOnReset': { req: { type: RateLimit['type'] }; res: Ok }
+  /** "Notify me" on a limit banner: one notification when the window of `provider`'s account in use resets. Claude's by default. */
+  'usage.notifyOnReset': { req: { type: RateLimit['type']; provider?: Provider }; res: Ok }
   'account.get': { req: void; res: ClaudeAccount }
   /** Opens a terminal running `claude /login`, then reports the new account. */
   'account.signIn': { req: void; res: ClaudeAccount }
@@ -348,8 +348,11 @@ export interface KernelApi {
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /** Closes the Add account sheet: stops the sign-in that is running. */
   'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
-  /** Use: the account runs the provider's next turns. A running turn finishes on the account it started on. */
-  'accounts.switch': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
+  /**
+   * Use: the account runs the provider's next turns. A running turn finishes on the account it started on. `reason` is
+   * `banner` from the limit banner's Switch to, which leaves the account in use at its limit, and `user` by default (KERNEL-568).
+   */
+  'accounts.switch': { req: { provider: Provider; accountId: string; reason?: Exclude<SwitchReason, 'limit'> }; res: AccountProfile[] }
   /**
    * Sign out of an account. The CLI's own login signs the CLI out. An added login signs out of its own folder or home, and
    * a token or key account forgets its credential. Every other account stays signed in.

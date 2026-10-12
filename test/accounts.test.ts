@@ -534,3 +534,144 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     await k.stop()
   })
 })
+
+describe('switching accounts at a limit (KERNEL-568)', () => {
+  const S = (ms: number) => Math.round(ms / 1000)
+  const used = process.env.FAKE_CODEX_USED
+  afterEach(() => { if (used === undefined) delete process.env.FAKE_CODEX_USED; else process.env.FAKE_CODEX_USED = used })
+
+  /**
+   * A Kernel with a fake Claude whose own login is renamed Work, Claude accounts added under `names`, and a room whose
+   * agents all run on Claude, with a workspace and a chat in it that last ran on Work.
+   */
+  async function setUp(names: string[] = []) {
+    const t = await kernel()
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    const h = t.k.handlers()
+    await h['accounts.rename']({ provider: 'claude', accountId: 'cli', label: 'Work' })
+    const ids: Record<string, string> = {}
+    for (const name of names) {
+      const a = await h['accounts.add']({ provider: 'claude' })
+      await h['accounts.rename']({ provider: 'claude', accountId: a.id, label: name })
+      ids[name] = a.id
+    }
+    // Adding reads each account in the background.
+    if (names.length) await until(() => new Set(sdk.probes.map((p) => p.dir)).size === names.length + 1)
+    const repo = await tempRepo()
+    const room = await t.k.addRoom(repo)
+    t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1 })
+    const folder = (name: string) => t.k.providers.claudeHome(ids[name])
+    return { ...t, h, ids, room, repo, folder }
+  }
+
+  /** A rejection of the 5-hour window, as a session reports it: on Claude's CLI login unless `l` says otherwise. */
+  const reject = (k: Kernel, l: Partial<RateLimit> = {}) => (k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }).mergeLimits([{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: S(Date.now() + 3600_000), ...l }])
+  const moving = (k: Kernel) => [...(k.account as unknown as { moving: Map<string, { state: string }> }).moving.values()].map((m) => m.state)
+  const notes = (k: Kernel, chatId = 'chat') => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+
+  it('moves Claude to the signed-in account with the lowest 5-hour use, notes it in the chat, and stays there when the old account resets', async () => {
+    const { k, ids, room, folder } = await setUp(['Side', 'Personal'])
+    sdk.usage = { '': 100, [folder('Side')]: 60, [folder('Personal')]: 20 }
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    sdk.probes = []
+    reject(k)
+    await until(() => k.providers.active('claude') === ids.Personal)
+    // Every account was read before Kernel picked, so it went by fresh numbers.
+    expect(new Set(sdk.probes.map((p) => p.dir))).toEqual(new Set(['', folder('Side'), folder('Personal')]))
+    expect(k.store.room(room.id)?.paused).toBeFalsy()
+    await k.sessions.send('chat', [{ type: 'text', text: 'Go on' }])
+    expect(notes(k)).toEqual(['Now on Personal (Work hit its 5-hour limit)'])
+    expect(k.store.chat('chat')?.ranOn).toBe(ids.Personal)
+    // Work's window resets. Kernel stays on Personal, and says once that the user can switch back.
+    k.sessions.resetLimit('five_hour')
+    k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+    expect(k.providers.active('claude')).toBe(ids.Personal)
+    const resets = k.store.notifications().filter((n) => n.id.startsWith('n-reset-'))
+    expect(resets).toHaveLength(1)
+    expect(resets[0]).toMatchObject({ title: "Work's 5-hour limit reset", sub: 'You can switch back any time.', body: "Work's 5-hour limit reset. You can switch back any time." })
+    await k.stop()
+  })
+
+  it('changes nothing with the switch off: the limit pauses the room and Kernel stays on the account', async () => {
+    const { k, room, folder } = await setUp(['Personal'])
+    sdk.usage = { '': 100, [folder('Personal')]: 10 }
+    sdk.probes = []
+    reject(k)
+    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    await new Promise((r) => setTimeout(r, 100))
+    expect(k.providers.active('claude')).toBeUndefined()
+    expect(moving(k)).toEqual([])
+    expect(sdk.probes.filter((p) => p.dir === folder('Personal'))).toHaveLength(1)
+    await k.stop()
+  })
+
+  it('never moves to an API key account, keeps the rooms paused while every other account is at its limit, and moves once one has room', async () => {
+    const { k, ids, room, folder } = await setUp(['Personal'])
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; auth?: 'apiKey'; createdAt: number }[] } }; save: () => Promise<void> }
+    p.load().claude.accounts.push({ id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
+    await p.save()
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    sdk.usage = { '': 100, [folder('Personal')]: 100 }
+    reject(k, { accountId: ids.Personal })
+    reject(k)
+    await until(() => moving(k).includes('waiting'))
+    expect(k.providers.active('claude')).toBeUndefined()
+    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    // The same rejection read again, its reset a second off, reads nothing new.
+    sdk.probes = []
+    const limits = k.store.meta<RateLimit[]>('limits') ?? []
+    k.account.applyLimits(limits.map((l) => (l.accountId === undefined && l.type === 'five_hour' ? { ...l, resetsAt: l.resetsAt! + 1 } : l)))
+    await new Promise((r) => setTimeout(r, 100))
+    expect(sdk.probes).toEqual([])
+    // Personal's window resets while Work's still stands: Kernel moves there, not to the key.
+    k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
+    await until(() => k.providers.active('claude') === ids.Personal)
+    await until(() => !k.store.room(room.id)?.paused)
+    expect(moving(k)).toEqual(['done'])
+    await k.stop()
+  })
+
+  it('moves Codex off a limit too, and the chat the limit cut off carries on on the new account with a note', async () => {
+    const { k, h, repo } = await setUp()
+    const added = await h['accounts.add']({ provider: 'codex' })
+    await h['accounts.rename']({ provider: 'codex', accountId: 'cli', label: 'Work' })
+    await h['accounts.rename']({ provider: 'codex', accountId: added.id, label: 'Personal' })
+    k.store.saveChat({ id: 'codex', workspaceId: 'ws', title: 'x', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
+    await k.sessions.send('codex', [{ type: 'text', text: 'hi' }])
+    await until(() => k.store.chat('codex')?.sessionId && !k.sessions.isRunning('codex'))
+    // A chat's first turn says nothing.
+    expect(notes(k, 'codex')).toEqual([])
+    expect(k.store.chat('codex')?.ranOn).toBe('cli')
+    await k.config.setSettings({ accounts: { switchAtLimit: { codex: true } } })
+    // The limit cut the chat off mid-turn, and Codex's own login reads full. Its idle process, which would answer the read
+    // with the numbers it started with, is gone.
+    k.sessions.stop('codex')
+    process.env.FAKE_CODEX_USED = JSON.stringify({ '': 100 })
+    ;(k.sessions as unknown as { setCutOff: (id: string, r: 'limit') => void }).setCutOff('codex', 'limit')
+    reject(k, { provider: 'codex' })
+    await until(() => k.providers.active('codex') === added.id)
+    await until(() => notes(k, 'codex').length && k.store.chat('codex')?.ranOn === added.id && !k.sessions.isRunning('codex'))
+    expect(notes(k, 'codex')).toEqual(['Now on Personal (Work hit its 5-hour limit)'])
+    const cwd = await realpath(repo)
+    expect((await fake.messages()).filter((m) => 'started' in m && m.cwd === cwd).map((m) => m.started)).toEqual([null, k.providers.codexHome(added.id)])
+    // Claude's chats stay where they are.
+    expect(k.providers.active('claude')).toBeUndefined()
+    await k.stop()
+  })
+
+  it("notes a switch the user made without a reason, and a switch from the limit banner with the account's limit", async () => {
+    const { k, h, ids } = await setUp(['Personal'])
+    await h['accounts.switch']({ provider: 'claude', accountId: ids.Personal })
+    expect(k.providers.switchNote('claude', ids.Personal)).toBe('Now on Personal')
+    reject(k, { accountId: ids.Personal })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli', reason: 'banner' })
+    expect(k.providers.switchNote('claude', 'cli')).toBe('Now on Work (Personal hit its 5-hour limit)')
+    // Personal's reset says so once, and asking with "Notify me" on the account in use still works per account.
+    k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
+    expect(k.store.notifications().filter((n) => n.title === "Personal's 5-hour limit reset")).toHaveLength(1)
+    await k.stop()
+  })
+})

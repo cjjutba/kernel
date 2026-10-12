@@ -84,6 +84,11 @@ export interface Chat {
    * for the PR, so its approval doesn't count toward a merge. A review chat from before has none and reads as the code review.
    */
   lens?: { kind: ReviewKind; agent?: string; optional?: true }
+  /**
+   * The account the chat's last turn started on, by account id, `cli` for the CLI's own login. Unset until its first turn. A
+   * turn that starts on another account adds a note that says so (KERNEL-568).
+   */
+  ranOn?: string
   createdAt: number
 }
 

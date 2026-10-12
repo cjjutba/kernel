@@ -759,6 +759,29 @@ describe('kernel recovery paths', () => {
     await k.stop()
   })
 
+  it('carries on a chat the limit stopped on an account the banner switched away from mid-turn, and notes the switch (KERNEL-568)', async () => {
+    const { k, room } = await kernel()
+    const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } }; save: () => Promise<void> }
+    p.load().claude.accounts.push({ id: 'work', label: 'Work', createdAt: 1 })
+    await p.save()
+    await k.handlers()['accounts.rename']({ provider: 'claude', accountId: 'cli', label: 'Personal' })
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 3600_000), utilization: 1 }, uuid: 'l1', session_id: 's' })
+    await flush()
+    // Switch to on the banner while the turn finishes its step.
+    await k.handlers()['accounts.switch']({ provider: 'claude', accountId: 'work', reason: 'banner' })
+    call.feed(result())
+    await flush()
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    expect(k.sessions.isRunning(chat.id)).toBe(true)
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+    expect(k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))).toEqual(['Now on Work (Personal hit its 5-hour limit)'])
+    await k.stop()
+  })
+
   it('keeps a limit pause across a restart while the limit holds, and carries the stopped chat on once it resets', async () => {
     const { k, room, chat, resetsAt } = await limited()
     const dataDir = k.o.dataDir
