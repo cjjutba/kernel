@@ -61,8 +61,8 @@ describe('the Usage popover sections, one per provider (KERNEL-619)', () => {
     expect(other.windows.map((w) => w.value)).toEqual([0.5, 0.2])
   })
 
-  it('lists the other signed-in accounts with their 5-hour use, and leaves out the one in use and signed-out ones', () => {
-    const section = planSection('claude', [...accounts, account('out', 'Claude Pro', false, { signedIn: false })], limits, now)
+  it('lists the other signed-in accounts with their 5-hour use, and leaves out the one in use, signed-out ones and one waiting for Keychain access', () => {
+    const section = planSection('claude', [...accounts, account('out', 'Claude Pro', false, { signedIn: false }), account('wait', 'Claude Pro', false, { keychainWait: true })], limits, now)
     expect(section.others).toEqual([{ id: 'pro', label: 'pro', plan: 'Claude Pro', use: '5-hour 12% used' }])
     expect(planSection('codex', accounts, limits, now).others).toEqual([{ id: 'team', label: 'team', plan: 'ChatGPT Pro', use: '5-hour 3% used' }])
   })

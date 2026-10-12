@@ -1,7 +1,7 @@
 import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ScriptLine, Workspace } from '@shared/types'
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
-import { clock, nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
+import { clock, nearLimit, resetPhrase, switchChoices, WEEKLY_WARN } from '@shared/usage'
 
 export { clock, resetPhrase }
 
@@ -125,27 +125,16 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const windowsOf = (id: string) => i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === id)
   const usage = windowsOf(active)
   const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
-  // How much of its 5-hour window an account used. One that has reset has all of it left, and one never read goes last.
-  const fiveHourUse = (id: string) => {
-    const w = windowsOf(id).find((l) => l.type === 'five_hour' && !l.model)
-    if (w?.utilization === undefined) return Infinity
-    return w.resetsAt !== undefined && w.resetsAt * 1000 <= now ? 0 : w.utilization
-  }
-  const byRoom = (list: AccountProfile[]) => [...list].sort((a, b) => {
-    const x = fiveHourUse(a.id)
-    const y = fiveHourUse(b.id)
-    return x === y ? 0 : x < y ? -1 : 1
-  })
-  // Another signed-in account of this provider with no rejected window takes over with one click. A subscription goes before
-  // an API key, which a switch starts paying for (KERNEL-524), and the one with the most 5-hour room goes first of those
-  // (KERNEL-569). A key has no windows, so none of them is rejected.
-  const spare = accounts.filter((a) => !a.active && a.signedIn && !windowsOf(a.id).some((l) => rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
-  const subscriptions = byRoom(spare.filter((a) => a.auth !== 'apiKey'))
-  const alt = subscriptions[0] ?? spare[0]
+  // Where the provider can go: the same answer Kernel's own switch at a limit uses (`switchChoices`, KERNEL-618). The other signed-in accounts with no rejected
+  // window take over with one click, a subscription before an API key, which a switch starts paying for (KERNEL-524), and the one with the most 5-hour room first
+  // (KERNEL-569). One waiting on a Keychain prompt never is, and one in the active account's organization only when its own windows say it has room.
+  const choices = switchChoices(provider, accounts, i.usage, now)
+  const subscriptions = choices.room.filter((a) => a.auth !== 'apiKey')
+  const alt = choices.room[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
   const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
-  // The only account left to switch to is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-619).
-  const signedOut = alt ? undefined : accounts.find((a) => !a.active && !a.signedIn && a.auth !== 'apiKey')
+  // No account has room and one that would is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-618, KERNEL-619).
+  const signedOut = choices.signedOut
   const signIn = signedOut ? { provider, accountId: signedOut.id, label: signedOut.label, cli: signedOut.cli } : undefined
   const signInAction = signedOut ? [{ id: 'signInAccount' as const, label: 'Sign in', primary: true }] : []
   const signedOutNote = signedOut ? ` ${signedOut.label} is signed out. Sign in to switch to it.` : ''

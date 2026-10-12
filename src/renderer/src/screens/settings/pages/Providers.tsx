@@ -20,6 +20,9 @@ const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, '')
 /** "Google Drive and Gmail", "Linear, Google Drive and Gmail". */
 const joinNames = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
+/** The labels of the provider's other accounts in the same claude.ai organization (`AccountProfile.sameOrg` holds their ids). */
+const sameOrg = (a: AccountProfile, accounts: AccountProfile[]) => accounts.filter((x) => a.sameOrg?.includes(x.id)).map((x) => x.label)
+
 /** A path under the home folder as Terminal shows it: `~/.codex/config.toml`. */
 export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
 
@@ -135,7 +138,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   )
                   : <span className="set-label">{a.label}</span>}
                 {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
-                {a.signedIn && !!a.mcpSignIns?.length && (
+                {a.signedIn && !a.keychainWait && !!a.mcpSignIns?.length && (
                   <span className="set-warn">
                     <Icon name="warning" size={12} />
                     Needs sign-in: {a.mcpSignIns.map((m) => serverName(m.server)).join(', ')}
@@ -145,6 +148,13 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                     >{busy === `mcp:${a.id}` ? <><span className="spin" aria-hidden="true" />Signing in</> : 'Sign in'}</button>
                   </span>
                 )}
+                {a.keychainWait && (
+                  <>
+                    <span className="set-warn"><Icon name="warning" size={12} />Waiting for Keychain access</span>
+                    <span className="set-warn-note">Allow Kernel in the macOS prompt to use this account.</span>
+                  </>
+                )}
+                {!a.active && !!sameOrg(a, accounts).length && <span className="set-avail"><Icon name="info" size={13} stroke={1.4} />Same organization as {joinNames(sameOrg(a, accounts))}</span>}
               </div>
               {editing
                 ? (
@@ -157,11 +167,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   <>
                     {a.active && a.signedIn && <span className="set-tag">Active</span>}
                     <div className="set-entry-actions">
-                      {!a.active && a.signedIn && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
+                      {!a.active && a.signedIn && !a.keychainWait && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
                       {!a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === `signin:${a.id}`} busyLabel="Signing in" disabled={busy !== null || sheetOpen} onClick={() => void signIn(a)}>Sign in</Button>}
                       {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
                       <Button id={`acct-rename-${a.id}`} variant="ghost" aria-label={`Rename ${a.label}`} disabled={busy !== null} onClick={() => setRenaming({ id: a.id, value: a.label })}>Rename</Button>
-                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
+                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && !a.keychainWait && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
                       {a.signedIn && a.legacyToken && <Button variant="ghost" aria-label={`Sign in again to ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setRenewing(a)}>Sign in again</Button>}
                       {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
                     </div>

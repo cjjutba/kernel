@@ -329,6 +329,16 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsProvidersMcp: providersPage('claude', {
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
   }),
+  // KERNEL-619: Personal's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
+  SettingsProvidersKeychain: providersPage('claude', {
+    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, keychainWait: true }, keyAccount('claude'), ownCodex],
+    usage: providerUsage().filter((l) => l.accountId !== 'personal')
+  }),
+  // KERNEL-619: both logins are seats in one Claude Team organization, so Personal says it shares limits with Work.
+  SettingsProvidersSameOrg: providersPage('claude', {
+    accounts: [{ ...workClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['personal'] }, { ...personalClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['cli'] }, keyAccount('claude'), ownCodex],
+    providerStatus: { ...providerStatus, claude: { ...providerStatus.claude!, plan: 'Claude Team' } }
+  }),
   // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.

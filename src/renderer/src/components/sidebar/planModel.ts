@@ -13,7 +13,7 @@ export interface PlanWindow {
   note: string
 }
 
-/** Another signed-in account of the provider, offered under Switch. `use` is its 5-hour use, or "Billed per token" for a key. */
+/** Another signed-in account of the provider, offered under Switch. One waiting for Keychain access isn't offered, since a turn on it would wait too (KERNEL-618). `use` is its 5-hour use, or "Billed per token" for a key. */
 export interface PlanOther {
   id: string
   label: string
@@ -81,7 +81,7 @@ export function planSection(provider: Provider, accounts: AccountProfile[], usag
   const account = active?.signedIn ? active : undefined
   if (!account) return { provider, name, ...(active ? { signedOut: active } : {}), billed: false, windows: [], others: [] }
   const key = account.auth === 'apiKey'
-  const others = mine.filter((a) => a.id !== account.id && a.signedIn).map((a): PlanOther => {
+  const others = mine.filter((a) => a.id !== account.id && a.signedIn && !a.keychainWait).map((a): PlanOther => {
     const use = a.auth === 'apiKey' ? 'Billed per token' : fiveHourUse(usage, a, now)
     return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}) }
   })
