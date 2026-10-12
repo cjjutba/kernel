@@ -4,6 +4,7 @@ import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
 import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
+import { noteCodexStatus } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
@@ -65,6 +66,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     })()
     return () => { stopped = true }
   }, [provider])
+  useEffect(() => { if (status?.provider === 'codex') noteCodexStatus(status.signedIn) }, [status])
   const read = () => call('providers.status', { provider }).then(setStatus)
   useEffect(() => { void read().catch(() => undefined) }, [provider])
   useEffect(() => {
