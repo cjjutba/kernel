@@ -99,6 +99,8 @@ export function warningText(w: AgentWarning): string {
     case 'mcp-failed': return `${w.detail ?? 'A server'} in its file didn’t start.`
     case 'mcp-needs-auth': return `${w.detail ?? 'A server'} in its file needs you to sign in.`
     case 'mcp-off': return `${w.detail ?? 'A server'} in its file is switched off in this room.`
+    // RoomSetupRoster.png's words (KERNEL-465).
+    case 'looks-like-subagent': return 'Written as a subagent with no pull request workflow, so it starts as a helper.'
   }
 }
 
