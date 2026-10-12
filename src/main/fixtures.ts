@@ -183,6 +183,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.configure': async ({ chatId, ...patch }) => ({ ...chat(chatId), ...patch }),
     'chats.rename': async ({ chatId, title }) => ({ ...chat(chatId), title }),
     'chats.close': async () => ok,
+    'chats.markRead': async () => ok,
     'chats.fork': async ({ chatId, itemId }) => {
       const c = chat(chatId)
       return { ...c, id: `fixture-fork-${Date.now()}`, title: `Fork of ${c.title}`, sessionId: undefined, forkOf: { chatId, itemId: itemId ?? (f.items[chatId]?.at(-1)?.id ?? '') } }
