@@ -67,6 +67,17 @@ export async function saveRoomMode(roomId: string, mode?: PermissionMode): Promi
   }
 }
 
+/** Set one chat's own mode and take it out of plan mode, as the composer does. Nothing in Settings or the room changes. True when it was saved (KERNEL-456). */
+export async function saveChatMode(chatId: string, mode: PermissionMode): Promise<boolean> {
+  try {
+    actions.chats.upsert(await call('chats.configure', { chatId, mode, plan: false }))
+    return true
+  } catch (e) {
+    actions.ui.toast({ title: 'Could not save the mode', sub: cleanError(e) })
+    return false
+  }
+}
+
 /** Pick a mode for the app, or for `roomId`. Bypass permissions opens ConfirmBypass first the one time the user hasn't seen it. */
 export async function pickMode(mode: PermissionMode | undefined, roomId?: string): Promise<void> {
   if (mode === 'bypassPermissions' && !bypassConfirmed()) return actions.ui.openModal({ name: 'confirm', kind: 'bypass', roomId })
