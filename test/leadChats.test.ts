@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState, Thread, TrackerIssue, Workspace } from '@shared/types'
@@ -11,6 +11,7 @@ import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { setUp, tempRepo, trustRoom } from './helpers'
+import { run as git } from '../src/main/services/exec'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -338,6 +339,67 @@ describe('create_workspace when every agent slot is in use (KERNEL-272)', () => 
       expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build KERNEL-200' }]])
       expect(k.sessions.isRunning(brief.id)).toBe(false)
     } finally { live.delete('busy') }
+  })
+})
+
+describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('login screen')])
+  const image = { type: 'image', name: 'login.png', dataUrl: `data:image/png;base64,${PNG.toString('base64')}` }
+  /** `setup` with `login.png` attached in the first Lead chat's workspace. */
+  async function attached() {
+    const s = await setup()
+    const root = s.k.store.workspace(s.first.workspaceId)!.path
+    await mkdir(join(root, '.kernel/attachments'), { recursive: true })
+    await writeFile(join(root, '.kernel/attachments/login.png'), PNG)
+    await writeFile(join(root, 'notes.png'), PNG)
+    return s
+  }
+
+  it("sends the brief with the image, which lands in the teammate's worktree out of git and shows in their chat", async () => {
+    const { k, first, call, byTitle } = await attached()
+    delete (k.sessions as { send?: unknown }).send
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix the login layout in the screenshot', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/^Created /)
+    const ws = byTitle('Login layout')
+    const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+    const file = join(ws.path, '.kernel/attachments/login.png')
+    await vi.waitFor(() => access(file), { timeout: 10_000 })
+    expect(await readFile(file)).toEqual(PNG)
+    expect((await git('git', ['-C', ws.path, 'status', '--porcelain', '--untracked-files=all'])).trim()).toBe('')
+    // The transcript shows a thumbnail for an image part with a data URL.
+    const said = k.store.items(brief.id).find((i) => i.kind === 'user')
+    expect(said?.kind === 'user' && said.parts).toEqual([{ type: 'text', text: 'Fix the login layout in the screenshot' }, image])
+  }, 30000)
+
+  it('keeps the image with a brief that waits for a free agent slot', async () => {
+    const { k, first, call, byTitle } = await attached()
+    delete (k.sessions as { send?: unknown }).send
+    k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 1 } }
+    const live = k.sessions['live'] as Map<string, unknown>
+    live.set('busy', { running: true, abort: new AbortController(), query: {} })
+    try {
+      expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it', images: [{ path: '.kernel/attachments/login.png' }] })).toMatch(/so Kai hasn't started\./)
+      const brief = k.chatTabs(byTitle('Login layout').id).find((c) => c.kind !== 'terminal')!
+      expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Fix it' }, image]])
+    } finally { live.delete('busy') }
+  })
+
+  it('sends a follow-up with the image, and refuses one that can not go without sending anything', async () => {
+    const { k, first, call, byTitle } = await attached()
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    const ws = byTitle('Login layout')
+    const parts: ChatPart[][] = []
+    k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Still off', images: [{ path: '.kernel/attachments/login.png' }] })).toBe('Sent.')
+    expect(parts).toEqual([[{ type: 'text', text: 'Still off' }, image]])
+    const four = Array.from({ length: 4 }, () => ({ path: '.kernel/attachments/login.png' }))
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: four })).toBe('Not sent: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'x', images: [{ path: 'notes.png' }] })).toBe("Not sent: notes.png isn't in .kernel/attachments/ of your workspace. Send only images the user attached in this chat.")
+    expect(parts).toHaveLength(1)
+    // create_workspace refuses the same way, and no workspace is made.
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Too many', brief: 'x', images: four })).toBe('Not created: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Gone', brief: 'x', images: [{ path: '.kernel/attachments/gone.png' }] })).toBe('Not created: there is no file at .kernel/attachments/gone.png.')
+    expect(byTitle('Too many')).toBeUndefined()
+    expect(byTitle('Gone')).toBeUndefined()
   })
 })
 

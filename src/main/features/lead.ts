@@ -9,7 +9,7 @@ import { bus } from '../bus'
 import { renderAgentFile } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
 import { NUDGE_LIMIT } from '../services/nudges'
-import { PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
+import { attachedImages, PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
 import { dropCheckpoints } from '../services/checkpoints'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { gitStatus } from '../services/archive'
@@ -510,7 +510,7 @@ export class Lead extends Feature {
       plans: () => this.threadPlans(roomId, chat).map((a) => ({ tab: this.store.chat(a.chatId!)?.title ?? '', at: a.createdAt, plan: a.detail ?? '' })),
       // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
       planMode: () => !!this.store.chat(chat.id)?.plan,
-      createWorkspace: async ({ issue, ...o }) => {
+      createWorkspace: async ({ issue, images, ...o }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
         const tabs = this.threadTabIds(chat)
@@ -519,7 +519,8 @@ export class Lead extends Feature {
         const linked = issue ? await this.k.integrations.issueSource(roomId, issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
         // The brief carries the issue the tracker read, so the teammate needs no tracker MCP server for it (KERNEL-473).
-        const parts = linked?.issue ? briefParts(o.prompt, linked.issue.read, linked.issue.kind) : undefined
+        // The user's screenshots follow the brief, and the send saves them in the teammate's worktree (KERNEL-658).
+        const parts = linked?.issue ? [...briefParts(o.prompt, linked.issue.read, linked.issue.kind), ...images ?? []] : images
         // A review is not a task of the plan, so it takes no plan step or task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf
         const ws = await this.k.workspaces.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
@@ -545,7 +546,13 @@ export class Lead extends Feature {
         const own = room ? (await loadRepoSettings(room.path)).agents?.openWorkspaces : undefined
         return { cap: own ?? this.settings.models.agentLimit, own: own !== undefined, room: room?.name ?? 'this room' }
       },
-      messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
+      messageWorkspace: (workspaceId, text, images) => this.messageWorkspace(roomId, workspaceId, text, chat.id, images),
+      // Only what the user attached in this chat's own workspace, read when the Lead calls (KERNEL-658).
+      attachedImages: async (paths) => {
+        const own = this.store.workspace(chat.workspaceId)
+        if (!own) throw new Error('this chat has no workspace to pass images from.')
+        return attachedImages(own.path, paths)
+      },
       askUser: async (o, signal) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.k.team.agents(roomId)
@@ -600,7 +607,7 @@ export class Lead extends Feature {
    * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
    * runs goes with the brief.
    */
-  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
+  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string, images: ChatPart[] = []): Promise<{ ok: boolean; sent: boolean; note: string }> {
     const refuse = (note: string) => ({ ok: false, sent: false, note })
     const ws = this.store.workspace(workspaceId)
     if (!ws || ws.roomId !== roomId) return refuse(`Not sent: there is no workspace ${workspaceId} in this room. Call list_workspaces for the ids.`)
@@ -616,7 +623,7 @@ export class Lead extends Feature {
     const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
     if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
     if (auto) this.nudges.add(ws.id, turn)
-    const parts: ChatPart[] = [{ type: 'text', text }]
+    const parts: ChatPart[] = [{ type: 'text', text }, ...images]
     const held = this.k.setup.setups.get(ws.id)
     if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')

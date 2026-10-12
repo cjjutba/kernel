@@ -1,5 +1,5 @@
-import { access, mkdir, writeFile } from 'node:fs/promises'
-import { join, relative } from 'node:path'
+import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { basename, extname, join, relative, resolve, sep } from 'node:path'
 import type { Approval, ChatPart } from '@shared/types'
 import { excludeFromGit } from './settings'
 
@@ -122,3 +122,80 @@ export const imageMarker = (n: number, image: ImagePart & { path: string }) =>
 /** The line after a message's last part when it has saved images. `tool` is how the agent's own tool for opening one reads. */
 export const imagesNote = (count: number, tool: string) =>
   `${count === 1 ? 'Read the attached image' : `Read each of the ${count} attached images`} with ${tool} before answering.`
+
+/** The longest side and the most pixels Claude reads an image at. A larger one is scaled down before it is sent. */
+export const IMAGE_MAX_SIDE = 1568
+export const IMAGE_MAX_PIXELS = 1_150_000
+
+/** The image types an agent can open, by their first bytes. */
+const SIGNATURES: [string, (b: Buffer) => boolean][] = [
+  ['image/png', (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))],
+  ['image/jpeg', (b) => b.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))],
+  ['image/gif', (b) => /^GIF8[79]a$/.test(b.subarray(0, 6).toString('latin1'))],
+  ['image/webp', (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP']
+]
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp)$/i
+
+/** An image as the model reads it: its bytes, type and size. */
+export interface Scaled { data: Buffer; mime: string; width: number; height: number }
+
+/** Scales an image down to what the model reads, or says what it is when it already fits. Undefined when it can't decode it. */
+export type Downscale = (data: Buffer, mime: string) => Promise<Scaled | undefined>
+
+/**
+ * Electron's nativeImage, which reads PNG and JPEG. A GIF or WebP it can't read goes as it is. A scaled image stays a JPEG
+ * when it was one and is a PNG otherwise. Tests run without Electron's API, where every image goes as it is.
+ */
+export const nativeDownscale: Downscale = async (data, mime) => {
+  const { nativeImage } = await import('electron').catch(() => ({})) as Partial<typeof import('electron')>
+  if (!nativeImage?.createFromBuffer) return undefined
+  const image = nativeImage.createFromBuffer(data)
+  if (image.isEmpty()) return undefined
+  const { width, height } = image.getSize()
+  const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(width, height), Math.sqrt(IMAGE_MAX_PIXELS / (width * height)))
+  if (scale >= 1) return { data, mime, width, height }
+  const small = image.resize({ width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)), quality: 'best' })
+  return { ...(mime === 'image/jpeg' ? { data: small.toJPEG(85), mime } : { data: small.toPNG(), mime: 'image/png' }), ...small.getSize() }
+}
+
+/**
+ * A chat image part from an image file, scaled down to what the model reads, with its data URL and no path yet: the send
+ * saves it to the receiving workspace's `.kernel/attachments/` (`withImageFiles`). Throws the reason when the file isn't a
+ * PNG, JPEG, GIF or WebP. The Lead's attached images come through here, and a stored shared file can too.
+ */
+export async function imagePart(file: string, downscale: Downscale = nativeDownscale): Promise<ImagePart & { dataUrl: string }> {
+  const name = basename(file)
+  const data = await readFile(file).catch(() => undefined)
+  if (!data) throw new Error(`there is no file at ${file}.`)
+  const mime = SIGNATURES.find(([, is]) => is(data))?.[0]
+  if (!mime) throw new Error(`${name} isn't a PNG, JPEG, GIF or WebP image.`)
+  const scaled = await downscale(data, mime).catch(() => undefined)
+  const out = scaled ?? { data, mime }
+  const ext = out.mime.slice('image/'.length).replace('jpeg', 'jpg')
+  return {
+    type: 'image', name: name.replace(/\.[^.]*$/, `.${ext}`), dataUrl: `data:${out.mime};base64,${out.data.toString('base64')}`,
+    ...(scaled ? { width: scaled.width, height: scaled.height } : {})
+  }
+}
+
+/**
+ * The images the Lead named, from the user's attachments in its own workspace `root`, as chat parts to pass on (KERNEL-658).
+ * Every path is checked before any is read, and the first that can't go throws why, so a refused call sends nothing. A path
+ * may be relative to `root` or absolute, and a link out of the folder doesn't count as in it.
+ */
+export async function attachedImages(root: string, paths: string[], downscale?: Downscale): Promise<(ImagePart & { dataUrl: string })[]> {
+  const dir = await realpath(join(root, ATTACHMENTS_DIR)).catch(() => undefined)
+  const files: string[] = []
+  for (const path of paths) {
+    const outside = new Error(`${path} isn't in ${ATTACHMENTS_DIR}/ of your workspace. Send only images the user attached in this chat.`)
+    if (!dir) throw outside
+    const file = await realpath(resolve(root, path)).catch(() => undefined)
+    if (!file) throw new Error(`there is no file at ${path}.`)
+    if (!file.startsWith(dir + sep)) throw outside
+    if (!IMAGE_EXT.test(extname(file))) throw new Error(`${path} isn't a PNG, JPEG, GIF or WebP image.`)
+    files.push(file)
+  }
+  const parts: (ImagePart & { dataUrl: string })[] = []
+  for (const file of files) parts.push(await imagePart(file, downscale))
+  return parts
+}

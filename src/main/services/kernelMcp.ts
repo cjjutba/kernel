@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentReach, AgentScope, Approval, AskedQuestion, ChatPart, Decision, IssueTaken, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -31,7 +31,7 @@ export interface KernelToolDeps {
    * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
    * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * How many teammate workspaces may be open in the room at once, read on each call: the room's own limit when it sets one,
    * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
@@ -46,7 +46,12 @@ export interface KernelToolDeps {
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
    */
-  messageWorkspace: (workspaceId: string, text: string) => Promise<{ ok: boolean; sent?: boolean; note: string }>
+  messageWorkspace: (workspaceId: string, text: string, images?: ChatPart[]) => Promise<{ ok: boolean; sent?: boolean; note: string }>
+  /**
+   * The images the user attached in the Lead's chat that the Lead named, by path, as chat parts scaled down for the model.
+   * Rejects with the reason one can't go. Left out, create_workspace and message_agent refuse images (KERNEL-658).
+   */
+  attachedImages?: (paths: string[]) => Promise<ChatPart[]>
   /**
    * `steps` and `agentFile` shape plan and new agent cards; the hand-off links come from `onWorkspace`. `questions` carries a
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
@@ -90,6 +95,24 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 const signalOf = (extra: unknown) => {
   const signal = (extra as { signal?: unknown } | undefined)?.signal
   return signal instanceof AbortSignal ? signal : undefined
+}
+
+/** The most images one create_workspace or message_agent call passes on (KERNEL-658, docs/decisions/KERNEL-658.md). */
+export const IMAGES_MAX = 3
+
+/** The `images` argument of create_workspace and message_agent (KERNEL-658). */
+const imagesArg = z.array(z.object({ path: z.string().describe('The image\'s path in .kernel/attachments/, as the user\'s message names it') })).optional()
+
+/**
+ * The images a create_workspace or message_agent call passes on, or why they can't go (KERNEL-658). The cap is checked
+ * here, so it holds whatever the deps do.
+ */
+async function loadImages(d: KernelToolDeps, images: { path: string }[] | undefined): Promise<{ parts: ChatPart[] } | { refusal: string }> {
+  if (!images?.length) return { parts: [] }
+  if (images.length > IMAGES_MAX) return { refusal: `${images.length} images is over the limit of ${IMAGES_MAX}. Send only the ones the teammate needs to act on.` }
+  if (!d.attachedImages) return { refusal: 'images can\'t be passed on here.' }
+  try { return { parts: await d.attachedImages(images.map((i) => i.path)) } }
+  catch (e) { return { refusal: e instanceof Error ? e.message : String(e) } }
 }
 
 /**
@@ -340,8 +363,9 @@ export function kernelTools(d: KernelToolDeps) {
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached"),
-      confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first')
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm }) => {
+      confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
+      images: imagesArg.describe('Screenshots the user attached in this chat that the teammate needs to act on, at most 3, by their paths in .kernel/attachments/. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does')
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
@@ -401,10 +425,13 @@ export function kernelTools(d: KernelToolDeps) {
       }
       // Another person may be on the issue already: their branch, their PR, or the tracker has it assigned to them. The Lead
       // asks the user before it starts anyway. A review starts no work on the issue (KERNEL-479).
+      // Every image is read and checked before anything is created, so a refused one sends nothing (KERNEL-658).
+      const attached = await loadImages(d, images)
+      if ('refusal' in attached) return refuse(attached.refusal)
       const key = issue?.trim()
       const taken = key && !review_of && !confirm ? await d.issueTaken?.(key).catch(() => undefined) : undefined
       if (key && taken?.findings.length) return { ...text(takenWarning(key, taken)), isError: true }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
@@ -449,9 +476,12 @@ export function kernelTools(d: KernelToolDeps) {
       return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to rebase onto it then. Tell the user that merging it moves ${name} on.`}`)
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
-      workspace_id: z.string(), text: z.string()
-    }, async ({ workspace_id, text: t }) => {
-      const r = await d.messageWorkspace(workspace_id, t)
+      workspace_id: z.string(), text: z.string(),
+      images: imagesArg.describe('Screenshots the user attached in this chat that the teammate needs to act on, at most 3, by their paths in .kernel/attachments/. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does')
+    }, async ({ workspace_id, text: t, images }) => {
+      const attached = await loadImages(d, images)
+      if ('refusal' in attached) return { ...text(`Not sent: ${attached.refusal}`), isError: true }
+      const r = await d.messageWorkspace(workspace_id, t, attached.parts.length ? attached.parts : undefined)
       // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
       if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
