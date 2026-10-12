@@ -7,7 +7,7 @@
 .cmp > * { position: relative; }
 .cmp:focus-within { border-color: var(--line-4); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
-.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline: none; }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
@@ -53,7 +53,7 @@
 .cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }
 .cmp-ac-row + p { margin-top: 10px; }
-.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
+.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
@@ -62,7 +62,7 @@
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { width: 360px; padding: 0; background: var(--surface-2); }
 .pick-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--card-line); color: var(--muted); cursor: text; }
-.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13.5px; }
+.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13.5px; }
 .pick-search input::placeholder { color: var(--muted); }
 .pick-body { display: flex; flex-direction: column; padding: 6px; }
 .pick-list { display: flex; flex-direction: column; gap: 1px; }
@@ -70,9 +70,9 @@
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
 .pick-glyph { display: inline-flex; }
-.pick-name { flex-shrink: 0; font-weight: 500; color: var(--ink); }
+.pick-name { flex-shrink: 0; font-weight: 500; }
 .pick-effort { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
-.pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--faint); }
+.pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--muted); }
 .pick-check { display: inline-flex; }
 .pick-row .pick-check svg { color: var(--ink); }
 .pick-empty { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
@@ -112,7 +112,7 @@
 .link-row:hover { background: transparent; }
 .link-row[data-active='true'] { background: var(--hover); }
 .link-id { flex-shrink: 0; min-width: 64px; font-size: 12px; color: var(--muted); }
-.link-name { flex-shrink: 0; max-width: 55%; color: var(--ink); }
+.link-name { flex-shrink: 0; max-width: 55%; color: var(--ink-2); }
 .link-sub { font-size: 11.5px; color: var(--muted); text-align: right; }
 .link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }

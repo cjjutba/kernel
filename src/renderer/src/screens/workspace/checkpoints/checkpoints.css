@@ -1,7 +1,7 @@
 /* Checkpoints drawer (KERNEL-13, WorkspaceCheckpoints.png). Tokens only. */
 .ck-drawer { position: absolute; top: 40px; right: 0; bottom: 0; z-index: 15; width: min(380px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--card-line); background: var(--card-bg); }
 .ck-drawer:focus { outline: 0; }
-.ck-head { display: flex; align-items: center; height: 48px; flex-shrink: 0; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pill-line); font-weight: 500; }
+.ck-head { display: flex; align-items: center; height: 48px; flex-shrink: 0; padding: 0 10px 0 16px; border-bottom: 1px solid var(--pill-line); font-weight: 500; color: var(--ink); }
 .ck-head .icon-btn { width: 26px; height: 26px; }
 .ck-intro { margin: 0; padding: 12px 16px 4px; font-size: 12.5px; color: var(--muted); }
 .ck-list { list-style: none; margin: 0; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 6px 8px; }
@@ -11,7 +11,7 @@
 .ck-time { width: 44px; flex-shrink: 0; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .ck-title { flex: 1; min-width: 0; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ck-now { font-size: 12px; color: var(--muted); }
-.ck-revert { height: 24px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink); font-size: 12px; }
+.ck-revert { height: 24px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; }
 .ck-revert:hover, .ck-revert[aria-expanded='true'] { background: var(--surface-3); }
 .ck-detail { padding-left: 54px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 .ck-confirm { margin-left: 54px; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: var(--r); border: 1px solid var(--line-3); font-size: 12.5px; color: var(--ink-2); }
