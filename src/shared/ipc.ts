@@ -298,7 +298,7 @@ export interface KernelApi {
   'account.signIn': { req: void; res: ClaudeAccount }
   'account.signOut': { req: void; res: ClaudeAccount }
 
-  // providers and accounts (KERNEL-406). Subscription logins only: there is no API key option (D-018).
+  // providers and accounts (KERNEL-406). Subscription logins, and API key accounts the user adds (KERNEL-523, amends D-018).
   /** The status table on Settings, Providers: version, executable, login method, plan and email, read through Kernel's own binary. */
   'providers.status': { req: { provider: Provider }; res: ProviderStatus }
   /** The executable path field and "Use system Claude" / "Use system Codex" / "Use bundled". An empty path clears the override. */
@@ -314,6 +314,13 @@ export interface KernelApi {
    * own home. Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
    */
   'accounts.add': { req: { provider: Provider; label?: string; plan?: Exclude<ClaudePlan, 'unknown'> }; res: AccountProfile }
+  /**
+   * Adds an API key account with the name given (KERNEL-523). Kernel checks the key with one request to Anthropic or
+   * OpenAI, keeps it encrypted, and rejects with a plain reason when it doesn't work. Like any added account, it isn't used
+   * until the user switches to it. With `accountId` instead of a name, the key replaces that key account's key, which signs
+   * it in again.
+   */
+  'accounts.addKey': { req: { provider: Provider; label: string; key: string } | { provider: Provider; accountId: string; key: string }; res: AccountProfile }
   /** The code the sign-in page shows, when `claude setup-token` asks for one (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /** Closes the Add account sheet: stops the sign-in that is running. */

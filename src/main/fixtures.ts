@@ -272,6 +272,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'providers.openConfig': async () => ok,
     'accounts.list': async () => f.accounts ?? [],
     'accounts.add': async () => { throw new Error('Adding an account needs the real app.') },
+    'accounts.addKey': async () => { throw new Error('Adding an account needs the real app.') },
     'accounts.code': async () => ok,
     'accounts.cancelAdd': async () => ok,
     'accounts.switch': async () => f.accounts ?? [],

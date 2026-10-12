@@ -254,10 +254,10 @@ export class Providers extends Feature {
       const bin = this.binary(provider).path
       const cli = bin ? await this.identity(provider, undefined, bin) : { signedIn: false }
       const own = provider === 'claude' ? 'Claude Code’s own login' : 'Codex’s own login'
-      out.push({ id: CLI_ACCOUNT, provider, label: cli.email ?? own, email: cli.email, plan: cli.plan, cli: true, active: !file[provider].active, signedIn: cli.signedIn })
+      out.push({ id: CLI_ACCOUNT, provider, label: cli.email ?? own, email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn })
       for (const a of file[provider].accounts) {
         const signedIn = provider === 'claude' ? this.tokenSignedIn(a.id) : existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, active: file[provider].active === a.id, signedIn, ...(provider === 'claude' ? { usageFromTurns: true } : {}) })
+        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: 'subscription', active: file[provider].active === a.id, signedIn, ...(provider === 'claude' ? { usageFromTurns: true } : {}) })
       }
     }
     return out
@@ -287,7 +287,7 @@ export class Providers extends Feature {
       const stored: StoredAccount = { id, label: label?.trim() || who.email || 'ChatGPT account', email: who.email, plan: who.plan, createdAt: Date.now() }
       this.load().codex.accounts.push(stored)
       await this.save()
-      const profile: AccountProfile = { id, provider, label: stored.label, email: who.email, plan: who.plan, cli: false, active: false, signedIn: true }
+      const profile: AccountProfile = { id, provider, label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
       this.step({ provider, step: 'done', account: profile })
       void this.pushAccounts()
       return profile
@@ -310,7 +310,7 @@ export class Providers extends Feature {
       const stored: StoredAccount = { id, label: name, plan: `Claude ${tier.label}`, claudePlan: tier.id, createdAt: Date.now() }
       this.load().claude.accounts.push(stored)
       await this.save()
-      const profile: AccountProfile = { id, provider: 'claude', label: name, plan: stored.plan, cli: false, active: false, signedIn: true, usageFromTurns: true }
+      const profile: AccountProfile = { id, provider: 'claude', label: name, plan: stored.plan, cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true }
       this.step({ provider: 'claude', step: 'done', account: profile })
       void this.pushAccounts()
       return profile
