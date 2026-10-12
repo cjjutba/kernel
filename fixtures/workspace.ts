@@ -339,6 +339,16 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
 /**
+ * Rowan's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
+ * The label says Accept edits, and the menu keeps its check on Bypass permissions and says why.
+ */
+const bypassPicked = (f: Fixture, menu?: 'mode') => ({
+  workspaces: withWorkspace(f, ids.lead, { mode: 'current' }),
+  chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false, effort: 'xhigh' as const, mode: 'bypassPermissions' as const } : c)),
+  ui: { route: { name: 'workspace' as const, workspaceId: ids.lead }, ...(menu ? { menu } : {}) }
+})
+
+/**
  * A chat with the rows Claude Code's /context lists, adding up to the 200k window. `messages` sets how full it is: 44k is 34%, 132k is 78%, 160k is 92%.
  * Past the 167k auto compact line there is no free space left and the buffer shrinks to what remains.
  */
@@ -1717,6 +1727,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...open, menu: 'model' }
     }
   }),
+  ComposerModes: scene((f) => bypassPicked(f)),
+  ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [

@@ -123,7 +123,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
               </div>
               <div className="rs-team-row">
                 <span className="rs-team-text"><span className="rs-team-label">Reviewer</span><span>Reviews each pull request before it merges</span></span>
-                <Select label="Reviewer" value={reviewer ?? reviewerNow} disabled={busy !== null} onChange={(e) => setReviewer(e.target.value)} options={[...files.filter((a) => a.id !== (lead ?? leadNow)).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Theo, from Kernel' }, { value: NO_REVIEWER, label: 'No reviewer' }]} />
+                <Select label="Reviewer" value={reviewer ?? reviewerNow} disabled={busy !== null} onChange={(e) => setReviewer(e.target.value)} options={[...files.filter((a) => a.id !== (lead ?? leadNow)).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]} />
               </div>
               {warnings.map((w) => <div key={w} className="rs-team-warn"><Icon name="warning" size={14} /><span>{w}</span></div>)}
             </section>

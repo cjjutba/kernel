@@ -1,9 +1,16 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
+import { chatMode } from '../src/main/services/permissions'
+import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
+import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
+import { apply, getState } from '../src/renderer/src/store'
+import type { AppSettings, ChatRunMode } from '../src/shared/types'
 import { tempRepo } from './helpers'
 
 describe('@ file search', () => {
@@ -130,5 +137,94 @@ describe('hunks', () => {
   it('refuses an empty pick', async () => {
     const repo = await tempRepo()
     await expect(commitHunks(repo, [], 'x')).rejects.toThrow('Pick at least one')
+  })
+})
+
+describe('permission mode from the composer', () => {
+  const claude = { claude: { auto: true, bypass: true }, codex: { auto: false, bypass: true } }
+  const all = () => true
+  const bypassOnTheBranch: ChatRunMode = { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'worktreesOnly' }
+
+  it('cycles Manual, Accept edits, Plan, Auto, Bypass and round again', () => {
+    const order = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']
+    expect(MODE_ORDER).toEqual(order)
+    expect(order.map((m) => nextMode(m as ComposerMode, all))).toEqual(['acceptEdits', 'plan', 'auto', 'bypassPermissions', 'default'])
+  })
+
+  it('skips a mode the chat can not run, and stays put when nothing else runs', () => {
+    const can = (provider: 'claude' | 'codex') => (m: ComposerMode) => !offLine(m, provider, claude)
+    expect(nextMode('plan', can('codex'))).toBe('bypassPermissions')
+    expect(nextMode('plan', can('claude'))).toBe('auto')
+    expect(nextMode('plan', (m) => m === 'plan')).toBe('plan')
+  })
+
+  it('words a provider limit as the canvas does, for the chat\'s provider alone', () => {
+    expect(offLine('auto', 'codex', claude)).toBe('Auto isn’t available for Codex agents yet')
+    expect(offLine('auto', 'claude', claude)).toBeUndefined()
+    expect(offLine('bypassPermissions', 'codex', claude)).toBeUndefined()
+    expect(offLine('plan', 'codex', claude)).toBeUndefined()
+    expect(offLine('auto', 'codex', null)).toBeUndefined()
+  })
+
+  it('sets the chat\'s mode and clears plan, except Plan, which sets plan and leaves the mode', () => {
+    expect(modePatch('plan')).toEqual({ plan: true })
+    expect(modePatch('default')).toEqual({ mode: 'default', plan: false })
+    expect(modePatch('acceptEdits')).toEqual({ mode: 'acceptEdits', plan: false })
+    expect(modePatch('auto')).toEqual({ mode: 'auto', plan: false })
+    expect(modePatch('bypassPermissions')).toEqual({ mode: 'bypassPermissions', plan: false })
+  })
+
+  it('shows the mode the chat runs in, and Plan while it plans', () => {
+    expect(shownMode(true, bypassOnTheBranch, 'default')).toEqual({ runs: 'plan', picked: 'plan' })
+    expect(shownMode(false, bypassOnTheBranch, 'default')).toEqual({ runs: 'acceptEdits', picked: 'bypassPermissions', why: 'worktreesOnly' })
+    expect(shownMode(false, undefined, 'auto')).toEqual({ runs: 'auto', picked: 'auto' })
+    expect(shownMode(false, { mode: 'plan', picked: 'auto', pickedIn: 'app', why: 'plan' }, 'auto')).toEqual({ runs: 'auto', picked: 'auto' })
+    expect(buttonName('bypassPermissions')).toBe('Bypass')
+    expect(modeAria(shownMode(false, bypassOnTheBranch, 'default'))).toBe('Permission mode: Accept edits. Bypass permissions is picked but can’t run here. Shift+Tab to change')
+  })
+
+  it('keeps the check on the pick that can not run, with what it runs as and why', () => {
+    const rows = modeRows(shownMode(false, bypassOnTheBranch, 'default'), 'claude', claude)
+    expect(rows.map((r) => r.name)).toEqual(['Manual', 'Accept edits', 'Plan', 'Auto', 'Bypass permissions'])
+    expect(rows.filter((r) => r.checked).map((r) => r.mode)).toEqual(['bypassPermissions'])
+    expect(rows[4]).toMatchObject({ desc: 'Runs as Accept edits, Only in worktrees is on', why: true, off: false })
+    expect(rows.slice(0, 4).map((r) => r.why)).toEqual([false, false, false, false])
+    expect(whyLine('turnRunning', 'acceptEdits')).toBe('Runs as Accept edits until the turn ends')
+  })
+
+  it('dims Auto on a Codex agent and checks the pick', () => {
+    const rows = modeRows(shownMode(false, { mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' }, 'default'), 'codex', claude)
+    expect(rows[3]).toMatchObject({ mode: 'auto', desc: 'Auto isn’t available for Codex agents yet', off: true, checked: false })
+    expect(rows[1]).toMatchObject({ mode: 'acceptEdits', desc: 'Edits files without asking', checked: true })
+  })
+
+  it('draws the menu with its five modes, the check and the Shift+Tab line', () => {
+    const noop = () => undefined
+    const shown = shownMode(false, bypassOnTheBranch, 'default')
+    const html = renderToStaticMarkup(createElement(ModeMenu, { anchorRef: { current: null }, provider: 'codex', availability: claude, shown, onPick: noop, onCycle: noop, onClose: noop }))
+    expect(html.match(/role="menuitemradio"/g)).toHaveLength(5)
+    expect(html.match(/aria-checked="true"/g)).toHaveLength(1)
+    expect(html).toContain('aria-label="Permission mode"')
+    expect(html).toContain('Runs as Accept edits, Only in worktrees is on')
+    expect(html).toContain('Auto isn’t available for Codex agents yet')
+    expect(html).toContain('aria-disabled="true"')
+    expect(html).toContain('cycles the modes')
+  })
+
+  it('keeps the chat\'s own mode through Plan, and falls back to the room\'s and then the app\'s', () => {
+    const ws = { mode: 'worktree' } as const
+    const on = { auto: true, bypass: true }
+    const settings = { permissions: { mode: 'default', bypassOnlyInWorktrees: true } } as AppSettings
+    expect(chatMode({ plan: true, mode: 'auto' }, ws, undefined, settings, on)).toMatchObject({ mode: 'plan', picked: 'auto', why: 'plan' })
+    expect(chatMode({ plan: false, mode: 'auto' }, ws, { permissionMode: 'acceptEdits' }, settings, on)).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'chat' })
+    expect(chatMode({ plan: false }, ws, { permissionMode: 'acceptEdits' }, settings, on)).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'room' })
+    expect(chatMode({ plan: false }, ws, undefined, settings, on)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
+  })
+
+  it('keeps each chat\'s run mode from its push event', () => {
+    apply({ type: 'chat.runMode', chatId: 'c-mode', mode: bypassOnTheBranch })
+    expect(getState().runModes['c-mode']).toEqual(bypassOnTheBranch)
+    apply({ type: 'chat.runMode', chatId: 'c-mode', mode: { mode: 'auto', picked: 'auto', pickedIn: 'app' } })
+    expect(getState().runModes['c-mode']).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'app' })
   })
 })

@@ -16,8 +16,27 @@ export async function checkApiKey(provider: Provider, key: string, fetchImpl: ty
     res = await fetchImpl(c.url, { headers: c.headers(key), signal: AbortSignal.timeout(20_000) })
   } catch { throw new Error(`Kernel couldn't reach ${c.name} to check the key. Check your connection and try again.`) }
   if (res.ok) return
-  if (res.status === 401) throw new Error(`${c.name} didn't accept that key. Check that you copied all of it.`)
-  if (res.status === 403) throw new Error(`${c.name} says that key isn't allowed to use the API.`)
-  if (res.status === 429) throw new Error(`${c.name} is limiting requests for that key. Try again in a minute.`)
+  const reason = await reasonFrom(res, key)
+  const says = reason ? `${c.name} says: ${reason}` : ''
+  const lead = res.status === 401 ? `${c.name} didn't accept that key. Check that you copied all of it.`
+    : res.status === 403 ? `${c.name} says that key isn't allowed to use the API.`
+    : res.status === 429 ? `${c.name} is limiting requests for that key. Try again in a minute.`
+    : ''
+  if (lead) throw new Error(says ? `${lead} ${says}` : lead)
+  if (says) throw new Error(says)
+  if (res.status === 400) throw new Error(`${c.name} turned the key down without saying why. Check the key and your ${c.name} account.`)
   throw new Error(`${c.name} answered ${res.status} when Kernel checked the key. Try again in a minute.`)
+}
+
+/**
+ * The provider's own reason from a failed check (KERNEL-582): `error.message`, which Anthropic and OpenAI both send, on one
+ * line and at most about 300 characters, with the key replaced in case the provider repeats it. Undefined when there is none.
+ */
+async function reasonFrom(res: Response, key: string): Promise<string | undefined> {
+  let message: unknown
+  try { message = ((await res.json()) as { error?: { message?: unknown } } | null)?.error?.message } catch { return undefined }
+  if (typeof message !== 'string') return undefined
+  const line = (key ? message.replaceAll(key, '[your key]') : message).replace(/\s+/g, ' ').trim()
+  if (!line) return undefined
+  return line.length > 300 ? `${line.slice(0, 299).trimEnd()}…` : line
 }

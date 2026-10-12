@@ -1,5 +1,5 @@
 import type {
-  AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem,
+  AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
@@ -208,6 +208,8 @@ export interface KernelApi {
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
   /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
   'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
+  /** The permission mode the chat runs in, the mode picked for it and why they differ. `chat.runMode` events carry each change (KERNEL-572). */
+  'chats.runMode': { req: { chatId: string }; res: ChatRunMode }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
@@ -512,6 +514,11 @@ export type PushEvent =
    * and is absent once it is empty (KERNEL-271).
    */
   | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
+  /**
+   * What `chats.runMode` answers for the chat changed: the chat, its room, Settings, Permissions, what its provider can run,
+   * its agent file, or the end of the turn Bypass permissions waited for. Sent for chats with no process too (KERNEL-572).
+   */
+  | { type: 'chat.runMode'; chatId: string; mode: ChatRunMode }
   /**
    * Output from a terminal. With `replace` it is everything main kept, which takes the place of what the window has. A replay
    * goes out on this same stream, after every chunk it already holds and before the next one (KERNEL-340).

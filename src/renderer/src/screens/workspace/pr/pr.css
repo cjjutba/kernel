@@ -61,7 +61,7 @@
 .lp-summary { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 .lp-summary[data-spread] { align-self: stretch; }
 .lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
-.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--faint); }
+.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--muted); }
 .lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
 /* Merge all sits at the right of the Ready to merge heading without making it taller (KERNEL-411). */
 /* Merge all sits in the panel's strip, 24px like the strip's other buttons (PanelToolbarPrs.png, KERNEL-515). */
@@ -72,7 +72,7 @@
 .lp-row { padding: 5px 14px 7px; border-top: 1px solid var(--line); }
 .lp-l1 { display: flex; align-items: center; gap: 8px; height: 24px; }
 .lp-name { flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.lp-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--faint); }
+.lp-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--muted); }
 .lp-act { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .lp-open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--muted); }
 .lp-open:hover { color: var(--ink); }
@@ -81,7 +81,7 @@
 .lp-l3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
 .lp-review[data-tone='good'] { color: var(--add); }
 .lp-review[data-tone='bad'] { color: var(--del); }
-.lp-review[data-tone='faint'] { color: var(--faint); }
+.lp-review[data-tone='faint'] { color: var(--muted); }
 .lp-stat { font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* A branch that merges on the Mac: a plain `→ main` pill where the PR link was, in the band's tone, with nothing to open (KERNEL-478). */
@@ -92,7 +92,7 @@
 .lm-line .n { color: var(--ink-2); }
 .lm-line .hot { color: var(--ink); font-weight: 500; }
 .lm-line .sep { color: var(--faint); }
-.lm-line .meth { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+.lm-line .meth { margin-left: auto; font-size: 11.5px; color: var(--muted); }
 .lm-note { margin: 10px 12px 0; padding: 10px 12px 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; }
 .lm-note h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
 .lm-note p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
@@ -100,7 +100,7 @@
 .lm-files { list-style: none; margin: 8px 0 0; padding: 4px 0 0; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--line); }
 .lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: 11.5px var(--mono); color: var(--ink-2); }
 .lm-file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lm-file .d { color: var(--faint); }
+.lm-file .d { color: var(--muted); }
 .lm-file .why { font-family: var(--font); font-size: 11.5px; color: var(--muted); }
 .lm-letter { color: var(--muted); }
 .lm-letter[data-tone='add'] { color: var(--add); }

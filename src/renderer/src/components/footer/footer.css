@@ -12,7 +12,7 @@
 .ft-paused:focus-visible { outline-offset: 2px; }
 .ft-sub { margin-left: 4px; color: var(--muted); }
 .ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
-.ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; color: var(--ink); }
+.ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; color: var(--ink-2); }
 .ft-pill:hover { background: var(--surface-3); }
 .ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
 .qa-anchor { position: relative; display: inline-flex; }
@@ -28,10 +28,10 @@
 .qa-room { font-size: 12.5px; color: var(--muted); }
 .qa-open { display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 6px 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; }
 .qa-open:hover { background: var(--surface-3); color: var(--ink); }
-.qa-text { display: block; height: 100px; margin: 0; padding: 14px 16px; resize: none; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.5; outline: none; }
-.qa-text::placeholder { color: var(--faint); }
+.qa-text { display: block; height: 100px; margin: 0; padding: 14px 16px; resize: none; border: 0; border-radius: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13.5px; line-height: 1.5; outline: none; }
+.qa-text::placeholder { color: var(--muted); }
 .qa-thread { margin: 0; padding: 16px; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-.qa-q { align-self: flex-end; max-width: 86%; margin: 0; padding: 7px 11px; border-radius: var(--r-md); background: var(--hover); color: var(--ink); font-size: 13px; line-height: 1.45; }
+.qa-q { align-self: flex-end; max-width: 86%; margin: 0; padding: 7px 11px; border-radius: var(--r-md); background: var(--hover); color: var(--ink-2); font-size: 13px; line-height: 1.45; }
 .qa-who { margin-bottom: -6px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .qa-a { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
 .qa-wait { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 12.5px; }

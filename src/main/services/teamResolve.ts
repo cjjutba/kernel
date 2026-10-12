@@ -34,18 +34,22 @@ export function adviseRoster(agents: AgentDef[], config?: TeamConfig): RosterAdv
   return { agents: files.length, needed: files.length > ROSTER_LIMIT && !config?.roster?.length, suggested: files.filter((a) => a.member).map((a) => a.id) }
 }
 
-/** Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). */
+/**
+ * Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). A reviewer from `builtin` is no agent:
+ * the room has no reviewer of its own, and Kernel's code review runs (KERNEL-553).
+ */
 export interface Resolved {
   agents: AgentDef[]
   leadFrom: 'file' | 'setting' | 'builtin' | 'none'
-  reviewerFrom: 'file' | 'setting' | 'builtin' | 'none'
+  reviewerFrom: 'file' | 'setting' | 'builtin'
 }
 
 /**
- * A room's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel's own Rowan and Theo where the files
- * leave a gap. Exactly one agent leads, at most one reviews, and every file agent either takes tasks or doesn't.
+ * A room's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel's own Rowan when the files have no Lead.
+ * Exactly one agent leads, at most one reviews, and every file agent either takes tasks or doesn't.
  * - Lead: `[team] lead`, else a file marked Lead (the first by name when several are), else Kernel's Rowan.
- * - Reviewer: `[team] reviewer` (`none` for nobody), else the first other file whose role says review, else Kernel's Theo.
+ * - Reviewer: `[team] reviewer`, else the first other file whose role says review, else none. With no reviewer, Kernel's
+ *   code review runs, unless `[team] reviewer` is `none`. `kernel-reviewer` names that code review (KERNEL-553).
  * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request and it isn't
  *   written as a subagent (KERNEL-465).
  * - On the team: every file, or only those `[team] roster` lists, plus the Lead and the reviewer. They are picked from every
@@ -83,17 +87,16 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   if (!lead && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'builtin' }
   for (const a of marked) if (a !== lead) warn(a.id, { kind: 'second-lead', detail: lead?.name })
 
-  // The reviewer, never the Lead.
+  // The reviewer, never the Lead. `none` and Kernel's code review are no agent.
   let reviewer: AgentDef | undefined
-  let reviewerFrom: Resolved['reviewerFrom'] = 'none'
-  if (cfg.reviewer === NO_REVIEWER) reviewerFrom = 'setting'
-  else if (cfg.reviewer === KERNEL_REVIEWER && o.builtins.reviewer) { reviewer = o.builtins.reviewer; reviewerFrom = 'setting' }
+  let reviewerFrom: Resolved['reviewerFrom'] = 'builtin'
+  const noAgent = cfg.reviewer === NO_REVIEWER || cfg.reviewer === KERNEL_REVIEWER
+  if (noAgent) reviewerFrom = 'setting'
   else if (named(cfg.reviewer) && named(cfg.reviewer) !== lead) { reviewer = named(cfg.reviewer); reviewerFrom = 'setting' }
   else if (cfg.reviewer) warn('$reviewer', { kind: 'setting-missing', detail: `reviewer = "${cfg.reviewer}"` })
-  if (!reviewer && cfg.reviewer !== NO_REVIEWER) {
+  if (!reviewer && !noAgent) {
     reviewer = files.filter((a) => a !== lead && a.origin !== 'plugin' && /\breview/i.test(a.role)).sort(byName)[0]
     if (reviewer) reviewerFrom = 'file'
-    else if (o.builtins.reviewer) { reviewer = o.builtins.reviewer; reviewerFrom = 'builtin' }
   }
 
   const onRoster = (a: AgentDef) => !cfg.roster?.length || cfg.roster.includes(a.id) || a === lead || a === reviewer
@@ -113,7 +116,7 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
     if (!isLead && !a.lead && /\blead\b/i.test(a.role)) warn(a.id, { kind: 'looks-like-lead' })
     return { ...a, lead: isLead, reviewer: isReviewer, member }
   })
-  for (const b of [lead, reviewer]) if (b?.builtIn) team.push({ ...b, lead: b === lead, reviewer: b === reviewer, member: false })
+  if (lead?.builtIn) team.push({ ...lead, lead: true, reviewer: false, member: false })
 
   // A setting that names nobody, and a file Kernel skipped, are flagged on whoever holds the role, or the Lead.
   const holder = (role: '$lead' | '$reviewer') => (role === '$lead' ? lead : reviewer ?? lead)?.id

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { setUp, tempRepo } from './helpers'
 import { exec, git } from '../src/main/services/exec'
 import { createWorktree, snapshotBaseline } from '../src/main/services/worktrees'
-import { listCheckpoints, revertTo, snapshot } from '../src/main/services/checkpoints'
+import { listCheckpoints, revertTo, snapshot, snapshotWithFiles } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
 import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
 
@@ -70,6 +70,36 @@ describe('checkpoints', () => {
     expect(list.map((c) => [c.id, c.title, c.current, !!c.start])).toEqual([['2', 'Sorting', true, false], ['1', 'Read the plan', false, false], ['0', 'Build T-14 from the plan', false, true]])
     expect(list.map((c) => c.stat)).toEqual([{ files: 2, added: 3, removed: 0 }, { files: 0, added: 0, removed: 0 }, { files: 0, added: 0, removed: 0 }])
     expect(await listCheckpoints({ ...ws, id: 'other' })).toEqual([])
+  })
+
+  it('lists the files a turn added, edited and deleted, a binary one with 0 and 0 (KERNEL-584)', async () => {
+    const dir = await tempRepo({ 'a.ts': '1\n2\n', 'gone.ts': 'g1\ng2\ng3\n', 'logo.png': '\0\x01png' })
+    const ws = { id: 'ws-files', name: 'files', path: dir }
+    await writeFile(join(dir, 'a.ts'), '1\n3\n4\n')
+    await rm(join(dir, 'gone.ts'))
+    await writeFile(join(dir, 'logo.png'), '\0\x02png')
+    await mkdir(join(dir, 'src'))
+    await writeFile(join(dir, 'src/new file é.ts'), 'n\n')
+
+    const { checkpoint, files } = await snapshotWithFiles(ws, { chatId: 'c', title: 'Edit' })
+
+    expect(files).toEqual([
+      { path: 'a.ts', status: 'M', added: 2, removed: 1 },
+      { path: 'gone.ts', status: 'D', added: 0, removed: 3 },
+      { path: 'logo.png', status: 'M', added: 0, removed: 0 },
+      { path: 'src/new file é.ts', status: 'A', added: 1, removed: 0 }
+    ])
+    expect(checkpoint.stat).toEqual({ files: 4, added: 3, removed: 4 })
+    // The next turn counts from this checkpoint: one that changed nothing has no files.
+    expect((await snapshotWithFiles(ws, { chatId: 'c', title: 'Read' })).files).toEqual([])
+  })
+
+  it('gives the start checkpoint no files, even over changes the worktree already had', async () => {
+    const dir = await tempRepo({ 'a.ts': '1\n' })
+    await writeFile(join(dir, 'a.ts'), '2\n')
+    const { checkpoint, files } = await snapshotWithFiles({ id: 'ws-start', name: 'start', path: dir }, { chatId: 'c', title: 'Go', start: true })
+    expect(checkpoint.start).toBe(true)
+    expect(files).toEqual([])
   })
 
   it('reverts: saves a backup branch first, then restores the files of the chosen turn', async () => {

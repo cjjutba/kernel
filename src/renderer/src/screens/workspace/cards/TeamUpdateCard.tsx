@@ -13,16 +13,19 @@ import './cards.css'
 const useWorkspaceById = (id: string) => useStore((s) => s.workspaces.find((w) => w.id === id))
 
 type WorkspaceOf = (id: string) => Workspace | undefined
-/** Whether this item holds the newest row in the chat about the PR of `target`, a workspace id. May be a hook. */
-type UseNewest = (target: string, itemId: string) => boolean
+/** Whether this row, of the workspace `rowId` in the item `itemId`, is the one in the chat that offers Merge for the PR of `target`, a workspace id. May be a hook. */
+type UseNewest = (target: string, itemId: string, rowId: string) => boolean
 
 /**
  * Kernel's team update in a Lead chat (KERNEL-127): one row per teammate, with what happened and the reply it sent, so it
  * no longer reads as a message the user typed. The Lead reads the item's text; this draws the data saved with it.
  */
 export function TeamUpdateCard({ item, chatId }: { item: Extract<ChatItem, { kind: 'user' }>; chatId: string }) {
-  // Only the newest row about a PR in this chat offers Merge (KERNEL-351). One boolean per row, so a row redraws only when its answer changes.
-  const useNewest = (target: string, itemId: string) => useStore((s) => newestRows(s.items[chatId], s.workspaces).get(target) === itemId)
+  // Only one row about a PR in this chat offers Merge (KERNEL-351, KERNEL-581). One boolean per row, so a row redraws only when its answer changes.
+  const useNewest = (target: string, itemId: string, rowId: string) => useStore((s) => {
+    const row = newestRows(s.items[chatId], s.workspaces).get(target)
+    return row?.itemId === itemId && row.workspaceId === rowId
+  })
   return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} />
 }
 
@@ -55,7 +58,7 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
   // A reviewer's row merges the PR it reviewed. Once that workspace is archived the PR is over, and the row says In History.
   const targetId = ws ? mergeTargetOf(ws) : row.workspaceId
   const target = workspaceOf(targetId)
-  const merge = useNewest(targetId, itemId) && target && target.status !== 'archived' ? target : undefined
+  const merge = useNewest(targetId, itemId, row.workspaceId) && target && target.status !== 'archived' ? target : undefined
   const archived = ws?.status === 'archived'
   // The key from the task, else from the issue the workspace started on, as the PRs tab reads it (KERNEL-411).
   const parts = taskParts(row.task)

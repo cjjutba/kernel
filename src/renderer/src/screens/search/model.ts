@@ -1,5 +1,6 @@
 import type { AgentDef, Approval, Chat, Room, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
 
+import { workspaceRowLabel } from '../../components/sidebar/workspaceRowLabel'
 import { isLeadWorkspace } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
 import { ROOM_PAGES } from '../settings/roomPages'
@@ -133,7 +134,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
 
   const suggested: PaletteItem[] = [
     item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.newWorkspace(room?.id), { keys: ['⌘', 'N'] }),
-    ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${forPr.name}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: 'pull request' })] : []),
+    ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
     ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
@@ -153,7 +154,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const goDefault: PaletteItem[] = [
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
     goto('go-issues', 'Issues', room ? { name: 'issues', roomId: room.id } : { name: 'issues' }, { also: 'linear github tickets' }),
-    ...(shown ? [goto('go-ws', `${shown.name} workspace`, { name: 'workspace', workspaceId: shown.id })] : []),
+    ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` })] : []),
     goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
     ...(room ? [goto('go-team', 'Team', { name: 'team', roomId: room.id }, { also: 'agents' })] : []),
     goto('go-history', 'History', { name: 'history' }, { also: 'archived restore' }),
@@ -209,7 +210,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
         ...(roomLead && r.id !== room?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${roomLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
       ]
     }),
-    ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${w.name} workspace`, { name: 'workspace', workspaceId: w.id }, { also: w.branch })),
+    ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${workspaceRowLabel(w)} workspace`, { name: 'workspace', workspaceId: w.id }, { also: `${w.name} ${w.branch}` })),
     ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
     // Each room's own pages, named after the room: "Settings: Client A, Scripts".
     ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))

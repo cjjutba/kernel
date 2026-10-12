@@ -83,8 +83,9 @@ export interface AppSettings {
    * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
    * No page shows it yet.
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
+   * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). No page shows it yet.
    */
-  pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean } & PrInstructions
+  pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean; autoMerge: AutoMerge } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
   terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
@@ -121,11 +122,22 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'bypassPermiss
 
 export const PERMISSION_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions']
 
+/** The mode a chat's steps run in: one of the app's four, or `plan` while the chat plans (KERNEL-447). */
+export type RunMode = PermissionMode | 'plan'
+
 /**
  * Whether a provider can run Auto and Bypass permissions now (KERNEL-432). Auto on Claude depends on the account and the
  * model, and admin policy can turn either off. `reason` says why one can't, for the line under the mode picker.
  */
 export interface ModeAvailability { auto: boolean; bypass: boolean; reason?: string }
+
+/**
+ * Kernel merging a PR by itself, a person's own setting that is off by default (KERNEL-556). `maxLines` is the most lines a PR
+ * may add and remove together. `alwaysReview` lists globs of repo paths: a PR that changes one never merges by itself. They
+ * add to Kernel's own list and the base branch's `[merge] always_review`. A room's `.kernel/settings.local.toml` `[merge]`
+ * (`auto`, `max_lines`, `always_review`) overrides it for that room. The shared `.kernel/settings.toml` can't.
+ */
+export interface AutoMerge { on: boolean; maxLines: number; alwaysReview: string[] }
 
 /** How a PR merges: the app's `pr.mergeMethod`, or a room's `[pr] merge_method`. */
 export type MergeMethod = 'squash' | 'merge' | 'rebase'

@@ -1,9 +1,9 @@
-import type { Chat, ChatItem, Workspace } from '@shared/types'
+import type { ChangedFile, Chat, ChatItem, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from '../services/checkpoints'
+import { checkpointTitle, clock, listCheckpoints, revertTo, snapshotWithFiles } from '../services/checkpoints'
 import { Feature } from './feature'
 
 /** The saves Kernel takes of a workspace after each turn, and going back to one (KERNEL-325). */
@@ -27,13 +27,26 @@ export class Checkpoints extends Feature {
 
   private async take(ws: Workspace, chat: Chat) {
     const items = this.store.items(chat.id)
+    // Found as the turn ends, since the chat's next turn may have ended too by the time the save is done (KERNEL-584).
+    const result = turnResult(items)
     // A first turn that carried several messages is titled for the one that started it, the brief (KERNEL-393).
     const user = this.sessions.turnRow(chat.id) ?? [...items].reverse().find((i) => i.kind === 'user')
     // A turn Kernel's team update started is titled for what it is, not for the update's first line (KERNEL-116).
     const text = user?.kind !== 'user' ? '' : isKernelUpdate(user) ? 'Team update' : user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ')
-    const c = await snapshot(ws, { chatId: chat.id, title: text || chat.title })
+    const { checkpoint: c, files } = await snapshotWithFiles(ws, { chatId: chat.id, title: text || chat.title })
     bus.push({ type: 'checkpoint', checkpoint: c })
+    if (result && files.length) this.putFiles(chat.id, result.id, files)
     return c
+  }
+
+  /** The files a turn changed go on its result row, which keeps its place, so the reply shows them under it (D-029, KERNEL-584). */
+  private putFiles(chatId: string, resultId: string, files: ChangedFile[]) {
+    // A chat cleared meanwhile has lost the row, and saving it would bring it back.
+    const row = this.store.items(chatId).find((i) => i.id === resultId)
+    if (row?.kind !== 'result') return
+    const item: ChatItem = { ...row, files }
+    this.store.saveItem(chatId, item)
+    bus.push({ type: 'chat.item', chatId, item })
   }
 
   /** Restore a workspace's files to a checkpoint. Later changes go to a backup branch, and the chat gets a note saying so. */
@@ -63,5 +76,14 @@ export class Checkpoints extends Feature {
       'checkpoints.list': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return ws.worktreePending ? [] : listCheckpoints(ws) },
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId)
     } satisfies Partial<Handlers>
+  }
+}
+
+/** The result row of the turn that just ended. A stopped turn writes none, so reaching its message or its Interrupted row first means there is none. */
+function turnResult(items: ChatItem[]): (ChatItem & { kind: 'result' }) | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]
+    if (item.kind === 'result') return item
+    if (item.kind === 'user' || item.kind === 'interrupted') return undefined
   }
 }

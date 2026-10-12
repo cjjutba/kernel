@@ -1,6 +1,6 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile,
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, Checkpoint, ClaudeAccount,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
@@ -59,6 +59,8 @@ export interface State {
   queue: Record<string, QueuedMessage[]>
   /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
   queueWhy: Record<string, QueueReason>
+  /** By chat id. The permission mode each chat runs in, the mode picked for it and why they differ (`chats.runMode`, KERNEL-572). */
+  runModes: Record<string, ChatRunMode>
   /** By chat id. Raw pty output for terminal chats. */
   terminal: Record<string, string>
   /** By chat id. How many times main's copy replaced `terminal`, so an open terminal knows to draw it again from the top (KERNEL-340). */
@@ -183,7 +185,7 @@ let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
-  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
@@ -566,6 +568,7 @@ export const actions = {
       return { queue: { ...s.queue, [chatId]: list }, queueWhy }
     }),
     setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
+    setRunMode: (chatId: string, mode: ChatRunMode) => setState((s) => ({ runModes: { ...s.runModes, [chatId]: mode } })),
     appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-TERMINAL_KEEP) } })),
     /** Main's copy of a terminal's output, in place of the window's (KERNEL-340). */
     replaceTerminal: (chatId: string, data: string) => setState((s) => ({
@@ -675,6 +678,7 @@ export function apply(e: PushEvent) {
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': pushedLive?.running.add(e.chatId); return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
+    case 'chat.runMode': return actions.chats.setRunMode(e.chatId, e.mode)
     case 'terminal.data': return e.replace ? actions.chats.replaceTerminal(e.chatId, e.data) : actions.chats.appendTerminal(e.chatId, e.data)
     case 'retry': pushedLive?.retry.add(e.chatId); return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)

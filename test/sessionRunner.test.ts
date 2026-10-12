@@ -1,6 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdir, mkdtemp, readdir, readFile, realpath, symlink } from 'node:fs/promises'
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { mkdtemp, readdir, readFile, symlink } from 'node:fs/promises'
+import { execFileSync, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,6 @@ import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDG
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
-import { linkNodeModules } from '../src/main/services/scripts'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
@@ -1321,6 +1320,22 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     expect(t.call.modes).toEqual([])
   })
 
+  it('tells the renderer the chat runs in its last mode until the turn ends, then in Bypass permissions (KERNEL-572)', async () => {
+    const t = await setup('acceptEdits')
+    const pushed: unknown[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.runMode') pushed.push(e.mode) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(t.sessions.runMode('chat')).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'turnRunning' })
+    expect(pushed).toEqual([{ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'turnRunning' }])
+    t.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1 })
+    await flush()
+    expect(pushed.at(-1)).toEqual({ mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'chat' })
+  })
+
   it('in Bypass permissions, denies Never allow, a push that might reach a protected branch and network use, and has no opinion on Always ask', async () => {
     const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'] } })
     expect(await t.runGuard('t1', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
@@ -1493,58 +1508,30 @@ describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
   })
 })
 
-describe('Bypass permissions in the sandbox (KERNEL-458)', () => {
-  const notes = (store: Store) => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+describe('Bypass permissions without the sandbox (KERNEL-571)', () => {
   const denied = (reason: string) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
 
-  it('runs only a process that may take Bypass permissions in the sandbox, and leaves the other modes as they were', async () => {
+  it('starts every process without a sandbox, a process that may take Bypass permissions included', async () => {
     for (const mode of ['default', 'acceptEdits'] as const) expect((await setup(mode)).options).not.toHaveProperty('sandbox')
     expect((await setup('auto', { availability: () => ({ auto: true, bypass: true }) })).options).not.toHaveProperty('sandbox')
-    expect((await setup('default', { chat: { plan: true } })).options).not.toHaveProperty('sandbox')
-    // Bypass permissions that runs as Accept edits: a current-branch workspace while Only in worktrees is on, or a policy that turns it off.
-    expect((await setup('bypassPermissions', { ws: { mode: 'current' }, permissions: { bypassOnlyInWorktrees: true } })).options).not.toHaveProperty('sandbox')
-    expect((await setup('bypassPermissions', { availability: () => ({ auto: false, bypass: false }) })).options).not.toHaveProperty('sandbox')
-    const bypass = (await setup('bypassPermissions')).options
-    expect(bypass.sandbox).toMatchObject({ enabled: true, failIfUnavailable: false, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false, network: { strictAllowlist: true, allowLocalBinding: true } })
-    // A chat that plans before it bypasses has the sandbox from its start, as it has the flag.
-    expect((await setup('bypassPermissions', { chat: { plan: true } })).options).toMatchObject({ permissionMode: 'plan', allowDangerouslySkipPermissions: true, sandbox: bypass.sandbox })
+    expect((await setup('bypassPermissions')).options).not.toHaveProperty('sandbox')
+    expect((await setup('bypassPermissions')).options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
+    // A chat that plans before it bypasses still has the flag from its start (KERNEL-447).
+    const planning = (await setup('bypassPermissions', { chat: { plan: true } })).options
+    expect(planning).toMatchObject({ permissionMode: 'plan', allowDangerouslySkipPermissions: true })
+    expect(planning).not.toHaveProperty('sandbox')
   })
 
-  it("lets a worktree's commands write its repo's git folder and the node_modules Kernel linked in, and not the git hooks", async () => {
-    const repo = await realpath(await tempRepo({ 'README.md': '# demo\n', '.gitignore': 'node_modules\n' }))
-    await mkdir(join(repo, 'node_modules'))
-    const wt = join(await realpath(await mkdtemp(join(tmpdir(), 'kernel-wt-'))), 'wt')
-    execFileSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'kernel/demo', wt])
-    await linkNodeModules(repo, wt)
-    const { options } = await setup('bypassPermissions', { ws: { path: wt }, room: { path: repo } })
-    expect(options.sandbox?.filesystem?.allowWrite?.slice(0, 2)).toEqual([join(repo, '.git'), join(repo, 'node_modules')])
-    expect(options.sandbox?.filesystem?.denyWrite).toEqual([join(repo, '.git', 'hooks'), join(repo, '.git', 'config')])
-  })
-
-  it("keeps Kernel's denials inside the sandbox: Never allow, a push that might reach a protected branch, and network off even to GitHub", async () => {
+  it("keeps Kernel's denials in Bypass permissions: Never allow, a push that might reach a protected branch, and network off", async () => {
     const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'], neverAllow: ['rm -rf /'] } })
-    expect(t.options.sandbox).toBeDefined()
     expect(await t.runGuard('t1', 'rm -rf /')).toEqual(denied(neverAllowed('rm -rf /')))
     expect(await t.runGuard('t2', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    expect(await t.runGuard('t3', 'git push')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    // The screenshot commands an agent chains after a cd run without a word from Kernel.
+    expect(await t.runGuard('t4', 'cd /tmp/ws && node design/canvas/source/render.mjs Settings')).toEqual({})
     const off = await setup('bypassPermissions', { permissions: { network: false } })
-    expect(off.options.sandbox?.network?.allowedDomains).toContain('github.com')
-    expect(await off.runGuard('t3', 'curl https://github.com')).toEqual(denied(neverAllowed('curl https://github.com')))
+    expect(await off.runGuard('t5', 'curl https://github.com')).toEqual(denied(neverAllowed('curl https://github.com')))
     expect(await (off.options.canUseTool as CanUseTool)('WebFetch', { url: 'https://github.com' }, { signal: new AbortController().signal, toolUseID: 'w1', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })
-  })
-
-  it('leaves a note when Claude Code runs the commands without the sandbox, and none for a chat outside Bypass permissions', async () => {
-    // What Claude Code 2.1.292 writes to stderr where the sandbox can't start, with `failIfUnavailable` off.
-    const line = '\n⚠ Sandbox disabled: sandbox is enabled but linux is not supported (requires macOS, Linux, or WSL2) · run /sandbox for details\n  Commands will run WITHOUT sandboxing. Network and filesystem restrictions will NOT be enforced.\n'
-    const start = (options: Options) => new Promise<void>((resolve) => {
-      const child = options.spawnClaudeCodeProcess!({ command: '/bin/sh', args: ['-c', 'printf "%s" "$LINE" >&2'], cwd: tmpdir(), env: { ...process.env, LINE: line }, signal: new AbortController().signal }) as unknown as ChildProcess
-      child.once('close', () => resolve())
-    })
-    const t = await setup('bypassPermissions')
-    await start(t.options)
-    expect(notes(t.store)).toEqual(["The sandbox didn't start, so this chat's commands run in Bypass permissions without it. Claude Code says: sandbox is enabled but linux is not supported (requires macOS, Linux, or WSL2)."])
-    const u = await setup('acceptEdits')
-    await start(u.options)
-    expect(notes(u.store)).toEqual([])
   })
 })
 

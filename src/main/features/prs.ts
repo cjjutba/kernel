@@ -1,12 +1,13 @@
-import type { MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrPending, PrState, Workspace } from '@shared/types'
+import type { AutoMerge, MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrPending, PrState, Room, Workspace } from '@shared/types'
 import { bus } from '../bus'
-import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
+import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
-import { git } from '../services/exec'
+import { exec, git } from '../services/exec'
 import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
-import { createTextFor } from '../services/conventions'
+import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
-import { mergeableState, mergeBlock, mergeNeedsPr, notMergeable } from '@shared/merge'
+import { inPaths } from '../services/lenses'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, notMergeable, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -81,8 +82,12 @@ export class Prs extends Feature {
     if (this.isLocal(ws)) throw new Error('This room merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
-    const text = (await createTextFor((await this.prTexts(ws)).createInstructions, ws.path)) + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
-    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text }])
+    const remote = await this.k.config.remoteOfWs(ws)
+    const ctx: PrContext = { branch: ws.branch, base: stripRemote(ws.baseRef, remote), remote, draft: draft || this.settings.pr.draft }
+    const written = (await this.prTexts(ws)).createInstructions
+    const text = await prTextFor('create', written, ws.path, ctx)
+    // Kernel's own text says `--draft` in its command. Text that goes out as written gets the line.
+    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text: text === written && ctx.draft ? `${text}\nOpen as draft` : text }])
     return this.setPrState(ws, 'creating')
   }
 
@@ -143,10 +148,15 @@ export class Prs extends Feature {
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
+    const remote = await this.k.config.remoteOfWs(ws)
     // A read that failed still sends the instructions, without what GitHub reports.
-    const info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch((e) => { if (e instanceof GhReadError) return null; throw e })
+    const info = await this.read(ws, ws.path, ws.branch, { remote }).catch((e) => { if (e instanceof GhReadError) return null; throw e })
     if (info) bus.push({ type: 'pr.info', info })
-    const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
+    const prNumber = info?.number ?? ws.prNumber
+    const ctx: PrContext = { branch: ws.branch, base: stripRemote(info?.baseRef || ws.baseRef, remote), remote, ...(prNumber ? { prNumber } : {}) }
+    const [kind, key] = ({ conflict: ['resolve', 'resolveInstructions'], cifail: ['fixChecks', 'fixChecksInstructions'], changes: ['addressReview', 'addressReviewInstructions'] } as const)[ws.prState]
+    const texts = await this.prTexts(ws)
+    const [name, text] = resolveFile(ws.prState, { ...texts, [key]: await prTextFor(kind, texts[key], ws.path, ctx) }, info)
     this.k.lead.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'file', name, text }])
     this.setPrState(ws, 'resolving')
@@ -339,11 +349,11 @@ export class Prs extends Feature {
    * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
    * and no blockers on it. `override` is a person's Merge anyway past those blockers; Rowan and Merge all never pass it
-   * (KERNEL-497).
+   * (KERNEL-497). `head` is the commit auto-merge weighed: a PR GitHub reads at another one doesn't merge (KERNEL-556).
    */
-  mergePr(id: string, o: { override?: boolean } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
+  mergePr(id: string, o: { override?: boolean; head?: string } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
 
-  private async merge(id: string, o: { override?: boolean }) {
+  private async merge(id: string, o: { override?: boolean; head?: string }) {
     let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
@@ -370,6 +380,7 @@ export class Prs extends Feature {
     }
     if (info?.conflictsUnknown) throw new Error(`GitHub is still checking ${ws.prNumber ? `#${ws.prNumber}` : 'this pull request'} for conflicts. Try again in a moment.`)
     if (info) bus.push({ type: 'pr.info', info })
+    if (o.head && info?.head !== o.head) throw new Error('The pull request has new commits since Kernel checked it.')
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name, { override: o.override })
     if (block) throw new Error(block)
@@ -407,6 +418,120 @@ export class Prs extends Feature {
 
   /** How often and how long a merge re-reads a PR GitHub is still checking for conflicts, in ms. Tests shorten it. */
   static conflictWait = { every: 2000, cap: 30_000 }
+
+  /** What each workspace's PR was when Kernel last weighed it for auto-merge, so each change is weighed once (KERNEL-556). */
+  private weighed = new Map<string, string>()
+  /** Rooms already warned that their shared settings file sets a personal `[merge]` key, by room id and the keys. */
+  private warnedMerge = new Set<string>()
+
+  /**
+   * A workspace changed (wiring.ts). A teammate's PR that reads ready, with an approval of its head and no blockers on it, is
+   * weighed for auto-merge once per head, set of approvals and GitHub block (KERNEL-556). Until the user's auto-merge is on,
+   * that costs reading the room's two settings files. While it is on, the Lead's updates on the PR wait for the outcome, so
+   * Rowan doesn't say "ready to merge" about a PR Kernel is merging.
+   */
+  considerAutoMerge(ws: Workspace) {
+    if (this.stopped || ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber) return
+    const s = kindStates(ws)
+    if (!s.approved.length || s.blocking.length) return
+    const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? ''].join(':')
+    if (this.weighed.get(ws.id) === key) return
+    this.weighed.set(ws.id, key)
+    const room = this.store.room(ws.roomId)
+    const app = this.settings?.pr.autoMerge
+    if (!room || !app) return
+    const { rules, ignored } = autoMergeInRoom(room.path, app)
+    this.warnIgnored(room, ignored)
+    if (!rules.on) return
+    this.leadUpdates.readingPr(ws.id)
+    void this.autoMerge(ws.id).catch(() => undefined).finally(() => this.leadUpdates.readPr(ws.id))
+  }
+
+  /**
+   * Merges the workspace's PR by itself when the user's auto-merge allows it (KERNEL-556), or says why not. The merge goes
+   * through `mergePr`, so `mergeBlock` and its fresh GitHub read apply as to any merge, held to the head commit Kernel weighed.
+   * The Lead hears either way: "Merged automatically" and why, or why not on the ready to merge line.
+   */
+  async autoMerge(id: string): Promise<{ merged: Workspace } | { refused: string }> {
+    const ws = this.mustWs(id)
+    const room = this.mustRoom(ws.roomId)
+    const app = this.settings.pr.autoMerge
+    let { rules, personal } = autoMergeInRoom(room.path, app)
+    // A personal file the repo committed isn't the user's, so it can't turn auto-merge on (KERNEL-209).
+    if (personal && !(await localSettingsOwn(room.path))) rules = app
+    const facts = await this.mergeFacts(ws, room, rules)
+    const why = autoMergeWhy(facts)
+    const head = facts.pr?.head
+    if (!why || !head) {
+      const said = autoMergeBlock(facts) ?? "Kernel couldn't read the pull request from GitHub."
+      if (rules.on) this.leadUpdates.autoMergeRefused(id, said)
+      return { refused: said }
+    }
+    this.leadUpdates.autoMerging(id, why)
+    const pr = `PR #${facts.pr?.number}`
+    try {
+      const merged = await this.mergePr(id, { head })
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: 'merged automatically', object: pr })
+      return { merged }
+    } catch (e) {
+      this.leadUpdates.autoMerging(id)
+      const said = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+      this.leadUpdates.autoMergeRefused(id, `The merge Kernel started failed. ${said}`)
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object: pr, warn: true })
+      return { refused: said }
+    }
+  }
+
+  /**
+   * What `autoMergeBlock` weighs (KERNEL-556): GitHub's read of the PR, its required reviews from the base branch's `[review]`
+   * and their verdicts on GitHub's head, and what it changes against the base branch. Nothing is read with auto-merge off or
+   * in a room that merges on this Mac, and nothing past a read of GitHub that failed.
+   */
+  private async mergeFacts(ws: Workspace, room: Room, rules: AutoMerge): Promise<AutoMergeFacts> {
+    const facts: AutoMergeFacts = { rules, local: room.host === 'local', requireGreen: this.settings.pr.requireGreen }
+    if (!rules.on || facts.local) return facts
+    const pr = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch(() => null)
+    if (!pr?.head) return { ...facts, pr: null }
+    const at = { ...ws, prHead: pr.head }
+    await this.k.team.agents(ws.roomId)
+    const { plan } = await this.k.reviews.planFor(at)
+    const s = kindStates(at)
+    const reviews = { required: plan.filter((p) => !p.optional).map((p) => p.kind), approved: s.approved, blocking: s.blocking, running: this.k.reviews.reviewState(at).inProgress }
+    const { base } = await this.k.reviews.policyFor(at)
+    return { ...facts, pr, reviews, ...(base ? { diff: await this.diffOf(room, base, pr.head, rules) } : {}) }
+  }
+
+  /**
+   * What the PR changes, as auto-merge counts it (KERNEL-556): the lines it adds and removes against `base`, and its files that
+   * Kernel's own always-review paths, the base branch's `[merge] always_review` or the user's list name, renames as both paths.
+   * Undefined when git can't say, as when the head commit isn't in the room's repo.
+   */
+  private async diffOf(room: Room, base: string, head: string, rules: AutoMerge): Promise<AutoMergeFacts['diff']> {
+    const shown = await exec('git', ['-C', room.path, 'show', `${base}:.kernel/settings.toml`])
+    const shared = sharedMergeOf(shown.code === 0 ? shown.stdout : undefined)
+    this.warnIgnored(room, shared.ignored)
+    const r = await exec('git', ['-C', room.path, 'diff', '--numstat', '--no-renames', '-z', `${base}...${head}`])
+    if (r.code !== 0) return undefined
+    let lines = 0
+    const files: string[] = []
+    // `<added>\t<removed>\t<path>`, NUL-separated. A binary file has `-` for both.
+    for (const rec of r.stdout.split('\0').filter(Boolean)) {
+      const [added, removed, ...path] = rec.split('\t')
+      lines += (Number(added) || 0) + (Number(removed) || 0)
+      files.push(path.join('\t'))
+    }
+    const always = [...ALWAYS_REVIEW, ...shared.alwaysReview, ...rules.alwaysReview].map((p) => p.toLowerCase())
+    return { lines, touched: files.filter((f) => inPaths(f.toLowerCase(), always)) }
+  }
+
+  /** Warns in the room, once, that its shared settings file sets `[merge]` keys only a person's own file may set (KERNEL-556). */
+  private warnIgnored(room: Room, ignored: string[]) {
+    const key = `${room.id}:${ignored.join(',')}`
+    if (!ignored.length || this.warnedMerge.has(key)) return
+    this.warnedMerge.add(key)
+    const keys = ignored.map((k) => `[merge] ${k}`).join(' and ')
+    bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: `ignores ${keys} in .kernel/settings.toml:`, object: 'auto-merge is a personal setting, set in .kernel/settings.local.toml', warn: true })
+  }
 
   /** The Merge all run going in each room, by room id (KERNEL-411). */
   private queues = new Map<string, MergeQueue>()
@@ -688,6 +813,7 @@ export class Prs extends Feature {
   /** Forgets everything the poll kept about the workspace's PR, as when it is archived. */
   forgetPr(id: string) {
     this.cancelRecheck(id)
+    this.weighed.delete(id)
     this.polls.delete(id)
     this.prints.delete(id)
     this.infos.delete(id)
@@ -757,6 +883,7 @@ export class Prs extends Feature {
     clearTimeout(this.recheckTimer)
     this.recheckTimer = undefined
     this.rechecks.clear()
+    this.weighed.clear()
   }
   handlers() {
     return {

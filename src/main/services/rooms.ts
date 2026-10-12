@@ -132,10 +132,10 @@ export async function initGit(path: string, home = homedir()) {
 }
 
 /**
- * The starter teammates New room and Team can seat. Kernel's own Rowan and Theo lead and review without a file, so they
- * aren't seated (KERNEL-397). Customize on their profile copies them in.
+ * The starter agents New room and Team can seat. Kernel's own Rowan leads without a file, so Rowan isn't seated (KERNEL-397),
+ * and Customize on Rowan's profile copies the file in. Theo reviews as a starter like the others (KERNEL-553).
  */
-export const STARTER_IDS = ['kai', 'noor', 'ivy'] as const
+export const STARTER_IDS = ['kai', 'noor', 'ivy', 'theo'] as const
 
 /** Agent file names in .claude/agents. Empty when the folder is missing. */
 export async function agentFiles(repoPath: string): Promise<string[]> {

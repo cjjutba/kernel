@@ -7,7 +7,7 @@
 .cmp > * { position: relative; }
 .cmp:focus-within { border-color: var(--line-4); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
-.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline: none; }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
@@ -20,6 +20,9 @@
 /* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
 .cmp-model > svg:last-child { position: relative; top: -1px; margin: 0 -3px 0 -1.5px; color: var(--muted); }
 .cmp-model[aria-expanded='true'] { background: var(--card-line); }
+/* The mode is a second button drawn like the model's (ComposerModes.png, KERNEL-573): its icon at 14px in muted before the name, then the same chevron. Plan keeps its blue, as the box does. */
+.cmp-mode > svg:first-child { color: var(--muted); }
+.cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }
 /* Send and stop are circles. Send turns ink when there is something to send; its color changes fast so it never looks unsure. */
 .icon-btn.send { width: 28px; height: 28px; border-radius: 50%; transition: background-color 160ms ease-out, color 160ms ease-out; }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
@@ -50,7 +53,7 @@
 .cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }
 .cmp-ac-row + p { margin-top: 10px; }
-.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
+.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
@@ -59,7 +62,7 @@
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { width: 360px; padding: 0; background: var(--surface-2); }
 .pick-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--card-line); color: var(--muted); cursor: text; }
-.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13.5px; }
+.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13.5px; }
 .pick-search input::placeholder { color: var(--muted); }
 .pick-body { display: flex; flex-direction: column; padding: 6px; }
 .pick-list { display: flex; flex-direction: column; gap: 1px; }
@@ -67,9 +70,9 @@
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
 .pick-glyph { display: inline-flex; }
-.pick-name { flex-shrink: 0; font-weight: 500; color: var(--ink); }
+.pick-name { flex-shrink: 0; font-weight: 500; }
 .pick-effort { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
-.pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--faint); }
+.pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--muted); }
 .pick-check { display: inline-flex; }
 .pick-row .pick-check svg { color: var(--ink); }
 .pick-empty { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
@@ -84,6 +87,22 @@
 .pick-link:hover { background: var(--hover); color: var(--ink); }
 .pick-hint { display: inline-flex; align-items: center; gap: 8px; }
 
+/* Permission mode (ComposerModeMenu.png, KERNEL-573): the model picker's width, two lines a row, and the picked row keeps the menu's selected fill. */
+.mode-pop { width: 360px; background: var(--surface-2); }
+.mode-head { margin: 0; padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
+.mode-row { align-items: flex-start; height: auto; padding: 7px 8px; }
+.mode-row > svg { margin-top: 1px; }
+.mode-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mode-t { font-size: 13px; font-weight: 500; color: var(--ink); }
+.mode-d { font-size: 12px; line-height: 1.4; color: var(--muted); }
+.mode-d[data-why] { color: var(--ink-3); }
+.mode-row[data-off] .mode-t { color: var(--muted); }
+.mode-row[data-off] > svg:first-child { opacity: 0.55; }
+.mode-row[data-off]:not([aria-checked='true']):hover { background: transparent; }
+.mode-pop .menu-sep { margin: 6px 4px; }
+.mode-foot { display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
+.mode-foot .kbd { height: 20px; padding: 0 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); }
+
 /* + > Link issue and Link workspaces */
 .link-pop { width: 420px; max-width: calc(100vw - 48px); padding: 0; background: var(--surface-2); }
 .link-tabs { padding: 6px 8px; border-bottom: 1px solid var(--card-line); }
@@ -93,7 +112,7 @@
 .link-row:hover { background: transparent; }
 .link-row[data-active='true'] { background: var(--hover); }
 .link-id { flex-shrink: 0; min-width: 64px; font-size: 12px; color: var(--muted); }
-.link-name { flex-shrink: 0; max-width: 55%; color: var(--ink); }
+.link-name { flex-shrink: 0; max-width: 55%; color: var(--ink-2); }
 .link-sub { font-size: 11.5px; color: var(--muted); text-align: right; }
 .link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }
@@ -115,12 +134,12 @@
 .hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
 .hunk-row input { margin-top: 3px; accent-color: var(--ink); }
 
-/* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). */
+/* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). The mode keeps its icon and loses its name last. */
 @container chat (max-width: 520px) {
   .composer-wrap { padding: 4px 12px 12px; }
   .cmp-role { display: none; }
 }
-@container chat (max-width: 420px) { .cmp-agent { display: none; } }
+@container chat (max-width: 420px) { .cmp-agent, .cmp-mode-name { display: none; } }
 
 /* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on

@@ -75,6 +75,9 @@ export function listen(k: Kernel): () => void {
     if (e.type === 'agent.status') k.team.onStatus(e)
     // A held brief waits for setup or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
     if (e.type === 'workspace') k.sessions.pushReasons()
+    // A PR every review approved may merge by itself, once the user turned auto-merge on (KERNEL-556). A workspace push carries
+    // each verdict, each kept approval and each change of GitHub's block, so it is the one place that sees them all.
+    if (e.type === 'workspace') k.prs.considerAutoMerge(e.workspace)
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k.nudges.reset(e.workspaceId, ...k.autoArchive.reviewsOf(e.workspaceId))
     // Main moved, so each chat with Rowan's worktree follows it once the room fetches, once for them all (KERNEL-181, KERNEL-405).

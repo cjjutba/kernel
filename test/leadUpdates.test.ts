@@ -343,7 +343,7 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     s.review = rs({ approved: ['code', 'security'] })
     pr('w1', 'checks'); pr('w1', 'ready')
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual(['- PR #54 passed checks, has no conflicts and the code and security reviews approved it. Tell the user it is ready to merge.'])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- PR #54 passed checks, has no conflicts and the code and security reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.'])
     // No review covers what it changes.
     s.review = rs()
     pr('w1', 'checks'); pr('w1', 'ready')
@@ -460,8 +460,8 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR that passed checks while Kernel starts its reviews (KERNEL-549)', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ inProgress: true }) }, []],
     ['a PR that passed checks while its review runs', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ inProgress: true, reviewing: ['code'] }) }, []],
     ['a PR that passed checks with blockers found on it', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ blockers: true, blocking: ['code'] }) }, []],
-    ['a PR that passed checks and was approved', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge.']],
-    ['a PR that passed checks and every kind of review approved (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code', 'security', 'ux'] }) }, ['PR #54 passed checks, has no conflicts and the code, security and UX reviews approved it. Tell the user it is ready to merge.']],
+    ['a PR that passed checks and was approved', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
+    ['a PR that passed checks and every kind of review approved (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code', 'security', 'ux'] }) }, ['PR #54 passed checks, has no conflicts and the code, security and UX reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR that passed checks with no review state at all', [ev('pr.ready')], 'ready', {}, [UNREVIEWED]],
     ['a PR that passed checks with an idle review workspace open', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).']],
     ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
@@ -469,15 +469,23 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } }) }, ['PR #54 needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace rv).']],
     ['a PR that passed checks with auto review off (KERNEL-115)', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs() }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
     ['a PR that passed checks with auto review off and no reviewer', [ev('pr.ready')], 'ready', { autoReview: false }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
-    ['a PR the user had reviewed, approved, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge.']],
+    ['a PR the user had reviewed, approved, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR reviewed at an earlier commit, with its review workspace closed', [ev('pr.ready')], 'ready', { autoReview: false, review: rs({ stale: true }) }, ['PR #54 passed checks and has no conflicts, but its last review was of an earlier commit and its review workspace is closed. Tell the user the review is out of date.']],
     ['a PR the user had reviewed, of an earlier commit, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
     ['a review with blockers, from before review kinds', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send Noor's blockers to Kai with message_agent (workspace w2). When Kai is done, ask Noor to review again with message_agent (workspace w1)."]],
     // Kernel runs a review of a kind again once the fix passes checks, so the Lead only passes the blockers on (KERNEL-549).
     ['a security review with blockers (KERNEL-549)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send the security review's blockers to Kai with message_agent (workspace w2)."]],
+    // A kind's blockers wait for the rest of their review round, then go out together. Each verdict says the same line,
+    // which the update lists once (KERNEL-552).
+    ['security blockers while the UX review of the same commit still runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security'], inProgress: true, reviewing: ['ux'] }) }, []],
+    ['blockers from two kinds of one review round (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'security', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }), ev('review', { n: 2, review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'y' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['security', 'ux'] }) }, Array(2).fill("Send the security and UX reviews' blockers to Kai in one message with message_agent (workspace w2). If blockers from two reviews contradict each other, don't pass both on: ask the user which to follow with ask_user first.")],
+    ['blockers after the last review round Kernel runs (KERNEL-552)', [ev('review', { review: { verdict: 'blockers', lens: 'ux', summary: 'One issue.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ blockers: true, blocking: ['ux'], stillBlocked: { rounds: 2, kinds: ['ux'] } }) }, ["PR #60 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Kai: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."]],
+    ['a PR with new commits after the last review round Kernel runs (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ stale: true, stillBlocked: { rounds: 2, kinds: ['code', 'ux'] }, open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Code review' } }) }, ["PR #54 has new commits, but it was still blocked after 2 review rounds, so Kernel didn't review them. Don't send it back to Noor: tell the user what the code and UX reviews found that is still open, and ask with ask_user how they want to go on."]],
+    ['a PR whose required review waits for usage (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ inProgress: true, held: ['code'], skipped: ['ux'] }) }, []],
+    ['a PR every review that ran approved, one skipped to save usage (KERNEL-552)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code'], skipped: ['ux'] }) }, ["PR #54 passed checks, has no conflicts and the code review approved it. Kernel skipped the UX review to save usage. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran and that the UX review didn't, and anything they should know."]],
     ['a code review approval while the UX review still runs (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], inProgress: true, reviewing: ['ux'] }) }, []],
     ['a code review approval after another kind found blockers (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code'], blockers: true, blocking: ['security'] }) }, []],
-    ['the last approval of a ready PR (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'ux', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code', 'ux'] }) }, ['PR #60 passed checks, has no conflicts and the code and UX reviews approved it. Tell the user it is ready to merge.']],
+    ['the last approval of a ready PR (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'ux', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }), stateOf: () => rs({ approved: ['code', 'ux'] }) }, ['PR #60 passed checks, has no conflicts and the code and UX reviews approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['an approval of an earlier commit, which Kernel asks for again (KERNEL-549)', [ev('review', { review: { verdict: 'approved', lens: 'code', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: false } })], 'none', { workspace: () => ({ ...ws('ready'), id: 'w2', prNumber: 60 }) }, []],
     ['an approval of work that merged before the verdict came', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('merged'), id: 'w2', prNumber: 60 }) }, []],
     ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Noor found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],
@@ -488,7 +496,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a ready PR GitHub starts blocking for a review (KERNEL-401)', [ev('pr.blocked', { blocked: 'review' })], 'ready', {}, ["PR #54 can't merge until someone approves it on GitHub. Tell the user."]],
     ['a ready PR that falls behind its base (KERNEL-401)', [ev('pr.blocked', { blocked: 'behind' })], 'ready', { reviewer: THEO }, [BEHIND]],
     ["a ready PR GitHub's branch rules block (KERNEL-401)", [ev('pr.blocked', { blocked: 'rules' })], 'ready', {}, ["GitHub's branch rules block PR #54. Tell the user."]],
-    ['a PR GitHub stops blocking, approved (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge.']],
+    ['a PR GitHub stops blocking, approved (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR GitHub stops blocking, with auto review off (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, autoReview: false, review: rs() }, ['GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.']],
     ['a PR GitHub stops blocking while its review runs (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ inProgress: true }) }, []],
     ['a PR GitHub stops blocking with a review open and no verdict yet (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }) }, []],
@@ -542,6 +550,42 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   it("names the closed chat whose last task merged", () => {
     const out = decide({ ws: ws('merged'), name: 'Noor', events: [ev('pr.merged')], fromChat: 'Chat icons sizing' }, { allMerged: () => true })
     expect(out.todo).toEqual(['Every task handed off in the closed Lead chat "Chat icons sizing" has merged. Tell the user in one line.'])
+  })
+})
+
+describe('review rounds in Team updates (KERNEL-552)', () => {
+  it('says a ready PR skipped a review to save usage and waits for usage for another, on the card and in the text', async () => {
+    const { s, pr } = await setup()
+    s.review = rs({ inProgress: true, held: ['code'], skipped: ['ux'] })
+    pr('w1', 'ready')
+    await wait()
+    // A review waiting for usage is still to come, so nothing wakes the Lead yet.
+    expect(s.posts).toEqual([])
+    s.review = rs({ approved: ['code'], skipped: ['ux'] })
+    pr('w1', 'checks'); pr('w1', 'ready')
+    await wait()
+    const sent = parts(s.posts.pop()!)
+    expect(sent.body).toContain('- PR #54 passed checks and has no conflicts. The code review approved it. Skipped the UX review to save usage.')
+    expect(s.updates.at(-1)?.rows[0].events.filter((e) => e.kind === 'pr.review')).toEqual([
+      { kind: 'pr.review', text: 'Code approved', actionable: false },
+      { kind: 'pr.review', text: 'Skipped the UX review to save usage', actionable: false }
+    ])
+  })
+
+  it('says a PR is still blocked after the last review round, beside the blockers that are left', async () => {
+    const { u, s, ws, store } = await setup()
+    ws('rv', 'kernel-reviewer', { title: 'Review PR #54', reviewOf: 'w1' })
+    store.saveWorkspace({ ...store.workspace('w1')!, prNumber: 54, prState: 'ready', prHead: 'abc' })
+    s.review = rs({ blockers: true, blocking: ['ux'], stillBlocked: { rounds: 2, kinds: ['ux'] } })
+    u.reviewed(store.workspace('rv')!, store.workspace('w1')!, { workspaceId: 'rv', agentId: 'kernel-reviewer', verdict: 'blockers', summary: 'Still unlabelled.', blockers: [{ text: 'The button has no label.' }], sha: 'abc', prNumber: 54, lens: 'ux', ts: 1 })
+    await wait()
+    const sent = parts(s.posts.pop()!)
+    expect(sent.body[1]).toBe('- The UX review found 1 blocker in PR #54 by Noor (workspace w1), and it is still blocked after 2 review rounds:')
+    expect(sent.todo).toEqual(["- PR #54 is still blocked after 2 review rounds, so Kernel won't review it again by itself. Don't send it back to Noor: tell the user what the UX review found that is still open, and ask with ask_user how they want to go on."])
+    expect(s.updates.at(-1)?.rows[0].events).toEqual([
+      { kind: 'review', text: 'UX review found 1 blocker in PR #54', actionable: true },
+      { kind: 'pr.review', text: 'Still blocked after 2 review rounds', actionable: false }
+    ])
   })
 })
 
@@ -731,7 +775,7 @@ describe('reviews (KERNEL-130)', () => {
       NOOR, OPENED_54, '- PR #54 passed checks and has no conflicts. The code review approved it.', '',
       THEO_BLOCK, '- Approved PR #54 by Noor (workspace w1), at its latest commit.', "- Theo's summary:", '  > The Try rows are gone. No blockers.'
     ])
-    expect(sent.todo).toEqual(['- PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge.'])
+    expect(sent.todo).toEqual(['- PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.'])
     expect(s.updates.at(-1)?.rows[1].events).toEqual([{ kind: 'review', text: 'Approved PR #54', actionable: true }])
     // On the card, Ready to merge is green on its own and the review follows as a segment of its own (KERNEL-411).
     expect(s.updates.at(-1)?.rows[0].events.slice(1, 3)).toEqual([

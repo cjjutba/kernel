@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -19,7 +19,7 @@ import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
 import { ClaudeRunner, claudeCommands, claudeModels, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
 import { claudeExecutable } from './providers/binary'
-import { effectiveMode, type ChatAvailability, type RunMode } from './permissions'
+import { chatMode, type ChatAvailability, type RunMode } from './permissions'
 import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 import { CodexRunner } from './providers/codex/runner'
 import { chatProvider, limitProvider } from '@shared/providers'
@@ -62,6 +62,8 @@ interface Live {
   onKey?: boolean
   /** A Claude process started allowed to take Bypass permissions, which it keeps for life (KERNEL-447). Undefined on Codex. */
   bypass?: boolean
+  /** The mode Kernel last started or switched the process in, which a Claude process keeps while Bypass permissions waits (KERNEL-572). */
+  mode: RunMode
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
   sent?: ChatPart[]
   sentItem?: ChatItem & { kind: 'user' }
@@ -207,6 +209,8 @@ export class Sessions {
   private idle = new Map<string, ReturnType<typeof setTimeout>>()
   /** Chats whose agent changed during a turn or a background task. Their process ends once nothing runs (KERNEL-397). */
   private stale = new Set<string>()
+  /** Each chat's mode as the renderer last got it, from `runMode` or a `chat.runMode` push, so a change goes out once (KERNEL-572). */
+  private shownModes = new Map<string, string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
@@ -368,6 +372,8 @@ export class Sessions {
       if (live.running || live.tasks.size) this.stale.add(id)
       else this.end(id, live)
     }
+    // Auto depends on the account's models, which Kernel reads again for this one.
+    this.pushModes()
   }
 
   /**
@@ -525,21 +531,58 @@ export class Sessions {
 
   /**
    * The mode the chat runs in (`effectiveMode`), and `bypass`: its own choice is Bypass permissions, plan mode aside, which
-   * a Claude process needs from its start to take it (KERNEL-447).
+   * a Claude process needs from its start to take it (KERNEL-447). `shown` is `chatMode`'s answer, for the renderer.
    */
-  private modes(chat: Chat, ws: Workspace): { mode: RunMode; bypass: boolean } {
+  private modes(chat: Chat, ws: Workspace): { mode: RunMode; bypass: boolean; shown: ChatRunMode } {
     const room = this.d.store.room(ws.roomId)
     const agent = this.d.agentFor(ws)
     const settings = this.d.settings()
-    const base = (avail: ChatAvailability) => effectiveMode({ ...chat, plan: false }, ws, room, settings, avail, agent)
-    const wants = base({ auto: true, bypass: true })
-    const chosen = base(this.d.availability?.(chat, ws, wants) ?? { auto: false, bypass: true })
-    return { mode: chat.plan ? 'plan' : chosen, bypass: chosen === 'bypassPermissions' }
+    const at = (avail: ChatAvailability, plan = chat.plan) => chatMode({ ...chat, plan }, ws, room, settings, avail, agent)
+    const avail = this.d.availability?.(chat, ws, at({ auto: true, bypass: true }, false).mode) ?? { auto: false, bypass: true }
+    const shown = at(avail)
+    return { mode: shown.mode, bypass: at(avail, false).mode === 'bypassPermissions', shown }
+  }
+
+  /**
+   * What the chat runs in, what was picked for it and why they differ, for the composer (KERNEL-572). A Claude process that
+   * started without Bypass permissions keeps its last mode until its turn ends (`moveTo`), and says so. Counts as what the
+   * renderer last got, so `pushModes` sends only what changes after it.
+   */
+  runMode(chatId: string): ChatRunMode {
+    const chat = this.mustChat(chatId)
+    const shown = this.shownMode(chat, this.mustWorkspace(chat.workspaceId))
+    this.shownModes.set(chatId, JSON.stringify(shown))
+    return shown
+  }
+
+  private shownMode(chat: Chat, ws: Workspace): ChatRunMode {
+    const { shown } = this.modes(chat, ws)
+    const live = this.live.get(chat.id)
+    return shown.mode === 'bypassPermissions' && live?.bypass === false ? { ...shown, mode: live.mode, why: 'turnRunning' } : shown
+  }
+
+  /**
+   * Tells the renderer the mode of each chat whose mode changed since it last heard (KERNEL-572). Without ids, every chat in a
+   * workspace that isn't archived, with a process or not. Big terminals have no composer and are left out.
+   */
+  private pushModes(chatIds?: string[]) {
+    if (this.closing) return
+    const chats = chatIds ? chatIds.flatMap((id) => this.d.store.chat(id) ?? [])
+      : this.d.store.workspaces().filter((w) => w.status !== 'archived').flatMap((w) => this.d.store.chats(w.id))
+    for (const chat of chats) {
+      const ws = this.d.store.workspace(chat.workspaceId)
+      if (chat.kind === 'terminal' || !ws) continue
+      const mode = this.shownMode(chat, ws)
+      const key = JSON.stringify(mode)
+      if (this.shownModes.get(chat.id) === key) continue
+      this.shownModes.set(chat.id, key)
+      bus.push({ type: 'chat.runMode', chatId: chat.id, mode })
+    }
   }
 
   /**
    * Puts every live chat in the mode it should run in now: Settings, a room or the chat changed it, or Kernel learned what a
-   * provider can run (KERNEL-447).
+   * provider can run (KERNEL-447). Then every chat's mode goes to the renderer, live or not (KERNEL-572).
    */
   applyModes() {
     for (const [id, live] of [...this.live]) {
@@ -547,6 +590,7 @@ export class Sessions {
       const ws = chat && this.d.store.workspace(chat.workspaceId)
       if (chat && ws) void this.moveTo(chat, ws, live)
     }
+    this.pushModes()
   }
 
   /**
@@ -557,7 +601,9 @@ export class Sessions {
   private moveTo(chat: Chat, ws: Workspace, live: Live): Promise<void> {
     const { mode, bypass } = this.modes(chat, ws)
     const restart = live.bypass !== undefined && live.bypass !== bypass
-    const switched = restart && mode === 'bypassPermissions' ? Promise.resolve() : live.runner.setMode(mode)
+    const waits = restart && mode === 'bypassPermissions'
+    if (!waits) live.mode = mode
+    const switched = waits ? Promise.resolve() : live.runner.setMode(mode)
     if (!restart) return switched
     if (live.running || live.tasks.size) {
       this.stale.add(chat.id)
@@ -959,6 +1005,7 @@ export class Sessions {
       // Plan mode and the chat's own mode decide the mode it runs in, and the model whether Auto can be it (KERNEL-447).
       if (patch.plan !== undefined || patch.mode !== undefined || patch.model) await this.moveTo(chat, this.mustWorkspace(chat.workspaceId), live)
     }
+    this.pushModes([chatId])
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
     return chat
@@ -997,6 +1044,8 @@ export class Sessions {
     this.live.delete(chatId)
     // Nobody can answer what the process asked once it is gone (KERNEL-563).
     this.expireCards(live.cards)
+    // A chat whose Bypass permissions waited for this process runs in it from the next message.
+    this.pushModes([chatId])
   }
 
   /** End the cards among `ids` that still wait on the user, and forget them all. A quit leaves them to `expirePending` (KERNEL-563). */
@@ -1070,6 +1119,8 @@ export class Sessions {
         else this.end(c.id, live)
       }
     }
+    // The agent file's mode may have changed with it.
+    this.pushModes(workspaceIds.flatMap((id) => this.d.store.chats(id).map((c) => c.id)))
   }
 
   /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
@@ -1165,11 +1216,11 @@ export class Sessions {
     const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
     const account = this.d.accountFor?.(chatProvider(chat))
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey' } as Live
+    const { mode, bypass } = this.modes(chat, ws)
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
-    const { mode, bypass } = this.modes(chat, ws)
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
@@ -1273,7 +1324,7 @@ export class Sessions {
     if (this.closing && live.runner.closed) return
     const replaced = this.replaced(chatId, live)
     const midTurn = live.running
-    if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
+    if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId); this.pushModes([chatId]) }
     // Nobody can answer what the process asked, and a crash ends a Codex plan waiting on the chat too. A newer session's
     // cards are its own (KERNEL-563).
     this.expireCards(live.cards)

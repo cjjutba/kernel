@@ -28,11 +28,15 @@ body{margin:0}
 .cmp-agent{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border:1px solid var(--line-3);border-radius:999px;font-size:12.5px}
 .cmp-agent .n{color:var(--ink-2)}
 .cmp-agent .r,.cmp-model .r{color:var(--muted)}
-.cmp-model{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
-.k button.mode{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px;margin-left:-6px;border-radius:7px;font-size:12.5px;color:var(--muted)}
-.k button.mode.on-plan{color:var(--plan)}
-.k button.mode.bypass{height:22px;margin-left:0;padding:0 9px 0 8px;border:1px solid var(--line-4);border-radius:999px;color:var(--ink)}
-.k .ib{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+/* The model and the mode are one ghost button, as main draws the model (composer.css): 28px high, 12.5px at weight 500, 8px of padding that is its own hover fill, and pulled 8px left so its text sits 12px after the box before it. The chevron is 11px with its air trimmed. An open menu fills the button with the app's card-line (--line-3 here). */
+.cmp-model,.k button.mode{display:inline-flex;align-items:center;gap:6px;height:28px;margin-left:-8px;padding:0 8px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--ink-2);white-space:nowrap}
+.cmp-model .r{font-weight:400}
+.cmp-model > svg:last-child,.k button.mode > svg:last-child{position:relative;top:-1px;width:11px;height:11px;margin:0 -3px 0 -1.5px;color:var(--muted);stroke-width:1.9}
+.k button.mode > svg:first-child{width:14px;height:14px;color:var(--muted)}
+.k button.mode.on-plan,.k button.mode.on-plan > svg{color:var(--plan)}
+.cmp-model.open,.k button.mode.open{background:var(--line-3)}
+.anchor{position:relative;display:inline-flex}
+.k .ib{width:28px;height:28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
 .k .ib.open{background:var(--surface-3);color:var(--ink)}
 .k .send{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-3);color:var(--muted)}
 .k .cmp.plan .send{background:var(--surface-3)}
@@ -46,6 +50,7 @@ body{margin:0}
 .mi .tx{flex:1;min-width:0;display:flex;flex-direction:column}
 .mi .t{font-size:13px;font-weight:500;color:var(--ink)}
 .mi .d{font-size:12px;line-height:1.4;color:var(--muted)}
+.mi .d.why{color:var(--ink-3)}
 .mi .ck{color:var(--ink);margin-top:1px}
 .mi.off .t{color:var(--muted)}
 .mi.off .ic{opacity:.55}
@@ -53,41 +58,23 @@ body{margin:0}
 .sep{height:1px;margin:6px 4px;background:var(--line-3)}
 .foot{display:flex;align-items:center;gap:8px;padding:6px 8px 4px;font-size:12px;color:var(--muted)}
 .kbd{display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 6px;border-radius:5px;border:1px solid var(--line-3);background:var(--surface);font-size:11.5px;color:var(--ink-2)}
-.note{font-size:13px;line-height:1.55;color:var(--muted);max-width:520px}
+.note{font-size:13px;line-height:1.55;color:var(--muted);max-width:560px}
+.note p{margin:0}
+.note p + p{margin-top:10px}
 .note b{font-weight:500;color:var(--ink-2)}
 </style>
 </helmet>
 <div class="k" style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; display: flex; align-items: center; justify-content: center">
-<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 80px; width: 1280px; align-items: end">
-<div>
-<p class="cap">The + menu</p>
-<div style="position: relative; padding-top: 0; height: 440px; display: flex; flex-direction: column; justify-content: flex-end">
-<div style="position: relative">
-<div class="cmp">
-<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
-<div class="cmp-foot">
-<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
-<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
-<button class="mode" aria-label="Permission mode: Accept edits. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits</button>
-<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
-<span style="position: relative; display: inline-flex"><div class="menu" role="menu" aria-label="Add" style="right: 0; bottom: calc(100% + 8px); width: 248px">
-<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Link issue</span></span><span class="sc">⌘I</span></div>
-<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Link workspaces</span></span></div>
-<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Permission mode</span></span><span class="sc">⇧Tab</span></div>
-<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="m13 7.6-4.7 4.7a3 3 0 0 1-4.2-4.2l5-5a2 2 0 0 1 2.8 2.8l-5 5a1 1 0 0 1-1.4-1.4l4.4-4.4"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Add attachment</span></span><span class="sc">⌘U</span></div>
-</div><button class="ib open" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button></span>
-<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
-</div>
-</div>
-</div>
-</div>
-</div>
-
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 80px; row-gap: 28px; width: 1280px; align-items: end">
 <div>
 <p class="cap">The mode menu, on a Codex agent</p>
-<div style="position: relative; height: 440px; display: flex; flex-direction: column; justify-content: flex-end">
-<div style="position: relative">
-<div class="menu" role="menu" aria-label="Permission mode" style="left: 0; bottom: calc(100% + 8px); width: 340px">
+<div style="position: relative; height: 392px; display: flex; flex-direction: column; justify-content: flex-end">
+<div class="cmp">
+<div class="cmp-text ph">Ask Noor to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Noor</span><span class="r">Backend</span></span>
+<span class="cmp-model">GPT-6-Astra<span class="r">Medium</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></span>
+<span class="anchor"><button class="mode open" aria-label="Permission mode: Accept edits. Shift+Tab to change" aria-haspopup="menu" aria-expanded="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></button><div class="menu" role="menu" aria-label="Permission mode" style="left: 0; bottom: calc(100% + 8px); width: 360px">
 <p class="h">Permission mode</p>
 <div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z"></path></svg><span class="tx"><span class="t">Manual</span><span class="d">Asks before every edit and command</span></span></div>
 <div class="mi sel" role="menuitemradio" aria-checked="true"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg><span class="tx"><span class="t">Accept edits</span><span class="d">Edits files without asking</span></span><svg class="i ck" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></div>
@@ -96,20 +83,66 @@ body{margin:0}
 <div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="m3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5"></path></svg><span class="tx"><span class="t">Bypass permissions</span><span class="d">Skips every prompt, Always ask included</span></span></div>
 <div class="sep"></div>
 <div class="foot"><span class="kbd">⇧ Tab</span>cycles the modes</div>
-</div>
-<div class="cmp">
-<div class="cmp-text ph">Ask Noor to make changes, @mention files, run /skills</div>
-<div class="cmp-foot">
-<span class="cmp-agent"><span class="n">Noor</span><span class="r">Backend</span></span>
-<span class="cmp-model">GPT-6-Astra<span class="r">Medium</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
-<button class="mode" aria-label="Permission mode: Accept edits. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits</button>
+</div></span>
 <svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
-<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<span class="anchor"><button class="ib" aria-label="Add context" aria-haspopup="menu" aria-expanded="false"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button></span>
 <button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
 </div>
 </div>
 </div>
 </div>
+
+<div>
+<p class="cap">The mode menu, when the picked mode can’t run</p>
+<div style="position: relative; height: 392px; display: flex; flex-direction: column; justify-content: flex-end">
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></span>
+<span class="anchor"><button class="mode open" aria-label="Permission mode: Accept edits. Bypass permissions is picked but can’t run here. Shift+Tab to change" aria-haspopup="menu" aria-expanded="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></button><div class="menu" role="menu" aria-label="Permission mode" style="left: 0; bottom: calc(100% + 8px); width: 360px">
+<p class="h">Permission mode</p>
+<div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z"></path></svg><span class="tx"><span class="t">Manual</span><span class="d">Asks before every edit and command</span></span></div>
+<div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg><span class="tx"><span class="t">Accept edits</span><span class="d">Edits files without asking</span></span></div>
+<div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M10.5 3.5h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h1M6.5 2h3a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-3A.5.5 0 0 1 6 4.5v-2a.5.5 0 0 1 .5-.5ZM6 7.7h4M6 10.3h4"></path></svg><span class="tx"><span class="t">Plan</span><span class="d">Plans first and changes nothing until you approve</span></span></div>
+<div class="mi" role="menuitemradio" aria-checked="false"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z"></path></svg><span class="tx"><span class="t">Auto</span><span class="d">A classifier approves routine work</span></span></div>
+<div class="mi sel" role="menuitemradio" aria-checked="true"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="m3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5"></path></svg><span class="tx"><span class="t">Bypass permissions</span><span class="d why">Runs as Accept edits, Only in worktrees is on</span></span><svg class="i ck" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></div>
+<div class="sep"></div>
+<div class="foot"><span class="kbd">⇧ Tab</span>cycles the modes</div>
+</div></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<span class="anchor"><button class="ib" aria-label="Add context" aria-haspopup="menu" aria-expanded="false"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button></span>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">The + menu</p>
+<div style="position: relative; height: 208px; display: flex; flex-direction: column; justify-content: flex-end">
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></span>
+<span class="anchor"><button class="mode" aria-label="Permission mode: Accept edits. Shift+Tab to change" aria-haspopup="menu" aria-expanded="false"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits<svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></button></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<span class="anchor"><div class="menu" role="menu" aria-label="Add" style="right: 0; bottom: calc(100% + 8px); width: 248px">
+<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Link issue</span></span><span class="sc">⌘I</span></div>
+<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Link workspaces</span></span></div>
+<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Permission mode</span></span><span class="sc">⇧Tab</span></div>
+<div class="mi row" role="menuitem"><svg class="i ic" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="m13 7.6-4.7 4.7a3 3 0 0 1-4.2-4.2l5-5a2 2 0 0 1 2.8 2.8l-5 5a1 1 0 0 1-1.4-1.4l4.4-4.4"></path></svg><span class="tx"><span class="t" style="font-weight: 400">Add attachment</span></span><span class="sc">⌘U</span></div>
+</div><button class="ib open" aria-label="Add context" aria-haspopup="menu" aria-expanded="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button></span>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+
+<div class="note" style="align-self: start; padding-top: 27px">
+<p><b>The label and Permission mode in the + menu open the same list.</b> The check marks the mode picked for this chat.</p>
+<p>A mode the chat can’t run keeps its row and says why. Auto is dimmed on a Codex agent. Bypass permissions on a current-branch chat with Only in worktrees on keeps its check and says what it runs as, and the label shows Accept edits.</p>
 </div>
 </div>
 </div>

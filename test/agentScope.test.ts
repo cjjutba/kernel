@@ -243,7 +243,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const { k, repo, home, room, opened } = await boot()
     const chat = await k.lead.leadChat(room.id)
     const lead = (await k.team.agents(room.id)).find((a) => a.lead)!
-    const hire = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'hire_agent')!
+    const hire = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'create_agent')!
     const call = async (args: object) => ((await hire.handler(args as never, {})).content[0] as { text: string }).text
     const card = async () => vi.waitFor(() => {
       const a = k.store.approvals({ roomId: room.id, pendingOnly: true }).find((x) => x.kind === 'agent')

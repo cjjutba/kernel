@@ -591,7 +591,7 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
   it.each([
     ['ask_user', { question: 'Raise the workspace limit to 8?' }],
     ['request_plan_approval', { title: 'T-1 Export invoices', plan: '1. Export them as PDF', steps: ['Export invoices · Noor'] }],
-    ['hire_agent', { id: 'scribe', description: 'Writes the docs', prompt: 'You write the docs.' }]
+    ['create_agent', { id: 'scribe', description: 'Writes the docs', prompt: 'You write the docs.' }]
   ] as const)("ends Rowan's %s card on Stop through the tool call's signal (KERNEL-496)", async (name, args) => {
     const signals: (AbortSignal | undefined)[] = []
     const ref: { t?: Awaited<ReturnType<typeof setup>> } = {}

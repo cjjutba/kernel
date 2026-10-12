@@ -1,6 +1,6 @@
-import type { AgentDef, Chat, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Chat, Room, Route, Thread, Workspace } from '@shared/types'
 import { actions, getState, go } from '../../store'
-import { chatWorkspaces, leadOf, openLead, openLeadChat } from '../../lead'
+import { chatWorkspaces, isLeadWorkspace, leadOf, openLead, openLeadChat } from '../../lead'
 import { roomInView } from '../../screens/search/model'
 import { focusComposerIn, focusComposerWhenOpen } from '../../screens/workspace/composer/bus'
 
@@ -70,6 +70,27 @@ export function sidebarRows(
   }
   for (const ws of live) if (!owned.has(ws.id)) rows.push({ kind: 'workspace', ws, nested: false })
   return rows
+}
+
+/**
+ * What holds the row of the page in view: its room, and the chat that folded it away when it is a workspace under a folded chat. Nothing when no
+ * row stands for the page (any page but a workspace or New chat with Rowan, an archived workspace, a room that isn't listed). The sidebar opens
+ * these two, and no other room or chat, when you arrive on a page whose row is hidden. Reads the rows the sidebar draws, so the two agree.
+ */
+export function rowHolder(
+  route: Route, rooms: Room[], agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread>, folded: string[]
+): { roomId: string; unfold?: Extract<Slot, { kind: 'chat' }> } | undefined {
+  const ws = route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId) : undefined
+  const room = rooms.find((r) => r.id === (route.name === 'leadNew' ? route.roomId : ws?.roomId))
+  if (!room) return undefined
+  const rows = sidebarRows(room, agents, workspaces, chats, threads, folded)
+  if (!ws) return rows.some((r) => r.kind === 'lead') ? { roomId: room.id } : undefined
+  // The Lead row stands for the room's Lead workspace while no chat is open; a chat row for its own workspace, or for the one its tabs are in.
+  const leadId = leadOf(agents, room.id)?.id
+  const listed = (r: Slot) => (r.kind === 'lead' ? isLeadWorkspace(ws, room.id, leadId) : r.kind === 'workspace' ? r.ws.id === ws.id : (r.ws ? r.ws.id : r.tabs[0]?.workspaceId) === ws.id)
+  if (rows.some(listed)) return { roomId: room.id }
+  const unfold = rows.find((r): r is Extract<Slot, { kind: 'chat' }> => r.kind === 'chat' && r.folded && r.owned.some((w) => w.id === ws.id))
+  return unfold && { roomId: room.id, unfold }
 }
 
 /**

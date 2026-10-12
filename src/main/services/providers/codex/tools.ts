@@ -14,6 +14,12 @@ export const CODEX_TOOL_PREFIX = 'kernel_'
 /** Text written for Claude names Kernel's tools `mcp__kernel__<tool>`. Codex reads them as `kernel_<tool>`. */
 const codexNames = (text: string) => text.replace(/mcp__kernel__/g, CODEX_TOOL_PREFIX)
 
+/**
+ * Kernel's tools under an old name. A resumed thread keeps the tools it started with, so a Lead thread from before the
+ * rename still calls the old one, and its card has to show and save all the same (KERNEL-554).
+ */
+const RENAMED: Record<string, string> = { hire_agent: 'create_agent' }
+
 /** The dynamic tool specs for Kernel's tools, their input as JSON Schema. */
 export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[] {
   return tools.map((t) => ({ type: 'function' as const, name: `${CODEX_TOOL_PREFIX}${t.name}`, description: codexNames(t.description), inputSchema: z.toJSONSchema(z.object(t.inputSchema)) as never }))
@@ -26,7 +32,8 @@ export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[]
  */
 export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string, args: unknown, extra: { signal?: AbortSignal } = {}): Promise<DynamicToolCallResponse> {
   const fail = (text: string): DynamicToolCallResponse => ({ contentItems: [{ type: 'inputText', text }], success: false })
-  const tool = tools.find((t) => `${CODEX_TOOL_PREFIX}${t.name}` === name || t.name === name)
+  const bare = name.startsWith(CODEX_TOOL_PREFIX) ? name.slice(CODEX_TOOL_PREFIX.length) : name
+  const tool = tools.find((t) => t.name === bare || t.name === name) ?? tools.find((t) => t.name === RENAMED[bare])
   if (!tool) return fail(`Kernel has no tool called ${name}.`)
   const parsed = z.object(tool.inputSchema).safeParse(args ?? {})
   if (!parsed.success) return fail(`The arguments for ${tool.name} are wrong: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`)

@@ -1,12 +1,15 @@
 import type { AgentDef } from './types'
 
-// Kernel's built-in Lead and reviewer, and the reads of the roles Kernel resolves for a room's team (KERNEL-397).
+// Kernel's built-in Lead, its own reviews, and the reads of the roles Kernel resolves for a room's team (KERNEL-397).
 
 /** Kernel's Rowan. Reserved in every repo, so a saved workspace never points at the wrong agent. */
 export const KERNEL_LEAD = 'kernel-lead'
-/** Kernel's Theo. */
+/**
+ * Kernel's own reviews (KERNEL-549). `[team] reviewer = "kernel-reviewer"` picks Kernel's code review. Kernel's Theo ran
+ * under this id until KERNEL-553, so a review workspace from then still finds him by it.
+ */
 export const KERNEL_REVIEWER = 'kernel-reviewer'
-/** `[team] reviewer = "none"`: the room has no reviewer and Kernel's Theo stays out. */
+/** `[team] reviewer = "none"`: the room has no reviewer and Kernel's code review stays out. */
 export const NO_REVIEWER = 'none'
 export const RESERVED_AGENT_IDS: readonly string[] = [KERNEL_LEAD, KERNEL_REVIEWER]
 

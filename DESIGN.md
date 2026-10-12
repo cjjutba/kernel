@@ -17,12 +17,14 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | surface-3 | #1e1e1e | selected rows, hover fills |
 | hover | #242424 | menu item hover |
 | line | #1c1c1c | dividers |
-| line-2 | #262626 | input borders |
+| line-2 | #262626 | hairlines on cards, tables and chips |
 | line-3 | #2e2e2e | buttons, menus |
-| ink | #f5f5f5 | primary text |
-| ink-2 | #e0e0e0 | secondary text |
-| muted | #9c9c9c | labels, meta |
-| faint | #7a7a7a | tertiary |
+| input-line | #6a6a6a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #f5f5f5 | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #c8c8c8 | default text: rows, body, the transcript |
+| ink-3 | #aaaaaa | secondary text |
+| muted | #8e8e8e | labels, meta, placeholders |
+| faint | #727272 | icons, disabled, decoration. Never body text |
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
@@ -51,12 +53,14 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | surface-3 | #eaeaed | selected rows, hover fills |
 | hover | #e6e6e9 | menu item hover |
 | line | #e8e8eb | dividers |
-| line-2 | #dedee2 | input borders |
+| line-2 | #dedee2 | hairlines on cards, tables and chips |
 | line-3 | #d6d6db | buttons, menus |
-| ink | #18191b | primary text |
-| ink-2 | #3a3d44 | secondary text |
-| muted | #62666d | labels, meta |
-| faint | #636770 | tertiary (4.5:1, so close to muted) |
+| input-line | #82848a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #18191b | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #35383f | default text: rows, body, the transcript |
+| ink-3 | #4c4f56 | secondary text |
+| muted | #62666d | labels, meta, placeholders |
+| faint | #7b7f88 | icons, disabled, decoration. Never body text |
 | add | #166a45 | diff additions, passing checks |
 | del | #b32e2e | diff deletions, errors, the context ring from 90% |
 | mod | #895503 | a modified file's name and letter (KERNEL-399) |
@@ -71,6 +75,23 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | pr-fail-* | band #fcf0f0, line #f3d6d6, soft #f8e5e5, edge #e0a3a3, fg #8f2222, text #b32e2e | PR header band: checks failed, changes requested, conflicts |
 
 The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, made by `scripts/floor-light.mjs`) follow the theme. Colors live in `tokens.css` and the floor art only; `test/theme.test.ts` fails on a hex or rgb value anywhere else in the renderer.
+
+## Text ladder
+
+Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so the same text reads the same everywhere.
+
+| Role | Token | Dark on panel | Light on panel | Use |
+|---|---|---|---|---|
+| Emphasis | ink | 17.6:1 | 17.6:1 | titles, the current row, unread, the primary button |
+| Default | ink-2 | 11.5:1 | 11.7:1 | rows, body, the transcript |
+| Secondary | ink-3 | 8.3:1 | 8.2:1 | secondary text |
+| Meta | muted | 5.9:1 | 5.8:1 | labels, meta, placeholders |
+| Decoration | faint | 4.0:1 | 4.0:1 | icons, disabled, decoration. Never body text |
+
+- Each tier has at least 1.35x the contrast of the next, so emphasis, default and meta read as three steps and not one.
+- ink, ink-2, ink-3, muted and the status text colors reach 4.5:1 on every surface, hover and surface-3 included. Faint is not text and reaches 3:1.
+- Light text keeps the slight cool cast it had, which matches the light surfaces. Only the dark neutrals are pure grey (KERNEL-431).
+- Token values win over the PNGs in `design/screens/` on text color: the PNGs still draw the old greys. The PNGs stay the spec for layout and copy.
 
 ## Type
 
@@ -104,12 +125,13 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - PR header (KERNEL-274, KERNEL-528): the top of the right panel is one block in the PR's tone: grey (neutral states), green (open, ready, merging), red (checks failed, changes requested, conflicts, resolving), violet (merged). Its first row, 44px and in line with the chat header, holds the state's icon and label with the `#N | ↗` link pill at the right. Its second row holds the actions at full width and ends where the chat's tab row does, so the block's bottom line meets the line under the chat tabs. No line splits the rows. Every action leads with its icon. Soft buttons use the band's soft fill and edge, Create PR on the neutral band included, with its menu arrow a small square of its own. Merge PR and a merged PR's Archive take the solid; a closed PR's Archive is soft. Continue's border is solid. With the right panel hidden, the capsule in the chat header reads state, link, actions, with the same icons and soft rule. The label always shows the state, never a spinner. With the right panel hidden, the header sits in the chat with no band, in neutral colors except merged. `design/redesign/Pr*.png` draws every state.
 - Local merge (KERNEL-441): a repo with no GitHub remote has no PR, and the same band reads its merge. A plain `→ main` pill takes the link pill's place, and a merge line under the band says "3 ahead of main · 0 behind" and the merge method. Ready is green with Merge, behind main is grey with Update branch, conflicts and a refused merge are red, merging is the busy button and merged is violet. Behind, conflicts and refused each add one note card under the merge line, with the files listed where they matter. `design/redesign/PrLocal*.png` draws every state, and Room setup's Code host row is in `design/screens/RoomSetupGitHub.png` and `RoomSetupLocal.png`.
-- Composer (KERNEL-322): one composer everywhere, drawn in `design/redesign/Composer.png`. The box sits recessed on `input-bg`, the agent's name and role sit in a pill with no divider, and send and stop are circles. The permission mode label follows the model picker (KERNEL-435, `design/screens/ComposerModes.png`). The composers drawn on other screens predate it and don't show it.
+- Composer (KERNEL-322): one composer everywhere, drawn in `design/redesign/Composer.png`. The box sits recessed on `input-bg`, the agent's name and role sit in a pill with no divider, and send and stop are circles. The permission mode is a dropdown after the model button (KERNEL-435, KERNEL-573, `design/screens/ComposerModes.png`). The composers drawn on other screens predate it and don't show it.
 - Permission modes (KERNEL-435): Manual, Accept edits, Auto and Bypass permissions, always in that order. Plan joins them in the composer only. Settings, Permissions and the onboarding step list them as radio rows in one card, like Big terminal's presets: a filled ring with a check marks the pick, the title is 13.5px, and what the mode does sits below it in muted text. Bypass permissions says what it skips (every prompt, Always ask included) and what still stops it. In Settings an Only in worktrees switch row sits under it, indented to the titles.
   - A mode an agent's provider can't run keeps its row, dimmed, with an info line under it: "Auto isn't available for Codex agents yet." The chat uses Accept edits instead.
   - The onboarding step shows Bypass with a bordered caution block, never a red one.
   - A room's mode is a select with "Use app default" above the four modes. Its saved tools sit in a list under its commands, in the same hairline rows with a bordered Remove.
-  - In the composer the mode is a label after the model picker: muted text with a 14px icon, `plan` blue for Plan, and ink in a hairline pill for Bypass, the one mode that skips prompts. It opens the mode menu, and so does Permission mode in the + menu.
+  - In the composer the mode is a ghost dropdown after the model button (KERNEL-573), the same button: a 14px muted icon, the mode's name in `ink-2` and a chevron, with the open fill while its menu is open. `plan` blue for Plan, icon, name and chevron. No mode gets a pill, Bypass included. It opens the mode menu above it, 360px wide and lined up with the icon, and so does Permission mode in the + menu (`ComposerModeMenu`).
+  - A chat can pick a mode it can't run, like Bypass permissions on a current-branch chat with Only in worktrees on. The label shows the mode it runs in, Accept edits. The menu keeps the check on the picked mode and says what it runs as in that row's description, in `ink-3`: "Runs as Accept edits, Only in worktrees is on".
   - Shift+Tab cycles Manual, Accept edits, Plan, Auto, Bypass and skips a mode the chat's agent can't run.
   - The first switch into Bypass opens `ConfirmBypass` once, with its confirm in danger red.
   - An approval card says why it asked on one line under the command, with an info icon and `ink-3` text.
@@ -148,9 +170,26 @@ A button that waits on the main process shows it is working until the call retur
 - Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays it.
 - Resize edge glow (KERNEL-419): fades in over 200ms ease-out after an 80ms delay and out over 120ms, growing from the middle. Reduced motion turns it on and off with no transition.
 - Toasts (toast-motion-and-swipe): a new toast's gap opens over 0.16s, then the toast slides in from past the right edge over 0.34s. It leaves the same way: it slides out over 0.2s, then its gap closes over 0.16s. A drag or a two-finger swipe moves it with your finger. Past 60px, or after a flick, it slides on out. Short of that it springs back.
+- Archive (KERNEL-579): archiving a chat or workspace is one short beat, played for the three cases in `design/redesign/canvas/ArchiveMotion.dc.html`. Every curve is `ease-out`.
+  - Order. The row and the screen start in the same frame and end together at 200ms. Neither waits for the other. It starts when Kernel marks the archive done, after any confirm, never before. A failed archive moves nothing and shows its "Could not archive" toast.
+  - The row. Opacity goes 1 to 0 over 120ms while the row's height and the 3px gap under it close to 0 over 200ms. The row keeps its size and is clipped, never squeezed. Rows below slide up with the closing height and have no motion of their own, so the open chat's row rides up with them. A chat's nested workspace rows fold with it in the same frames, with no stagger. A folding row can't be clicked, and it leaves the list when the fold ends.
+  - The screen. When the archived chat or workspace was on screen, the destination fades in from 0 to 1 over 200ms on top of the old screen. The old screen stays at full opacity beneath it and goes when the fade ends, so the panel never dips toward its background. Only the panel's contents fade, which are the header, tabs, thread, composer and right panel. The panel's frame, the sidebar and the window don't move. The destination is live from the first frame, takes focus and keys at once, and the old screen takes none.
+  - Where it goes. The destination is the one the app already picks (KERNEL-338, KERNEL-405): the chat row above the archived chat, or the one below when it was first, else the room's front door, which is New chat with Rowan, or Team when the room has no Lead. An archived workspace on screen goes to the room's front door.
+  - Selected fill. The destination row's fill goes from none to `surface-3` and its text from `ink-2` to `ink` over 120ms, as the archived row fades out. This is the only selection change that fades. Other clicks still switch it at once.
+  - The last chat in a room. Rowan's Lead row opens in the chat row's place: height 0 to full over 200ms and opacity 0 to 1 over 120ms, as the chat row folds. The two heights add up to one row all the way through, so the rows below stay put. A room with no Lead has no row to open, and the rows below slide up.
+  - Not on screen. When the archived chat or workspace wasn't on screen, only its row folds. The screen doesn't move, and there is no toast (KERNEL-495).
+  - Any archive. The same beat plays however the archive starts: the row's Archive button, a PR's Archive, closing a chat's last tab, or Kernel archiving after a merge.
+  - Overlap. Archiving again while a fold runs starts that row's fold at once. A fade that starts over another one begins from what is on screen, and the one still running jumps to its end.
+  - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears, the selected fill changes and the screen swaps.
 - Only opacity and transform loop, and nothing on a button loops.
-- Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow, toasts that appear and vanish in place.
+- Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow, toasts that appear and vanish in place, archived rows and screens that change in place.
 
 ## Accessibility
 
-Real `<button>`, `<a>`, `<input>` with labels; focus rings visible; every icon-only control has `aria-label`; text contrast 4.5:1 (3:1 at 24px and up).
+Real `<button>`, `<a>`, `<input>` with labels; focus rings visible; every icon-only control has `aria-label`.
+
+- Text contrast is 4.5:1 for every text tier and status color on every surface (see Text ladder). Faint is for icons, disabled controls and decoration, at 3:1 (WCAG 1.4.11). It never carries body text.
+- Input borders use `--input-line`, which reaches 3:1 on every surface an input sits on (WCAG 1.4.11). Dividers, cards and chips keep their hairlines (`--line`, `--line-2`, `--line-3`). The focus ring (`--focus`) reaches 3:1 on every surface.
+- Unread is bold plus a step up the ladder, never color alone.
+- Increase contrast: `@media (prefers-contrast: more)` in `tokens.css` follows macOS. Each text tier takes the value of the tier above it, ink goes to full black or white, dividers reach 2:1 and every other line 3:1 (line-4 and the input border 4.5:1), and the focus ring is near solid.
+- `test/theme.test.ts` checks every pair above in both themes and in the Increase contrast block.

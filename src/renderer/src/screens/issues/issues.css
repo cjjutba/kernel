@@ -8,21 +8,21 @@
 .is-pills .pill { gap: 6px; font-size: 13px; }
 .is-n { font-size: 12px; color: var(--muted); font-weight: 400; }
 .is-sep { width: 1px; height: 16px; margin: 0 6px; background: var(--pill-line); }
-.is-chip, .is-room { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface-2); color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+.is-chip, .is-room { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--input-line); border-radius: 7px; background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
 .is-chip:hover, .is-room:hover { background: var(--surface-3); }
 .is-chip > svg, .is-room > svg { color: var(--muted); flex-shrink: 0; }
 .is-chip select, .is-room select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .is-chip:has(select:focus-visible), .is-room:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .is-search { position: relative; display: inline-flex; align-items: center; }
 .is-search > svg { position: absolute; left: 9px; color: var(--muted); pointer-events: none; }
-.is-search input { width: 220px; height: 28px; box-sizing: border-box; padding: 0 10px 0 28px; border-radius: 7px; border: 1px solid var(--line-2); background: var(--input-bg); color: var(--ink); font-size: 12.5px; outline: none; }
-.is-search input:focus-visible { border-color: var(--line-4); }
+.is-search input { width: 220px; height: 28px; box-sizing: border-box; padding: 0 10px 0 28px; border-radius: 7px; border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font-size: 12.5px; outline: none; }
+.is-search input:focus-visible { border-color: var(--ink-3); }
 .is-search input::-webkit-search-cancel-button { display: none; }
 
 /* States with no list */
 .is-center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px; }
 .is-state { flex-direction: column; gap: 8px; text-align: center; }
-.is-state h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.is-state h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
 .is-state p { margin: 0 0 10px; max-width: 340px; color: var(--muted); line-height: 1.5; }
 .is-fail { width: 100%; max-width: 560px; padding-bottom: 60px; }
 .is-fail .banner { padding: 10px 10px 10px 14px; gap: 12px; border-radius: 10px; }
@@ -35,9 +35,9 @@
 .is-group { display: flex; align-items: center; gap: 12px; height: 30px; margin: 4px 0 0; padding: 0 10px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
 .is-group .muted { font-weight: 400; margin-left: -4px; }
 .is-slot { width: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.is-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 62px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; }
+.is-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 62px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); text-align: left; }
 .is-row:hover { background: var(--nav-hover); }
-.is-row[aria-current='true'] { background: var(--surface-3); }
+.is-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
 .is-title { font-size: 13px; font-weight: 500; }
 .is-sub { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .is-sub svg { flex-shrink: 0; }
@@ -57,7 +57,7 @@
 .is-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 28px 40px 24px; }
 .is-inner { max-width: 640px; display: flex; flex-direction: column; gap: 18px; }
 .is-key { font-size: 12.5px; }
-.is-detail h2 { margin: 0; font-size: 22px; line-height: 1.45; font-weight: 600; letter-spacing: -0.4px; }
+.is-detail h2 { margin: 0; font-size: 22px; line-height: 1.45; font-weight: 600; color: var(--ink); letter-spacing: -0.4px; }
 .is-facts { margin: 0; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 72px minmax(0, 1fr) 72px minmax(0, 1fr); align-items: center; gap: 10px 16px; }
 .is-facts dt { color: var(--muted); }
 .is-facts dd { margin: 0; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--ink-2); }

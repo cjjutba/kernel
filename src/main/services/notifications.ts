@@ -59,7 +59,7 @@ const outcome = (a: Approval): string => {
   }
 }
 
-const kindLabel = (a: Approval) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? 'Plan review' : a.kind === 'question' ? 'Question' : a.kind === 'agent' ? 'Hire' : 'Permission')
+const kindLabel = (a: Approval) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? 'Plan review' : a.kind === 'question' ? 'Question' : a.kind === 'agent' ? 'Create agent' : 'Permission')
 
 /**
  * Turns bus events into inbox rows (Inbox.png) and, when the app is in the background, macOS notifications.

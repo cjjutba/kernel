@@ -18,7 +18,7 @@ export const fileName = (path: string) => path.split('/').pop() ?? path
 /** "Two agents changed the same file". */
 export const overlapTitle = (o: Overlap) => `${cap(NUMBERS[o.parties.length] ?? String(o.parties.length))} agents changed the same file`
 
-const label = (a: Approval) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? 'Plan review' : a.kind === 'question' ? 'Question' : a.kind === 'agent' ? 'Hire' : 'Permission')
+const label = (a: Approval) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? 'Plan review' : a.kind === 'question' ? 'Question' : a.kind === 'agent' ? 'Create agent' : 'Permission')
 
 /** A row for a pending approval that main has not turned into a notification yet. Same shape main writes (services/notifications.ts). */
 function fromApproval(a: Approval, rooms: Room[]): Notification {

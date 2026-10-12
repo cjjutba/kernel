@@ -129,6 +129,74 @@ describe('checking a key (KERNEL-523)', () => {
   })
 })
 
+describe("showing the provider's reason when a check fails (KERNEL-582)", () => {
+  const answering = (status: number, body: string) => (async () => new Response(body, { status })) as unknown as typeof fetch
+  /** An error body shaped as each provider sends one. */
+  const body = (p: 'claude' | 'codex', message: string) => JSON.stringify(p === 'claude'
+    ? { type: 'error', error: { type: 'invalid_request_error', message } }
+    : { error: { message, type: 'invalid_request_error', param: null, code: null } })
+  const keyOf = (p: 'claude' | 'codex') => p === 'claude' ? CLAUDE_KEY : OPENAI_KEY
+  const why = (p: 'claude' | 'codex', f: typeof fetch) => checkApiKey(p, keyOf(p), f).then(() => 'ok', (e: Error) => e.message)
+
+  it("shows the provider's message for a 400, and says it was turned down without a reason when there is none", async () => {
+    expect([
+      await why('claude', answering(400, body('claude', 'Your credit balance is too low to access the Anthropic API.'))),
+      await why('codex', answering(400, body('codex', 'Your organization must be verified to use this API.'))),
+      await why('claude', answering(400, '{}')),
+      await why('codex', answering(400, body('codex', '  ')))
+    ]).toEqual([
+      'Anthropic says: Your credit balance is too low to access the Anthropic API.',
+      'OpenAI says: Your organization must be verified to use this API.',
+      'Anthropic turned the key down without saying why. Check the key and your Anthropic account.',
+      'OpenAI turned the key down without saying why. Check the key and your OpenAI account.'
+    ])
+  })
+
+  it("keeps the 401, 403 and 429 wording and adds the provider's message after it", async () => {
+    expect([
+      await why('claude', answering(401, body('claude', 'invalid x-api-key'))),
+      await why('codex', answering(401, body('codex', 'Incorrect API key provided: sk-proj-****Zp4-.'))),
+      await why('codex', answering(403, body('codex', 'You are not allowed to sample from this model.'))),
+      await why('claude', answering(429, body('claude', 'Number of request tokens has exceeded your per-minute rate limit.')))
+    ]).toEqual([
+      "Anthropic didn't accept that key. Check that you copied all of it. Anthropic says: invalid x-api-key",
+      "OpenAI didn't accept that key. Check that you copied all of it. OpenAI says: Incorrect API key provided: sk-proj-****Zp4-.",
+      "OpenAI says that key isn't allowed to use the API. OpenAI says: You are not allowed to sample from this model.",
+      'Anthropic is limiting requests for that key. Try again in a minute. Anthropic says: Number of request tokens has exceeded your per-minute rate limit.'
+    ])
+  })
+
+  it('falls back to plain words for a body that is empty, not JSON, or has no message', async () => {
+    expect([
+      await why('claude', answering(400, '<html><body>Bad request</body></html>')),
+      await why('codex', answering(400, '')),
+      await why('claude', answering(502, 'upstream connect error')),
+      await why('codex', answering(500, JSON.stringify({ error: 'server_error' }))),
+      await why('claude', answering(401, 'null'))
+    ]).toEqual([
+      'Anthropic turned the key down without saying why. Check the key and your Anthropic account.',
+      'OpenAI turned the key down without saying why. Check the key and your OpenAI account.',
+      'Anthropic answered 502 when Kernel checked the key. Try again in a minute.',
+      'OpenAI answered 500 when Kernel checked the key. Try again in a minute.',
+      "Anthropic didn't accept that key. Check that you copied all of it."
+    ])
+  })
+
+  it('never repeats the key, and keeps the message to one line of about 300 characters', async () => {
+    for (const p of ['claude', 'codex'] as const) {
+      const key = keyOf(p)
+      const echoed = await why(p, answering(400, body(p, `The key ${key} can't be used yet.\nTry again later. (${key})`)))
+      expect(echoed).toBe(`${p === 'claude' ? 'Anthropic' : 'OpenAI'} says: The key [your key] can't be used yet. Try again later. ([your key])`)
+      // The key sits across the cut, so trimming before replacing it would leave its start behind.
+      const long = await why(p, answering(401, body(p, `${'word '.repeat(54)}${key}\n\n${'more '.repeat(200)}`)))
+      expect(long).not.toContain(key.slice(0, 20))
+      expect(long).not.toMatch(/\n/)
+      expect(long.split(' says: ')[1].length).toBeLessThanOrEqual(300)
+      expect(long.endsWith('…')).toBe(true)
+    }
+  })
+})
+
 describe('Claude API key accounts (KERNEL-523)', () => {
   it('adds a checked key encrypted on disk, and hands it only to sessions once the user switches to it', async () => {
     const { k, h, api, dataDir } = await kernel()

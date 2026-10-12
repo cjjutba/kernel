@@ -32,11 +32,11 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* The underline spans the whole group, so the pen and the close button sit inside the tab, as in Conductor (D-088). */
 .tab-group { position: relative; display: inline-flex; align-items: center; height: 40px; min-width: 0; padding-right: 4px; border-bottom: 2px solid transparent; }
 .tab-group[data-on] { border-bottom-color: var(--ink); }
-.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--ink-2); font-size: 13px; font-weight: 500; }
 .tab-glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tab-glyph > svg { flex-shrink: 0; }
 .tab-glyph[data-tone='needs'] svg { color: var(--needs); }
-.ws-tab:hover { color: var(--ink-2); }
+.ws-tab:hover { color: var(--ink); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
 .ws-tab[data-unread] { color: var(--ink); font-weight: 600; }
@@ -62,7 +62,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink-2); font-size: 14px; line-height: 1.7; }
 /* The setup wait (KERNEL-430): messages waiting for setup sit where they will land, at lower contrast, with one line or card for setup. */
 .msg-user[data-queued] .bubble { background: var(--surface); color: var(--muted); }
 .queued-meta { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--muted); }
@@ -88,7 +88,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-more { position: relative; display: inline-flex; }
 .msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
 .msg-reply .reply-files { margin-top: 6px; }
-.md { font-size: 14px; line-height: 1.6; color: color-mix(in srgb, var(--ink) 92%, transparent); }
+.md { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
 .md p { white-space: pre-wrap; }
@@ -107,9 +107,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md ul[data-tasks] { padding-left: 2px; }
 .md li[data-task] { list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); }
 .md li[data-task] > :not(.md-box) { grid-column: 2; }
-.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--ink); }
+.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--ink-2); }
 .md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-4); }
-.md blockquote { margin-left: 0; margin-right: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-3); color: var(--ink-2); }
+.md blockquote { margin-left: 0; margin-right: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-3); color: var(--ink-3); }
 .md blockquote > * { margin: 0 0 6px; }
 .md blockquote > *:last-child { margin-bottom: 0; }
 .md hr { height: 0; margin: 18px 0; border: 0; border-top: 1px solid var(--line-2); }
@@ -168,7 +168,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .running { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--mono); color: var(--muted); }
 .interrupted { align-self: flex-start; font: 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: 12.5px; }
-.note a { color: var(--ink); font-weight: 500; white-space: nowrap; }
+.note a { color: var(--ink-2); font-weight: 500; white-space: nowrap; }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
 .note.inline .note-text { min-width: 0; }
@@ -193,9 +193,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .panel-tools .tool-text { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: 6px; background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 400; }
 /* The filter under the strip (PanelFilter.png). The match is lit in the row's name and folder. */
 .ffield { flex-shrink: 0; padding: 0 10px 8px; }
-.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--line-3); border-radius: 7px; background: var(--input-bg); color: var(--muted); }
-.finput:focus-within { border-color: var(--line-4); }
-.finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13px; }
+.finput { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 3px 0 10px; border: 1px solid var(--input-line); border-radius: 7px; background: var(--input-bg); color: var(--muted); }
+.finput:focus-within { border-color: var(--ink-3); }
+.finput input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13px; }
 .finput input::placeholder { color: var(--muted); }
 .hl { border-radius: 2px; background: color-mix(in srgb, var(--ink) 16%, transparent); color: inherit; }
 /* Both tab strips, the panel's and the bottom's (TabStrip). A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so what follows it stays pinned (KERNEL-489).
@@ -206,14 +206,15 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tab-strip .tab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
 /* The tablist clips what sits outside it, so the focus ring is drawn inside the tab. */
 .tab-strip .tab:focus-visible { outline-offset: -2px; }
-.tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
+/* Under .tab-strip so it outranks the base .icon-btn size, which comes later in the bundle. The arrow and its fade fill the strip's height, so the arrow centers on the labels. */
+.tab-strip .tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
 .tab-more[data-side='left'] { left: 0; justify-content: flex-start; background: linear-gradient(to left, transparent, var(--panel) 58%); }
 .tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
 .tab-more[data-side='left'] svg { transform: rotate(180deg); }
 /* The Lead's strip, as LeadPrs.png draws it (KERNEL-354): 12.5px tabs with a faint count. */
 .panel-tabs[data-lead] .tab { height: auto; padding: 4px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 400; }
 .panel-tabs[data-lead] [role='tablist'] { gap: 4px !important; } /* Tabs sets its gap inline. */
-.panel-tabs[data-lead] .tab-count { color: var(--faint); font-size: 11.5px; }
+.panel-tabs[data-lead] .tab-count { color: var(--muted); font-size: 11.5px; }
 .panel-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; color: var(--muted); text-align: center; }
 /* File trees (All files, the Changes tree) and the Changes list, drawn like VS Code's explorer (KERNEL-399). */
@@ -257,15 +258,15 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .compare-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .compare-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compare-sub { display: flex; align-items: center; gap: 6px; margin-top: 1px; font-size: 12px; color: var(--muted); white-space: nowrap; }
-.compare-sha { font-size: 11.5px; color: var(--faint); }
+.compare-sha { font-size: 11.5px; color: var(--muted); }
 .compare-dot { color: var(--faint); }
-.compare-age { margin-left: auto; color: var(--faint); }
+.compare-age { margin-left: auto; color: var(--muted); }
 /* The commits and the branches scroll under the rows that stay put. */
 .compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
 .compare-note { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--muted); }
-.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 7px; background: var(--input-bg); color: var(--muted); }
-.compare-filter:focus-within { border-color: var(--line-4); }
-.compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13px; }
+.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: 7px; background: var(--input-bg); color: var(--muted); }
+.compare-filter:focus-within { border-color: var(--ink-3); }
+.compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13px; }
 .compare-filter input::placeholder { color: var(--muted); }
 
 /* The right panel under the PR band: the top pane (tabs and their list) over the bottom pane. `--bottom-ratio` is the bottom's share of this box, one for
@@ -276,7 +277,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .bottom-panel { position: relative; height: clamp(160px, calc(var(--bottom-ratio, 0.3333) * 100cqh), calc(100cqh - 160px)); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .bottom-panel[data-collapsed] { height: 41px; }
 .bottom-panel[data-collapsed] .bottom-tabs { border-bottom: 0; }
-.bottom-word { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--faint); }
+.bottom-word { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
 .bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
 /* The chevron points down while the pane is open and up once it is folded. */
 .bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
@@ -305,13 +306,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .open-editor { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12px; text-decoration: underline; }
 .code-view { flex: 1; min-height: 0; overflow: auto; padding: 10px 0; font-size: 12.5px; line-height: 22px; }
 .code-line { display: grid; grid-template-columns: 52px minmax(0, 1fr); }
-.code-line .ln { text-align: right; padding-right: 14px; color: var(--faint); user-select: none; }
-.code-line .src, .diff-line .src { white-space: pre; color: color-mix(in srgb, var(--ink) 92%, transparent); }
+.code-line .ln { text-align: right; padding-right: 14px; color: var(--muted); user-select: none; }
+.code-line .src, .diff-line .src { white-space: pre; color: var(--ink-2); }
 .diff-line { display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr); }
 .diff-line { position: relative; }
-.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: 6px; background: var(--surface-2); color: var(--ink); font: 12px var(--sans, inherit); opacity: 0; }
+.hunk-send { position: absolute; right: 12px; top: 1px; height: 20px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font: 12px var(--sans, inherit); opacity: 0; }
 .diff-line:hover .hunk-send, .hunk-send:focus-visible { opacity: 1; }
-.diff-line .ln { text-align: right; padding-right: 10px; color: var(--faint); user-select: none; }
+.diff-line .ln { text-align: right; padding-right: 10px; color: var(--muted); user-select: none; }
 .diff-line[data-mark='+'] { background: color-mix(in srgb, var(--add) 8%, transparent); }
 .diff-line[data-mark='-'] { background: color-mix(in srgb, var(--del) 8%, transparent); }
 .diff-line[data-mark='+'] .mark { color: var(--add); }
@@ -329,14 +330,14 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
-.chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
 /* The Lead's New chat state puts its composer between the subtitle and the suggestions (NewChat.png: 640px wide, 34px under the subtitle). */
 .chat-empty-box { width: 100%; max-width: 640px; margin-top: 34px; text-align: left; }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 12.5px; }
 .chat-suggest button svg { color: var(--muted); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
-.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--line-4); border-radius: 6px; background: var(--input-bg); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; }
+.tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: 6px; background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; }
 
 /* A narrow chat column: Checkpoints keeps its icon, and the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {

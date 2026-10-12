@@ -1,5 +1,5 @@
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, Decision, PermissionMode, Room, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatRunMode, Decision, ModeReason, ModeScope, PermissionMode, Room, RunMode, Workspace } from '@shared/types'
 import { PERMISSION_MODES } from '@shared/types'
 import type { AppSettings } from './settings'
 import type { RunnerHost } from './providers/types'
@@ -12,8 +12,8 @@ import { bashVerdict, pushMightReach, roomRule, usesNetwork } from './bashGuard'
 
 type Permissions = AppSettings['permissions']
 
-/** The mode a chat's steps run in: one of the app's four, or `plan` while the chat plans. */
-export type RunMode = PermissionMode | 'plan'
+/** Moved to the shared contract (KERNEL-572). Exported here too for what imports it from here. */
+export type { RunMode }
 
 /** What the modes are called in the app, for notes. */
 export const MODE_NAMES: Record<RunMode, string> = { default: 'Manual', acceptEdits: 'Accept edits', auto: 'Auto', bypassPermissions: 'Bypass permissions', plan: 'Plan' }
@@ -39,14 +39,27 @@ export const bypassFits = (ws: Pick<Workspace, 'mode'>, settings: Pick<AppSettin
  * Kernel's own plan step owns plan mode. Auto falls back to Accept edits where the chat can't run it, and so does Bypass
  * permissions where policy turns it off or the workspace doesn't fit it. A mode Kernel doesn't know counts as Manual.
  */
-export function effectiveMode(chat: Pick<Chat, 'plan' | 'mode'>, ws: Pick<Workspace, 'mode'>, room: Pick<Room, 'permissionMode'> | undefined, settings: Pick<AppSettings, 'permissions'>, avail: ChatAvailability, agent?: Pick<AgentDef, 'permissionMode'>): RunMode {
-  if (chat.plan) return 'plan'
-  let mode = known(chat.mode) ?? known(room?.permissionMode) ?? known(settings.permissions.mode) ?? 'default'
+export function effectiveMode(...args: Parameters<typeof chatMode>): RunMode { return chatMode(...args).mode }
+
+/**
+ * `effectiveMode` with the mode picked for the chat, where it was picked, and why the chat runs in another (KERNEL-572). The
+ * first step that moves it off the pick names the reason, so a Bypass pick that an agent file turns into Auto, which the
+ * chat can't run, reads as the agent file's doing.
+ */
+export function chatMode(chat: Pick<Chat, 'plan' | 'mode'>, ws: Pick<Workspace, 'mode'>, room: Pick<Room, 'permissionMode'> | undefined, settings: Pick<AppSettings, 'permissions'>, avail: ChatAvailability, agent?: Pick<AgentDef, 'permissionMode'>): ChatRunMode {
+  const own = known(chat.mode)
+  const roomMode = known(room?.permissionMode)
+  const [picked, pickedIn]: [PermissionMode, ModeScope] = own ? [own, 'chat'] : roomMode ? [roomMode, 'room'] : [known(settings.permissions.mode) ?? 'default', 'app']
+  const runs = (mode: RunMode, why?: ModeReason): ChatRunMode => ({ mode, picked, pickedIn, ...(why ? { why } : {}) })
+  if (chat.plan) return runs('plan', 'plan')
   const file = agent?.permissionMode
-  if (file) mode = stricter(mode, known(file) ?? 'default')
-  if (mode === 'auto' && !avail.auto) return 'acceptEdits'
-  if (mode === 'bypassPermissions' && !(avail.bypass && bypassFits(ws, settings))) return 'acceptEdits'
-  return mode
+  const mode = file ? stricter(picked, known(file) ?? 'default') : picked
+  const tightened = mode !== picked ? 'agentFile' : undefined
+  if (mode === 'auto' && !avail.auto) return runs('acceptEdits', tightened ?? 'noAuto')
+  // The workspace first: Kernel reads the policy only for one that fits Bypass permissions.
+  if (mode === 'bypassPermissions' && !bypassFits(ws, settings)) return runs('acceptEdits', 'worktreesOnly')
+  if (mode === 'bypassPermissions' && !avail.bypass) return runs('acceptEdits', 'noBypass')
+  return runs(mode, tightened)
 }
 
 const known = (mode: string | undefined): PermissionMode | undefined => (PERMISSION_MODES as readonly string[]).includes(mode ?? '') ? mode as PermissionMode : undefined
