@@ -193,7 +193,15 @@ async function typeApiKey(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// RoomSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
+async function openReviewer(page: Page) {
+  await page.getByRole('button', { name: 'Reviewer' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,

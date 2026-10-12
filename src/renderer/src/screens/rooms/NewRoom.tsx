@@ -116,7 +116,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
               )
             })}
           </div>
-          <p className="nr-hint">Rowan and Theo are built into Kernel. The others are copied into .claude/agents.</p>
+          <p className="nr-hint">Rowan is built into Kernel and always joins. The others are copied into .claude/agents.</p>
         </div>
       </div>
     </Modal>

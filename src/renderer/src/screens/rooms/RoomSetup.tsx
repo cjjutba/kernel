@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { AgentDef, TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { call, cleanError } from '../../api'
@@ -7,11 +7,14 @@ import { openRoom } from '../../lead'
 import { Button, CodeBlock, Icon, Select, Spinner, useBusy } from '../../ui'
 import { warningText } from '../team/model'
 import { getDraft } from './draft'
+import { ReviewerPicker } from './ReviewerPicker'
 import '../onboarding/onboarding.css'
 import './rooms.css'
 
 const NO_AGENTS: AgentDef[] = []
 const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+/** An agent the Reviewer picker offers: the one that reviews now, or any whose role says review. */
+const reviews = (a: AgentDef) => !!a.reviewer || /\breview/i.test(a.role)
 
 /** "`.env` and `.env.production`": the files by name, in mono, joined the way a sentence lists them. */
 function fileList(paths: string[]) {
@@ -43,18 +46,22 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
   const warnings = team.flatMap((a) => (a.warnings ?? []).map((w) => `${a.name}: ${lower(warningText(w))}`))
   const leadNow = team.find((a) => a.lead)?.id ?? KERNEL_LEAD
-  const reviewerNow = team.find((a) => a.reviewer)?.id ?? NO_REVIEWER
+  const reviewerNow = team.find((a) => a.reviewer)?.id ?? KERNEL_REVIEWER
   const [lead, setLead] = useState<string>()
   const [reviewer, setReviewer] = useState<string>()
   const [busy, run] = useBusy()
+  const reviewerLabel = useId()
   const files = team.filter((a) => !a.builtIn)
+  const leadPick = lead ?? leadNow
+  const reviewers = files.filter((a) => a.id !== leadPick && reviews(a))
+  const reviewerPick = (reviewer ?? reviewerNow) === leadPick ? KERNEL_REVIEWER : reviewer ?? reviewerNow
   // The team the repo brought is saved as checked, and only what changed goes to settings.toml (KERNEL-397).
   const open = () => run('open', async () => {
     if (!roomId) return
     if (review) {
       const patch: TeamPatch = {}
       if (lead && lead !== leadNow) patch.lead = lead
-      if (reviewer && reviewer !== reviewerNow) patch.reviewer = reviewer
+      if (reviewerPick !== reviewerNow) patch.reviewer = reviewerPick
       try { await call('agents.setTeam', { roomId, team: patch, from: 'setup' }) } catch (e) { actions.ui.toast({ title: 'Could not change the team', sub: cleanError(e) }); return }
     }
     await openRoom(roomId)
@@ -70,7 +77,12 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const leadName = team.find((a) => a.lead)?.name ?? 'Rowan'
   const status = finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.`
     : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. ${leadName} is waiting for a brief.`
-      : 'You can leave this screen. Kernel keeps going.'
+      : finished ? `Done. ${leadName} is waiting for a brief.`
+        : 'You can leave this screen. Kernel keeps going.'
+  const noReviewerAgent = !reviewers.length
+  const reviewerNote = reviewerPick === NO_REVIEWER ? 'No reviewer. No code review runs by itself.'
+    : reviewerPick === KERNEL_REVIEWER ? `${noReviewerAgent ? 'No reviewer. ' : ''}Pull requests get Kernel’s code review.`
+      : 'Reviews each pull request before it merges'
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
@@ -122,8 +134,8 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 <Select label="Lead" value={lead ?? leadNow} disabled={busy !== null} onChange={(e) => setLead(e.target.value)} options={[...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Rowan, from Kernel' }]} />
               </div>
               <div className="rs-team-row">
-                <span className="rs-team-text"><span className="rs-team-label">Reviewer</span><span>Reviews each pull request before it merges</span></span>
-                <Select label="Reviewer" value={reviewer ?? reviewerNow} disabled={busy !== null} onChange={(e) => setReviewer(e.target.value)} options={[...files.filter((a) => a.id !== (lead ?? leadNow)).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]} />
+                <span className="rs-team-text"><span id={reviewerLabel} className="rs-team-label">Reviewer</span><span data-gap={reviewerPick === KERNEL_REVIEWER && noReviewerAgent ? '' : undefined}>{reviewerNote}</span></span>
+                <ReviewerPicker value={reviewerPick} agents={reviewers} disabled={busy !== null} labelledBy={reviewerLabel} onChange={setReviewer} />
               </div>
               {warnings.map((w) => <div key={w} className="rs-team-warn"><Icon name="warning" size={14} /><span>{w}</span></div>)}
             </section>
