@@ -22,11 +22,35 @@ export function useProviderModels(provider: Provider): ProviderModel[] {
   return models
 }
 
+// Whether Codex is signed in, read once per window like the model list. Settings, Providers feeds every status it reads
+// into `noteCodexStatus`, so a sign-in or sign-out shows the next time a picker mounts. A failed read isn't kept.
+let codexSignedIn: Promise<boolean> | null = null
+
+export const noteCodexStatus = (signedIn: boolean) => { codexSignedIn = Promise.resolve(signedIn) }
+
+function useCodexSignedIn(): boolean {
+  const [signedIn, setSignedIn] = useState(false)
+  useEffect(() => {
+    let live = true
+    if (!codexSignedIn) {
+      const read: Promise<boolean> = call('providers.status', { provider: 'codex' }).then((s) => s.signedIn, () => { if (codexSignedIn === read) codexSignedIn = null; return false })
+      codexSignedIn = read
+    }
+    void codexSignedIn.then((v) => { if (live) setSignedIn(v) })
+    return () => { live = false }
+  }, [])
+  return signedIn
+}
+
 /**
- * Codex is in use: a role runs on it, or this chat does. Only then do the pickers group models by provider, so a setup that
- * runs only Claude sees the picker it always had (KERNEL-406).
+ * Codex is in use: it is signed in, a role runs on it, or this chat does. Only then do the pickers group models by provider,
+ * so a setup without Codex sees the picker it always had (KERNEL-406, KERNEL-649).
  */
-export const useCodexInUse = (chatProvider?: Provider) => useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.provider === 'codex'))
+export function useCodexInUse(chatProvider?: Provider): boolean {
+  const signedIn = useCodexSignedIn()
+  const configured = useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.provider === 'codex'))
+  return signedIn || configured
+}
 
 export const providerLabel = (p: Provider) => PROVIDERS.find((x) => x.id === p)?.label ?? p
 
