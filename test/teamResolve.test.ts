@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { AgentDef, TeamConfig } from '@shared/types'
+import { reviewerChoice } from '@shared/team'
 import { agentFromFile } from '../src/main/services/agents'
 import { loadBuiltins } from '../src/main/services/builtins'
 import { adviseRoster, resolveTeam, writtenAsSubagent } from '../src/main/services/teamResolve'
@@ -50,6 +51,12 @@ describe('resolveTeam', () => {
     }
     // Neither names a missing agent, with the starter folder or without it.
     expect(warningsOf((await team([KAI], { reviewer: 'kernel-reviewer' }, { starters: false })).agents)).toEqual({})
+  })
+
+  it("shows the reviewing agent, else none when the repo turned review off, else Kernel's code review (KERNEL-590)", async () => {
+    expect(reviewerChoice((await team([KAI, THEO])).agents)).toBe('theo')
+    const cases: [TeamConfig | undefined, string][] = [[undefined, 'kernel-reviewer'], [{ reviewer: 'kernel-reviewer' }, 'kernel-reviewer'], [{ reviewer: 'none' }, 'none']]
+    for (const [config, shown] of cases) expect(reviewerChoice((await team([KAI], config)).agents, config)).toBe(shown)
   })
 
   it("keeps Kernel's Theo off every team, named Theo for the review workspaces it ran", async () => {

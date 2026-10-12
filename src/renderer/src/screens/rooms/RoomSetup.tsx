@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import type { AgentDef, TeamPatch } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
@@ -37,6 +37,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const steps = useStore((s) => (roomId ? s.roomSetup[roomId] : undefined))
   const agents = useStore((s) => (roomId ? s.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
+  const teamConfig = useStore((s) => (roomId ? s.roomSettings[roomId]?.team : undefined))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
   // A warning never stops the room opening, but it stops Brief Rowan right away, so the user sees it (KERNEL-437).
@@ -46,9 +47,12 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
   const warnings = team.flatMap((a) => (a.warnings ?? []).map((w) => `${a.name}: ${lower(warningText(w))}`))
   const leadNow = team.find((a) => a.lead)?.id ?? KERNEL_LEAD
-  const reviewerNow = team.find((a) => a.reviewer)?.id ?? KERNEL_REVIEWER
+  const reviewerNow = reviewerChoice(team, teamConfig)
   const [lead, setLead] = useState<string>()
   const [reviewer, setReviewer] = useState<string>()
+  // `[team] reviewer = "none"` is in the repo's file, not in the agent list, so the team waits for the read before it shows a Reviewer.
+  const [configRead, setConfigRead] = useState(false)
+  const showTeam = review && configRead
   const [busy, run] = useBusy()
   const reviewerLabel = useId()
   const files = team.filter((a) => !a.builtIn)
@@ -70,6 +74,12 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   // with something to look at waits for Open the room.
   const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
   useEffect(() => { if (finished && !failed && !warned && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, warned, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!review || !roomId) return
+    let live = true
+    call('settings.room', { roomId }).then((rs) => actions.settings.setRoom(roomId, rs)).catch(() => undefined).finally(() => { if (live) setConfigRead(true) })
+    return () => { live = false }
+  }, [review, roomId])
   const recheck = () => run('recheck', async () => {
     if (!roomId) return
     try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
@@ -86,7 +96,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
-      <div className={review ? 'ob-page rs-review' : 'ob-page'}>
+      <div className={showTeam ? 'ob-page rs-review' : 'ob-page'}>
         <div className="ob-col">
           <h1 className="ob-h1">Setting up {room?.name ?? 'your room'}</h1>
           <p className="ob-sub">This takes a minute. Your team is ready when it finishes.</p>
@@ -123,7 +133,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             ))}
             {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
           </div>
-          {review && (
+          {showTeam && (
             <section className="rs-team" aria-labelledby="rs-team">
               <div className="rs-team-head">
                 <h2 id="rs-team">Your team</h2>
