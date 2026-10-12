@@ -1,6 +1,6 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -82,6 +82,8 @@ export interface Fixture {
   pushChecks?: Record<string, PushCheck>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
   localFiles?: Record<string, FileToCopy[]>
+  /** By room id, what `files.production` answers: the files to copy that look like production (KERNEL-449). */
+  production?: Record<string, ProductionHint[]>
   account?: ClaudeAccount
   /** Both providers' accounts (Settings, Providers, the account menu, KERNEL-406). */
   accounts?: AccountProfile[]

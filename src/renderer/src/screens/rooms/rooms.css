@@ -88,9 +88,12 @@
 /* Room setup, remove room */
 .rs-ico[data-state='wait'] { color: var(--faint); }
 .rs-ico[data-state='run'] { color: var(--ink-2); }
+.rs-ico[data-state='warn'] { color: var(--needs); }
+.rs-note { margin-top: 4px; }
+.rs-note code { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.rs-acts .btn { height: 30px; }
 .rs-dash { display: inline-block; width: 15px; text-align: center; line-height: 15px; }
 .rs-error { color: var(--del); white-space: pre-wrap; }
-.rs-ico[data-state='warn'] { color: var(--needs); }
 .rs-out { margin: 10px 0 0; }
 .ob-check[data-state='wait'] .ob-detail { color: var(--muted); }
 .rm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: 12px; }

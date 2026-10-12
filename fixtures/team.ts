@@ -49,16 +49,15 @@ const setupSteps: RoomSetupStep[] = [
   { id: 'push', title: 'Check push access', detail: 'samrivera can push to samrivera/client-c', state: 'wait' },
   { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
 ]
-/**
- * KERNEL-460: setup finished, and git can't push because it isn't using gh's login. A warning, so the room still opens.
- * The copy step's production warning is B7's, so its files copy here.
- */
+// KERNEL-449: setup is done, and two of the copied files look like production. KERNEL-460: git can't push, because it
+// isn't using gh's login. Both are warnings, so the room still opens.
 const warnSteps: RoomSetupStep[] = [
-  ...setupSteps.slice(0, 2),
+  { id: 'clone', title: 'Clone cjjutba/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
+  { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/client-c', state: 'ok' },
   { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
-  { id: 'copy', title: 'Copy local files', detail: '.env, .env.local, .env.production', state: 'ok' },
+  { id: 'copy', title: 'Copy local files', detail: '.env, .env.local, .env.production', state: 'warn', production: ['.env', '.env.production'] },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
-  { id: 'push', title: 'Git can\u2019t push to samrivera/client-c', detail: 'gh is signed in as samrivera, but git isn\u2019t using that login, so agents can\u2019t push yet.', state: 'warn', fix: { command: 'gh auth setup-git', action: 'recheck' } },
+  { id: 'push', title: 'Git can\u2019t push to cjjutba/client-c', detail: 'gh is signed in as cjjutba, but git isn\u2019t using that login, so agents can\u2019t push yet.', state: 'warn', fix: { command: 'gh auth setup-git', action: 'recheck' } },
   { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'ok' }
 ]
 
