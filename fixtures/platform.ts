@@ -3,7 +3,7 @@ import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
-import { workspaceFixtures } from './workspace'
+import { SETUP_RAW, setupData, workspaceFixtures } from './workspace'
 import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
@@ -678,6 +678,7 @@ export const platformFixtures: Record<string, Fixture> = {
       { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
       { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
       { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
+      setupData(ids.table, SETUP_RAW.frozen),
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
     ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }

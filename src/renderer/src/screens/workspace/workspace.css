@@ -340,6 +340,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }
+.term-script { padding: 8px 0 4px 16px; }
 
 /* file and diff views */
 .view-head { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }
