@@ -169,9 +169,10 @@ export function verdictPhrase(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHe
 /**
  * Paths a PR never merges by itself through, whatever any settings file says (KERNEL-556): Kernel's settings, the agents'
  * files and instructions, and CI. The base branch's `[merge] always_review` and the user's own list add to them. Kernel
- * matches them without case, as the Mac's disk does.
+ * matches them without case, as the Mac's disk does. The agents' files and instructions count in any folder, since Claude Code
+ * reads nested ones in a monorepo (KERNEL-632).
  */
-export const ALWAYS_REVIEW: readonly string[] = ['.kernel/**', '.claude/agents/**', 'CLAUDE.md', 'AGENTS.md', '.github/workflows/**']
+export const ALWAYS_REVIEW: readonly string[] = ['.kernel/**', '**/.claude/agents/**', '**/CLAUDE.md', '**/AGENTS.md', '.github/workflows/**']
 
 /**
  * What Kernel weighs before it merges a PR by itself (KERNEL-556). Main gathers it, and `autoMergeBlock` decides. `rules` is the

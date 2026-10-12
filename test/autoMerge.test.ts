@@ -190,7 +190,7 @@ describe('the rule', () => {
   })
 
   it("keeps Kernel's own always-review paths", () => {
-    expect(ALWAYS_REVIEW).toEqual(['.kernel/**', '.claude/agents/**', 'CLAUDE.md', 'AGENTS.md', '.github/workflows/**'])
+    expect(ALWAYS_REVIEW).toEqual(['.kernel/**', '**/.claude/agents/**', '**/CLAUDE.md', '**/AGENTS.md', '.github/workflows/**'])
   })
 })
 
