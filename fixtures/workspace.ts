@@ -1529,6 +1529,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
+  // No PNG draws Back and Forward (KERNEL-643). The sidebar is open with Back lit and Forward disabled, and the hidden twin shows the pair after Show sidebar.
+  WorkspaceHistoryButtons: scene(() => ({
+    ui: { ...open, nav: { canBack: true, canForward: false }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspaceHistoryButtonsHidden: scene(() => ({
+    ui: { ...open, sidebar: false, nav: { canBack: true, canForward: true }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceRunning: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
     chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),

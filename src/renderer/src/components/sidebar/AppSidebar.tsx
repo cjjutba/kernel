@@ -12,6 +12,7 @@ import { currentThread } from '../../nav'
 import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
+import { HistoryButtons } from '../PanelToggles'
 import { AccountButton } from './AccountMenu'
 import { chatTrusts, chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
@@ -409,6 +410,8 @@ export function AppSidebar() {
       {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
       <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
         <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
+        <span className="grow" />
+        <HistoryButtons />
       </div>
       {/* Only the rooms list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
       <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
