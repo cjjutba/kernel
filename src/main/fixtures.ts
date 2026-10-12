@@ -227,6 +227,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.merge': async ({ workspaceId }) => workspace(workspaceId),
     'pr.mergeAll': async () => ({ merged: [] }),
     'pr.resolve': async () => ({ ok: true }),
+    'pr.update': async () => ({ ok: true }),
     'pr.ready': async ({ workspaceId }) => workspace(workspaceId),
     'pr.reopen': async ({ workspaceId }) => workspace(workspaceId),
     'pr.continue': async ({ workspaceId }) => ({ ...workspace(workspaceId), prState: 'none', prNumber: undefined, prUrl: undefined }),
