@@ -533,15 +533,6 @@
       "x": 1520,
       "y": 19500
     },
-    "SettingsExperimental.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Experimental",
-      "w": 1440,
-      "x": 9120,
-      "y": 20800
-    },
     "SettingsFiles.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2381,7 +2372,6 @@
     "SettingsFilesProduction.dc.html",
     "SettingsHooks.dc.html",
     "SettingsIntegrations.dc.html",
-    "SettingsExperimental.dc.html",
     "SettingsAbout.dc.html",
     "SettingsPrivacy.dc.html",
     "SettingsRoom.dc.html",

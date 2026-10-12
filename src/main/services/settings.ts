@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
-  team: { addNewAgents: true, defaultTemplate: 'starter' },
+  team: { defaultTemplate: 'starter' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
@@ -50,7 +50,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
-  experimental: { walking: true, floor3d: false, voice: false, sharing: true },
+  experimental: { walking: true, floor3d: false, sharing: true },
   privacy: { telemetry: 'ask' }
 })
 
@@ -178,10 +178,11 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
-  // Nothing read Show in menu bar or Show names instead of roles, so they went (KERNEL-536). A file that still has them loads without them.
+  // Nothing read Show in menu bar or Show names instead of roles (KERNEL-536), or team.addNewAgents (KERNEL-540), so they went.
+  // A file that still has them loads without them.
   if (general) delete general.menuBar
   const team = group('team')
-  if (team) delete team.showNames
+  if (team) { delete team.showNames; delete team.addNewAgents }
   // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
   const exp = group('experimental')
   if (exp) {
@@ -189,6 +190,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
     if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && group('terminal')?.onlyInWorktrees === undefined) s.terminal = { ...group('terminal'), onlyInWorktrees: exp.bigTerminalWorktreeOnly }
     delete exp.bigTerminal
     delete exp.bigTerminalWorktreeOnly
+    // Nothing read Voice briefs, so it went with the Experimental page (KERNEL-540). A file that still has it loads without it.
+    delete exp.voice
   }
   // Checked as a whole, but only the keys the file has stay in `saved`, so a saved preset doesn't pin every other terminal default.
   const own = group('terminal')

@@ -191,9 +191,7 @@ const sixAgents: AgentDef[] = [
 ]
 const integrationRows: Integration[] = [
   { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
-  { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' },
-  { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
-  { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
+  { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' }
 ]
 
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
@@ -278,7 +276,6 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, auth: 'subscription', active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
-  SettingsExperimental: settingsPage('experimental'),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.

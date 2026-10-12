@@ -7,12 +7,10 @@ import { Page, Row, Section } from '../kit'
 
 const ACTION: Record<Integration['id'], { off: string; on: string }> = {
   github: { off: 'Manage', on: 'Manage' },
-  linear: { off: 'Connect', on: 'Disconnect' },
-  vercel: { off: 'Connect', on: 'Disconnect' },
-  remote: { off: 'Set up', on: 'Set up' }
+  linear: { off: 'Connect', on: 'Disconnect' }
 }
 /** What a row's button says while it works. Linear's only works when connected, since connecting asks for a token first. */
-const BUSY: Record<Integration['id'], string> = { github: 'Opening', linear: 'Disconnecting', vercel: 'Connecting', remote: 'Setting up' }
+const BUSY: Record<Integration['id'], string> = { github: 'Opening', linear: 'Disconnecting' }
 
 /** Settings > Integrations (SettingsIntegrations.png). GitHub is the signed-in gh, Linear takes an API token that the new workspace modal's Issues tab uses. */
 export function Integrations() {
@@ -38,10 +36,8 @@ export function Integrations() {
   const connect = async (r: Integration) => {
     if (r.id === 'linear') {
       try { swap(await call('integrations.connect', { id: 'linear', token: '' })) } catch (e) { fail('Could not disconnect Linear', e) }
-    } else if (r.id === 'github') {
-      try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'gh auth status' }) } catch (e) { fail('Could not open a terminal', e) }
     } else {
-      try { await call('integrations.connect', { id: r.id }) } catch (e) { fail(`Could not set up ${r.name}`, e) }
+      try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'gh auth status' }) } catch (e) { fail('Could not open a terminal', e) }
     }
   }
   return (
@@ -56,7 +52,7 @@ export function Integrations() {
                 <Button disabled={busy === 'token'} onClick={() => { setAsking(false); setToken('') }}>Cancel</Button>
               </form>
             ) : undefined}>
-            <Button busy={busy === r.id} busyLabel={BUSY[r.id]} disabled={r.id === 'vercel' || r.id === 'remote' || busy !== null} title={r.id === 'vercel' || r.id === 'remote' ? 'Not available yet' : undefined} onClick={() => press(r)}>{r.connected ? ACTION[r.id].on : ACTION[r.id].off}</Button>
+            <Button busy={busy === r.id} busyLabel={BUSY[r.id]} disabled={busy !== null} onClick={() => press(r)}>{r.connected ? ACTION[r.id].on : ACTION[r.id].off}</Button>
           </Row>
         ))}
       </Section>
