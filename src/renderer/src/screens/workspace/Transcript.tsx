@@ -158,7 +158,7 @@ function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, meta, onOp
 }
 
 /**
- * `kernel://floor/<roomId>` opens that room, its Lead chat now the floor is hidden (D-104). A web link opens in the browser,
+ * A room link (see noteLink.ts) opens that room, in its Lead chat. A web link opens in the browser,
  * never in the app window (KERNEL-294). Any other href shows as plain text.
  */
 function NoteLink({ link }: { link: { label: string; href: string } }) {

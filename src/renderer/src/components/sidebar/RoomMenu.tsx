@@ -26,7 +26,7 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
     const hidden = await call('rooms.update', { roomId: room.id, patch: { hidden: true } })
     actions.rooms.upsert(hidden)
   }
-  // Pause and Resume lived on the floor's header until D-104 hid the floor. A paused room offers Resume.
+  // A paused room offers Resume in place of Pause.
   const togglePause = () => call('rooms.setPaused', { roomId: room.id, paused: !room.paused })
     .then(actions.rooms.upsert)
     .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: cleanError(e) }))

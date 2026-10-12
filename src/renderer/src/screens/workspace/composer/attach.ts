@@ -3,7 +3,7 @@ import { actions } from '../../../store'
 import { isLongPaste, pasteLines } from './autocomplete'
 import { cleanError } from '../../../api'
 
-// Attachments for every composer: the workspace chat, the new workspace prompt and the floor brief.
+// Attachments for every composer: the workspace chat and the new workspace prompt.
 
 const MAX_ATTACH_BYTES = 1024 * 1024
 const PASTE_NAME = /^pasted_text_(\d+)\.txt$/

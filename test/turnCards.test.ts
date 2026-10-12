@@ -137,7 +137,7 @@ describe('Lead requests', () => {
     const doc = { title: 'Plan for lead', detail: '# KERNEL-83 Fix batch\n\n## Context\nWhy.\n\n## Task 1 · **Engine**\n- a\n- b' }
     expect(isStepList(doc)).toBe(false)
     expect(planTitle(doc)).toBe('KERNEL-83 Fix batch')
-    // The floor's card lists the sections, without the title or markdown markers.
+    // The plan card lists the sections, without the title or markdown markers.
     expect(planSteps(doc).map((s) => s.title)).toEqual(['Context', 'Task 1 · Engine'])
     expect(isStepList({ detail: '1. Build it\n2. Test it' })).toBe(true)
     expect(isStepList({ detail: '1. Build it\n   - first the table' })).toBe(false)

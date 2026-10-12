@@ -56,7 +56,7 @@ export async function openLead(roomId: string): Promise<Workspace | undefined> {
 }
 
 /**
- * Where a room opens, now the floor is hidden (D-104): its newest chat with Rowan, New chat with Rowan when none is open, or Team
+ * Where a room opens: its newest chat with Rowan, New chat with Rowan when none is open, or Team
  * when the room has no Lead.
  */
 export async function openRoom(roomId: string): Promise<void> {

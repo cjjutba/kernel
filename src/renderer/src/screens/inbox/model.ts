@@ -58,7 +58,7 @@ function fromTrust(w: Workspace, rooms: Room[]): Notification {
 
 /**
  * Everything the Inbox lists, newest first. Stored notifications plus pending approvals that have no row yet, so a count never lags
- * an approval, plus open overlaps, which the floor used to show, plus workspaces held for script trust.
+ * an approval, plus open overlaps, plus workspaces held for script trust.
  */
 export function inboxItems(notifications: Notification[], approvals: Approval[], rooms: Room[], overlaps: Overlap[] = [], workspaces: Workspace[] = []): InboxItem[] {
   const byApproval = new Map(approvals.map((a) => [a.id, a]))

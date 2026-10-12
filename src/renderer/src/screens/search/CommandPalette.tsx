@@ -14,7 +14,7 @@ import './search.css'
 const close = () => actions.ui.closeModal()
 const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 
-/** Allow the one tool request, the same call the Inbox and the floor make. */
+/** Allow the one tool request, the same call the Inbox makes. */
 const approve = (a: Approval) => void call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }).then(actions.approvals.upsert).catch(fail('Could not send your answer'))
 
 /** Cmd+K, "Switch Claude Code to Personal": the account runs the provider's next turns, as Switch to does in Settings (KERNEL-561). */
