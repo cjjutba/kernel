@@ -1,9 +1,10 @@
 import { createConnection } from 'node:net'
-import { exec } from './exec'
-import { ghAuth } from './github'
+import { exec, type ExecResult } from './exec'
+import { ghAuth, ghCanPush } from './github'
 import { bundledClaude } from './providers/binary'
 import { rcFile, type ShellRead } from './shellPath'
-import type { PreflightCheck } from '@shared/types'
+import { githubRepoOf } from './worktrees'
+import type { PreflightCheck, PushCheck, PushCheckRow, RoomSetupStep } from '@shared/types'
 
 export const MIN_CLAUDE = '2.1.80'
 
@@ -187,4 +188,102 @@ async function ghCheck(run: typeof exec, shell?: ShellRead): Promise<PreflightCh
     ? 'Kernel passes it on because gh has no stored login.'
     : left ? `\`${left}\` is set in your shell. Kernel leaves it out, because gh would use it instead of this login.` : undefined
   return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail, ...(note ? { note } : {}), meta: meta && `gh ${meta}` }
+}
+
+// ---------- a room's push check (KERNEL-460)
+
+/** How long each network step of the push check may take, in ms. */
+export const PUSH_CHECK_MS = 20_000
+
+/**
+ * What git prints when the remote answered and refused a login, or git had none to give: no saved login over HTTPS with
+ * prompts off, a wrong one, an SSH key the host doesn't accept, or GitHub's 403 for a login that can't write.
+ */
+const LOGIN_REFUSED = /terminal prompts disabled|could not read (?:Username|Password)|Authentication failed|Invalid username or (?:password|token)|Permission denied \(publickey|Permission to \S+ denied|returned error: 40[13]|Repository not found/i
+
+/** The advice git adds under every failure to reach a remote, which says nothing about this one. */
+const BOILERPLATE = /^(Please make sure you have the correct access rights|and the repository exists\.)$/
+
+/** What git printed, for the box under a failed row: its first lines, where it names the problem. */
+function gitSaid(r: ExecResult, what: string): string {
+  if (r.timedOut) return `${what} didn't answer in ${PUSH_CHECK_MS / 1000} seconds.`
+  const lines = (r.stderr.trim() || r.stdout.trim()).split('\n').map((l) => l.trim()).filter((l) => l && !BOILERPLATE.test(l))
+  return lines.slice(0, 3).join('\n') || `${what} failed (${r.code}).`
+}
+
+/** How git logs in to a remote URL. `other` is a folder or a protocol with no login, like `file://`. */
+function transportOf(url: string): 'https' | 'ssh' | 'other' {
+  if (/^https?:\/\//i.test(url)) return 'https'
+  return /^ssh:\/\/|^[^/\s]+@[^:/\s]+:/.test(url) ? 'ssh' : 'other'
+}
+
+/**
+ * Whether git can push from `cwd` to `remote`, asked before an agent needs to (SettingsRoomGit*.png). Reach is
+ * `git ls-remote`. Push is gh's permission on a GitHub repo and a dry-run push to a branch that doesn't exist, which logs in
+ * as a real push does and sends nothing. Neither runs a hook. Null when the remote has no URL. `run` is for tests.
+ */
+export async function checkPush(cwd: string, remote: string, o: { run?: typeof exec; now?: () => number } = {}): Promise<PushCheck | null> {
+  const run = o.run ?? exec
+  const url = (await run('git', ['-C', cwd, 'remote', 'get-url', '--push', remote], { timeoutMs: 15000 })).stdout.trim()
+  if (!url) return null
+  const repo = githubRepoOf(url)
+  const via = transportOf(url)
+  const asked = `git ls-remote ${remote}`
+  const done = (reach: PushCheckRow, push: PushCheckRow, login?: string): PushCheck => ({ remote, ...(repo ? { repo } : {}), ...(login ? { login } : {}), reach, push, at: (o.now ?? Date.now)() })
+
+  const ls = await run('git', ['-C', cwd, 'ls-remote', remote, 'HEAD'], { timeoutMs: PUSH_CHECK_MS })
+  // A host that refused the login was reached. Its fix is the login's, so the push row says so.
+  const refused = ls.code !== 0 && !ls.timedOut && LOGIN_REFUSED.test(ls.stderr)
+  if (ls.code !== 0 && !refused) {
+    return done({ state: 'fail', detail: asked, output: gitSaid(ls, asked), note: 'Check your connection or VPN, then check again.' }, { state: 'unchecked', detail: 'Needs a reachable remote' })
+  }
+  const reach: PushCheckRow = { state: 'ok', detail: asked }
+
+  // gh only knows GitHub. An offline gh still names its login, which is enough to say git isn't using it.
+  const auth = repo ? await ghAuth(run) : undefined
+  const login = auth?.state === 'ok' || auth?.state === 'offline' ? auth.login : undefined
+  const canPush = repo && auth?.state === 'ok' ? await ghCanPush(repo, run) : undefined
+  const cantWrite = (): PushCheckRow => ({ state: 'fail', detail: `${login ?? 'gh'} can only read ${repo}. Ask its owner for write access.` })
+
+  // A checkout with no commit has nothing to push, so only gh can answer.
+  const hasCommit = refused || (await run('git', ['-C', cwd, 'rev-parse', '--verify', '--quiet', 'HEAD'], { timeoutMs: 15000 })).code === 0
+  if (!hasCommit) {
+    if (canPush === true) return done(reach, { state: 'ok', detail: `From gh, signed in as ${login}` }, login)
+    if (canPush === false) return done(reach, cantWrite(), login)
+    return done(reach, { state: 'unchecked', detail: 'Needs a first commit' }, login)
+  }
+  const dry = refused ? ls : await run('git', ['-C', cwd, 'push', '--dry-run', '--no-verify', '--recurse-submodules=no', remote, `HEAD:refs/heads/kernel-push-check-${Date.now()}`], { timeoutMs: PUSH_CHECK_MS })
+  if (dry.code === 0) {
+    const from = login && canPush === true ? `From gh, signed in as ${login}` : via === 'https' ? 'From git\'s saved login' : via === 'ssh' ? 'From your SSH key' : 'A dry-run push worked'
+    return done(reach, { state: 'ok', detail: from }, login)
+  }
+  const said = gitSaid(dry, 'git push --dry-run')
+  if (dry.timedOut || !LOGIN_REFUSED.test(dry.stderr)) return done(reach, { state: 'fail', detail: 'A dry-run push failed.', output: said }, login)
+  if (canPush === false) return done(reach, cantWrite(), login)
+  if (canPush === null) return done(reach, { state: 'fail', detail: `${login} can't see ${repo} on GitHub.`, output: said }, login)
+  // gh's login works for git over HTTPS once gh is git's credential helper (KERNEL-437's fix).
+  if (repo && via === 'https') {
+    if (login) return done(reach, { state: 'fail', detail: `gh is signed in as ${login}, but git isn't using that login.`, fix: 'gh auth setup-git' }, login)
+    if (auth?.state === 'missing') return done(reach, { state: 'fail', detail: 'git has no GitHub login, and gh isn\'t installed to give it one.', fix: 'brew install gh && gh auth login' })
+    return done(reach, { state: 'fail', detail: 'git has no GitHub login, and gh isn\'t signed in.', fix: 'gh auth login' })
+  }
+  return done(reach, { state: 'fail', detail: via === 'ssh' ? 'The remote didn\'t accept your SSH key.' : 'The remote refused git\'s login.', output: said }, login)
+}
+
+/**
+ * The Check push access step of room setup for a check's result (RoomSetup.png, RoomSetupWarnings.png). A failure is a
+ * warning there, since a warning never blocks setup, while Settings, Room, Git shows the same result as a red x (KERNEL-437).
+ * Every field is set, so a recheck that passes clears the last warning's.
+ */
+export function pushStepOf(c: PushCheck): Pick<RoomSetupStep, 'state' | 'title' | 'detail' | 'output' | 'fix'> {
+  const to = c.repo ?? c.remote
+  if (c.reach.state === 'fail') return { state: 'warn', title: `Git can't reach ${c.remote}`, detail: c.reach.note ?? '', output: c.reach.output, fix: { action: 'recheck' } }
+  if (c.push.state === 'fail') {
+    const d = c.push.detail
+    // One sentence takes the consequence on its end, as the drawing has it. Two already say what to do.
+    const detail = /\.\s/.test(d) ? d : d.replace(/\.?$/, ', so agents can\'t push yet.')
+    return { state: 'warn', title: `Git can't push to ${to}`, detail, output: c.push.output, fix: { ...(c.push.fix ? { command: c.push.fix } : {}), action: 'recheck' } }
+  }
+  const detail = c.push.state === 'unchecked' ? c.push.detail : c.login && c.push.detail.startsWith('From gh') ? `${c.login} can push to ${to}` : `git can push to ${to}`
+  return { state: 'ok', title: 'Check push access', detail, output: undefined, fix: undefined }
 }

@@ -4,6 +4,15 @@ import { localMerge, localStatus } from '../services/localMerge'
 import { loadRepoSettings } from '../services/settings'
 import { Feature } from './feature'
 
+/** The order Kernel picks a merge method in when the repo doesn't allow the app's. */
+const METHODS: readonly MergeMethod[] = ['squash', 'merge', 'rebase']
+
+/** The app's method when the repo allows it or Kernel couldn't tell, else the first one the repo allows (KERNEL-468). */
+export function allowedMethod(app: MergeMethod, allowed?: readonly MergeMethod[]): MergeMethod {
+  if (!allowed?.length || allowed.includes(app)) return app
+  return METHODS.find((m) => allowed.includes(m)) ?? app
+}
+
 /** Where each room's pull requests live, so the PR feature asks the room's host and never GitHub by name (KERNEL-453). */
 export class CodeHosts extends Feature {
   /**
@@ -17,10 +26,31 @@ export class CodeHosts extends Feature {
     }
   }
 
-  /** How the room's PRs merge: its `[pr] merge_method`, else Settings, Pull requests (KERNEL-432). */
-  async methodFor(room: Pick<Room, 'path'>): Promise<MergeMethod> {
-    return (await loadRepoSettings(room.path).catch(() => undefined))?.pr?.mergeMethod ?? this.settings.pr.mergeMethod
+  /** The merge methods each room's host last said its repo allows, and when, by the room's folder. */
+  private allowed = new Map<string, { methods: MergeMethod[]; at: number }>()
+  /** How long Kernel goes by the host's last answer before asking again. Tests shorten it. */
+  allowedMs = 10 * 60_000
+
+  /**
+   * The method the room's PRs merge with, on GitHub and on the Mac alike: its `[pr] merge_method`, else the app's
+   * `pr.mergeMethod` if the repo allows it, else the first one the repo allows (KERNEL-468). A host that can't say takes the
+   * app's: the local host allows every method, and a GitHub read that failed is asked again next time.
+   */
+  async methodFor(room: Pick<Room, 'host' | 'path'>): Promise<MergeMethod> {
+    const own = (await loadRepoSettings(room.path).catch(() => undefined))?.pr?.mergeMethod
+    return own ?? allowedMethod(this.settings.pr.mergeMethod, await this.mergeMethods(room))
   }
+
+  private async mergeMethods(room: Pick<Room, 'host' | 'path'>): Promise<MergeMethod[] | undefined> {
+    const last = this.allowed.get(room.path)
+    if (last && Date.now() - last.at < this.allowedMs) return last.methods
+    const methods = await this.hostFor(room).mergeMethods?.(room.path).catch(() => undefined)
+    if (methods?.length) this.allowed.set(room.path, { methods, at: Date.now() })
+    return methods
+  }
+
+  /** Asks the room's host again next time, as after a merge that failed: the repo's settings may have changed. */
+  forgetMergeMethods(room: Pick<Room, 'path'>) { this.allowed.delete(room.path) }
 
   /**
    * A room with no GitHub, whose PR is the branch itself, read and merged with git in the room's repo (KERNEL-467). A branch
@@ -40,7 +70,7 @@ export class CodeHosts extends Feature {
         return {
           workspaceId, number: 0, url: '', title: '', state: s.conflicts.length ? 'conflict' : 'ready', baseRef: s.base,
           checks: [], comments: [], conflicts: s.conflicts, head: s.head,
-          local: { ahead: s.ahead, behind: s.behind, stat: s.stat, method: await this.methodFor({ path: repo }), ...(s.checkout ? { checkout: s.checkout } : {}) }
+          local: { ahead: s.ahead, behind: s.behind, stat: s.stat, method: await this.methodFor({ host: 'local', path: repo }), ...(s.checkout ? { checkout: s.checkout } : {}) }
         }
       },
       merge: async (_cwd, ref, method, o = {}) => localMerge({ repo, branch: ref, base: baseOf(o.base), method, ...(o.title ? { title: o.title } : {}) }),

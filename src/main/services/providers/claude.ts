@@ -5,6 +5,7 @@ import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
+import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
@@ -16,6 +17,7 @@ import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
+import { bypassSandbox, onSandboxFallback, sandboxFallbackNote } from './sandbox'
 
 export { packagedClaude }
 
@@ -136,7 +138,14 @@ export class ClaudeRunner implements Runner {
       abortController: this.abort,
       env: sessionEnv(o.env, {}, { agentTeams: host.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
-      spawnClaudeCodeProcess: (s) => host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc) as unknown as SpawnedProcess
+      // A process that may run in Bypass permissions runs its commands in the sandbox, and the chat says when Claude Code
+      // runs them without it (KERNEL-458). Kernel's hooks and canUseTool still decide first.
+      ...(o.bypass ? { sandbox: bypassSandbox(ws.path, { root: o.root }) } : {}),
+      spawnClaudeCodeProcess: (s) => {
+        const child = host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc)
+        if (o.bypass) onSandboxFallback(child.stderr, (reason) => host.item({ kind: 'note', id: randomUUID(), ts: Date.now(), text: sandboxFallbackNote(reason) }))
+        return child as unknown as SpawnedProcess
+      }
     }
     this.query = query({ prompt: this.input, options })
     this.resume = chat.sessionId
@@ -736,6 +745,8 @@ export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
+  Object.assign(env, NO_PROMPTS)
   // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
   return env
 }

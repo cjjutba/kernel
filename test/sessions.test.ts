@@ -8,6 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
+import { NO_PROMPTS } from '../src/main/services/exec'
 import { bashVerdict, matchesRoomRule, roomRule } from '../src/main/services/bashGuard'
 import { IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
@@ -76,18 +77,18 @@ describe('Bash rules', () => {
 describe('session env', () => {
   it('never hands an API key to a session', () => {
     const env = sessionEnv({ PATH: '/bin', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_AUTH_TOKEN: 'tok' }, { KERNEL_PORT: '4300' })
-    expect(env).toEqual({ PATH: '/bin', KERNEL_PORT: '4300' })
+    expect(env).toEqual({ ...NO_PROMPTS, PATH: '/bin', KERNEL_PORT: '4300' })
   })
 
   it('turns agent teams on or off for Kernel sessions, whatever the shell exports, and leaves it alone when not asked (KERNEL-73)', () => {
-    expect(sessionEnv({ PATH: '/bin' }, {}, { agentTeams: true })).toEqual({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {}, { agentTeams: false })).toEqual({ PATH: '/bin' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {})).toEqual({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
+    expect(sessionEnv({ PATH: '/bin' }, {}, { agentTeams: true })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {}, { agentTeams: false })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
   })
 
   it("leaves the window a chat compacts against to the model, or to the user's own setting (context-window-follows-model)", () => {
-    expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ PATH: '/bin' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
+    expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
   })
 })
 
