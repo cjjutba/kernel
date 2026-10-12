@@ -80,7 +80,8 @@ export interface AppSettings {
   permissions: { mode: PermissionMode; bypassOnlyInWorktrees: boolean; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   /**
    * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, only on PRs a reviewer looked at.
-   * `autoReview` has the Lead start a review when a PR passes checks (KERNEL-115). No page shows it yet.
+   * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
+   * No page shows it yet.
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
    */
   pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean } & PrInstructions
@@ -216,10 +217,50 @@ export interface RoomSettings {
    */
   team?: TeamConfig
   /**
+   * The shared file's `[review]` with the defaults filled in (KERNEL-549). The personal file can't change it. Written with
+   * `settings.setReview`, not `settings.setRoom`. A PR's own reviews read it from the PR's base branch, not from here.
+   */
+  review?: ReviewConfig
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
   sources: Record<string, RoomSettingSource>
+}
+
+/**
+ * The kinds of review Kernel runs on a pull request (KERNEL-549). Each is its own chat in the PR's review workspace, with
+ * its own prompt, and blocks only on what it covers. The UI calls each one a review: "the security review".
+ */
+export type ReviewKind = 'code' | 'security' | 'ux'
+
+/** Every review kind in the order Kernel starts them and names them in a sentence. */
+export const REVIEW_KINDS: readonly { id: ReviewKind; label: string }[] = [
+  { id: 'code', label: 'Code' },
+  { id: 'security', label: 'Security' },
+  { id: 'ux', label: 'UX' }
+]
+
+/**
+ * One kind in `[review.<kind>]` (KERNEL-549). `enabled`: the code review runs unless its table says `enabled = false`, and
+ * the others run once their table is there, unless it says `enabled = false`. `paths`: globs of repo paths, and a PR that
+ * changes a matching file gets this review. Empty is every PR. `required`: its approval of the PR's latest commit counts
+ * toward "require Reviewer approval". Its blockers hold a merge either way. `agent`: a room agent that runs it with its own
+ * prompt, else Kernel's prompt for the kind does (the code review's is the room's reviewer). `model` and `provider`: what its
+ * chat runs on, else the agent's model or the reviewer role's from Settings, Models.
+ */
+export interface ReviewKindConfig { enabled: boolean; paths: string[]; required: boolean; agent?: string; model?: string; provider?: Provider }
+
+/**
+ * A room's `[review]` table in the shared settings file (KERNEL-549). `rounds` is how many review rounds a PR gets before
+ * Kernel stops sending it back (2 by default, KERNEL-552).
+ */
+export interface ReviewConfig { rounds: number; kinds: Record<ReviewKind, ReviewKindConfig> }
+
+/** A change to `[review]`. `null` removes the key, so the default applies again. */
+export interface ReviewPatch {
+  rounds?: number | null
+  kinds?: Partial<Record<ReviewKind, { [K in keyof ReviewKindConfig]?: ReviewKindConfig[K] | null }>>
 }
 
 /** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per room). */
@@ -254,7 +295,7 @@ export interface ProductionHint {
  * names they list, and `null` removes one (KERNEL-432).
  */
 export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'mcp' | 'agents'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'review' | 'mcp' | 'agents'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 } & {
   runScripts?: Record<string, string | null>
   mcp?: { aliases?: Record<string, string | null> }

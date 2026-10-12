@@ -333,6 +333,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
       return roomSettings(roomId)
     },
+    'settings.setReview': async ({ roomId }) => roomSettings(roomId),
     'files.preview': async ({ roomId, patterns }) => {
       const { copy, exclude = [] } = roomSettings(roomId).files
       const named = (list: string[], path: string) => list.some((e) => (isPattern(e) ? matchesGlob(path, e) : path === e))

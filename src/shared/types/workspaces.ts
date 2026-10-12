@@ -80,7 +80,7 @@ export interface Workspace {
   folderGone?: true
   /** On a review workspace: the workspace whose work it reviews. */
   reviewOf?: string
-  /** Reviewers' verdicts on this workspace's PR, one per review workspace. */
+  /** Reviewers' verdicts on this workspace's PR, one per review workspace and kind of review (KERNEL-549). */
   reviews?: ReviewVerdict[]
   /** The PR's head commit as GitHub last reported it. */
   prHead?: string
