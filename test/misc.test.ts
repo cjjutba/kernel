@@ -6,15 +6,20 @@ import { installHooks, uninstallHooks, withKernelHooks, withoutKernelHooks, inst
 import { hookToken, hookTokenFile } from '../src/main/services/hookToken'
 import { hookCommand } from '@shared/hookEntry'
 import { ghUser, parseGhAuth, prStateOf } from '../src/main/services/github'
-import { CLAUDE_INSTALL, compareVersions, nextFreePort, parseClaudeVersion, parseLsof, planName, runPreflight, sessionClaude } from '../src/main/services/preflight'
-import type { ExecResult } from '../src/main/services/exec'
+import { CLAUDE_INSTALL, checkPush, compareVersions, nextFreePort, parseClaudeVersion, parseLsof, planName, pushStepOf, runPreflight, sessionClaude } from '../src/main/services/preflight'
+import { exec, NO_PROMPTS, type ExecResult } from '../src/main/services/exec'
+import { sessionEnv } from '../src/main/services/providers/claude'
+import { codexEnv } from '../src/main/services/providers/codex/client'
 import type { ShellRead } from '../src/main/services/shellPath'
-import type { PreflightCheck } from '@shared/types'
+import type { PreflightCheck, PushCheck } from '@shared/types'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool, Approvals } from '../src/main/services/approvals'
 import { matchesRule } from '../src/main/services/bashGuard'
 import { InputQueue, toUserMessage } from '../src/main/services/sessions'
 import { Store } from '../src/main/db'
+import { createServer, type Server } from 'node:http'
+import { chmodSync } from 'node:fs'
+import { tempRepo } from './helpers'
 
 describe('hooks installer', () => {
   const mine = { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: './guard.sh' }] }] }
@@ -449,5 +454,150 @@ describe('sessions helpers', () => {
     expect((await later).value).toBe(3)
     q.close()
     expect((await it.next()).done).toBe(true)
+  })
+})
+
+describe('no git prompts (KERNEL-460)', () => {
+  it("Kernel's own commands can't wait on a credential prompt, whatever the caller passes", async () => {
+    const r = await exec('sh', ['-c', 'echo "$GIT_TERMINAL_PROMPT $GCM_INTERACTIVE"'], { env: { GIT_TERMINAL_PROMPT: '1', GCM_INTERACTIVE: 'always' } })
+    expect(r.stdout.trim()).toBe('0 never')
+  })
+  it('sessions on both providers get the same switches', () => {
+    const shell = { PATH: '/usr/bin', GIT_TERMINAL_PROMPT: '1' }
+    expect(sessionEnv(shell, {})).toMatchObject(NO_PROMPTS)
+    expect(codexEnv(shell, '/codex-home')).toMatchObject({ ...NO_PROMPTS, CODEX_HOME: '/codex-home', PATH: '/usr/bin' })
+  })
+})
+
+describe('push check (KERNEL-460)', () => {
+  const now = () => 1_000
+  /** git with no global or system config, so the Mac's credential helpers can't answer for a test remote. */
+  const isolated: typeof exec = (cmd, args, o = {}) => exec(cmd, args, { ...o, env: { ...o.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' } })
+  const bare = async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kernel-remote-'))
+    await exec('git', ['init', '-q', '--bare', dir])
+    return dir
+  }
+
+  it('has nothing to check without a remote', async () => {
+    expect(await checkPush(await tempRepo(), 'origin', { run: isolated })).toBeNull()
+  })
+
+  it('reaches a remote and pushes a dry run that sends nothing and runs no hook', async () => {
+    const repo = await tempRepo()
+    const remote = await bare()
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
+    // A pre-push hook like husky's would run the tests. The check must not start it.
+    writeFileSync(join(repo, '.git', 'hooks', 'pre-push'), `#!/bin/sh\ntouch "${join(repo, 'hook-ran')}"\nexit 1\n`)
+    chmodSync(join(repo, '.git', 'hooks', 'pre-push'), 0o755)
+    expect(await checkPush(repo, 'origin', { run: isolated, now })).toEqual({
+      remote: 'origin', at: 1_000,
+      reach: { state: 'ok', detail: 'git ls-remote origin' },
+      push: { state: 'ok', detail: 'A dry-run push worked' }
+    })
+    expect(existsSync(join(repo, 'hook-ran'))).toBe(false)
+    expect((await exec('git', ['-C', remote, 'for-each-ref'])).stdout).toBe('')
+  })
+
+  it("says the remote is out of reach in git's own words, and doesn't ask about pushing", async () => {
+    const repo = await tempRepo()
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', join(tmpdir(), 'kernel-no-such-remote.git')])
+    const c = await checkPush(repo, 'origin', { run: isolated })
+    expect(c?.reach).toMatchObject({ state: 'fail', detail: 'git ls-remote origin', output: expect.stringContaining('does not appear to be a git repository'), note: 'Check your connection or VPN, then check again.' })
+    expect(c?.push).toEqual({ state: 'unchecked', detail: 'Needs a reachable remote' })
+  })
+
+  it('fails at once on a remote that wants a login, instead of prompting for one', async () => {
+    // An HTTP remote that answers every request with 401, as GitHub does for a private repo and a push.
+    const server: Server = createServer((_req, res) => { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="git"' }); res.end() })
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+    try {
+      const repo = await tempRepo()
+      const { port } = server.address() as { port: number }
+      await exec('git', ['-C', repo, 'remote', 'add', 'origin', `http://127.0.0.1:${port}/acme/app.git`])
+      const started = Date.now()
+      const c = await checkPush(repo, 'origin', { run: isolated })
+      expect(Date.now() - started).toBeLessThan(10_000)
+      // The host answered, so it was reached. The refused login is the push row's.
+      expect(c?.reach.state).toBe('ok')
+      expect(c?.push).toMatchObject({ state: 'fail', detail: 'The remote refused git\'s login.', output: expect.stringContaining('terminal prompts disabled') })
+    } finally { server.close() }
+  })
+
+  describe('on GitHub', () => {
+    const URL = 'https://github.com/acme/app.git'
+    const ok = (stdout = ''): ExecResult => ({ code: 0, stdout, stderr: '' })
+    const noLogin: ExecResult = { code: 128, stdout: '', stderr: "fatal: could not read Username for 'https://github.com': terminal prompts disabled\n" }
+    const signedIn = ok(JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'success', login: 'sam', tokenSource: 'keyring' }] } }))
+    /** A real checkout whose origin is on GitHub, with the network calls answered here. */
+    const github = async (o: { ls?: ExecResult; push?: ExecResult; auth?: ExecResult; perm?: ExecResult }) => {
+      const repo = await tempRepo()
+      await exec('git', ['-C', repo, 'remote', 'add', 'origin', URL])
+      const calls: string[] = []
+      const run: typeof exec = async (cmd, args, opts) => {
+        const line = [cmd, ...args.filter((a) => a !== '-C' && a !== repo)].join(' ')
+        calls.push(line)
+        if (line.startsWith('git ls-remote')) return o.ls ?? ok('abc\tHEAD\n')
+        if (line.startsWith('git push --dry-run')) return o.push ?? ok()
+        if (line.startsWith('gh auth status')) return o.auth ?? signedIn
+        if (line === 'gh api repos/acme/app --jq .permissions.push') return o.perm ?? ok('true\n')
+        return isolated(cmd, args, opts)
+      }
+      return { check: await checkPush(repo, 'origin', { run, now }), calls }
+    }
+
+    it("says gh can push when git's own login can too", async () => {
+      const { check, calls } = await github({})
+      expect(check).toEqual({ remote: 'origin', repo: 'acme/app', login: 'sam', at: 1_000, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: 'From gh, signed in as sam' } })
+      expect(calls.find((c) => c.startsWith('git push'))).toMatch(/^git push --dry-run --no-verify --recurse-submodules=no origin HEAD:refs\/heads\/kernel-push-check-\d+$/)
+    })
+
+    it('names gh auth setup-git when gh is signed in and git has no login (KERNEL-437)', async () => {
+      const { check } = await github({ push: noLogin })
+      expect(check?.push).toEqual({ state: 'fail', detail: 'gh is signed in as sam, but git isn\'t using that login.', fix: 'gh auth setup-git' })
+      // A private repo refuses ls-remote too. That still reached GitHub, and the fix is the same.
+      const priv = await github({ ls: noLogin })
+      expect(priv.check?.reach.state).toBe('ok')
+      expect(priv.check?.push.fix).toBe('gh auth setup-git')
+      expect(priv.calls.some((c) => c.startsWith('git push'))).toBe(false)
+    })
+
+    it("tells a login that can only read from one git can't use", async () => {
+      const denied: ExecResult = { code: 128, stdout: '', stderr: 'remote: Permission to acme/app.git denied to sam.\nfatal: unable to access \'https://github.com/acme/app.git/\': The requested URL returned error: 403\n' }
+      expect((await github({ push: denied, perm: ok('false\n') })).check?.push).toEqual({ state: 'fail', detail: 'sam can only read acme/app. Ask its owner for write access.' })
+    })
+
+    it('signs gh in when neither gh nor git has a login', async () => {
+      const { check } = await github({ push: noLogin, auth: ok(JSON.stringify({ hosts: {} })) })
+      expect(check?.push).toEqual({ state: 'fail', detail: 'git has no GitHub login, and gh isn\'t signed in.', fix: 'gh auth login' })
+      expect(check?.login).toBeUndefined()
+    })
+
+    it('trusts git over SSH with gh signed out, and shows what git said when the key is refused', async () => {
+      const repo = await tempRepo()
+      await exec('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git'])
+      const answer = (push: ExecResult): typeof exec => async (cmd, args, opts) => {
+        if (args.includes('ls-remote')) return ok('abc\tHEAD\n')
+        if (args.includes('--dry-run')) return push
+        if (cmd === 'gh') return ok(JSON.stringify({ hosts: {} }))
+        return isolated(cmd, args, opts)
+      }
+      expect((await checkPush(repo, 'origin', { run: answer(ok()) }))?.push).toEqual({ state: 'ok', detail: 'From your SSH key' })
+      const refused: ExecResult = { code: 128, stdout: '', stderr: 'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n' }
+      expect((await checkPush(repo, 'origin', { run: answer(refused) }))?.push).toEqual({ state: 'fail', detail: 'The remote didn\'t accept your SSH key.', output: 'git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.' })
+    })
+  })
+
+  it('turns a result into the room setup step, a failure warning instead of failing (RoomSetupWarnings.png)', () => {
+    const base: PushCheck = { remote: 'origin', repo: 'acme/app', login: 'sam', at: 0, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: 'From gh, signed in as sam' } }
+    expect(pushStepOf(base)).toEqual({ state: 'ok', title: 'Check push access', detail: 'sam can push to acme/app', output: undefined, fix: undefined })
+    expect(pushStepOf({ ...base, login: undefined, push: { state: 'ok', detail: 'From your SSH key' } }).detail).toBe('git can push to acme/app')
+    expect(pushStepOf({ ...base, push: { state: 'fail', detail: 'gh is signed in as sam, but git isn\'t using that login.', fix: 'gh auth setup-git' } })).toEqual({
+      state: 'warn', title: 'Git can\'t push to acme/app', detail: 'gh is signed in as sam, but git isn\'t using that login, so agents can\'t push yet.', output: undefined, fix: { command: 'gh auth setup-git', action: 'recheck' }
+    })
+    expect(pushStepOf({ ...base, push: { state: 'fail', detail: 'sam can only read acme/app. Ask its owner for write access.' } }).detail).toBe('sam can only read acme/app. Ask its owner for write access.')
+    expect(pushStepOf({ ...base, reach: { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: no network', note: 'Check your connection or VPN, then check again.' }, push: { state: 'unchecked', detail: 'Needs a reachable remote' } })).toEqual({
+      state: 'warn', title: 'Git can\'t reach origin', detail: 'Check your connection or VPN, then check again.', output: 'fatal: no network', fix: { action: 'recheck' }
+    })
   })
 })

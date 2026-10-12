@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -31,6 +31,8 @@ export interface KernelApi {
   'hooks.restart': { req: { port?: number }; res: HookStatus }
   /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
   'hooks.uninstall': { req: void; res: HookStatus }
+  /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
+  'hooks.turnOn': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
@@ -55,6 +57,11 @@ export interface KernelApi {
   'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
   /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
   'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
+  /**
+   * Whether git can push from the room's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
+   * is set. Null when the room has no remote. A recheck also updates the room's Check push access step while setup shows.
+   */
+  'rooms.pushCheck': { req: { roomId: string; recheck?: boolean }; res: PushCheck | null }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
   'rooms.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
@@ -221,6 +228,8 @@ export interface KernelApi {
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
+  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */

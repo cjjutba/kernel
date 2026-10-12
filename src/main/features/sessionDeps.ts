@@ -25,6 +25,11 @@ export function sessionDeps(k: Kernel): SessionDeps {
       const room = k.store.room(roomId)
       if (room && !room.allow?.includes(rule)) k.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
     },
+    roomTools: (roomId) => k.store.room(roomId)?.allowTools ?? [],
+    allowToolInRoom: (roomId, rule) => {
+      const room = k.store.room(roomId)
+      if (room && !room.allowTools?.includes(rule)) k.store.saveRoom({ ...room, allowTools: [...(room.allowTools ?? []), rule] })
+    },
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
     // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
     onReached: () => k.account.network?.reached(),

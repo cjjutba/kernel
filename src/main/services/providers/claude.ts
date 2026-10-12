@@ -5,17 +5,19 @@ import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
+import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
 import { IMAGE_DATA_URL } from '../plans'
-import { decide, guardVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
+import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
+import { bypassSandbox, onSandboxFallback, sandboxFallbackNote } from './sandbox'
 
 export { packagedClaude }
 
@@ -124,7 +126,8 @@ export class ClaudeRunner implements Runner {
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
         ctx, commands: this.commands, tools,
-        verdict: (command) => guardVerdict(command, this.rules()),
+        verdict: (command) => hookVerdict({ tool: 'Bash', command }, this.rules()),
+        roomAllows: (tool, input) => hookVerdict({ tool, input }, this.rules())?.behavior === 'allow',
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
@@ -135,7 +138,14 @@ export class ClaudeRunner implements Runner {
       abortController: this.abort,
       env: sessionEnv(o.env, {}, { agentTeams: host.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
-      spawnClaudeCodeProcess: (s) => host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc) as unknown as SpawnedProcess
+      // A process that may run in Bypass permissions runs its commands in the sandbox, and the chat says when Claude Code
+      // runs them without it (KERNEL-458). Kernel's hooks and canUseTool still decide first.
+      ...(o.bypass ? { sandbox: bypassSandbox(ws.path, { root: o.root }) } : {}),
+      spawnClaudeCodeProcess: (s) => {
+        const child = host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc)
+        if (o.bypass) onSandboxFallback(child.stderr, (reason) => host.item({ kind: 'note', id: randomUUID(), ts: Date.now(), text: sandboxFallbackNote(reason) }))
+        return child as unknown as SpawnedProcess
+      }
     }
     this.query = query({ prompt: this.input, options })
     this.resume = chat.sessionId
@@ -368,7 +378,7 @@ export class ClaudeRunner implements Runner {
     const host = this.host
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID, decisionReason, blockedPath, description }): Promise<PermissionResult> => {
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      const step = { tool: toolName, command }
+      const step = { tool: toolName, command, input }
       const verdict = decide(step, this.rules())
       if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
       if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
@@ -383,8 +393,9 @@ export class ClaudeRunner implements Runner {
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title, ...(reason ? { reason } : {}) }, { signal })
       if (!result) return { behavior: 'deny', message: NO_DECISION }
-      saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
-      if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
+      // A rule Kernel saved on the room outlives the worktree. Claude Code's suggestions only go back for a tool it can't save.
+      const saved = saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
+      if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command && !saved ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
       // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
       if (result.behavior === 'answer') {
@@ -590,7 +601,10 @@ function toolDetail(name: string, input: any): string {
 function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
+  /** Kernel's answer about a command in the hook (`hookVerdict`). */
   verdict: (command: string) => Verdict
+  /** A room's tool rule lets an MCP or web tool call through from the hook (`hookVerdict`, KERNEL-454). */
+  roomAllows: (tool: string, input: unknown) => boolean
   /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
   askUser: (command: string, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   held: () => Promise<void> | undefined
@@ -599,7 +613,7 @@ function kernelHooks(o: {
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, askUser, held, networkAllowed = () => true, handoff, tools } = o
+  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, handoff, tools } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -609,13 +623,21 @@ function kernelHooks(o: {
     const { tool_use_id, tool_input } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
-    // A room's Always allow rule gives no opinion here. canUseTool allows the command if Claude Code asks about it.
     const v = verdict(command)
     if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
-    // Always ask waits for the user here, in every mode but Bypass permissions, where the guard has no opinion on it. A command
-    // the tools line refuses isn't asked about: the gate denies it (KERNEL-447).
-    if (v?.behavior === 'ask' && (!tools || tools.allows('Bash', tool_input))) return askUser(command, v.reason, signal)
+    // A command the tools line refuses is neither asked about nor allowed: the gate denies it (KERNEL-447).
+    if (tools && !tools.allows('Bash', tool_input)) return {}
+    // Always ask waits for the user here, in every mode but Bypass permissions, where the guard has no opinion on it.
+    if (v?.behavior === 'ask') return askUser(command, v.reason, signal)
+    // A room's Always allow rule answers here, so Auto mode's classifier can't refuse it (KERNEL-454).
+    if (v?.behavior === 'allow') return ROOM_ALLOWS
     return {}
+  }
+  // The same for an MCP or web tool the room allows. Network off and the tools line still deny it in their own hooks.
+  const roomTool: HookCallback = async (input) => {
+    const { tool_name: tool, tool_input } = input as PreToolUseHookInput
+    if (tools && !tools.allows(tool, tool_input)) return {}
+    return roomAllows(tool, tool_input) ? ROOM_ALLOWS : {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
   const hold: HookCallback = async (_input, _id, { signal }) => {
@@ -633,7 +655,7 @@ function kernelHooks(o: {
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
-  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] }, { matcher: ROOM_TOOLS, hooks: [roomTool] })
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {
     const gate: HookCallback = async (input) => {
@@ -656,6 +678,12 @@ function kernelHooks(o: {
   }
   return hooks
 }
+
+/** What a PreToolUse hook answers for a step a room's Always allow rule covers (KERNEL-454). */
+const ROOM_ALLOWS: SyncHookJSONOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+
+/** The tools a room's tool rule can cover, as a hook matcher: every MCP tool, WebFetch and WebSearch. */
+export const ROOM_TOOLS = 'mcp__.*|WebFetch|WebSearch'
 
 /** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
 interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
@@ -717,6 +745,8 @@ export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
+  Object.assign(env, NO_PROMPTS)
   // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
   return env
 }

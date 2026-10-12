@@ -77,6 +77,14 @@ describe('loadAppSettings', () => {
     await writeFile(file, JSON.stringify({}))
     expect((await loadAppSettings(file, '/home/cj')).resolved.workspace.branchPattern).toBe('{type}/{task}-{slug}')
   })
+  it('loads a file that still has the unused setUpstream, without it (KERNEL-460)', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ workspace: { setUpstream: false, archiveOnMerge: false } }))
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj')
+    expect(saved.workspace).toEqual({ archiveOnMerge: false })
+    expect(resolved.workspace).not.toHaveProperty('setUpstream')
+    expect(DEFAULT_SETTINGS('/home/cj').workspace).not.toHaveProperty('setUpstream')
+  })
   it('moves the old model per role and the one effort into Claude roles at that effort (KERNEL-406)', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ models: { lead: 'claude-fable-5-1', engineers: 'claude-opus-5-5', qa: 'claude-haiku-4-5-20251001', reviewer: 'claude-sonnet-5-5', effort: 'xhigh', agentLimit: 3 } }))
@@ -386,13 +394,17 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     expect(resolved.planDefaulted).toEqual([...PLAN_KEYS])
   })
 
-  it("reads the Address review text every launch saved as unset, so the new line reaches existing installs (KERNEL-222)", async () => {
+  it("reads the Address review and Create PR texts every launch saved as unset, so the new text reaches existing installs (KERNEL-222, KERNEL-468)", async () => {
     const old = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
+    const oldCreate = '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.'
     const full = DEFAULT_SETTINGS('/home/cj')
-    const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old } }), '/home/cj', 'max')
+    const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old, createInstructions: oldCreate } }), '/home/cj', 'max')
     expect(saved).toEqual(PINNED)
     expect(resolved.pr.addressReviewInstructions).toBe(full.pr.addressReviewInstructions)
     expect(resolved.pr.addressReviewInstructions).toContain('Act only on the comments listed here.')
+    // Kernel's own Create PR text, which Create PR fits to each repo.
+    expect(resolved.pr.createInstructions).toBe(full.pr.createInstructions)
+    expect(resolved.pr.createInstructions).not.toContain('Conventional Commit')
     // Text someone wrote stays.
     const mine = await loadAppSettings(await fileOf({ pr: { addressReviewInstructions: '# Mine' } }), '/home/cj', 'max')
     expect(mine.saved).toEqual({ pr: { addressReviewInstructions: '# Mine' }, ...PINNED })

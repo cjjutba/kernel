@@ -5,6 +5,7 @@ import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
 import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
+import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
@@ -32,6 +33,7 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
       <h3>{title}</h3>
       {a.detail && <span className="sub">{a.detail}</span>}
       {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
+      {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
       {a.status === 'pending' ? (
         <div className="acts">
           <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
@@ -378,7 +380,7 @@ function PlanCard({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: 
   return isStepList(a) ? <PlanSteps a={a} agents={agents} lead={lead} /> : <PlanDoc a={a} agents={agents} lead={lead} />
 }
 
-function HireCard({ a }: { a: Approval }) {
+function HireCard({ a, lead }: { a: Approval; lead: string }) {
   const [asking, setAsking] = useState(false)
   const [busy, run] = useBusy()
   const file = a.agentFile
@@ -387,6 +389,8 @@ function HireCard({ a }: { a: Approval }) {
     <section aria-label={file.path} className="card tcard">
       <h3><FileLabel path={file.path} size={16} /></h3>
       <div className="code">{file.text}</div>
+      <HireServers servers={file.servers} agent={hireName(file)} lead={lead} />
+      {/* Where "Just for me" and "For the team" go once the engine behind them lands (D9, WorkspaceHireServers.png). */}
       {a.status !== 'pending' ? <Result a={a} /> : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
@@ -404,7 +408,7 @@ export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inCh
   const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
   const agent = agents.find((x) => x.id === a.agentId)
   const who = agent?.name ?? 'An agent'
-  if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} />
+  if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} />
   if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
   if (a.kind === 'question') return <QuestionCard a={a} who={who} />
   return <PermCard a={a} who={who} />

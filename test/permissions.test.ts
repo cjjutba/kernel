@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
-import { ALWAYS_ASK, decide, effectiveMode, guardVerdict, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
+import { ALWAYS_ASK, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
-function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; branches?: string[] } = {}): Rules & { reads: number } {
+function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; roomTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
   const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
-  const r = { permissions, mode: o.mode ?? 'acceptEdits', branch: 'feat/invoice-schema', reads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] } }
+  const r = { permissions, mode: o.mode ?? 'acceptEdits', branch: 'feat/invoice-schema', reads: 0, toolReads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] }, roomTools: () => { r.toolReads++; return o.roomTools ?? [] } }
   return r
 }
 
@@ -199,18 +199,92 @@ describe('rulesOf', () => {
   it('reads the lists from Settings, Permissions, the mode from the chat unless the runner names one, and the branch from the workspace', () => {
     const permissions = { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
     let reads = 0
-    const host = { settings: () => ({ permissions }) as unknown as AppSettings, mode: () => 'bypassPermissions' as const, roomAllow: () => { reads++; return ['ls'] }, workspace: { mode: 'worktree', branch: 'feat/x' } as never }
+    const host = { settings: () => ({ permissions }) as unknown as AppSettings, mode: () => 'bypassPermissions' as const, roomAllow: () => { reads++; return ['ls'] }, roomTools: () => { reads++; return ['WebSearch'] }, workspace: { mode: 'worktree', branch: 'feat/x' } as never }
     expect(rulesOf(host)).toMatchObject({ permissions, mode: 'bypassPermissions', branch: 'feat/x' })
     expect(rulesOf(host, 'default').mode).toBe('default')
     expect(reads).toBe(0)
     expect(rulesOf(host).roomAllow()).toEqual(['ls'])
+    expect(rulesOf(host).roomTools()).toEqual(['WebSearch'])
+  })
+})
+
+describe("a room's tool rules (KERNEL-454)", () => {
+  it('match an MCP tool by its name or its server, and a fetch by its host', () => {
+    expect(matchesToolRule('mcp__linear__get_issue', {}, ['mcp__linear__get_issue'])).toBe(true)
+    expect(matchesToolRule('mcp__linear__get_issue', {}, ['mcp__linear'])).toBe(true)
+    expect(matchesToolRule('mcp__linear__get_issue', {}, ['mcp__linear__*'])).toBe(true)
+    expect(matchesToolRule('mcp__claude_ai_Linear__get_issue', {}, ['mcp__claude_ai_Linear'])).toBe(true)
+    expect(matchesToolRule('mcp__linear__save_issue', {}, ['mcp__linear__get_issue'])).toBe(false)
+    expect(matchesToolRule('mcp__linear_admin__drop', {}, ['mcp__linear'])).toBe(false)
+    expect(matchesToolRule('WebFetch', { url: 'https://Docs.Example.com/a' }, ['WebFetch(domain:docs.example.com)'])).toBe(true)
+    expect(matchesToolRule('WebFetch', { url: 'https://evil.dev/?q=docs.example.com' }, ['WebFetch(domain:docs.example.com)'])).toBe(false)
+    expect(matchesToolRule('WebFetch', { url: 'https://example.com' }, ['WebFetch(domain:docs.example.com)'])).toBe(false)
+    expect(matchesToolRule('WebSearch', { query: 'zod' }, ['WebSearch'])).toBe(true)
+  })
+
+  it('never cover a file tool or Bash, whatever a rule names', () => {
+    for (const tool of ['Edit', 'Write', 'Read', 'Bash', 'NotebookEdit', 'AskUserQuestion', 'ExitPlanMode']) expect(matchesToolRule(tool, {}, [tool]), tool).toBe(false)
+  })
+
+  it('are saved as Claude Code writes them, and only for MCP and web tools', () => {
+    expect(toolRule('mcp__linear__get_issue', { id: 'KERNEL-1' })).toBe('mcp__linear__get_issue')
+    expect(toolRule('WebFetch', { url: 'https://docs.example.com/guide', prompt: 'x' })).toBe('WebFetch(domain:docs.example.com)')
+    expect(toolRule('WebFetch', { url: 'not a url' })).toBeUndefined()
+    expect(toolRule('WebSearch', { query: 'zod' })).toBe('WebSearch')
+    expect(toolRule('Edit', { file_path: '/etc/hosts' })).toBeUndefined()
+  })
+
+  it("let canUseTool allow a covered tool before it asks, in every mode but Bypass permissions, and after Network off", () => {
+    const linear = { tool: 'mcp__linear__get_issue', input: {} }
+    for (const mode of ['plan', 'default', 'acceptEdits', 'auto'] as const) expect(decide(linear, rules({ mode, roomTools: ['mcp__linear'] })), mode).toEqual({ behavior: 'allow' })
+    expect(decide(linear, rules({ mode: 'bypassPermissions', roomTools: ['mcp__linear'] }))).toBeUndefined()
+    expect(decide(linear, rules({ roomTools: ['mcp__github'] }))).toBeUndefined()
+    const fetch = { tool: 'WebFetch', input: { url: 'https://docs.example.com' } }
+    expect(decide(fetch, rules({ roomTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'allow' })
+    expect(decide(fetch, rules({ network: false, roomTools: ['WebFetch(domain:docs.example.com)'] }))).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+  })
+
+  it('are read only for a step they could cover', () => {
+    const r = rules()
+    decide({ tool: 'Edit' }, r)
+    decide({ tool: 'Bash', command: 'ls' }, r)
+    decide({ tool: 'mcp__kernel__create_workspace' }, r)
+    expect(r.toolReads).toBe(0)
+    decide({ tool: 'mcp__linear__get_issue' }, r)
+    expect(r.toolReads).toBe(1)
+  })
+})
+
+describe('hookVerdict (KERNEL-454)', () => {
+  it("allows a room rule from the hook in Manual, Accept edits and Auto, so Auto mode's classifier can't refuse it", () => {
+    for (const mode of ['default', 'acceptEdits', 'auto'] as const) {
+      expect(hookVerdict({ tool: 'Bash', command: 'cd web && pnpm test' }, rules({ mode, roomAllow: ['pnpm test'] })), mode).toEqual({ behavior: 'allow' })
+      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, roomTools: ['mcp__linear__get_issue'] })), mode).toEqual({ behavior: 'allow' })
+    }
+  })
+
+  it('leaves a room rule to canUseTool in plan mode, and reads none in Bypass permissions', () => {
+    for (const mode of ['plan', 'bypassPermissions'] as const) {
+      expect(hookVerdict({ tool: 'Bash', command: 'pnpm test' }, rules({ mode, roomAllow: ['pnpm test'] })), mode).toBeUndefined()
+      expect(hookVerdict({ tool: 'mcp__linear__get_issue' }, rules({ mode, roomTools: ['mcp__linear__get_issue'] })), mode).toBeUndefined()
+    }
+  })
+
+  it('still denies Never allow, protected pushes and Network off over any room rule, and asks for Always ask', () => {
+    const r = rules({ mode: 'auto', roomAllow: ['rm:*', 'git push:*', 'curl:*'], roomTools: ['WebSearch'] })
+    expect(hookVerdict({ tool: 'Bash', command: 'cd / && rm -rf /' }, r)).toEqual({ behavior: 'deny', message: neverAllowed('cd / && rm -rf /') })
+    expect(hookVerdict({ tool: 'Bash', command: toMain }, r)).toEqual({ behavior: 'deny', message: neverAllowed(toMain) })
+    expect(hookVerdict({ tool: 'Bash', command: 'pnpm drizzle-kit push' }, r)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
+    const off = rules({ mode: 'auto', network: false, roomAllow: ['curl:*'], roomTools: ['WebSearch'] })
+    expect(hookVerdict({ tool: 'Bash', command: 'curl https://example.com' }, off)).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
+    expect(hookVerdict({ tool: 'WebSearch', input: { query: 'zod' } }, off)).toEqual({ behavior: 'deny', message: NETWORK_OFF })
   })
 })
 
 describe('saveAlwaysAllow', () => {
   const save = (step: Step, decision: Decision | undefined, o?: Parameters<typeof saveAlwaysAllow>[3]) => {
     const saved: string[] = []
-    saveAlwaysAllow({ allowInRoom: (rule) => { saved.push(rule) } }, step, decision, o)
+    saveAlwaysAllow({ allowInRoom: (rule) => { saved.push(rule) }, allowToolInRoom: (rule) => { saved.push(`tool:${rule}`) } }, step, decision, o)
     return saved
   }
 
@@ -221,10 +295,18 @@ describe('saveAlwaysAllow', () => {
     expect(save({ tool: 'Bash', command: 'npm run build -- --watch' }, { behavior: 'allow', always: true }, { suggestions: one, suppressAlwaysAllowRule: true })).toEqual(['npm run build -- --watch'])
   })
 
-  it('saves nothing without Always allow, without a command, or with no decision', () => {
+  it('saves nothing without Always allow, or with no decision', () => {
     expect(save({ tool: 'Bash', command: 'pnpm test' }, { behavior: 'allow' })).toEqual([])
     expect(save({ tool: 'Bash', command: 'pnpm test' }, { behavior: 'deny' })).toEqual([])
     expect(save({ tool: 'Bash', command: 'pnpm test' }, undefined)).toEqual([])
+    expect(save({ tool: 'mcp__linear__get_issue' }, { behavior: 'allow' })).toEqual([])
+  })
+
+  it('saves a tool rule on the room for an MCP or web tool, unless Claude Code says the ask may not offer one (KERNEL-454)', () => {
+    expect(save({ tool: 'mcp__linear__get_issue', input: { id: 'KERNEL-1' } }, { behavior: 'allow', always: true })).toEqual(['tool:mcp__linear__get_issue'])
+    expect(save({ tool: 'WebFetch', input: { url: 'https://docs.example.com/a' } }, { behavior: 'allow', always: true })).toEqual(['tool:WebFetch(domain:docs.example.com)'])
+    expect(save({ tool: 'mcp__linear__get_issue', input: {} }, { behavior: 'allow', always: true }, { suppressAlwaysAllowRule: true })).toEqual([])
     expect(save({ tool: 'WebFetch' }, { behavior: 'allow', always: true })).toEqual([])
+    expect(save({ tool: 'Edit', input: { file_path: '/etc/hosts' } }, { behavior: 'allow', always: true })).toEqual([])
   })
 })

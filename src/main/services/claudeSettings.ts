@@ -30,6 +30,38 @@ export function policyOf(resolved: Pick<ResolvedSettings, 'sources'>, effective:
   return { ...(auto ? { auto } : {}), ...(bypass ? { bypass } : {}) }
 }
 
+/** Where a setting comes from: the file that sets it, when one does. MDM and remote policy have no file. */
+export interface SetBy { path?: string }
+
+/** What Claude Code's settings do to hooks, Kernel's included (KERNEL-461). Kernel reads managed settings and never writes them. */
+export interface HooksPolicy {
+  /** Managed settings set disableAllHooks, so no hook runs, managed ones included. */
+  managedOff?: SetBy
+  /** Managed settings set allowManagedHooksOnly, so only their own hooks run. */
+  managedOnly?: SetBy
+  /** The user's own settings set disableAllHooks and nothing above them turns it back. Managed hooks still run. */
+  userOff?: SetBy
+  /** The hooks managed settings carry, by event, so Kernel's own entries an admin put there count as installed. */
+  managedHooks: Record<string, unknown[]>
+}
+
+/** Managed policy from every source and the user's own settings, merged the way the CLI merges them. */
+export async function hooksPolicy(): Promise<HooksPolicy> {
+  return hooksPolicyOf(await resolveSettings({ settingSources: ['user'] }))
+}
+
+export function hooksPolicyOf(resolved: Pick<ResolvedSettings, 'effective' | 'sources'>): HooksPolicy {
+  const managed = resolved.sources.filter((s) => s.source === 'managed')
+  const setBy = (s?: { path?: string }): SetBy | undefined => s && (s.path ? { path: s.path } : {})
+  const managedOff = setBy(managed.find((s) => s.settings.disableAllHooks === true))
+  const managedOnly = setBy(managed.find((s) => s.settings.allowManagedHooksOnly === true))
+  const user = resolved.sources.find((s) => s.source === 'user')
+  const userOff = !managedOff && resolved.effective.disableAllHooks === true && user?.settings.disableAllHooks === true ? setBy(user) : undefined
+  const managedHooks: Record<string, unknown[]> = {}
+  for (const s of managed) for (const [event, list] of Object.entries(s.settings.hooks ?? {})) managedHooks[event] = [...(managedHooks[event] ?? []), ...(list ?? [])]
+  return { ...(managedOff ? { managedOff } : {}), ...(managedOnly ? { managedOnly } : {}), ...(userOff ? { userOff } : {}), managedHooks }
+}
+
 /**
  * Whether Claude Code runs `model` in Auto, from the models its initialize answer lists. A row matches by its id or the model
  * id it resolves to (`sonnet` to `claude-sonnet-5-5`). Undefined when no row is the model, which Kernel reads as no.

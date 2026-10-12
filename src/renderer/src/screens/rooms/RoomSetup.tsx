@@ -4,7 +4,7 @@ import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, Icon, Select, Spinner, useBusy } from '../../ui'
+import { Button, CodeBlock, Icon, Select, Spinner, useBusy } from '../../ui'
 import { warningText } from '../team/model'
 import { getDraft } from './draft'
 import '../onboarding/onboarding.css'
@@ -24,7 +24,8 @@ function ProductionNote({ paths }: { paths: string[] }) {
 }
 
 /**
- * RoomSetup.png: clone, folders, install, files, hooks, agents. Progress comes from `room.setup` push events.
+ * RoomSetup.png: clone, folders, install, files, hooks, push access, agents. Progress comes from `room.setup` push events.
+ * RoomSetupWarnings.png: a step that finished with something to fix warns, and the room still opens (KERNEL-460).
  * RoomSetupTeam.png: a repo that brought its own agents shows its team once setup is done, to check who leads and who
  * reviews before the room opens (KERNEL-397).
  */
@@ -61,6 +62,14 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   // with something to look at waits for Open the room.
   const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
   useEffect(() => { if (finished && !failed && !warned && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, warned, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const recheck = () => run('recheck', async () => {
+    if (!roomId) return
+    try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
+  })
+  const leadName = team.find((a) => a.lead)?.name ?? 'Rowan'
+  const status = finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.`
+    : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. ${leadName} is waiting for a brief.`
+      : 'You can leave this screen. Kernel keeps going.'
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
@@ -82,6 +91,13 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   <span className="ob-name" style={s.state === 'wait' ? { color: 'var(--muted)', fontWeight: 400 } : undefined}>{s.title}</span>
                   <span className="ob-detail">{s.detail}</span>
                   {s.error && <span className="ob-detail rs-error" role="alert">{s.error}</span>}
+                  {s.output && <pre className="code boxed rs-out">{s.output}</pre>}
+                  {s.fix?.command && <div className="ob-fix"><CodeBlock>{s.fix.command}</CodeBlock></div>}
+                  {s.fix?.action === 'recheck' && (
+                    <div className="ob-acts rs-acts">
+                      <Button variant="secondary" busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
+                    </div>
+                  )}
                   {s.state === 'warn' && !!s.production?.length && (
                     <>
                       <ProductionNote paths={s.production} />
@@ -89,7 +105,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                     </>
                   )}
                 </div>
-                {s.meta && <span className="ob-meta">{s.meta}</span>}
+                {s.meta && s.state !== 'warn' && <span className="ob-meta">{s.meta}</span>}
               </div>
             ))}
             {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
@@ -112,7 +128,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             </section>
           )}
           <div className="ob-bar">
-            <span role="status">{finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.` : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. Rowan is waiting for a brief.` : 'You can leave this screen. Kernel keeps going.'}</span>
+            <span role="status">{status}</span>
             <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
           </div>
           {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}

@@ -8,6 +8,7 @@ import { query, type SandboxSettings } from '@anthropic-ai/claude-agent-sdk'
 import { exec, git, run } from '../src/main/services/exec'
 import { linkNodeModules } from '../src/main/services/scripts'
 import { sessionEnv } from '../src/main/services/providers/claude'
+import { bypassSandbox } from '../src/main/services/providers/sandbox'
 import { bundledClaude, bundledCodex, findOnPath } from '../src/main/services/providers/binary'
 import { withCodex } from '../src/main/services/providers/codex/client'
 import type { SandboxPolicy } from '../src/main/services/providers/codex/protocol/v2/SandboxPolicy'
@@ -56,18 +57,15 @@ const EXPECTED: Record<'claude' | 'codex', Record<string, Verdicts>> = {
   }
 }
 
-/** Claude's sandbox with nothing added, and with what A10 would add for a worktree. Both refuse dangerouslyDisableSandbox. */
+/**
+ * Claude's sandbox with nothing added, and the one Kernel gives a chat in Bypass permissions in this worktree (KERNEL-458). Both
+ * refuse dangerouslyDisableSandbox. Kernel's has to find the fixture's git folder, node_modules and temp folder on its own.
+ */
 function claudeSandboxes(f: Fixture): Record<string, SandboxSettings> {
-  const base = { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false }
-  return {
-    bare: base,
-    a10: {
-      ...base,
-      filesystem: { allowWrite: [f.common, f.modules, f.userTmp, ...(f.npmCache ? [f.npmCache] : [])] },
-      network: { allowedDomains: [...GITHUB, ...REGISTRIES], strictAllowlist: true, allowLocalBinding: true },
-      enableWeakerNetworkIsolation: true
-    }
-  }
+  const a10 = bypassSandbox(f.wt, { root: f.repo })
+  expect(a10.filesystem?.allowWrite).toEqual(expect.arrayContaining([f.common, f.modules, f.userTmp]))
+  expect(a10.network?.allowedDomains).toEqual([...GITHUB, ...REGISTRIES])
+  return { bare: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false }, a10 }
 }
 
 /** Codex's `workspace-write` with nothing added, and as `CodexRunner.sandbox()` sets it today with network on (KERNEL-406). */

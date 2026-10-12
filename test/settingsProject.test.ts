@@ -8,7 +8,8 @@ import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/servi
 import { discoverSkills } from '../src/main/services/files'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
 import { discoverMcp } from '../src/main/services/mcp'
-import { aliasesInRoom, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { aliasesInRoom, DEFAULT_SETTINGS, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { createPrText, readConventions } from '../src/main/services/conventions'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -212,6 +213,65 @@ describe('repo settings files', () => {
     expect(remoteOf({ workspace: { remote: 'upstream' } }, { workspace: { remote: 'fork' } as never })).toBe('upstream')
     expect(remoteOf({ workspace: {} }, { workspace: { remote: 'fork' } as never })).toBe('fork')
     expect(remoteOf({ workspace: { remote: ' ' } }, { workspace: { remote: '' } as never })).toBe('origin')
+  })
+})
+
+describe("the repo's PR conventions (KERNEL-468)", () => {
+  it('finds the PR template, the contributing guide and commitlint where GitHub and commitlint look', async () => {
+    expect(await readConventions(await tempRepo())).toEqual({})
+    // .github comes first, whatever the case of the name.
+    expect(await readConventions(await tempRepo({ '.github/PULL_REQUEST_TEMPLATE.md': '## Summary\n', 'pull_request_template.md': '## Root\n', 'docs/CONTRIBUTING.md': '# Contributing\n', 'commitlint.config.js': 'export default {}\n' })))
+      .toEqual({ template: '.github/PULL_REQUEST_TEMPLATE.md', contributing: 'docs/CONTRIBUTING.md', commitlint: 'commitlint.config.js' })
+    expect(await readConventions(await tempRepo({ 'docs/pull_request_template.txt': 'Why:\n', 'Contributing.rst': 'Hi\n', 'package.json': JSON.stringify({ commitlint: { extends: ['@commitlint/config-conventional'] } }) })))
+      .toEqual({ template: 'docs/pull_request_template.txt', contributing: 'Contributing.rst', commitlint: 'package.json' })
+    // A folder of templates counts when there is no single one and it holds a template.
+    expect(await readConventions(await tempRepo({ '.github/PULL_REQUEST_TEMPLATE/feature.md': '## Feature\n', '.commitlintrc.yml': 'extends: []\n', 'package.json': '{}' })))
+      .toEqual({ template: '.github/PULL_REQUEST_TEMPLATE/', commitlint: '.commitlintrc.yml' })
+    expect(await readConventions(await tempRepo({ '.github/pull_request_template/notes': 'x', 'package.json': '{"name": "client"}' }))).toEqual({})
+  })
+
+  it('asks for Conventional Commits only when commitlint is configured, and names the template and the guide', () => {
+    expect(createPrText()).toBe(DEFAULT_SETTINGS('').pr.createInstructions)
+    expect(createPrText()).toBe([
+      '# Create a pull request',
+      '1. Rebase on the base branch and run the test suite.',
+      "2. Title it in the style of the repo's recent commits.",
+      '3. Fill in summary, scope and risk.',
+      '4. Open it with `gh pr create` and print the URL.'
+    ].join('\n'))
+    expect(createPrText({ template: '.github/pull_request_template.md', contributing: 'CONTRIBUTING.md', commitlint: 'commitlint.config.js' })).toBe([
+      '# Create a pull request',
+      '1. Read `CONTRIBUTING.md` and follow what it says about pull requests.',
+      '2. Rebase on the base branch and run the test suite.',
+      '3. Title it and write its commits as Conventional Commits. The repo checks them with commitlint (`commitlint.config.js`).',
+      "4. Write the body from the repo's PR template, `.github/pull_request_template.md`, filling in each of its sections.",
+      '5. Open it with `gh pr create` and print the URL.'
+    ].join('\n'))
+    expect(createPrText({ template: '.github/PULL_REQUEST_TEMPLATE/' })).toContain('3. Write the body from the template in `.github/PULL_REQUEST_TEMPLATE/` that fits the change, filling in each of its sections.')
+  })
+
+  it("sends Kernel's text fitted to the repo on Create PR, and the user's or the room's own text as written", async () => {
+    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
+    await k.start()
+    try {
+      const sent: string[] = []
+      k.sessions.send = async (_chatId, parts) => { for (const p of parts) if (p.type === 'file' && p.name === 'create-pr.md') sent.push(p.text ?? ''); return { queued: false } }
+      const room = await k.addRoom(repo)
+      const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+      const create = async () => { k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'none' }); await k.prs.createPr(ws.id); return sent[sent.length - 1] }
+
+      expect(await create()).toBe(createPrText({ template: '.github/pull_request_template.md', commitlint: 'package.json' }))
+      k.settings = { ...k.settings, pr: { ...k.settings.pr, createInstructions: '# Mine' } }
+      expect(await create()).toBe('# Mine')
+      await saveRepoSettings(repo, { pr: { createInstructions: '# Ours' } }, true)
+      expect(await create()).toBe('# Ours')
+    } finally {
+      await k.stop()
+    }
   })
 })
 
