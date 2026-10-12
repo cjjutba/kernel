@@ -569,7 +569,7 @@ export const teamFixtures: Record<string, Fixture> = {
     { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
   ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
-  // With the sidebar hidden, Ask Rowan follows Show sidebar in the header and its popover opens down (KERNEL-527).
+  // With the sidebar hidden, Ask Rowan stays in the footer, the same place as with it open (KERNEL-588).
   QuickAskNoSidebar: scene((f) => ({ ...homeScene(f), ui: { ...home, sidebar: false, menu: 'quickAsk' } })),
   // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).
   QuickAskAnswered: scene((f) => ({
@@ -611,7 +611,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
-  // The update pill joins Ask Rowan in the header while the sidebar is hidden (KERNEL-527).
+  // The update pill stays in the footer, before Ask Rowan, while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),

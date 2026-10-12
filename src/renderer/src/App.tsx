@@ -2,7 +2,7 @@ import { Suspense, createElement, lazy, useEffect, useState, type ComponentType,
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
-import { Sidebar } from './components/Shell'
+import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
@@ -246,6 +246,7 @@ export function App() {
         {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
         <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
           <Screen route={route} />
+          {!fullWindow(route) && <Footer />}
         </div>
         {modal && <ModalView modal={modal} />}
         <Toasts />
