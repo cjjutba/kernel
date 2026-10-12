@@ -271,7 +271,15 @@ async function openReviewer(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// GroupedRowStatus is drawn with the pointer on the Client portal login row, once its card has opened (KERNEL-630).
+async function hoverRow(page: Page, row: string) {
+  await page.locator('.chat-row', { hasText: row }).hover()
+  await page.locator('.hover-card').waitFor()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
   PanelFilter: filterChanges,
