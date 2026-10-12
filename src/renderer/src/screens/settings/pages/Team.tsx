@@ -6,6 +6,7 @@ import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, Select, Toggle, useBusy } from '../../../ui'
 import { NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
+import { AGENT_GROUPS, agentGroup, agentLabel, agentSource, cleanDescription } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
 const SAME_AS_APP = ''
@@ -71,7 +72,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       {files.some((a) => !a.lead) && (
         <Section title="Who takes tasks" note={`${lead?.name ?? 'The Lead'} hands tasks only to these agents. One whose tools can’t edit files and run git starts off. These switches don’t change who reviews pull requests.`}>
           {files.filter((a) => !a.lead).map((a) => (
-            <Row key={a.id} label={`${a.name} · ${a.role}`} desc={a.id === reviewerPick ? 'Reviews pull requests either way. Change that under Reviewer.' : undefined}>
+            <Row key={a.id} label={agentLabel(a)} desc={a.id === reviewerPick ? 'Reviews pull requests either way. Change that under Reviewer.' : undefined}>
               <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />
             </Row>
           ))}
@@ -80,18 +81,26 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           </Row>
         </Section>
       )}
-      <Section title="In this room">
-        {files.length === 0 && (
+      {files.length === 0 && (
+        <Section title="In this room">
           <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents`}>
             <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
           </Row>
-        )}
-        {team.map((a) => (
-          <Row key={a.id} label={`${a.name} · ${a.role}`} desc={`${a.builtIn ? 'Built into Kernel' : `.claude/agents/${a.id}.md`}${a.description ? ` · ${a.description}` : ''}`}>
-            <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'agent', roomId, agentId: a.id })}>Edit</Button>
-          </Row>
-        ))}
-      </Section>
+        </Section>
+      )}
+      {AGENT_GROUPS.map(({ key, title }) => {
+        const group = team.filter((a) => agentGroup(a) === key)
+        if (!group.length) return null
+        return (
+          <Section key={key} title={title}>
+            {group.map((a) => (
+              <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={a.description ? <span className="set-clamp">{cleanDescription(a.description)}</span> : undefined}>
+                {key !== 'plugin' && <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'agent', roomId, agentId: a.id })}>Edit</Button>}
+              </Row>
+            ))}
+          </Section>
+        )
+      })}
       <Section title="Sync">
         <Row label="Agents folder"><span className="set-value">.claude/agents</span></Row>
       </Section>
