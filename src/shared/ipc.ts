@@ -252,9 +252,16 @@ export interface KernelApi {
   'lead.open': { req: { roomId: string }; res: Workspace | null }
   /**
    * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
-   * chat gets its own worktree, on a branch from `baseRef` or the latest default branch, and the prompt waits for setup (KERNEL-405).
+   * chat gets its own worktree, on a branch from `baseRef` or the latest default branch (KERNEL-405). It answers once the chat, its
+   * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
+   * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
    */
   'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }; res: Chat }
+  /**
+   * Starts a fetch of the room's remote and answers without waiting for it, so the fetch Create needs is done or under way by
+   * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).
+   */
+  'lead.prefetch': { req: { roomId: string }; res: Ok }
   /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */

@@ -232,6 +232,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return leadWs(roomId) ?? null
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
+    'lead.prefetch': async () => ({ ok: true }),
     'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {
