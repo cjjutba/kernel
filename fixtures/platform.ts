@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -115,6 +115,24 @@ const kernelFiles: RoomSettings = {
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
+/**
+ * Client A's push check (KERNEL-460): both rows pass, gh can push but git isn't using its login, or origin is out of reach.
+ * Checked two minutes before the shot, or just now for the unreachable one, as the drawings say.
+ */
+const pushCheck = (state: 'ok' | 'failed' | 'unreachable'): Pick<Fixture, 'pushChecks'> => {
+  const check: PushCheck = {
+    remote: 'origin', repo: 'samrivera/client-a', login: 'samrivera', at: Date.now() - (state === 'unreachable' ? 0 : 2 * 60_000),
+    reach: { state: 'ok', detail: 'git ls-remote origin' },
+    push: state === 'failed'
+      ? { state: 'fail', detail: 'gh is signed in as samrivera, but git isn\u2019t using that login.', fix: 'gh auth setup-git' }
+      : { state: 'ok', detail: 'From gh, signed in as samrivera' }
+  }
+  if (state === 'unreachable') {
+    check.reach = { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: unable to access \'https://github.com/samrivera/client-a.git/\': Could not resolve host: github.com', note: 'Check your connection or VPN, then check again.' }
+    check.push = { state: 'unchecked', detail: 'Needs a reachable remote' }
+  }
+  return { pushChecks: { [ids.roomA]: check } }
+}
 /** Client A's Environment page: two variables and two env files from its personal file, `src/backend/.env` missing. */
 const envFiles = ['.env', 'src/backend/.env']
 const envRoomA: Partial<Fixture> = {
@@ -259,8 +277,21 @@ export const platformFixtures: Record<string, Fixture> = {
       pr: { ...kernelFiles.pr, optionalChecks: ['Vercel*', 'codecov/patch'] },
       sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override', 'pr.optionalChecks': 'shared' }
     }),
-    branches: ['origin/main', 'origin/dev', 'main']
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('ok')
   }, 'settingsFiles'),
+  // KERNEL-460: gh can push, but git has no login of its own, so the fix is gh auth setup-git.
+  SettingsRoomGitPushFailed: roomPage('git', {
+    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('failed')
+  }),
+  // KERNEL-460: git ls-remote couldn't resolve github.com, so the permission wasn't asked.
+  SettingsRoomGitUnreachable: roomPage('git', {
+    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('unreachable')
+  }),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
   SettingsRoomScripts: roomPage('scripts', clientA({

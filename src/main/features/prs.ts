@@ -4,6 +4,7 @@ import { type AppSettings, loadRepoSettings, prInstructions } from '../services/
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
 import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
+import { createTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { mergeableState, mergeBlock, mergeNeedsPr, notMergeable } from '@shared/merge'
 import type { Handlers } from '../kernel'
@@ -35,14 +36,17 @@ export class Prs extends Feature {
     return prInstructions(this.settings.pr, (await loadRepoSettings(this.mustRoom(ws.roomId).path)).pr)
   }
 
-  /** Sends `create-pr.md` (the room's or Settings > PRs) to the agent. The header shows Creating until its turn ends. */
+  /**
+   * Sends `create-pr.md` (the room's or Settings > PRs, Kernel's own fitted to the repo's conventions, KERNEL-468) to the
+   * agent. The header shows Creating until its turn ends.
+   */
   async createPr(id: string, draft = false) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
     if (this.isLocal(ws)) throw new Error('This room merges on this Mac, so there is no pull request to open. Its branch can merge once it has commits.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
-    const text = (await this.prTexts(ws)).createInstructions + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
+    const text = (await createTextFor((await this.prTexts(ws)).createInstructions, ws.path)) + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
     await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text }])
     return this.setPrState(ws, 'creating')
   }
@@ -292,8 +296,8 @@ export class Prs extends Feature {
   }
 
   /**
-   * Merges with the method from Settings > PRs once `mergeBlock` finds nothing in the way: green checks and a reviewer's
-   * approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
+   * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
+   * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
    */
   async mergePr(id: string) {
     let ws = await this.syncBranch(id)
@@ -332,7 +336,9 @@ export class Prs extends Feature {
     try {
       landed = await this.host(ws.roomId).merge(ws.path, ws.branch, method, { base: ws.baseRef, title: ws.prTitle ?? ws.title })
       this.mergedWith.set(id, method)
+      this.updateWs(id, { mergedWith: method })
     } catch (e) {
+      this.k.codeHost.forgetMergeMethods(this.mustRoom(ws.roomId))
       this.merging.delete(id)
       await this.k.refreshPr(id, { settle: true }).catch(() => undefined)
       throw e

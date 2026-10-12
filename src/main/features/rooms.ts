@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import type { KernelApi } from '@shared/ipc'
-import type { AgentOrigin, AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
+import type { AgentOrigin, AgentStatus, NewRoomRequest, PushCheck, Room, RoomSetupStep } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -11,6 +11,7 @@ import { DEFAULT_BASE_REF, loadRepoSettings, localSettingsOwn } from '../service
 import { defaultBranch, onRemote, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
 import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
+import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
 import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installRunsRepoCode, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
@@ -21,6 +22,13 @@ const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', p
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
 export class Rooms extends Feature {
+  /** By room id, the last push check, null for a room that had no remote (KERNEL-460). */
+  private readonly pushChecks = new Map<string, PushCheck | null>()
+  /** By room id, the push check running now, so a second ask waits for it. */
+  private readonly checking = new Map<string, Promise<PushCheck | null>>()
+  /** By room id, the setup steps last published, so Check again on room setup can update its step. */
+  private readonly setups = new Map<string, { steps: RoomSetupStep[]; publish: () => void }>()
+
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
     if (existing) return existing
@@ -70,7 +78,10 @@ export class Rooms extends Feature {
     return room
   }
 
-  /** The six steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no checkout. */
+  /**
+   * The steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no
+   * checkout. Check push access joins them once the checkout has a remote (KERNEL-460).
+   */
   private async setupRoom(room: Room, req: NewRoomRequest) {
     const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
     const steps: RoomSetupStep[] = [
@@ -82,6 +93,7 @@ export class Rooms extends Feature {
       { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
     ]
     const publish = () => bus.push({ type: 'room.setup', roomId: room.id, steps: steps.map((s) => ({ ...s })) })
+    this.setups.set(room.id, { steps, publish })
     const update = (id: RoomSetupStep['id'], patch: Partial<RoomSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
     const step = async (id: RoomSetupStep['id'], fn: () => Promise<Partial<RoomSetupStep> | void>) => {
       const started = Date.now()
@@ -110,6 +122,11 @@ export class Rooms extends Feature {
       if (inited) return { detail: `Git initialized in ${tildify(room.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
+    const remote = await this.k.config.remoteFor(room.path)
+    if ((await exec('git', ['-C', room.path, 'remote', 'get-url', '--push', remote])).code === 0) {
+      steps.splice(steps.findIndex((s) => s.id === 'agents'), 0, { id: 'push', title: 'Check push access', detail: '', state: 'wait' })
+      publish()
+    }
     // Not a step of its own: reading two files can't fail setup, and Room setup lists what it found under the team.
     await this.findInstructionConflicts(room.id).catch(() => undefined)
 
@@ -145,6 +162,13 @@ export class Rooms extends Feature {
       const status = await this.k.hooks.hooksStatus()
       if (!status.installed) throw new Error('Kernel hooks are not in your Claude settings yet. Open Check hooks in the sidebar to install them.')
     })
+    // A push that can't work is a warning here, never a failure, so the room still opens (KERNEL-437).
+    if (steps.some((s) => s.id === 'push')) {
+      await step('push', async () => {
+        const c = await this.runPushCheck(room.id)
+        return c ? pushStepOf(c) : { detail: 'No remote to push to' }
+      })
+    }
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
     // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
     // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
@@ -169,6 +193,45 @@ export class Rooms extends Feature {
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
       return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
+  }
+
+  /** Runs the room's push check, or waits for the one running, and keeps the result (KERNEL-460). */
+  private runPushCheck(roomId: string): Promise<PushCheck | null> {
+    let running = this.checking.get(roomId)
+    if (running) return running
+    const room = this.mustRoom(roomId)
+    running = (async () => {
+      try {
+        const c = await checkPush(room.path, await this.k.config.remoteFor(room.path))
+        this.pushChecks.set(roomId, c)
+        return c
+      } finally { this.checking.delete(roomId) }
+    })()
+    this.checking.set(roomId, running)
+    return running
+  }
+
+  /**
+   * Whether git can push from the room (Settings, Room, Git): the last result while it is for the room's current remote,
+   * else a new one. `recheck` always runs it again, and updates Check push access while room setup shows it.
+   */
+  async pushCheck(roomId: string, recheck = false): Promise<PushCheck | null> {
+    // No remote is asked again each time, since it costs one local git call and the room's section has no Check again.
+    const last = this.pushChecks.get(roomId)
+    if (!recheck && last && last.remote === await this.k.config.remoteFor(this.mustRoom(roomId).path)) return last
+    const setup = recheck ? this.setups.get(roomId) : undefined
+    const shown = setup?.steps.find((s) => s.id === 'push')
+    if (!setup || !shown) return this.runPushCheck(roomId)
+    Object.assign(shown, { state: 'run', meta: 'running' })
+    setup.publish()
+    try {
+      const c = await this.runPushCheck(roomId)
+      Object.assign(shown, { meta: undefined }, c ? pushStepOf(c) : { state: 'ok', detail: 'No remote to push to' })
+      return c
+    } catch (e) {
+      Object.assign(shown, { state: 'warn', meta: undefined, detail: (e as Error).message, fix: { action: 'recheck' } })
+      throw e
+    } finally { setup.publish() }
   }
 
   /**
@@ -285,6 +348,8 @@ export class Rooms extends Feature {
     await this.k.shared.remove(shared)
     await this.k.trust.forgetRoom(roomId)
     this.k.team.forgetRoom(roomId)
+    this.pushChecks.delete(roomId)
+    this.setups.delete(roomId)
   }
 
   handlers() {
@@ -298,6 +363,7 @@ export class Rooms extends Feature {
       'rooms.remove': async ({ roomId, deleteWorktrees }) => { await this.removeRoom(roomId, deleteWorktrees); return { ok: true } },
       'rooms.inspectFolder': async ({ path }) => inspectFolder(path, this.home),
       'rooms.recentFolders': async () => recentFolders(this.store.rooms().map((r) => r.path), this.home),
+      'rooms.pushCheck': async ({ roomId, recheck }) => this.pushCheck(roomId, recheck),
       'github.repos': async ({ query }) => listRepos(query),
       'rooms.setPaused': async ({ roomId, paused }) => (paused ? this.pauseRoom(roomId, 'you') : this.resumeRoom(roomId))
     } satisfies Partial<Handlers>

@@ -161,6 +161,47 @@ describe('Kernel rooms', () => {
     await k.stop()
   })
 
+  it('checks push access once the checkout has a remote, and Check again updates the step (KERNEL-460)', async () => {
+    const { k } = await kernel()
+    const repo = await tempRepo({ 'README.md': '# x\n' })
+    const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+    await exec('git', ['init', '-q', '--bare', remote])
+    await exec('git', ['-C', repo, 'remote', 'add', 'origin', remote])
+    const room = await k.createRoom({ source: 'folder', name: 'Pushed app', from: repo, team: ['kai'], autostart: false })
+    const steps = await setupDone(room.id)
+    expect(steps.map((s) => s.id)).toEqual(['clone', 'worktrees', 'install', 'copy', 'hooks', 'push', 'agents'])
+    expect(steps.find((s) => s.id === 'push')).toMatchObject({ state: 'ok', title: 'Check push access', detail: 'git can push to origin' })
+    // Settings, Room, Git reads the same result without running it again.
+    const first = await k.handlers()['rooms.pushCheck']({ roomId: room.id })
+    expect(first).toMatchObject({ remote: 'origin', reach: { state: 'ok' }, push: { state: 'ok' } })
+    expect(await k.handlers()['rooms.pushCheck']({ roomId: room.id })).toBe(first)
+
+    // The remote goes away. Check again finds it and room setup's step turns into a warning, never a failure.
+    await rm(remote, { recursive: true, force: true })
+    const published: RoomSetupStep[][] = []
+    const on = (e: PushEvent) => { if (e.type === 'room.setup' && e.roomId === room.id) published.push(e.steps) }
+    bus.on('push', on)
+    const again = await k.handlers()['rooms.pushCheck']({ roomId: room.id, recheck: true })
+    bus.off('push', on)
+    expect(again?.reach.state).toBe('fail')
+    expect(published.map((p) => p.find((s) => s.id === 'push')?.state)).toEqual(['run', 'warn'])
+    expect(published.at(-1)?.find((s) => s.id === 'push')).toMatchObject({ title: "Git can't reach origin", detail: 'Check your connection or VPN, then check again.', fix: { action: 'recheck' } })
+    await k.stop()
+  })
+
+  it('has no push step or push check for a room with no remote (KERNEL-460)', async () => {
+    const { k } = await kernel()
+    const room = await k.createRoom({ source: 'folder', name: 'Local app', from: await tempRepo(), team: [], autostart: false })
+    expect((await setupDone(room.id)).some((s) => s.id === 'push')).toBe(false)
+    expect(await k.handlers()['rooms.pushCheck']({ roomId: room.id })).toBeNull()
+    // A remote added later shows up on Settings, Room, Git without a Check again.
+    const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+    await exec('git', ['init', '-q', '--bare', remote])
+    await exec('git', ['-C', room.path, 'remote', 'add', 'origin', remote])
+    expect(await k.handlers()['rooms.pushCheck']({ roomId: room.id })).toMatchObject({ remote: 'origin', push: { state: 'ok' } })
+    await k.stop()
+  })
+
   it('detects the default branch when the request names none', async () => {
     const { k } = await kernel()
     const repo = await tempRepo()

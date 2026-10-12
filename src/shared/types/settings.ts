@@ -43,7 +43,7 @@ export interface AppSettings {
   }
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
   workspace: {
-    mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
+    mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
     /** The branch a new chat with Rowan starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
     leadBranchPattern: string
     /** A chat with Rowan holds its first message until files.copy and setup pass (KERNEL-405). */
