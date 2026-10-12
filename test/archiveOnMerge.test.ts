@@ -6,7 +6,7 @@ import type { ChatPart, PrInfo, Workspace } from '@shared/types'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
-import { afterArchive } from '../src/renderer/src/screens/workspace/pr/model'
+import { archiveToast } from '../src/renderer/src/screens/workspace/pr/model'
 import { tempRepo } from './helpers'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -364,19 +364,16 @@ describe('Archive on merge at start (KERNEL-114)', () => {
   })
 })
 
-describe('the open workspace after Kernel archives it on merge (KERNEL-114)', () => {
+describe('the toast for a workspace Kernel archives on merge while it is open (KERNEL-114)', () => {
   const ws = (extra: Partial<Workspace>) => ({ id: 'w', roomId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
-  const kernel = { seen: true, byHand: false }
 
-  it("opens the Lead's chat with a toast when its PR merged", () => {
-    expect(afterArchive(ws({ prState: 'merged', prNumber: 164 }), undefined, 'Kai', kernel)).toEqual({ to: 'room', toast: { title: "Archived Kai's workspace after PR #164 merged", sub: 'Restore it from History.' } })
-    expect(afterArchive(ws({ prState: 'merged' }), undefined, undefined, kernel)).toMatchObject({ toast: { title: 'Archived the workspace' } })
+  it('says what Kernel did when the PR merged', () => {
+    expect(archiveToast(ws({ prState: 'merged', prNumber: 164 }), undefined, 'Kai')).toEqual({ title: "Archived Kai's workspace after PR #164 merged", sub: 'Restore it from History.' })
+    expect(archiveToast(ws({ prState: 'merged' }), undefined, undefined)).toMatchObject({ title: 'Archived the workspace' })
   })
 
-  it('goes to History when the user archived it, or it was archived already, or its PR was only closed', () => {
-    const merged = ws({ prState: 'merged', prNumber: 164 })
-    expect(afterArchive(merged, undefined, 'Kai', { seen: true, byHand: true })).toEqual({ to: 'history' })
-    expect(afterArchive(merged, undefined, 'Kai', { seen: false, byHand: false })).toEqual({ to: 'history' })
-    expect(afterArchive(ws({ prState: 'closed', prNumber: 164 }), undefined, 'Kai', kernel)).toEqual({ to: 'history' })
+  it('has none for a PR that was only closed, or a workspace with no PR', () => {
+    expect(archiveToast(ws({ prState: 'closed', prNumber: 164 }), undefined, 'Kai')).toBeUndefined()
+    expect(archiveToast(ws({}), undefined, 'Kai')).toBeUndefined()
   })
 })

@@ -1,12 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { NO_RULES, actionIcon, actionKey, archiveLanding, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { NO_RULES, actionIcon, actionKey, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
-import { archivedByHand } from '../byHand'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import './pr.css'
 
@@ -76,22 +75,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     return () => { live = false }
   }, [id, reads, ws.prState])
 
-  // Archive goes through the archive confirmation; once the workspace is archived, it lives in History. A workspace Kernel
-  // archived on its own while on screen, after its PR or the work it reviewed merged, opens the Lead's chat instead, with
-  // a toast (KERNEL-132, KERNEL-114). The archived push drops the workspace's tabs, so this runs before the browser paints
-  // (a layout effect) and goes straight to the destination: no frame of the stripped workspace, and no wait on main (KERNEL-547).
-  const reviewed = useStore((s) => (ws.reviewOf ? s.workspaces.find((w) => w.id === ws.reviewOf) : undefined))
-  const reviewer = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name)
-  const last = useRef({ id, status: ws.status })
-  useLayoutEffect(() => {
-    const before = last.current
-    last.current = { id, status: ws.status }
-    if (ws.status !== 'archived') return
-    const next = archiveLanding(ws, reviewed, reviewer, { seen: before.id === id && before.status !== 'archived', byHand: archivedByHand(id) }, getState())
-    if (next.toast) actions.ui.toast(next.toast)
-    go(next.route)
-  }, [id, ws.status])
-
+  // Archive goes through the archive confirmation. Where the app goes once the workspace is archived is decided in one place (archiveLanding.ts).
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
 
   // ⌘⇧ and the action's letter press the main button, and ⌘⇧A presses Archive, only while that button shows (KERNEL-341).

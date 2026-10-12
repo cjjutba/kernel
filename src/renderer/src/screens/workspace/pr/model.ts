@@ -1,8 +1,6 @@
-import type { AppSettings, ChatItem, ChatPart, PrInfo, PrPending, PrState, ReviewComment, Route, Toast, Workspace } from '@shared/types'
+import type { AppSettings, ChatItem, ChatPart, PrInfo, PrPending, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
 import { headBlockers, kindsText, mergeBlock, mergeableState } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
-import { roomHome } from '../../../nav'
-import type { State } from '../../../store'
 
 /** The rules a PR's merge reads (Settings, Pull requests). */
 export type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
@@ -277,36 +275,6 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
   if (before === 'creating') return { title: `${n} created`, sub: ws.prState === 'draft' ? 'Opened as a draft' : ws.prTitle || undefined, ...view }
   if (ws.prState === 'merged') return { title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
   return undefined
-}
-
-/**
- * Where the workspace view goes once the open workspace is archived (KERNEL-132). Archive lands in History, except a
- * workspace Kernel archived while it was on screen because its PR merged (KERNEL-114), or a review because the work it
- * reviewed merged or closed: that one opens the room's Lead chat, the first chat of the Lead's workspace, with a toast
- * saying what happened. `agent` is the workspace's agent. `seen` is false when the view opened on a workspace that was
- * already archived, and `byHand` is true when the user archived it.
- */
-export function afterArchive(ws: Workspace, reviewed: Workspace | undefined, agent: string | undefined, how: { seen: boolean; byHand: boolean }): { to: 'history' } | { to: 'room'; toast: { title: string; sub: string } } {
-  const whose = agent ? `${agent}'s` : 'the'
-  if (!how.seen || how.byHand) return { to: 'history' }
-  if (!ws.reviewOf) {
-    if (ws.prState !== 'merged') return { to: 'history' }
-    return { to: 'room', toast: { title: `Archived ${whose} workspace${ws.prNumber ? ` after PR #${ws.prNumber} merged` : ''}`, sub: 'Restore it from History.' } }
-  }
-  const done = reviewed && (reviewed.prState === 'merged' || reviewed.prState === 'closed')
-  if (!done) return { to: 'history' }
-  const after = reviewed.prNumber ? ` after PR #${reviewed.prNumber} ${reviewed.prState === 'merged' ? 'merged' : 'was closed'}` : ''
-  return { to: 'room', toast: { title: `Archived ${whose} review${after}`, sub: 'Restore it from History.' } }
-}
-
-/**
- * Where the open workspace goes in the same step as its archived status (KERNEL-547): `afterArchive`'s answer as a route to take now,
- * with the toast for a workspace Kernel archived on its own. The room's front door is read from the store, as the sidebar lists it,
- * and not asked of main, so the archived workspace never waits on screen, stripped of its tabs, for an answer.
- */
-export function archiveLanding(ws: Workspace, reviewed: Workspace | undefined, agent: string | undefined, how: { seen: boolean; byHand: boolean }, s: State): { route: Route; toast?: { title: string; sub: string } } {
-  const next = afterArchive(ws, reviewed, agent, how)
-  return next.to === 'history' ? { route: { name: 'history' } } : { route: roomHome(ws.roomId, s), toast: next.toast }
 }
 
 /**

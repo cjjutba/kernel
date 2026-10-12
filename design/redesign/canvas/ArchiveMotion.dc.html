@@ -213,17 +213,18 @@ var SCREENS = {
     r1: 'Fixed. /login now sends a signed-in user to the dashboard and keeps any next parameter.',
     r2: 'I added a test for both paths.', meta: '1m 12s · 09:55',
     files: [{ name: 'src/middleware.ts', add: '+11', del: '-2' }, { name: 'test/login.test.ts', add: '+27', del: '' }] },
-  newchat: { kind: 'new', letter: 'O', room: 'Own app' }
+  newchat: { kind: 'new', letter: 'O', room: 'Own app' },
+  newchatA: { kind: 'new', letter: 'A', room: 'Client A' }
 }
 
 var CASES = [
-  { label: 'Archive the open chat', from: 'portal', to: 'invoice',
-    cap: 'The open chat is archived. Its row folds out while the screen dissolves to the chat above it. Both start together and end together.',
+  { label: 'Archive the open chat', from: 'portal', to: 'newchatA',
+    cap: 'The open chat is archived. Its row folds out while the screen dissolves to New chat with Rowan, the room\'s front door, whichever chats are open. Both start together and end together.',
     note: 'row: fold 200 ms, fade 120 ms  ·  screen: 200 ms  ·  all ease-out, one start',
     rows: [
       { k: 'room', label: 'Client A', letter: 'A', cur: true },
       { k: 'chat', label: 'Export invoices as PDF' },
-      { k: 'chat', label: 'Invoice table and empty states', sel: [0, 1] },
+      { k: 'chat', label: 'Invoice table and empty states' },
       { k: 'chat', label: 'Client portal login', sel: [1, 1], out: true, arch: true },
       { k: 'chat', label: 'Seed realistic demo data' },
       { k: 'ws', label: 'org-invites', merged: true, stat: '#41' },

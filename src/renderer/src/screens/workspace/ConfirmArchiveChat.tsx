@@ -8,7 +8,7 @@ import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 
-/** Closes this dialog and nothing else: the route change that archiving a chat on screen makes has closed it already. */
+/** Closes this dialog and nothing else: the move to the front door that archiving a chat on screen makes has closed it already. */
 function closeArchiveChatDialog(threadId: string) {
   const modal = getState().ui.modal
   if (modal?.name === 'confirm' && modal.kind === 'archiveChat' && modal.threadId === threadId) actions.ui.closeModal()
@@ -44,7 +44,7 @@ export function ConfirmArchiveChat({ threadId }: { threadId: string }) {
   const archive = () => run('archive', async () => {
     setError(null)
     try {
-      await archiveChatNow(thread ?? { id: threadId, roomId: '', title, createdAt: 0 }, preview?.workspaces.map((w) => w.id) ?? [])
+      await archiveChatNow(threadId, preview?.workspaces.map((w) => w.id) ?? [])
       closeArchiveChatDialog(threadId)
     } catch (e) { setError(cleanError(e)) }
   })
