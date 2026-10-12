@@ -474,7 +474,7 @@ export class Lead extends Feature {
         const tabs = this.threadTabIds(chat)
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
-        const linked = issue ? await this.k.integrations.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
+        const linked = issue ? await this.k.integrations.issueSource(roomId, issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf

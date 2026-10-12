@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { LinearIssue, LinearScope, Workspace } from '../src/shared/types'
-import { clearedFilter, describeFilter, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
+import type { GithubIssue, GithubIssueDetail, LinearIssue, LinearScope, Workspace } from '../src/shared/types'
+import { byUpdated, clearedFilter, describeFilter, describeGithub, githubPlanParts, labelsOf, loginInitials, milestonesOf, narrowGithub, rowLabels, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -89,6 +89,12 @@ describe('linked workspaces', () => {
     expect(linkedWorkspaces('K-1', list).map((w) => w.id)).toEqual(['pr', 'new', 'old'])
   })
 
+  it('links a workspace whose source names its tracker as before (KERNEL-462)', () => {
+    const list = [ws('tagged', { source: { kind: 'issue', id: 'K-1', title: 'T', tracker: 'linear' } }), ws('github', { source: { kind: 'issue', id: '#41', title: 'T', tracker: 'github' } })]
+    expect(linkedWorkspaces('K-1', list).map((w) => w.id)).toEqual(['tagged'])
+    expect(linkedWorkspaces('#41', list).map((w) => w.id)).toEqual(['github'])
+  })
+
   it('says what a workspace is doing from its PR and running state', () => {
     expect(workspaceState(ws('a', { prState: 'open', prNumber: 41 }), false)).toBe('PR open')
     expect(workspaceState(ws('a', { prState: 'open', prNumber: 41 }), false, true)).toBe('PR #41 open')
@@ -145,5 +151,53 @@ describe('filters', () => {
     expect(workspaceSlug('https://linear.app/cj-jutba/issue/KERNEL-31/export')).toBe('cj-jutba')
     expect(workspaceSlug(undefined)).toBeUndefined()
     expect(workspaceSlug('not a url')).toBeUndefined()
+  })
+})
+
+describe('GitHub issues (KERNEL-471)', () => {
+  const gh = (number: number, labels: string[], updatedAt: string, extra: Partial<GithubIssue> = {}): GithubIssue =>
+    ({ number, id: `#${number}`, title: `Issue ${number}`, url: '', labels, assignees: [], updatedAt, mine: false, ...extra })
+  const list = [
+    gh(24, ['feature', 'frontend'], ago(5 * H), { mine: true, milestone: 'Invoices v1' }),
+    gh(27, ['security'], ago(D)),
+    gh(31, ['feature', 'billing'], ago(2 * D), { milestone: 'Invoices v1' })
+  ]
+
+  it('draws a login as initials the way it draws a name', () => {
+    expect(loginInitials('maya-chen')).toBe('MC')
+    expect(loginInitials('kai.okoye')).toBe('KO')
+    expect(loginInitials('cjjutba')).toBe('CJ')
+  })
+
+  it('lists the most recently updated first', () => {
+    expect(byUpdated([list[2], list[0], list[1]]).map((i) => i.id)).toEqual(['#24', '#27', '#31'])
+  })
+
+  it('narrows by label and milestone, and offers the names the list holds, keeping a chosen one', () => {
+    expect(narrowGithub(list, { mine: false, label: 'feature' }).map((i) => i.id)).toEqual(['#24', '#31'])
+    expect(narrowGithub(list, { mine: false, label: 'feature', milestone: 'Invoices v1' })).toHaveLength(2)
+    expect(narrowGithub(list, { mine: false, label: 'security', milestone: 'Invoices v1' })).toEqual([])
+    expect(labelsOf(list)).toEqual(['billing', 'feature', 'frontend', 'security'])
+    expect(labelsOf(list, 'tax')).toContain('tax')
+    expect(milestonesOf(list)).toEqual(['Invoices v1'])
+  })
+
+  it('shows two label pills and a count for the rest', () => {
+    expect(rowLabels(['a', 'b'])).toEqual({ shown: ['a', 'b'], more: '' })
+    expect(rowLabels(['billing', 'feature', 'tax', 'ui'])).toEqual({ shown: ['billing', 'feature'], more: '+2' })
+  })
+
+  it('says what an empty list was filtered by', () => {
+    expect(describeGithub({ mine: true, label: 'bug' }, ' webhook ', 'acme/app')).toEqual({ where: 'acme/app', fits: ['Mine', 'bug', '"webhook"'] })
+    expect(describeGithub({ mine: false }, '', 'acme/app').fits).toEqual([])
+  })
+
+  it('plans with Rowan the way Linear does: the issue chip, then its description and how to hand it off', () => {
+    const issue: GithubIssueDetail = { ...list[2], url: 'https://github.com/acme/app/issues/31', body: ' Clients want a PDF. ', comments: [] }
+    expect(githubPlanParts(issue)).toEqual([
+      { type: 'issue', name: '#31', title: 'Issue 31', url: issue.url, source: 'github' },
+      { type: 'text', text: 'Clients want a PDF.\n\nWhen you hand it off, pass #31 as issue to create_workspace.' }
+    ])
+    expect(githubPlanParts({ ...issue, body: '' })[1]).toMatchObject({ text: expect.stringContaining('The issue has no description.') })
   })
 })
