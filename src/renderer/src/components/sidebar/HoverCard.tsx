@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { ActivityEvent, Chat, Thread, Workspace } from '@shared/types'
 import { call } from '../../api'
@@ -75,11 +75,19 @@ export function useHoverCard<T extends HTMLElement = HTMLDivElement>() {
     onFocus: (e: FocusEvent<T>) => { if (off(e.target)) close(); else if (e.target.matches(':focus-visible')) open() },
     onBlur: close
   }
-  const hold = { onMouseEnter: () => window.clearTimeout(leaving.current), onMouseLeave: close }
+  // The card is portalled but React still bubbles its events to the row, whose press, focus and blur close the card and would unmount its buttons before a click lands.
+  const keep = (e: SyntheticEvent) => e.stopPropagation()
+  const hold: CardHold = { onMouseEnter: () => window.clearTimeout(leaving.current), onMouseLeave: close, onPointerDown: keep, onFocus: keep, onBlur: keep }
   return { at, id, bind, hold, close }
 }
 
-export interface CardHold { onMouseEnter: () => void; onMouseLeave: () => void }
+export interface CardHold {
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+  onPointerDown: (e: SyntheticEvent) => void
+  onFocus: (e: SyntheticEvent) => void
+  onBlur: (e: SyntheticEvent) => void
+}
 
 /** The card itself, in a portal beside the row so the scrolling sidebar can't clip it. */
 function HoverCard({ at, id, hold, label, children }: { at: DOMRect; id: string; hold: CardHold; label: string; children: ReactNode }) {
