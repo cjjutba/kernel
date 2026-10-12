@@ -338,9 +338,9 @@ app.whenReady().then(async () => {
       currentNotes: app.isPackaged ? undefined : readNotes(join(app.getAppPath(), 'site', 'content', 'releases', `${app.getVersion()}.md`)),
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
       onSettings: (s) => { const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
-      showNotification: (n, { silent }) => {
+      showNotification: (n, { silent, sound }) => {
         if (!Notification.isSupported()) return
-        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
+        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent, ...(sound ? { sound } : {}) })
         banner.on('click', () => focusWindow())
         // macOS shows notifications only from a signed app (Electron 42), so an unsigned build says why here instead.
         banner.on('failed', (_e, error) => console.error(`[kernel] could not show a notification: ${error}`))

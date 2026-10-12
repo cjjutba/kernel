@@ -10,7 +10,7 @@ type Deps = {
   /** Name of an agent in a room, for "Noor wants to run ...". */
   agentName: (roomId: string | undefined, agentId: string | undefined) => string | undefined
   /** Show a macOS notification. Not called while the app has focus. */
-  show?: (n: Notification, o: { silent: boolean }) => void
+  show?: (n: Notification, o: { silent: boolean; sound?: string }) => void
   /** True while no Kernel window has focus. */
   inBackground?: () => boolean
   now?: () => number
@@ -273,6 +273,14 @@ export class Notifications {
     const s = this.d.settings().notifications
     if ((gate !== 'usage' && !s[gate]) || !this.d.show || !this.d.inBackground?.()) return
     if (inQuietHours(s.quietHours, new Date(this.d.now?.() ?? Date.now()))) return
-    this.d.show(n, { silent: s.sound === 'none' })
+    this.d.show(n, bannerSound(s.sound))
   }
+}
+
+/** The macOS system sound Chime plays. Subtle is the system's default banner sound (KERNEL-538). */
+export const CHIME_SOUND = 'Glass'
+
+/** How a banner sounds, by Settings, Notifications, Sound: Subtle plays the default, Chime its own, None nothing (KERNEL-538). */
+export function bannerSound(sound: AppSettings['notifications']['sound']): { silent: boolean; sound?: string } {
+  return sound === 'none' ? { silent: true } : sound === 'chime' ? { silent: false, sound: CHIME_SOUND } : { silent: false }
 }
