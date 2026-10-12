@@ -696,6 +696,7 @@ export class Sessions {
    */
   private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}, more: QueuedMessage[] = []) {
     const ws = this.mustWorkspace(chat.workspaceId)
+    chat = this.unsuggest(chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
     if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
@@ -1196,10 +1197,12 @@ export class Sessions {
         this.d.store.clearItems(chatId)
         if (trigger === 'clear') live.cleared = true
         bus.push({ type: 'chat.cleared', chatId })
-        this.d.onReset?.(ws, this.mustChat(chatId), trigger)
+        const chat = this.unsuggest(this.mustChat(chatId))
+        this.d.onReset?.(ws, chat, trigger)
       },
       setContext: (context, usage) => this.setContext(chatId, context, usage),
       turnEnded: (t) => this.turnEnded(chatId, ws, live, t),
+      suggested: (text) => this.suggested(chatId, live, text),
       sessionGone: () => this.renew(this.mustChat(chatId), ws, live),
       ended: (reason, o = {}) => this.ended(chatId, ws, live, reason, o.error === true),
       // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, or Kernel is
@@ -1413,6 +1416,29 @@ export class Sessions {
     const next = { ...chat, context, contextUsage }
     this.d.store.saveChat(next)
     bus.push({ type: 'chat', chat: next })
+  }
+
+  /**
+   * Claude's guess at the user's next message, saved on the chat for the composer (KERNEL-530). It is about the turn that just
+   * ended, so one from a process that no longer owns the chat, or one that comes after the next turn started, is dropped.
+   */
+  private suggested(chatId: string, live: Live, text: string) {
+    const suggestion = text.trim()
+    if (!suggestion || this.closing || this.live.get(chatId) !== live || live.running) return
+    const chat = this.d.store.chat(chatId)
+    if (!chat || chat.suggestion === suggestion) return
+    const next = { ...chat, suggestion }
+    this.d.store.saveChat(next)
+    bus.push({ type: 'chat', chat: next })
+  }
+
+  /** A turn starting, or /clear, leaves the last guess behind, so the composer never offers it. Returns the chat as saved. */
+  private unsuggest(chat: Chat): Chat {
+    if (chat.suggestion === undefined) return chat
+    const next = { ...chat, suggestion: undefined }
+    this.d.store.saveChat(next)
+    bus.push({ type: 'chat', chat: next })
+    return next
   }
 
   /** A paused room shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */

@@ -76,6 +76,8 @@ export interface Chat {
   threadId?: string
   /** When a turn last ended in this chat since the user saw it. Unset is read, as is every chat from before (KERNEL-507). */
   unreadAt?: number
+  /** Claude's guess at the user's next message, sent after a turn. The next turn to start clears it. Codex chats never get one (KERNEL-530). */
+  suggestion?: string
   createdAt: number
 }
 
