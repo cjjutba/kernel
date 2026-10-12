@@ -46,10 +46,10 @@ export interface KernelApi {
   'rooms.icon': { req: { roomId: string }; res: string | null }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
-  /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
+  /** Send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
   'rooms.brief': { req: { roomId: string; text: string; parts?: ChatPart[]; agentId?: string }; res: { chatId: string; workspaceId: string } }
   'rooms.overlaps': { req: { roomId: string }; res: Overlap[] }
-  /** By agent id, the time of each agent's newest event in the room, read from the whole log. Floor seating ranks idle agents by it. */
+  /** By agent id, the time of each agent's newest event in the room, read from the whole log. */
   'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
   /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
@@ -88,7 +88,7 @@ export interface KernelApi {
    * default, or in a pull request that moves it back for `team` (KERNEL-466).
    */
   'agents.restore': { req: { roomId: string; agentId: string; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
-  /** Empty floor: seat a starter team. */
+  /** An empty room's team: add a starter team from a template. */
   'agents.seed': { req: { roomId: string; template: TeamTemplate }; res: AgentDef[] }
   /**
    * Who leads, who reviews and who takes tasks: writes the `[team]` table in the shared .kernel/settings.toml and returns

@@ -41,7 +41,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * "Let Rowan sort it": the Lead gets both workspaces and the file, and the card leaves the floor.
+   * "Let Rowan sort it": the Lead gets both workspaces and the file, and the overlap card is dismissed.
    * The overlap itself clears on its own once the agents stop touching the same file.
    */
   async sortOverlap(overlapId: string): Promise<void> {
@@ -59,7 +59,7 @@ export class Lead extends Feature {
     const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.${elsewhere}`
     await this.sessions.send(chat.id, [{ type: 'text', text }])
     this.overlaps.resolve(overlapId)
-    // A note, not a brief: a brief to the Lead would restart the briefing sequence on the floor.
+    // A note, not a brief: this isn't a new brief to the Lead.
     const lead = agents.find((a) => a.id === this.store.workspace(chat.workspaceId)?.agentId)
     bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
@@ -350,7 +350,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * The newest open chat with Rowan's first tab, for Kernel's own sends: floor briefs, an overlap, a comment on a shared file.
+   * The newest open chat with Rowan's first tab, for Kernel's own sends: a brief, an overlap, a comment on a shared file.
    * With no chat open, a new one, with setup (KERNEL-405). Opening the room doesn't come here, so it starts no chat (KERNEL-365).
    */
   async leadChat(roomId: string): Promise<Chat> {
@@ -828,7 +828,7 @@ export class Lead extends Feature {
         const message = messageOf(text, parts)
         this.userSpoke(chat.id)
         await this.sessions.send(chat.id, message)
-        // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
+        // The activity line for the brief, with the brief quoted under it.
         const to = this.store.workspace(chat.workspaceId)?.agentId
         const name = (await this.k.team.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
         const quote = parts ? message.map((p) => (p.type === 'text' ? p.text : p.name)).join(' ').replace(/\s+/g, ' ').trim() : text

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef } from '../src/shared/types'
-import { LOOKS, lookFor, overflowShirt, seating } from '../src/renderer/src/screens/team/looks'
+import { LOOKS, lookFor, overflowShirt, shirtOrder } from '../src/renderer/src/screens/team/looks'
 import { shirtOf } from '../src/renderer/src/screens/team/model'
 
 const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', description: '', lead, prompt: '', file: `${id}.md` })
@@ -14,17 +14,17 @@ describe('Team shirts follow file order (KERNEL-102)', () => {
     team.forEach((x, i) => expect(shirtOf(x, team, room)).toBe(LOOKS[i].shirt))
   })
 
-  it('keeps the shirt when room.desks seats an agent somewhere else', () => {
+  it('keeps the shirt when room.desks puts an agent somewhere else', () => {
     const room = { desks: ['rowan', 'ivy', 'kai', 'noor'] }
-    // ivy sits second but is fourth in the file.
-    expect(seating(team, room).seated[1].id).toBe('ivy')
+    // ivy is second in the room's order but fourth in the file.
+    expect(shirtOrder(team, room).first[1].id).toBe('ivy')
     expect(shirtOf(team[3], team, room)).toBe(lookFor(team[3], 3).shirt)
     expect(shirtOf(team[3], team, room)).not.toBe(lookFor(team[3], 1).shirt)
   })
 
   it('counts file order among live agents only', () => {
     const withRetired = [a('rowan', true), { ...a('old'), retired: true }, a('kai')]
-    // kai sits first, and is second among the live agents.
+    // kai is first in the room's order, and second among the live agents.
     expect(shirtOf(withRetired[2], withRetired, { desks: ['kai', 'rowan'] })).toBe(LOOKS[1].shirt)
   })
 
@@ -35,11 +35,11 @@ describe('Team shirts follow file order (KERNEL-102)', () => {
   })
 })
 
-describe('Team puts six agents in a room\'s order and the rest in the overflow', () => {
+describe('Team gives six agents a look in a room\'s order and the rest an overflow shirt', () => {
   it('puts the lead first and sends agents past the sixth to the overflow, in the overflow shirts', () => {
     const team = [a('kai'), a('rowan', true), ...['b', 'c', 'd', 'e', 'f', 'g'].map((x) => a(x))]
-    const { seated, overflow } = seating(team)
-    expect(seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'b', 'c', 'd', 'e'])
+    const { first, overflow } = shirtOrder(team)
+    expect(first.map((x) => x.id)).toEqual(['rowan', 'kai', 'b', 'c', 'd', 'e'])
     expect(overflow.map((x) => x.id)).toEqual(['f', 'g'])
     expect(shirtOf(team[6], team)).toBe(overflowShirt(0))
     expect(shirtOf(team[7], team)).toBe(overflowShirt(1))
@@ -47,14 +47,14 @@ describe('Team puts six agents in a room\'s order and the rest in the overflow',
 
   it('follows room.desks when it is set', () => {
     const team = [a('rowan', true), a('kai'), a('sol')]
-    const { seated, overflow } = seating(team, { desks: ['rowan', 'kai'] })
-    expect(seated.map((x) => x.id)).toEqual(['rowan', 'kai'])
+    const { first, overflow } = shirtOrder(team, { desks: ['rowan', 'kai'] })
+    expect(first.map((x) => x.id)).toEqual(['rowan', 'kai'])
     expect(overflow.map((x) => x.id)).toEqual(['sol'])
   })
 
   it('leaves retired agents out', () => {
-    const { seated, overflow } = seating([a('rowan', true), { ...a('old'), retired: true }])
-    expect(seated.map((x) => x.id)).toEqual(['rowan'])
+    const { first, overflow } = shirtOrder([a('rowan', true), { ...a('old'), retired: true }])
+    expect(first.map((x) => x.id)).toEqual(['rowan'])
     expect(overflow).toEqual([])
   })
 })

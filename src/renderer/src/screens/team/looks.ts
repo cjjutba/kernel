@@ -11,11 +11,11 @@ export const LOOKS: AgentLook[] = [
 const OVERFLOW_SHIRTS = ['#5a6370', '#6d6a5c', '#4f6068', '#645a6e']
 
 /** How many agents, in a room's order, wear a look. The rest wear an overflow shirt. */
-const SEATED = 6
+const WITH_LOOK = 6
 
-export interface Seating {
+export interface ShirtOrder {
   /** The first six in the room's order, lead first. */
-  seated: AgentDef[]
+  first: AgentDef[]
   /** Everyone after them, or not listed in `room.desks`. */
   overflow: AgentDef[]
 }
@@ -24,13 +24,13 @@ export interface Seating {
  * The room's order of live agents. `room.desks` lists agent ids in order and anyone not listed comes after the sixth. Without it the order
  * is the file's. The lead always goes first.
  */
-export function seating(agents: AgentDef[], room?: Pick<Room, 'desks'>): Seating {
+export function shirtOrder(agents: AgentDef[], room?: Pick<Room, 'desks'>): ShirtOrder {
   const live = agents.filter((a) => !a.retired)
   const lead = live.find((a) => a.lead)
   const ordered = room?.desks ? room.desks.map((id) => live.find((a) => a.id === id)).filter((a): a is AgentDef => !!a) : live
   const queue = lead && ordered.includes(lead) ? [lead, ...ordered.filter((a) => a !== lead)] : ordered
-  const seated = queue.slice(0, SEATED)
-  return { seated, overflow: live.filter((a) => !seated.includes(a)) }
+  const first = queue.slice(0, WITH_LOOK)
+  return { first, overflow: live.filter((a) => !first.includes(a)) }
 }
 
 /** How an agent looks: their file's `look`, else one by their place in the file (`order`), so a person keeps their look when the room's order changes. */

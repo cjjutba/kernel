@@ -1,4 +1,4 @@
-/** A line in the room logs and the source of every floor animation. */
+/** A line in the room logs. */
 export interface ActivityEvent {
   id: string
   ts: number
@@ -17,7 +17,7 @@ export interface ActivityEvent {
     | 'limit' | 'note'
   text: string
   object?: string
-  /** A quoted brief or message under the line (FloorSent.png). */
+  /** A quoted brief or message under the line. */
   quote?: string
   /** Shows the object as something that needs the user. */
   warn?: boolean
