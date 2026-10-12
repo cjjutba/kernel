@@ -77,7 +77,7 @@ describe('the Bypass permissions sandbox', () => {
     })
   })
 
-  it('reaches GitHub and the npm registries and nothing else, binds localhost, and never lets a command leave it', async () => {
+  it('reaches GitHub and the npm registries and nothing else, binds localhost, and lets only the screenshot commands leave it', async () => {
     const s = bypassSandbox(await temp('plain'), { home: await temp('home') })
     expect(s).toEqual({
       enabled: true,
@@ -90,8 +90,20 @@ describe('the Bypass permissions sandbox', () => {
         strictAllowlist: true,
         allowLocalBinding: true
       },
-      enableWeakerNetworkIsolation: true
+      enableWeakerNetworkIsolation: true,
+      excludedCommands: ['pnpm shots:*', 'node design/canvas/source/render.mjs:*']
     })
+  })
+
+  // KERNEL-541: Electron and Chromium die registering a Mach service, which no sandbox setting allows.
+  it('runs pnpm shots and render.mjs outside it, and opens nothing else for them', async () => {
+    const s = bypassSandbox(await temp('plain'), { home: await temp('home') })
+    expect(s.excludedCommands).toEqual(['pnpm shots:*', 'node design/canvas/source/render.mjs:*'])
+    expect(s.network?.allowMachLookup).toBeUndefined()
+    expect(s.allowAppleEvents).toBeUndefined()
+    // Each process gets its own list.
+    s.excludedCommands?.push('git:*')
+    expect(bypassSandbox(await temp('plain')).excludedCommands).not.toContain('git:*')
   })
 
   it("adds no node_modules Kernel didn't link, so a repo's own link can't open the home folder", async () => {

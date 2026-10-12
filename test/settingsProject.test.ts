@@ -8,7 +8,7 @@ import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/servi
 import { discoverSkills } from '../src/main/services/files'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
 import { discoverMcp } from '../src/main/services/mcp'
-import { aliasesInRoom, DEFAULT_SETTINGS, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { agentAccessInRoom, aliasesInRoom, DEFAULT_SETTINGS, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
 import { createPrText, readConventions } from '../src/main/services/conventions'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
@@ -97,6 +97,17 @@ describe('repo settings files', () => {
     await saveRepoSettings(repo, { mcp: { aliases: { linear: 'linear-mine' } } })
     expect(aliasesInRoom(repo)).toEqual({ linear: 'linear-mine', figma: 'Figma' })
     expect(aliasesInRoom(repo)).toEqual((await loadRepoSettings(repo)).mcp?.aliases)
+  })
+
+  it('reads an agent\'s unlisted_tools and allow from both files, the personal one winning (KERNEL-537)', async () => {
+    const repo = await tempRepo()
+    expect(agentAccessInRoom(repo, 'kai')).toEqual({ unlisted: 'ask', allow: [] })
+    await saveRepoSettings(repo, { agents: { unlistedTools: 'hide', allow: { kai: ['figma'], noor: ['linear'] } } }, true)
+    expect(agentAccessInRoom(repo, 'kai')).toEqual({ unlisted: 'hide', allow: ['figma'] })
+    await saveRepoSettings(repo, { agents: { unlistedTools: 'ask', allow: { kai: ['sentry'] } } })
+    expect(agentAccessInRoom(repo, 'kai')).toEqual({ unlisted: 'ask', allow: ['sentry'] })
+    expect(agentAccessInRoom(repo, 'noor').allow).toEqual(['linear'])
+    expect(agentAccessInRoom(repo).allow).toEqual([])
   })
 
   it('reads what the room switched off at once, from both files, so a toggle reaches the next session (KERNEL-226)', async () => {

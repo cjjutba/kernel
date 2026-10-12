@@ -1,6 +1,5 @@
 import type { AppSettings } from '@shared/types'
-import { actions } from '../../../store'
-import { Button, Select, Toggle } from '../../../ui'
+import { Select, Toggle } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
@@ -30,9 +29,6 @@ export function Notifications({ s }: { s: AppSettings }) {
             const [from, to] = e.target.value.split('-')
             void patchSettings({ notifications: { quietHours: e.target.value === 'off' ? null : { from, to } } })
           }} />
-        </Row>
-        <Row label="Phone" desc="Approve requests from your iPhone with Remote Control">
-          <Button onClick={() => actions.ui.toast({ title: 'Remote Control setup is not available yet' })}>Set up</Button>
         </Row>
       </Section>
     </Page>

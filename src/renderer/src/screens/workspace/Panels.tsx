@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Compo
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
+import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
@@ -20,8 +21,10 @@ import { FileIcon } from '../../components/FileIcon'
 import { FileTree } from './FileTree'
 import { gitDecoration } from './gitStatus'
 import { changesToEntries, openByDefault } from './tree'
+import { filterEntries, matchRanges, matchesPath } from './panelFilter'
+import { FilterButton, FilterField, Marked, PanelTools, RefreshButton, ToolButton, ToolSlot, usePanelFilter } from './PanelTools'
 
-const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i), name: path.slice(i + 1) } }
+const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: i < 0 ? '' : path.slice(0, i), name: path.slice(i + 1) } }
 
 /** A file's added and removed line counts, as the Changes rows and the Changes tree show them. */
 function Counts({ f }: { f?: ChangedFile }) {
@@ -35,31 +38,46 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
   const [tree, setTree] = useState<FileEntry[]>([])
   const [open, setOpen] = useState<Set<string> | null>(null)
   const [failed, setFailed] = useState(false)
-  const root = useStore((s) => s.rooms.find((r) => r.id === ws.roomId)?.name) ?? split(ws.path.replace(/\/+$/, '')).name
+  const filter = usePanelFilter()
   useEffect(() => {
     let live = true
     call('workspaces.tree', { workspaceId: ws.id }).then((t) => { if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
     return () => { live = false }
   }, [ws.id, changes])
   const initial = useMemo(() => openByDefault(tree), [tree])
-  const expanded = open ?? initial
-  const toggle = (path: string) => { const next = new Set(expanded); if (next.has(path)) next.delete(path); else next.add(path); setOpen(next) }
+  // Filtering draws every folder with a match open, but the ones the reader closed since.
+  const found = useMemo(() => (filter.filtering ? filterEntries(tree, filter.query) : null), [tree, filter.filtering, filter.query])
+  const expanded = useMemo(() => (found ? new Set([...found.dirs].filter((d) => !filter.shut.has(d))) : open ?? initial), [found, filter.shut, open, initial])
+  const toggle = (path: string) => {
+    if (found) return filter.fold(path)
+    const next = new Set(expanded)
+    if (next.has(path)) next.delete(path); else next.add(path)
+    setOpen(next)
+  }
+  const collapseAll = () => (found ? filter.foldAll(found.dirs) : setOpen(new Set()))
   if (failed) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
   return (
-    <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
-      <div className="tree-head">
-        <span className="grow ellipsis">{root}</span>
-        <IconButton icon="collapse" size={14} label="Collapse all folders" onClick={() => setOpen(new Set())} />
-      </div>
-      <FileTree label="All files" entries={tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
-    </div>
+    <>
+      <PanelTools>
+        <FilterButton filter={filter} label="Filter files" />
+        <ToolButton icon="collapse" label="Collapse all folders" onClick={collapseAll} />
+      </PanelTools>
+      <FilterField filter={filter} label="Filter files" />
+      {found && !found.entries.length
+        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No files match</span><span>Try another name or folder.</span></div>
+        : (
+          <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
+            <FileTree label="All files" entries={found ? found.entries : tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
+          </div>
+        )}
+    </>
   )
 }
 
 // ---------- Changes
 
 /** One changed file the way VS Code's Source Control lists it: icon, name in its git color, the folder after it, the counts, then the letter. */
-function ChangeRow({ f, active, conflicted, onOpen }: { f: ChangedFile; active: boolean; conflicted?: boolean; onOpen: () => void }) {
+function ChangeRow({ f, active, conflicted, ranges, onOpen }: { f: ChangedFile; active: boolean; conflicted?: boolean; ranges: [number, number][]; onOpen: () => void }) {
   const { dir, name } = split(f.path)
   // A file a local merge would conflict in reads C in the diff's red, the letter the merge note lists it with (KERNEL-478).
   const deco = conflicted ? { letter: 'C', label: 'Conflict', color: 'var(--del)', struck: false } : gitDecoration(f.status)
@@ -67,8 +85,8 @@ function ChangeRow({ f, active, conflicted, onOpen }: { f: ChangedFile; active: 
     <button type="button" className="tree-row change-row" aria-current={active || undefined} onClick={onOpen}>
       <FileIcon path={f.path} />
       <span className="tree-name ellipsis">
-        <span data-struck={deco?.struck || undefined} style={deco ? { color: deco.color } : undefined}>{name}</span>
-        {dir && <span className="change-dir">{dir}</span>}
+        <span data-struck={deco?.struck || undefined} style={deco ? { color: deco.color } : undefined}><Marked text={name} from={dir ? dir.length + 1 : 0} ranges={ranges} /></span>
+        {dir && <span className="change-dir"><Marked text={dir} from={0} ranges={ranges} /></span>}
       </span>
       <Counts f={f} />
       {deco && <span className="tree-letter" style={{ color: deco.color }} aria-label={deco.label}>{deco.letter}</span>}
@@ -82,27 +100,45 @@ function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; c
   const byPath = useMemo(() => new Map(changes.map((f) => [f.path, f])), [changes])
   const local = useLocalMerge(ws)
   const conflicts = useMemo(() => new Set(local?.stand === 'conflict' ? local.info?.conflicts : []), [local])
+  const filter = usePanelFilter()
   // Every folder of the tree starts open. This keeps the ones closed by hand.
   const [closed, setClosed] = useState<Set<string>>(() => new Set())
-  const expanded = useMemo(() => new Set(entries.filter((e) => e.dir && !closed.has(e.path)).map((e) => e.path)), [entries, closed])
-  const toggle = (path: string) => { const next = new Set(closed); if (next.has(path)) next.delete(path); else next.add(path); setClosed(next) }
+  // Filtering narrows the list to the paths that match, and the tree to them and the folders above, all drawn open but the ones the reader closed since.
+  const shown = useMemo(() => (filter.filtering ? changes.filter((f) => matchesPath(f.path, filter.query)) : changes), [changes, filter.filtering, filter.query])
+  const found = useMemo(() => (filter.filtering ? filterEntries(entries, filter.query) : null), [entries, filter.filtering, filter.query])
+  const treeEntries = found ? found.entries : entries
+  const expanded = useMemo(() => new Set(treeEntries.filter((e) => e.dir && !(found ? filter.shut : closed).has(e.path)).map((e) => e.path)), [treeEntries, found, filter.shut, closed])
+  const toggle = (path: string) => {
+    if (found) return filter.fold(path)
+    const next = new Set(closed)
+    if (next.has(path)) next.delete(path); else next.add(path)
+    setClosed(next)
+  }
   if (!changes.length) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No file changes yet</span><span>Changes appear here.</span></div>
   const added = changes.reduce((n, f) => n + f.added, 0)
   const removed = changes.reduce((n, f) => n + f.removed, 0)
   return (
-    <div className="panel-scroll" style={{ padding: '4px 10px' }}>
-      <div className="changes-head">
-        <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
-        <span className="grow" />
-        <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
-        <IconButton icon="listTree" size={14} label="View as tree" aria-pressed={view === 'tree'} onClick={() => actions.ui.setChangesView(view === 'tree' ? 'list' : 'tree')} />
-        <Button className="small" onClick={() => onOpenDiff('')}>Review all</Button>
+    <>
+      <PanelTools>
+        <Button className="tool-text" onClick={() => onOpenDiff('')}>Review all</Button>
+        <FilterButton filter={filter} label="Filter changed files" />
+        <ToolButton icon="listTree" label="View as tree" aria-pressed={view === 'tree'} onClick={() => actions.ui.setChangesView(view === 'tree' ? 'list' : 'tree')} />
+      </PanelTools>
+      <FilterField filter={filter} label="Filter changed files" />
+      <div className="panel-scroll" style={{ padding: '4px 10px' }}>
+        <div className="changes-head">
+          <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
+          <span className="grow" />
+          <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
+        </div>
+        {filter.filtering && !shown.length
+          ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No changes match</span><span>Try another name or folder.</span></div>
+          : view === 'tree'
+            ? <FileTree label="Changed files" entries={treeEntries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
+            : shown.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} ranges={matchRanges(f.path, filter.query)} onOpen={() => onOpenDiff(f.path)} />)}
+        {ws.mode === 'current' && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
       </div>
-      {view === 'tree'
-        ? <FileTree label="Changed files" entries={entries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
-        : changes.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} onOpen={() => onOpenDiff(f.path)} />)}
-      {ws.mode === 'current' && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
-    </div>
+    </>
   )
 }
 
@@ -185,26 +221,36 @@ function OpenPreview({ ws }: { ws: Workspace }) {
   )
 }
 
+/** The PR's Checks page on GitHub, or nothing for a branch with no PR, or one that merges on the Mac. */
+export const checksUrl = (prUrl?: string) => (prUrl ? `${prUrl.replace(/\/+$/, '')}/checks` : undefined)
+
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
   const local = useLocalMerge(ws)
   const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId), local)
+  const url = checksUrl(pr?.url || ws.prUrl)
   return (
-    <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
-      {groups.map((g) => (
-        <div key={g.title} className="col" style={{ gap: 4 }}>
-          <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{g.title}</span>
-          {g.rows.map((r, i) => (
-            <div key={i} className="row" style={{ gap: 10, minHeight: 26 }}>
-              <CheckIcon state={r.state} />
-              <span className="grow ellipsis" style={{ color: r.dim ? 'var(--muted)' : 'var(--ink-2)' }}>{r.label}</span>
-              {r.meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{r.meta}</span>}
-            </div>
-          ))}
-        </div>
-      ))}
-      <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
-    </div>
+    <>
+      <PanelTools>
+        <RefreshButton ids={[ws.id]} label="Refresh checks" failTitle="Could not refresh checks" />
+        <ToolButton icon="ext" label="Open on GitHub" disabled={!url} onClick={() => { if (url) void attempt('Could not open GitHub', () => call('system.openExternal', { url })) }} />
+      </PanelTools>
+      <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
+        {groups.map((g) => (
+          <div key={g.title} className="col" style={{ gap: 4 }}>
+            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{g.title}</span>
+            {g.rows.map((r, i) => (
+              <div key={i} className="row" style={{ gap: 10, minHeight: 26 }}>
+                <CheckIcon state={r.state} />
+                <span className="grow ellipsis" style={{ color: r.dim ? 'var(--muted)' : 'var(--ink-2)' }}>{r.label}</span>
+                {r.meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{r.meta}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
+        <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
+      </div>
+    </>
   )
 }
 
@@ -276,24 +322,29 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
   const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
   const pick = (id: string) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })
+  // The strip's right side belongs to the tab on show: it draws its buttons into this element (PanelTools). Files and Changes are keyed by workspace, so a new one starts without a filter.
+  const [tools, setTools] = useState<HTMLDivElement | null>(null)
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
-      <div className="panel-tabs" data-lead={isLead || undefined}>
-        <TabStrip label="Workspace panel" value={right} onChange={pick} tabs={[
-          // The PRs tab has no count: the band and the Ready to merge heading show it.
-          ...(isLead ? [{ id: 'prs', label: 'PRs' }] : []),
-          { id: 'files', label: 'All files' },
-          { id: 'changes', label: <>Changes {count(changes.length)}</> },
-          { id: 'checks', label: 'Checks' },
-          ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
-        ]} />
+    <ToolSlot.Provider value={tools}>
+      <div className="col grow" style={{ minHeight: 0 }}>
+        <div className="panel-tabs" data-lead={isLead || undefined}>
+          <TabStrip label="Workspace panel" value={right} onChange={pick} tabs={[
+            // The PRs tab has no count: the band and the Ready to merge heading show it.
+            ...(isLead ? [{ id: 'prs', label: 'PRs' }] : []),
+            { id: 'files', label: 'All files' },
+            { id: 'changes', label: <>Changes {count(changes.length)}</> },
+            { id: 'checks', label: 'Checks' },
+            ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
+          ]} />
+          <div ref={setTools} className="panel-tools" role="toolbar" aria-label="Panel actions" />
+        </div>
+        {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
+        {right === 'files' && <FilesTree key={ws.id} ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
+        {right === 'changes' && <ChangesList key={ws.id} ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
+        {right === 'checks' && <Checks ws={ws} changes={changes} />}
+        {right === 'shared' && <SharedPanel ws={ws} />}
       </div>
-      {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
-      {right === 'files' && <FilesTree ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
-      {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
-      {right === 'checks' && <Checks ws={ws} changes={changes} />}
-      {right === 'shared' && <SharedPanel ws={ws} />}
-    </div>
+    </ToolSlot.Provider>
   )
 }
 
@@ -394,6 +445,8 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       <div className="bottom-tabs">
         <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
+        {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
+        {collapsed && <span className="bottom-word" role="status">{collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun, port: ws.port })}</span>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
         {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
         {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}

@@ -168,7 +168,15 @@ async function narrowPanel(page: Page) {
   await page.waitForTimeout(400)
 }
 
+// PanelFilter is Changes with the filter open and "inbox" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
+async function filterChanges(page: Page) {
+  await page.getByRole('button', { name: 'Filter changed files' }).click()
+  await page.getByRole('textbox', { name: 'Filter changed files' }).fill('inbox')
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  PanelFilter: filterChanges,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   PanelResize: hoverSplitHandle,

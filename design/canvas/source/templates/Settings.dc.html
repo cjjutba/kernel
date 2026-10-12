@@ -29,14 +29,13 @@
 <p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: #8a8f98">{{ g.title }}</p>
 <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="4">
 <sc-if value="{{ n.isRoom }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ n.pick }}" aria-expanded="{{ n.expanded }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
-<span aria-hidden="true" style="width: 15px; height: 15px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #2a2b30; font-size: 8.5px; font-weight: 600">{{ n.letter }}</span>
+<span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; font-size: 9px; font-weight: 600">{{ n.letter }}</span>
 <span style="flex: 1">{{ n.label }}</span>
-<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.chevron }}"></path></svg>
 </button></sc-if>
-<sc-if value="{{ n.notRoom }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ n.pick }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px 0 {{ n.padLeft }}; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<sc-if value="{{ n.notRoom }}" hint-placeholder-val="{{ true }}"><div style="{{ n.guide }}"><button type="button" onClick="{{ n.pick }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px 0 {{ n.padLeft }}; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
 <sc-if value="{{ n.isIcon }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ n.stroke }}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.icon }}"></path></svg></sc-if>
 <span style="flex: 1">{{ n.label }}</span>
-</button></sc-if>
+</button></div></sc-if>
 </sc-for>
 </sc-if>
 </sc-for>
@@ -177,7 +176,7 @@ class Component extends DCLogic {
   }
 
   icons() {
-    return {
+    var o = {
       general: 'M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M11.5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7.5 11a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
       appearance: 'M8 2.5a5.5 5.5 0 1 0 0 11ZM8 2.5a5.5 5.5 0 0 1 0 11',
       notifications: 'M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3ZM6.5 13.5a1.5 1.5 0 0 0 3 0',
@@ -200,10 +199,14 @@ class Component extends DCLogic {
       env: 'M5.5 3.5C4 3.5 4 4.5 4 5.5v1C4 7.3 3.5 8 2.5 8 3.5 8 4 8.7 4 9.5v1c0 1 0 2 1.5 2M10.5 3.5C12 3.5 12 4.5 12 5.5v1c0 .8.5 1.5 1.5 1.5-1 0-1.5.7-1.5 1.5v1c0 1 0 2-1.5 2',
       bigterm: 'M2.5 3.5h11v9h-11ZM5 6.5 7 8.5 5 10.5M8.5 10.5H11'
     };
+    o['r-general'] = o.general; o['r-git'] = o.git; o['r-scripts'] = o.scripts; o['r-files'] = o.files; o['r-env'] = o.env;
+    o['r-instructions'] = 'M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.5c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.5';
+    o['r-permissions'] = o.permissions; o['r-agents'] = o.team; o['r-skills'] = o.hooks;
+    return o;
   }
 
   // The final nav. Environment and Big terminal rows have their pages since KERNEL-255.
-  // Room pages sit indented under their room row and only the room row has the letter. The current room is expanded, the other collapsed.
+  // Room pages sit indented under their room row, each with its icon, and only the room row has the letter. The room whose page is open is expanded, the others collapsed, and on an app page every room is collapsed (KERNEL-534).
   nav(room) {
     var pages = [['r-general', 'General'], ['r-git', 'Git'], ['r-scripts', 'Scripts'], ['r-files', 'Files to copy'], ['r-env', 'Environment'], ['r-instructions', 'Instructions'], ['r-permissions', 'Permissions'], ['r-agents', 'Agents'], ['r-skills', 'Skills and MCP']];
     return [
@@ -212,7 +215,7 @@ class Component extends DCLogic {
       { title: 'Workspaces', items: [['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests']] },
       { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']] },
       { title: 'Rooms', items: [['a', 'Client A', 'A'], ['b', 'Client B', 'B'], ['p', 'Portfolio', 'P']].reduce(function (items, r) {
-        return r[0] === (room || 'a') ? items.concat([['r-general', r[1], r[2], 'open']], pages.map(function (p) { return [p[0], p[1], '', 'page']; })) : items.concat([['room-' + r[0], r[1], r[2], 'shut']]);
+        return r[0] === room ? items.concat([['r-general', r[1], r[2], 'open']], pages.map(function (p) { return [p[0], p[1], '', 'page']; })) : items.concat([['room-' + r[0], r[1], r[2], 'shut']]);
       }, []) }
     ];
   }
@@ -507,14 +510,14 @@ class Component extends DCLogic {
     var q = (s.q || '').toLowerCase();
     var pageMap = this.pages();
     var inRoom = s.page.indexOf('r-') === 0;
-    var groups = this.nav((pageMap[s.page] || {}).room).map(function (g) {
+    var groups = this.nav(inRoom ? (pageMap[s.page] || {}).room || 'a' : null).map(function (g) {
       var items = g.items.filter(function (it) { return !q || it[1].toLowerCase().indexOf(q) >= 0; }).map(function (it) {
         var isRoom = !!it[2], isPage = it[3] === 'page';
         var on = (pageMap[s.page].nav || s.page) === it[0] && !isRoom;
         return {
-          label: it[1], isIcon: !isRoom && !isPage, isLetter: isRoom, letter: it[2] || '', icon: icons[it[0]] || '',
+          label: it[1], isIcon: !isRoom, isLetter: isRoom, letter: it[2] || '', icon: icons[it[0]] || '',
           isRoom: isRoom, notRoom: !isRoom, expanded: it[3] === 'open' ? 'true' : 'false', chevron: it[3] === 'open' ? 'M2.5 4 5 6.5 7.5 4' : 'M4 2.5 6.5 5 4 7.5',
-          padLeft: isPage ? '33px' : '8px',
+          padLeft: isPage ? '6px' : '8px', guide: isPage ? 'margin-left: 15px; padding-left: 4px; border-left: 1px solid #2a2b30' : '',
           current: on ? 'page' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#d0d6e0', stroke: on ? '#d0d6e0' : '#8a8f98',
           pick: function () { if (pageMap[it[0]]) self.setState({ page: it[0] }); }
         };

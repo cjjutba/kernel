@@ -12,6 +12,7 @@ import { NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
 import { ModelPicker } from '../workspace/composer/ModelPicker'
 import { effortLabel as labelOf, useLeadBox } from '../workspace/composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
+import { sendsOn, useSendWith } from '../workspace/composer/sendKey'
 import '../workspace/composer/composer.css'
 import { useRemote } from '../settings/useSettings'
 import { FromPopover } from './FromPopover'
@@ -136,9 +137,13 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
     return true
   }
 
-  /** Enter creates and Shift+Enter breaks the line, as in the chat composer. Cmd+Enter is the keyboard shortcut below. */
+  /**
+   * Enter creates and Shift+Enter breaks the line, as in the chat composer. With Send messages with on ⌘ Enter, Enter breaks
+   * the line too (KERNEL-536). Cmd+Enter is the keyboard shortcut below, in both.
+   */
+  const sendWith = useSendWith()
   const onEnter = (e: React.KeyboardEvent) => {
-    if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.nativeEvent.isComposing) return
+    if (e.metaKey || !sendsOn(e, sendWith) || e.nativeEvent.isComposing) return
     e.preventDefault()
     create()
   }

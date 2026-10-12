@@ -20,6 +20,7 @@ import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
+import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { heldLine, waitersLine } from '../waitLines'
 import './composer.css'
@@ -37,7 +38,7 @@ type MenuName = 'model' | 'context' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
- * files, skills, diff hunks) inline, in order. Enter sends, Shift+Enter breaks the line, Backspace takes a chip like a
+ * files, skills, diff hunks) inline, in order. Enter sends (or Cmd+Enter, by Send messages with), Shift+Enter breaks the line, Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
@@ -165,6 +166,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const fallback = useDefaultEffort(agent?.effort)
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
+  const sendWith = useSendWith()
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -174,7 +176,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
+    if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }

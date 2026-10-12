@@ -15,7 +15,7 @@ import { Kernel } from '../src/main/kernel'
 const open: Notifications[] = []
 afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
 
-async function setup(o: { background?: boolean; sound?: 'none' | 'subtle'; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' | 'finished'; idle?: boolean } = {}) {
+async function setup(o: { background?: boolean; sound?: 'none' | 'subtle' | 'chime'; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' | 'finished'; idle?: boolean } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-n-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   store.saveWorkspace({ id: 'w', roomId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
@@ -23,10 +23,11 @@ async function setup(o: { background?: boolean; sound?: 'none' | 'subtle'; quiet
   settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, sound: o.sound ?? 'subtle', idle: o.idle ?? false, ...(o.off ? { [o.off]: false } : {}) }
   const shown: Notification[] = []
   const silent: boolean[] = []
-  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent) }, inBackground: () => o.background ?? true, now: () => new Date(2026, 0, 1, 12, 0).getTime(), idleAfterMs: 30 })
+  const sounds: (string | undefined)[] = []
+  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent); sounds.push(opts.sound) }, inBackground: () => o.background ?? true, now: () => new Date(2026, 0, 1, 12, 0).getTime(), idleAfterMs: 30 })
   n.attach()
   open.push(n)
-  return { store, n, shown, silent }
+  return { store, n, shown, silent, sounds }
 }
 
 const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', roomId: 'r', agentId: 'noor', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
@@ -48,6 +49,14 @@ describe('notifications service', () => {
     bus.push({ type: 'approval', approval: approval({ id: 'a2', kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?')] }) })
     expect(n.list().find((x) => x.approvalId === 'a1')).toMatchObject({ title: 'Which store?', heading: 'Noor has 3 questions' })
     expect(n.list().find((x) => x.approvalId === 'a2')?.heading).toBe('Noor has a question')
+  })
+
+  it('plays its own sound for Chime and the default for Subtle (KERNEL-538)', async () => {
+    for (const [sound, expected] of [['chime', 'Glass'], ['subtle', undefined]] as const) {
+      const { sounds } = await setup({ sound })
+      bus.push({ type: 'approval', approval: approval() })
+      expect(sounds).toEqual([expected])
+    }
   })
 
   it('plays no sound when Settings > Notifications sound is none', async () => {

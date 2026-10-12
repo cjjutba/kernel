@@ -64,7 +64,8 @@
 .lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--faint); }
 .lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
 /* Merge all sits at the right of the Ready to merge heading without making it taller (KERNEL-411). */
-.lp-sec > .lp-all > .btn { margin: -4px 0 -4px auto; align-self: center; }
+/* Merge all sits in the panel's strip, 24px like the strip's other buttons (PanelToolbarPrs.png, KERNEL-515). */
+.panel-tools .lp-all > .btn { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: 6px; font-weight: 500; }
 /* Where a Merge all run stopped, above the lists, until the next run. */
 .lp-notice { margin: 0; padding: 8px 14px 10px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
 .lp-list { list-style: none; margin: 0; padding: 0; }

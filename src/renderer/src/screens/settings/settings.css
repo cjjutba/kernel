@@ -18,7 +18,8 @@
 .btn.set-icon-trigger[aria-expanded='true'], .btn.set-menu-trigger[aria-expanded='true'] { border-color: var(--line-4); }
 .btn.set-icon-trigger svg, .btn.set-menu-trigger svg { color: var(--muted); }
 .set-icon-mini { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--line-3); font-size: 9px; font-weight: 600; color: var(--ink-2); }
-.set-letter { width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--line-3); font-size: 8.5px; font-weight: 600; }
+.set-letter { width: 16px; height: 16px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid var(--line-3); font-size: 9px; font-weight: 600; }
+.set-letter[data-image] { border: 0; }
 
 .set-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .set-page { max-width: 748px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
@@ -55,6 +56,10 @@ html[data-font='small'] #root { zoom: 0.92; height: calc(100vh / 0.92); }
 html[data-font='large'] #root { zoom: 1.1; height: calc(100vh / 1.1); }
 html[data-density='compact'] .nav-item { height: 26px; }
 html[data-density='compact'] .set-row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+/* Compact reaches the lists you scan all day, not only Settings (KERNEL-538): inbox rows, the chat thread and the file and change trees. */
+html[data-density='compact'] .ib-row { height: 52px; }
+html[data-density='compact'] .thread { gap: 8px; }
+html[data-density='compact'] .tree-row { height: 22px; }
 html:not([data-pointer='true']) button, html:not([data-pointer='true']) select, html:not([data-pointer='true']) summary { cursor: default; }
 html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, html[data-reduce-motion='true'] *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
 
@@ -69,10 +74,11 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-token:focus { border-color: var(--line-4); }
 .set-actions { display: inline-flex; gap: 8px; align-items: center; }
 
-/* Room pages in the nav and the room page header (KERNEL-191) */
+/* Room pages in the nav and the room page header (KERNEL-191). The hairline starts under the room avatar's center (8px pad + 8px) and the pages sit one step past it (KERNEL-534). */
 .set-room { gap: 10px; }
 .set-room .grow { text-align: left; }
-.nav-item.set-sub { padding-left: 33px; }
+.set-pages { margin-left: 15px; padding-left: 4px; border-left: 1px solid var(--line-3); }
+.nav-item.set-sub { padding-left: 6px; }
 .set-head { display: flex; align-items: center; gap: 24px; }
 .set-head h1 { flex: 1; min-width: 0; }
 .set-files { position: relative; flex-shrink: 0; }
