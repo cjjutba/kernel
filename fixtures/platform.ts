@@ -409,17 +409,6 @@ export const platformFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  // KERNEL-224: 160k tokens in a 1M window is 16% of it, long enough to cost more with every turn. No PNG.
-  WorkspaceContextHigh: scene((f) => ({
-    chats: withChat(f, {
-      context: 16,
-      contextUsage: { used: 160_000, max: 1_000_000, rows: [
-        { name: 'System prompt', tokens: 3_200, kind: 'used' }, { name: 'System tools', tokens: 11_800, kind: 'used' }, { name: 'MCP tools', tokens: 6_400, kind: 'used' },
-        { name: 'Memory files', tokens: 2_600, kind: 'used' }, { name: 'Messages', tokens: 136_000, kind: 'used' }, { name: 'Free space', tokens: 800_000, kind: 'free' }, { name: 'Autocompact buffer', tokens: 40_000, kind: 'buffer' }
-      ] }
-    }),
-    ui: open
-  })),
   // The retry is between attempts, so the turn shows as the canvas draws it: no Stop button.
   WorkspaceOverloaded: scene((f) => ({
     items: { [ids.tableChat]: [...tableItems, { kind: 'user', id: 'u-shorten', ts: at(10, 40), parts: [{ type: 'text', text: 'Shorten the empty state copy.' }] }] },
