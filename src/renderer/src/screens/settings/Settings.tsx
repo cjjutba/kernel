@@ -22,6 +22,7 @@ import { Room } from './pages/Room'
 import { RoomGit } from './pages/RoomGit'
 import { RoomInstructions } from './pages/RoomInstructions'
 import { RoomPermissions } from './pages/RoomPermissions'
+import { RoomReviews } from './pages/RoomReviews'
 import { RoomScripts } from './pages/RoomScripts'
 import { Scripts } from './pages/Scripts'
 import { Shortcuts } from './pages/Shortcuts'
@@ -65,6 +66,7 @@ function RoomBody({ roomId, section = 'general', s }: { roomId?: string; section
     case 'instructions': return <RoomInstructions roomId={roomId} s={s} />
     case 'permissions': return <RoomPermissions roomId={roomId} />
     case 'agents': return <Team roomId={roomId} s={s} />
+    case 'reviews': return <RoomReviews roomId={roomId} />
     case 'skills': return <Skills roomId={roomId} />
     case 'environment': return <Environment roomId={roomId} />
     default: return <Room roomId={roomId} />

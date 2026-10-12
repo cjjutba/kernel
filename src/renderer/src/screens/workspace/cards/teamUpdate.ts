@@ -1,4 +1,5 @@
-import type { ChatItem, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import { REVIEW_KINDS, type ChatItem, type TeamEventKind, type TeamUpdate, type TeamUpdateRow, type Workspace } from '@shared/types'
+import { lensOf, reviewVerdicts } from '@shared/merge'
 
 type UserItem = Extract<ChatItem, { kind: 'user' }>
 
@@ -12,6 +13,20 @@ export function cardData(item: UserItem): TeamUpdate {
 
 /** The workspace a row's Merge button merges: a reviewer's row merges the work it reviewed (`reviewOf`), every other row its own. */
 export const mergeTargetOf = (ws: Pick<Workspace, 'id' | 'reviewOf'>) => ws.reviewOf ?? ws.id
+
+/** The row's PR came to Rowan unmerged: the reviews still block it after the review rounds `[review] rounds` allows, so Kernel starts no more (KERNEL-552). */
+export const isStillBlocked = (row: Pick<TeamUpdateRow, 'events'>) => row.events.some((e) => e.kind === 'pr.review' && /^Still blocked after \d+ review rounds?$/.test(e.text))
+
+/** The row's PR merged because the user allowed it, and Kernel said so (KERNEL-556). */
+export const mergedAutomatically = (row: Pick<TeamUpdateRow, 'events'>) => row.events.some((e) => e.kind === 'pr.merged' && e.text === 'Merged automatically')
+
+/** What is still open on a PR: each blocker on its head commit, with the review it came from, as the reviews came in (KERNEL-557). */
+export function openItems(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { kind: string; text: string }[] {
+  return reviewVerdicts(ws).current.filter((v) => v.verdict === 'blockers').flatMap((v) => {
+    const kind = REVIEW_KINDS.find((k) => k.id === lensOf(v))?.label ?? 'Code'
+    return (v.blockers ?? []).map((b) => ({ kind, text: b.text }))
+  })
+}
 
 /** The one row that offers Merge for a PR: a card's item id, and the workspace id of the row in it. */
 export interface NewestRow { itemId: string; workspaceId: string }
@@ -78,8 +93,8 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
     case 'pr.ready': case 'pr.unblocked': return 'add'
     // "Approved PR #7", or with the kind of review in front since KERNEL-549: "Code review approved PR #7". Blockers are red.
     case 'review': return /^(?:\S+ review )?approved\b/i.test(e.text) ? 'add' : 'del'
-    // A ready PR's review in the PRs tab's colors: an approval green, blockers red, the rest grey (KERNEL-411).
-    case 'pr.review': return / approved$/.test(e.text) ? 'add' : / found .*blockers?$/.test(e.text) ? 'del' : 'muted'
+    // A ready PR's review in the PRs tab's colors: an approval green, blockers red, the rest grey (KERNEL-411). Still blocked after the review rounds is red too (KERNEL-557).
+    case 'pr.review': return / approved$/.test(e.text) ? 'add' : / found .*blockers?$/.test(e.text) || /^Still blocked after /.test(e.text) ? 'del' : 'muted'
     default: return e.actionable ? 'ink2' : 'muted'
   }
 }

@@ -114,16 +114,20 @@ export function useRoomPage(roomId?: string): { room: Room | undefined; rs: Room
 /**
  * The button at the top right of a room page: it opens settings.local.toml, and its menu opens settings.toml.
  * Only a file that exists is offered, and `sources` says which do: a value from settings.toml means that file is there.
+ * `shared` is a page whose values only settings.toml holds (Reviews, KERNEL-557): it opens that file first, and offers it even when no
+ * value in `sources` came from it, since `[review]` isn't one of them.
  */
-function OpenSettingsFiles({ room, rs }: { room: Room; rs: RoomSettings | null }) {
+function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings | null; shared?: boolean }) {
   const open = useStore((s) => s.ui.menu === 'settingsFiles')
   const [busy, run] = useBusy()
   const anchor = useRef<HTMLDivElement>(null)
   const values = Object.values(rs?.sources ?? {})
-  const files = [
-    ...(values.some((s) => s === 'local' || s === 'override') ? ['settings.local.toml'] : []),
-    ...(values.some((s) => s === 'shared' || s === 'override') ? ['settings.toml'] : [])
-  ]
+  const files = shared
+    ? ['settings.toml', ...(values.some((s) => s === 'local' || s === 'override') ? ['settings.local.toml'] : [])]
+    : [
+      ...(values.some((s) => s === 'local' || s === 'override') ? ['settings.local.toml'] : []),
+      ...(values.some((s) => s === 'shared' || s === 'override') ? ['settings.toml'] : [])
+    ]
   if (!files.length) return null
   const [first, ...more] = files
   const edit = (file: string) => run('open', async () => {
@@ -142,7 +146,7 @@ function OpenSettingsFiles({ room, rs }: { room: Room; rs: RoomSettings | null }
   )
 }
 
-/** A room page: the title, what it is, the settings files button, and the sections. */
-export function RoomPage({ room, rs, title, intro, children }: { room: Room; rs: RoomSettings | null; title: string; intro: string; children: ReactNode }) {
-  return <Page title={title} intro={intro} action={<OpenSettingsFiles room={room} rs={rs} />}>{children}</Page>
+/** A room page: the title, what it is, the settings files button, and the sections. `shared` is a page the team shares, so its file button opens settings.toml first. */
+export function RoomPage({ room, rs, title, intro, shared, children }: { room: Room; rs: RoomSettings | null; title: string; intro: string; shared?: boolean; children: ReactNode }) {
+  return <Page title={title} intro={intro} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page>
 }
