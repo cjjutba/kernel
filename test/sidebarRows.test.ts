@@ -16,14 +16,25 @@ const agents = { a: [rowan, kai] }
 const keys = (rows: ReturnType<typeof sidebarRows>) => rows.map(slotKey)
 
 describe('sidebar rows (KERNEL-405)', () => {
-  it('lists each open chat with Rowan, oldest first, followed by the workspaces it handed off, then the workspaces nobody owns', () => {
+  it('lists each open chat with Rowan, newest first, followed by the workspaces it handed off, then the workspaces nobody owns', () => {
     const workspaces = [own('t2'), ws('w1', { threadId: 't2' }), ws('loose'), own('t1'), ws('w2', { threadId: 't1' }), ws('w3', { threadId: 't2' }), own('t3')]
     const threads = threadsOf(thread('t1', { createdAt: 1 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 3 }))
     const rows = sidebarRows(room, agents, workspaces, { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3') }, threads)
-    expect(keys(rows)).toEqual(['chat:t1', 'workspace:w2', 'chat:t2', 'workspace:w1', 'workspace:w3', 'chat:t3', 'workspace:loose'])
+    expect(keys(rows)).toEqual(['chat:t3', 'chat:t2', 'workspace:w1', 'workspace:w3', 'chat:t1', 'workspace:w2', 'workspace:loose'])
     expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([true, true, true, false])
     const first = rows[0]
-    expect(first.kind === 'chat' && first.ws?.id).toBe('ws-t1')
+    expect(first.kind === 'chat' && first.ws?.id).toBe('ws-t3')
+  })
+
+  it('puts the chat the user last sent in on top, and a chat with no send by when it started (KERNEL-498)', () => {
+    const workspaces = [own('t1'), own('t2'), own('t3'), own('t4'), ws('w1', { threadId: 't1' }), ws('loose'), ws('w2', { threadId: 't1' }), ws('w3', { threadId: 't3' })]
+    // t1 is the oldest chat and was sent in last. t3 started after t2's last send, and t4 before it.
+    const threads = threadsOf(
+      thread('t1', { createdAt: 1, lastSentAt: 10 }), thread('t2', { createdAt: 2, lastSentAt: 4 }), thread('t3', { createdAt: 5 }), thread('t4', { createdAt: 3 })
+    )
+    const rows = sidebarRows(room, agents, workspaces, { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3'), ...tabsOf('t4') }, threads)
+    // Each chat's workspaces move with it in the order it handed them off, and the ones nobody owns stay at the bottom.
+    expect(keys(rows)).toEqual(['chat:t1', 'workspace:w1', 'workspace:w2', 'chat:t3', 'workspace:w3', 'chat:t2', 'chat:t4', 'workspace:loose'])
   })
 
   it("shows a chat's open chat tabs, not its terminals or closed tabs, and lists the chat before its list loads", () => {
@@ -63,7 +74,10 @@ describe('sidebar rows (KERNEL-405)', () => {
     const ten = Array.from({ length: 10 }, (_, i) => `t${i}`)
     const workspaces = [...ten.map((t) => own(t)), ws('w1', { threadId: 't0' }), ws('loose')]
     const threads = threadsOf(...ten.map((t, i) => thread(t, { createdAt: i })))
-    expect(keys(slotsFor(room, agents, workspaces, {}, threads))).toEqual(ten.slice(0, 9).map((t) => `chat:${t}`))
+    expect(keys(slotsFor(room, agents, workspaces, {}, threads))).toEqual([...ten].reverse().slice(0, 9).map((t) => `chat:${t}`))
+    // Writing in the oldest chat makes it ⌘1 (KERNEL-498).
+    const sent = { ...threads, t0: thread('t0', { createdAt: 0, lastSentAt: 20 }) }
+    expect(keys(slotsFor(room, agents, workspaces, {}, sent))).toEqual(['t0', ...[...ten].reverse().slice(0, 8)].map((t) => `chat:${t}`))
   })
 
   it('numbers the Lead row when no chat is open, and nothing when the room has no Lead', () => {
@@ -82,7 +96,7 @@ describe('sidebar rows (KERNEL-405)', () => {
 
 describe('folded chats', () => {
   const workspaces = [own('t1'), own('t2'), own('t3'), ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't1' }), ws('loose'), ws('w3', { threadId: 't2' })]
-  const threads = threadsOf(thread('t1', { createdAt: 1 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 3 }))
+  const threads = threadsOf(thread('t1', { createdAt: 3 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 1 }))
   const lists = { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3') }
 
   it('hides the workspaces of a folded chat, and the chat carries them with its folded flag', () => {

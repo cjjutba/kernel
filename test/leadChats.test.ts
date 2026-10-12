@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState, TrackerIssue, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState, Thread, TrackerIssue, Workspace } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { issueText } from '../src/main/services/issueMcp'
 import { askedQuestions, type QueueReason } from '../src/main/services/sessions'
@@ -954,6 +954,50 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     await k.lead.sortOverlap('o3')
     expect(sent[2].chatId).toBe(first.id)
     expect(sent[2].text).toContain('Part of this work was handed off in another Lead chat: "Composer unit tests".')
+  })
+})
+
+describe('the sidebar order of chats with Rowan (KERNEL-498)', () => {
+  it("records the user's sends in any tab of a chat, and not Team updates, an answered question or a message to a teammate", async () => {
+    const { k, first, icons, call, byTitle, tab, answer } = await setup()
+    const sentAt = (c: Chat) => k.store.thread(c.threadId!)!.lastSentAt
+    // Starting a chat is its first send.
+    expect(sentAt(first)).toBeGreaterThan(0)
+    expect(sentAt(icons)).toBeGreaterThan(0)
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const teammate = byTitle('Drafts per chat')
+    const second = await tab(icons.threadId)
+    const was = { first: sentAt(first), icons: sentAt(icons) }
+    const pushed: Thread[] = []
+    const listen = (e: { type: string; thread?: Thread }) => { if (e.type === 'thread') pushed.push(e.thread!) }
+    bus.on('push', listen)
+    onTestFinished(() => { bus.off('push', listen) })
+
+    // A Team update about the work the first chat handed off.
+    const posts: string[] = []
+    k.sessions.post = (chatId: string) => { posts.push(chatId); return true }
+    k.leadUpdates.crashed(teammate, 'Out of memory')
+    for (const t of k.leadUpdates['timers'].values()) clearTimeout(t)
+    k.leadUpdates['timers'].clear()
+    k.leadUpdates.flushAll()
+    await vi.waitFor(() => expect(posts).toEqual([first.id]))
+    // Answering Rowan's question.
+    const asking = call(first, 'ask_user', { question: 'Skip the snapshot test?' })
+    const pending = await vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
+    k.approvals.decide(pending.id, { behavior: 'answer', text: 'Update the snapshot' })
+    await asking
+    // Writing to the teammate the first chat handed off to.
+    await k.chats.handlers()['chats.send']({ chatId: k.chats['chatTabs'](teammate.id)[0].id, parts: [{ type: 'text', text: 'Use the other approach' }] })
+    expect({ first: sentAt(first), icons: sentAt(icons) }).toEqual(was)
+    expect(pushed).toEqual([])
+
+    // A message in the second tab of the other chat counts when it is sent, even when it waits in the queue.
+    const before = Date.now()
+    Object.assign(answer, { queued: true, why: 'running' })
+    await k.chats.handlers()['chats.send']({ chatId: second.id, parts: [{ type: 'text', text: 'And the dark theme' }] })
+    expect(sentAt(icons)).toBeGreaterThanOrEqual(before)
+    expect(sentAt(first)).toBe(was.first)
+    expect(pushed).toEqual([k.store.thread(icons.threadId!)])
   })
 })
 

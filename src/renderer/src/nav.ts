@@ -73,18 +73,22 @@ export function stillThere(route: Route, s: State): boolean {
   return true
 }
 
-/** The workspaces of the room's open chats with Rowan, oldest chat first, as the sidebar lists them (KERNEL-405). */
+/**
+ * The workspaces of the room's open chats with Rowan as the sidebar lists them: the one the user last sent a message in first, and a
+ * chat with no send yet by when it started (KERNEL-405, KERNEL-498).
+ */
 export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, Thread>, roomId: string): Workspace[] {
-  const born = (w: Workspace) => threads[w.threadId!]?.createdAt ?? w.createdAt
-  return workspaces.filter((w) => w.roomId === roomId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => born(a) - born(b) || a.createdAt - b.createdAt)
+  const touched = (w: Workspace) => { const t = threads[w.threadId!]; return t ? t.lastSentAt ?? t.createdAt : w.createdAt }
+  return workspaces.filter((w) => w.roomId === roomId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => touched(b) - touched(a) || b.createdAt - a.createdAt)
 }
 
 /**
- * A room's front door: its newest open chat with Rowan, New chat with Rowan when none is open, or Team when the room has no Lead
- * (D-104, KERNEL-405). Before agents load, which is after the first route is chosen, a room with a workspace marked `lead` has one.
+ * A room's front door: its top open chat with Rowan in the sidebar, New chat with Rowan when none is open, or Team when the room has
+ * no Lead (D-104, KERNEL-405, KERNEL-498). Before agents load, which is after the first route is chosen, a room with a workspace
+ * marked `lead` has one.
  */
 export function roomHome(roomId: string, s: State): Route {
-  const chat = chatWorkspaces(s.workspaces, s.threads, roomId).filter((w) => !w.folderGone).at(-1)
+  const chat = chatWorkspaces(s.workspaces, s.threads, roomId).find((w) => !w.folderGone)
   if (chat) return { name: 'workspace', workspaceId: chat.id }
   const agents = s.agents[roomId]
   const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.roomId === roomId && !!w.lead)

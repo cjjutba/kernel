@@ -1,0 +1,11 @@
+**The sidebar lists chats with Rowan by your last send, newest first.** Amends D-139 (chat order) and KERNEL-357 (what ⌘1 opens). The sidebar listed chats with Rowan oldest first, so a new chat landed at the bottom and writing in one moved nothing. Claude and Conductor put the chat you last used on top, and now Kernel does too.
+
+`Thread.lastSentAt` holds the user's last send. `userSpoke` in `features/lead.ts` sets it when the chat's workspace is a chat with Rowan, saves the thread and pushes it, and the renderer applies the push like any other thread. `userSpoke` runs only when the user sends: Send in any tab, the first message of a new chat, Ask Rowan, Retry on their own message, a comment on a shared file, and Resolve or Update branch on the chat's PR. A queued message counts when the user sends it, not when it leaves the queue.
+
+Only the user's sends reorder. Agents and Kernel post into chats all the time, and if that counted, rows would move under the pointer. So Rowan's replies, Team updates, overlap notes, a teammate finishing, and PR and check changes move nothing. They call `sessions.send` or `sessions.post` directly. Answering a question or a plan card isn't a send either. It still starts the loop guard over (KERNEL-125), through `steppedIn`, which doesn't stamp.
+
+`chatWorkspaces` in `src/renderer/src/nav.ts` sorts by `lastSentAt`, else `createdAt`. Threads are JSON in `threads.data`, so a thread from before this has no `lastSentAt` and goes by when it started. There is no migration. Workspaces move with the chat that handed them off and keep their handoff order under it, oldest first. Their activity moves nothing, and neither does a message sent straight to one, for its own row or its chat's. Workspaces no open chat owns stay at the bottom.
+
+⌘1 to ⌘9 still follow sidebar order through `slotsFor`, so ⌘1 is now the chat you last wrote in, where it was the oldest open chat. Clicking a room opens the same top chat (`roomHome`), where it opened the newest one created.
+
+The engine's own `chatWorkspaces` in `features/lead.ts` stays oldest first. It picks the chat Ask Rowan joins from Home and the chat that gets a closed chat's Team updates, and this change leaves both alone. KERNEL-498.

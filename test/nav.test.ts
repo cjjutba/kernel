@@ -191,6 +191,18 @@ describe('stillThere and nearest', () => {
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(nearest(at('other'), getState())).toEqual(at('newer'))
   })
+  it('opens a room on the chat the user last sent a message in, the one the sidebar lists on top (KERNEL-498)', () => {
+    const newer = ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'rowan', createdAt: 5 })
+    actions.workspaces.upsert(newer)
+    setState({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1, lastSentAt: 9 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } })
+    expect(roomHome('r1', getState())).toEqual(at('lead'))
+    // The engine pushes the thread when the user sends in the newer chat.
+    actions.threads.upsert({ id: 't2', roomId: 'r1', title: 'Two', createdAt: 2, lastSentAt: 12 })
+    expect(roomHome('r1', getState())).toEqual(at('newer'))
+    // A chat whose folder is gone is passed over for the next one down.
+    actions.workspaces.upsert({ ...newer, folderGone: true })
+    expect(roomHome('r1', getState())).toEqual(at('lead'))
+  })
   it("treats a workspace whose folder was deleted outside Kernel as gone, so reopening and Back skip it (KERNEL-291)", () => {
     actions.workspaces.upsert(ws('other', 'r1', { folderGone: true }))
     expect(stillThere(at('other'), getState())).toBe(false)

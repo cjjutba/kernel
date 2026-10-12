@@ -89,6 +89,8 @@ export interface Thread {
   createdAt: number
   closedAt?: number
   renamed?: boolean
+  /** When the user last sent a message in any tab of the chat. The sidebar lists chats by it, newest first, else by `createdAt` (KERNEL-498). */
+  lastSentAt?: number
 }
 
 /**
