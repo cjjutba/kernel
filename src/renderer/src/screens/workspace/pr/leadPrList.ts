@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { AgentDef, AppSettings, PrInfo, Workspace } from '@shared/types'
+import type { AgentDef, PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState, reviewPhrase, reviewVerdicts } from '@shared/merge'
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
 import { workspaceGlyph } from '../../../components/sidebar/workspaceGlyph'
-import { prStatus, type PrStatus } from './model'
-
-type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
+import { BLOCKERS_STATUS, NO_RULES, blockersHold, prStatus, type PrStatus, type Rules } from './model'
 
 /** One row of the Lead's PRs tab (KERNEL-354). */
 export interface LeadPr {
@@ -23,6 +21,8 @@ export interface LeadPr {
    * back, the rule's reason. Ready PRs have none.
    */
   state?: PrStatus & { why?: string }
+  /** Blockers on the latest commit are all that holds it back: who found them and how many. It offers Merge anyway, never Merge (KERNEL-501). */
+  blockers?: { reviewer: string; count: number }
   review: { text: string; tone: 'good' | 'bad' | 'faint' }
 }
 
@@ -62,6 +62,9 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     if (!why || ws.prState === 'merging') return { ...base, ready: true }
     const status = prStatus(ws.prState)
     if (status) return { ...base, ready: false, state: status }
+    // Blockers on the latest commit keep it from reading ready, though a person can still merge it on purpose (KERNEL-501).
+    const blockers = blockersHold(ws, pr, o.rules, name)
+    if (blockers) return { ...base, ready: false, state: { ...BLOCKERS_STATUS, why }, blockers }
     // A PR GitHub calls open, held back by a rule. Held back by the reviewer rule alone, it waits for the reviewer's approval.
     const approval = mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
     const label = approval ? 'Waiting for approval' : workspaceGlyph(ws, { waiting: [], running: false }).label
@@ -71,7 +74,6 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
 }
 
 const NO_AGENTS: AgentDef[] = []
-const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
 
 /**
  * The Lead's PRs for the room, redrawn when a workspace, a PR read, a rule or an agent changes. The rule may need a PR GitHub

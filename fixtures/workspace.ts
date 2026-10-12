@@ -167,6 +167,16 @@ function terminalPresets(): Fixture {
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
+/** The invoice table's PR with two blockers from Theo on its latest commit, the only thing that holds the merge (KERNEL-501). */
+const withBlockers = (f: Fixture): Fixture => ({
+  ...f,
+  workspaces: f.workspaces.map((w) => (w.id === ids.table ? {
+    ...w, prHead: 'h147',
+    reviews: [{ workspaceId: 'ws-review-147', agentId: 'theo', verdict: 'blockers' as const, summary: 'Two blockers.', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }], sha: 'h147', prNumber: 147, ts: at(10, 38) }]
+  } : w)),
+  prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h147' } : info]))
+})
+
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
@@ -613,6 +623,9 @@ const LEAD_PRS: OpenPr[] = [
   { id: 'ws-188', agentId: 'noor', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
   { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
+
+/** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
+const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
 
 /** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
@@ -1262,6 +1275,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
+  // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
+  LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
@@ -1482,6 +1497,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   PrReadyHidden: headerScene('ready', []),
+  // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
+  PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
   PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
   PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
   HeaderBranchTooltip: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),

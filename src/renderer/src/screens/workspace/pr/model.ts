@@ -1,6 +1,12 @@
 import type { AppSettings, ChatItem, ChatPart, PrInfo, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
-import { mergeableState } from '@shared/merge'
+import { headBlockers, mergeBlock, mergeableState } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
+
+/** The rules a PR's merge reads (Settings, Pull requests). */
+export type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
+
+/** What the merge buttons read before the settings arrive: no rule holds a merge. */
+export const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
 
 /** What the header shows for each PR state, in the canvas order (WorkspacePRMenu, DraftPR, CIFailed, ChangesRequested, Merged, PRClosed). */
 export interface PrHeaderView {
@@ -10,8 +16,8 @@ export interface PrHeaderView {
   pill?: string
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
   state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
-  /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). */
-  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction }
+  /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). `override` asks first, as Merge anyway does (KERNEL-501). */
+  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction; override?: boolean }
   /** Create PR's caret menu (squared right edge on the button). */
   caret: boolean
   merged: boolean
@@ -44,6 +50,20 @@ export const PR_STATUS = {
 
 /** The state's entry in `PR_STATUS`, or nothing for a state without one (none, ready, open, merged, closed). */
 export const prStatus = (state: PrState): PrStatus | undefined => (PR_STATUS as Partial<Record<PrState, PrStatus>>)[state]
+
+/** A PR GitHub calls open whose latest commit has blockers: never ready, in the band's red, in every place showing it (KERNEL-501). */
+export const BLOCKERS_STATUS: PrStatus = { label: 'Blockers found', tone: 'fail', spin: false }
+
+/**
+ * The reviewer's name and how many blockers they found, when blockers on the PR's latest commit are all that holds the merge, so
+ * a person can still merge it on purpose with Merge anyway (KERNEL-501). Nothing for a PR that can merge, or one something else
+ * holds back, such as failing checks or a conflict, which Merge anyway doesn't skip. Same rule as every Merge button (`mergeBlock`).
+ */
+export function blockersHold(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name: (agentId: string) => string): { reviewer: string; count: number } | undefined {
+  const found = headBlockers({ ...ws, prHead: pr?.head ?? ws.prHead })
+  if (!found || mergeBlock(ws, pr, rules, name, { override: true })) return undefined
+  return { reviewer: name(found.agentId), count: found.count }
+}
 
 /**
  * How a branch that merges on the Mac stands (KERNEL-478), read from the workspace's state and what git says in `PrInfo.local`.
@@ -147,9 +167,10 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 /**
  * `changed` is false when the workspace has nothing to put in a PR, which hides Create PR and its menu. Merge PR shows in
  * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349). `blocked`
- * is a ready PR GitHub won't merge yet, which reads Open as PrOpen.png draws it; Merge PR then says why (KERNEL-388).
+ * is a ready PR GitHub won't merge yet, which reads Open as PrOpen.png draws it; Merge PR then says why (KERNEL-388). `held` is
+ * a PR whose only block is blockers on its latest commit: the band reads red, and a soft Merge anyway asks first (KERNEL-501).
  */
-export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }): PrHeaderView {
+export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }, held = false): PrHeaderView {
   if (local) return localHeaderView(local.stand, local.base, changed)
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
@@ -158,6 +179,7 @@ export function headerView(state: PrState, changed = true, blocked = false, loca
   // What runs spins in its own word, as every other place showing the PR draws it (KERNEL-417).
   const running = (s: 'creating' | 'checks' | 'resolving' | 'merging') => ({ label: PR_STATUS[s].label, kind: 'busy' }) as const
   if (mergeableState(state)) {
+    if (held) return { ...base, state: { label: BLOCKERS_STATUS.label, tone: BLOCKERS_STATUS.tone, glyph: 'pr' }, button: { label: 'Merge anyway', kind: 'secondary', action: 'merge', override: true } }
     return { ...base, state: state === 'ready' && !blocked ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
   }
   switch (state) {

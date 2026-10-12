@@ -25,6 +25,7 @@ const noCanvas = [
   'WorkspaceLeadPlan', // Rowan's plan on the main checkout
   'WorkspaceLeadUpdate', // Kernel's Team update card in Rowan's chat (KERNEL-127, D-128)
   'TeamUpdatePrStates', // one PR in each state in a Team update and the PRs tab, each said the same way (KERNEL-417)
+  'LeadPrsBlockers', // a PR with blockers on its latest commit under Still open, with Blockers found and a soft Merge anyway (KERNEL-501)
   'WorkspaceContextRing',
   'WorkspaceContextRingNear',
   'WorkspaceContextPopover',
@@ -62,6 +63,7 @@ const noCanvas = [
   'PrMergedOpen',
   'PrMergedHidden',
   'PrReadyHidden',
+  'PrBlockers', // Blockers on the latest commit: Blockers found in the band, with a soft Merge anyway (KERNEL-501)
   'PrCiFailHidden',
   'PrMergedHiddenLong',
   'HeaderBranchTooltip',

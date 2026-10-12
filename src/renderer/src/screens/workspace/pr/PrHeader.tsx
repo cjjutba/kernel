@@ -1,12 +1,14 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { actionKey, afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { NO_RULES, actionKey, afterArchive, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { openRoom } from '../../../lead'
 import { archivedByHand } from '../byHand'
+import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import './pr.css'
 
 /** What each action calls on the main process. Shared with `MergeButton`. */
@@ -46,12 +48,21 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const changed = hasChanges(ws)
   // A room with no GitHub merges the branch on the Mac, and its header keeps the band with a `→ main` pill in place of the PR link (KERNEL-478).
   const local = useLocalMerge(ws)
-  const view = headerView(ws.prState, changed, !!ws.prBlocked, local)
+  // Blockers on the latest commit are all that holds the merge: the band reads red and Merge anyway asks first (KERNEL-501).
+  const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
+  const pr = useStore((s) => s.prs[ws.id])
+  const agents = useStore((s) => s.agents[ws.roomId])
+  const held = blockersHold(ws, pr, rules, (agentId) => agents?.find((a) => a.id === agentId)?.name ?? agentId)
+  const [confirm, setConfirm] = useState<NonNullable<typeof held> | null>(null)
+  const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held)
+  const override = !!view.button?.override
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
   })
   const start = (a: PrAction) => void act(busyLabel[a], failTitle[a], () => request[a](id))
+  // The main button, or its key: Merge anyway opens its confirm, which merges.
+  const press = (a: PrAction) => (override && held ? setConfirm(held) : start(a))
   const createDraft = () => void act(busyLabel.create, failTitle.create, () => call('pr.create', { workspaceId: id, draft: true }))
 
   // Checks, review comments and conflicts for the Checks tab and the review card. Main pushes fresh ones on every refresh.
@@ -93,12 +104,12 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey || !e.shiftKey || e.altKey || e.ctrlKey || getState().ui.modal) return
       const k = e.key.toLowerCase()
-      if (action && k === key) { e.preventDefault(); start(action) }
+      if (action && k === key) { e.preventDefault(); press(action) }
       else if (canArchive && k === 'a') { e.preventDefault(); archive() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [listen, action, canArchive, id])
+  }, [listen, action, override, held?.reviewer, held?.count, canArchive, id])
 
   // Where the PR number was: its link to GitHub, or for a branch that merges here, a plain pill with nothing to open.
   const link = view.link && ws.prNumber && ws.prUrl
@@ -132,7 +143,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const ink = b?.kind === 'primary' && band === 'idle'
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && start(b.action)}>{b.label}</Button>
+      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{b.label}</Button>
 
   return tone(
     <>
@@ -157,6 +168,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
         </span>
       ) : main}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
+      {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
     </>
   )
 }

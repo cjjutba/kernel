@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings, MergeQueue, PrInfo, Workspace } from '@shared/types'
+import { createPortal } from 'react-dom'
+import type { MergeQueue, PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
-import { PR_STATUS, busyLabel, failTitle, prStatus, type PrStatus } from './model'
+import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
+import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrStatus, type Rules } from './model'
 import { request } from './PrHeader'
 import './pr.css'
-
-type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
 
 /**
  * What a PR's Merge button place shows (KERNEL-351, KERNEL-411): nothing, the button, why it can't, the merge running, the
  * merge done, its turn still to come in a Merge all run (`next`), or where an open PR that can't merge yet stands (`state`),
- * in the words and tone every place uses (KERNEL-417).
+ * in the words and tone every place uses (KERNEL-417). `override` is a PR that only blockers on its latest commit hold back:
+ * a soft Merge anyway takes the Merge button's place (KERNEL-501).
  */
-export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | { kind: 'next' } | ({ kind: 'state' } & PrStatus)
+export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'override'; reviewer: string; count: number } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | { kind: 'next' } | ({ kind: 'state' } & PrStatus)
 
 /**
  * Decides from the same rule as the header's Merge PR (`mergeBlock`, KERNEL-349). A PR a Merge all run will get to reads
@@ -29,19 +30,19 @@ export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: R
   if (status) return ws.prNumber ? { kind: 'state', ...status } : { kind: 'none' }
   if (!mergeableState(ws.prState)) return { kind: 'none' }
   const reason = mergeBlock(ws, pr, rules, name)
-  return reason ? { kind: 'blocked', reason } : { kind: 'ready' }
+  if (!reason) return { kind: 'ready' }
+  const blockers = blockersHold(ws, pr, rules, name ?? ((id) => id))
+  return blockers ? { kind: 'override', ...blockers } : { kind: 'blocked', reason }
 }
 
 /** The reason's first sentence: the rest says where to change the rule, which the tooltip keeps. */
 const firstSentence = (reason: string) => reason.split(/(?<=\.)\s/)[0]
 
-const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
-
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
  * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. It reads the rules, the PR and the reviewer's name itself, so a
  * caller knows nothing about when a PR may merge. The click spins the pressed button until the PR reads merging, and from then
- * on every place showing the PR spins (KERNEL-417).
+ * on every place showing the PR spins (KERNEL-417). Merge anyway asks first, in a confirm of its own (KERNEL-501).
  */
 export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
@@ -49,6 +50,7 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const reviewer = useStore((s) => s.agents[ws.roomId])
   const queue = useStore((s) => s.mergeQueues[ws.roomId])
   const [busy, run] = useBusy()
+  const [confirm, setConfirm] = useState<{ reviewer: string; count: number } | null>(null)
   // The rule reads the PR's checks or head commit from GitHub. Until they arrive there is nothing true to say.
   const mergeable = mergeableState(ws.prState)
   const needsPr = mergeable && !pr && mergeNeedsPr(ws, rules)
@@ -62,7 +64,13 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   if (needsPr && !read) return null
 
   const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, queue)
-  return <MergeSlot ws={ws} view={view} busy={busy} short={short} onMerge={() => void run(busyLabel.merge, () => mergeAndToast(ws.id))} />
+  const merge = () => (view.kind === 'override' ? setConfirm({ reviewer: view.reviewer, count: view.count }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
+  return (
+    <>
+      <MergeSlot ws={ws} view={view} busy={busy} short={short} onMerge={merge} />
+      {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
+    </>
+  )
 }
 
 /** Merges and toasts "Could not merge" with the reason when it fails, so the caller's busy state ends either way. */
@@ -85,6 +93,11 @@ export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; v
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
         <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
+      </span>
+    )
+    case 'override': return (
+      <span className="pr-tone" data-tone="fail">
+        <Button className="pr-soft tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
       </span>
     )
   }
