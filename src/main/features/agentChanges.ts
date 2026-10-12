@@ -5,6 +5,7 @@ import { bus } from '../bus'
 import { agentFromFile, createAgent, draftId, freeId, isUnreadable, loadAgents, restoreAgent, retireAgent, updateAgent } from '../services/agents'
 import { AgentOverrides, editedFields, ownEditOf, withOwnEdit } from '../services/agentOverrides'
 import { exec, git, SLOW_MS } from '../services/exec'
+import { loadRepoSettings, saveTeamSettings } from '../services/settings'
 import { Feature } from './feature'
 
 /** One change for the team: a commit in a workspace of its own, and the pull request it opens (KERNEL-466). */
@@ -15,11 +16,16 @@ interface TeamChange {
   body: string
   /** Writes the change in the worktree at `path`, cut from `base`. Throws to call the change off. */
   write: (path: string, base: string) => Promise<unknown>
+  /** The agent the change brings onto the team, which joins `[team] roster` in the same commit when the repo has one (KERNEL-465). */
+  joins?: string
   /** Why there is nothing to commit, when the base already says what the change would. */
   same?: string
 }
 
 const exists = (p: string) => stat(p).then(() => true, () => false)
+
+/** The plugin a plugin agent comes from: `kit` for `kit:builder` (KERNEL-463). */
+const pluginOf = (a: AgentDef) => a.id.slice(0, a.id.indexOf(':'))
 
 /** What a failed git or gh call said, without the command line `run` puts before it. */
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/^[\s\S]*? failed \(\d+\): /, '').trim()
@@ -47,6 +53,19 @@ export class AgentChanges extends Feature {
     return files.filter((a) => !own[a.id]?.retired).map((a) => withOwnEdit(a, own[a.id]?.edit))
   }
 
+  /**
+   * The agents the user hired or brought back for themselves in this room. They are on the user's team here even when the
+   * room's `[team] roster` leaves them out (KERNEL-465).
+   */
+  async joinedHere(roomId: string): Promise<string[]> {
+    return Object.entries(await this.own.of(roomId)).filter(([, o]) => o.joined).map(([id]) => id)
+  }
+
+  /** A roster the user picked replaces the agents they joined for themselves in this room. */
+  async clearJoined(roomId: string) {
+    for (const [id, o] of Object.entries(await this.own.of(roomId))) if (o.joined) await this.own.set(roomId, id, { ...o, joined: false })
+  }
+
   /** The agents the user retired on this Mac whose file is still on the team, for Team's retired list. */
   async retiredHere(roomId: string, files: AgentDef[]): Promise<AgentDef[]> {
     const own = await this.own.of(roomId)
@@ -61,13 +80,18 @@ export class AgentChanges extends Feature {
     const id = draftId(draft)
     // A file the room has wins over the user's own with the same name, as in Claude Code, so the name must be free in both.
     await freeId(room.path, id)
-    if (scope === 'me') return { agent: { ...(await createAgent(this.home, draft)), origin: 'personal' } }
+    if (scope === 'me') {
+      const agent: AgentDef = { ...(await createAgent(this.home, draft)), origin: 'personal' }
+      await this.joined(roomId, id)
+      return { agent }
+    }
     const rel = `.claude/agents/${id}.md`
     const agent = agentFromFile(join(room.path, rel), draft.text)
     const pr = await this.openPr(roomId, {
       title: `Add ${agent.name} to the team`,
       body: `Adds \`${rel}\`. ${agent.name} joins everyone's team once this merges.`,
-      write: (path) => createAgent(path, draft)
+      write: (path) => createAgent(path, draft),
+      joins: id
     })
     return { agent, pr }
   }
@@ -80,7 +104,7 @@ export class AgentChanges extends Feature {
     const room = this.mustRoom(roomId)
     if (scope === 'me') {
       if (agent.origin === 'personal') { await updateAgent(this.home, agent.id, patch); return undefined }
-      if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from a Claude Code plugin, and Kernel doesn't change a plugin's agents.`)
+      if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from the ${pluginOf(agent)} plugin, and Kernel doesn't change a plugin's files.`)
       const file = (await loadAgents(room.path)).find((a) => a.id === agent.id)
       if (!file) throw new Error(`${agent.id} is not in .claude/agents.`)
       if (isUnreadable(file)) throw new Error(`Kernel can't read ${basename(file.file)}: ${file.warnings![0].detail}. Fix the file, then save again.`)
@@ -145,6 +169,7 @@ export class AgentChanges extends Feature {
       const text = await readFile(file.file, 'utf8')
       await mkdir(dirname(to), { recursive: true })
       await writeFile(to, text)
+      await this.joined(roomId, agentId)
       return { agent: { ...agentFromFile(to, text), origin: 'personal' } }
     }
     const rel = `.claude/retired-agents/${name}`
@@ -152,15 +177,22 @@ export class AgentChanges extends Feature {
     const pr = await this.openPr(roomId, {
       title: `Bring ${file.name} back`,
       body: `Moves \`${rel}\` back to \`.claude/agents/${name}\`. ${file.name} rejoins everyone's team once this merges.`,
-      write: async (path, base) => { await onBase(path, rel, base); await restoreAgent(path, agentId) }
+      write: async (path, base) => { await onBase(path, rel, base); await restoreAgent(path, agentId) },
+      joins: agentId
     })
     return { agent: { ...file, retired: undefined }, pr }
+  }
+
+  /** Marks an agent hired or brought back for the user in this room, so the room's roster doesn't leave it out. */
+  private async joined(roomId: string, agentId: string) {
+    const own = (await this.own.of(roomId))[agentId]
+    await this.own.set(roomId, agentId, { ...own, joined: true })
   }
 
   /** The agent's file in the repo, relative to it, for a change for the team. Only a file the repo has committed is the team's. */
   private async teamFile(repoPath: string, agent: AgentDef, change: 'edit' | 'retire'): Promise<string> {
     if (agent.origin === 'personal') throw new Error(`${agent.name}'s file is in ~/.claude/agents, so the team doesn't have ${agent.name}. ${change === 'edit' ? 'Save the change just for you.' : `Retire ${agent.name} just for you.`}`)
-    if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from a Claude Code plugin, so the team's files don't have ${agent.name}.`)
+    if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from the ${pluginOf(agent)} plugin, so the team's files don't have ${agent.name}.`)
     const rel = relative(repoPath, agent.file).split('\\').join('/')
     await committed(repoPath, rel)
     return rel
@@ -182,6 +214,12 @@ export class AgentChanges extends Feature {
     try {
       await change.write(ws.path, ws.baseRef)
       await git(ws.path, 'add', '-A', '--', '.claude')
+      // A hire or a restore joins the roster the base has, or it would land off the team once this merges.
+      const roster = change.joins ? (await loadRepoSettings(ws.path)).team?.roster : undefined
+      if (change.joins && roster?.length && !roster.includes(change.joins)) {
+        await saveTeamSettings(ws.path, { roster: [...roster, change.joins] })
+        await git(ws.path, 'add', '--', '.kernel/settings.toml')
+      }
       if (!(await git(ws.path, 'diff', '--cached', '--name-only')).trim()) throw new Error(change.same ?? 'There is nothing to change.')
       const commit = await exec('git', ['-C', ws.path, 'commit', '-q', '-m', change.title, '-m', change.body], { timeoutMs: SLOW_MS })
       if (commit.code !== 0) throw new Error(`Kernel couldn't commit the change. ${(commit.stderr || commit.stdout).trim()}`)

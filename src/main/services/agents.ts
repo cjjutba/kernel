@@ -193,7 +193,24 @@ function readError(e: unknown): string {
 
 /** Every file in the folder, a file Kernel can't read or parse among them with what went wrong (KERNEL-451). */
 export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}): Promise<AgentDef[]> {
-  const dir = join(repoPath, '.claude', o.retired ? 'retired-agents' : 'agents')
+  return readAgents(join(repoPath, '.claude', o.retired ? 'retired-agents' : 'agents'), o.retired ? { retired: true } : {})
+}
+
+/** The user's own agents in `~/.claude/agents`, which Claude Code runs in every folder, read the same way (KERNEL-463). */
+export function loadPersonalAgents(home: string): Promise<AgentDef[]> {
+  return readAgents(join(home, '.claude', 'agents'), { origin: 'personal' })
+}
+
+/**
+ * The agents a room runs (KERNEL-463): its own files, the user's personal ones, then plugin agents. A personal file with the
+ * id of a room file Kernel can read is left out, as Claude Code leaves it out. Plugin agents' ids hold a colon, which no file's can.
+ */
+export function teamFiles(project: AgentDef[], personal: AgentDef[], plugins: AgentDef[] = []): AgentDef[] {
+  const ids = new Set(project.filter((a) => !isUnreadable(a)).map((a) => a.id))
+  return [...project, ...personal.filter((a) => !ids.has(a.id)), ...plugins]
+}
+
+async function readAgents(dir: string, extra: Partial<AgentDef>): Promise<AgentDef[]> {
   let names: string[] = []
   try { names = (await readdir(dir)).filter((f) => f.endsWith('.md')) } catch { return [] }
   const agents = (await Promise.all(names.map(async (n): Promise<AgentDef | null> => {
@@ -205,7 +222,7 @@ export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}
       def = unreadableAgent(file, readError(e))
     }
     const joinedAt = await stat(file).then((s) => s.birthtimeMs, () => 0)
-    return { ...def, joinedAt: joinedAt > 0 ? Math.round(joinedAt) : undefined, ...(o.retired ? { retired: true } : {}) }
+    return { ...def, joinedAt: joinedAt > 0 ? Math.round(joinedAt) : undefined, ...extra }
   }))).filter((a): a is AgentDef => !!a)
   // Lead first, then alphabetical, so the floor seats them in a stable order.
   return agents.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name))
@@ -409,6 +426,11 @@ export async function restoreAgent(repoPath: string, id: string): Promise<string
  */
 export function watchAgents(repoPath: string, onChange: () => void, delay = 150): () => void {
   return watchFolder(join(repoPath, '.claude', 'agents'), onChange, { delay })
+}
+
+/** The same for `~/.claude/agents`, whose files join every room's team (KERNEL-463). */
+export function watchPersonalAgents(home: string, onChange: () => void, delay = 150): () => void {
+  return watchFolder(join(home, '.claude', 'agents'), onChange, { delay })
 }
 
 /** The same for the room's `.kernel/settings*.toml`, whose `[team]` decides who leads and reviews (KERNEL-397). */

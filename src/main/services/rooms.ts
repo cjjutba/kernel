@@ -170,11 +170,12 @@ export async function copyAgentFiles(fromRepo: string, toRepo: string): Promise<
 
 /**
  * The file Kernel writes when a repo has none. With an install command, setup is a real line, so every new worktree
- * installs what the room's own checkout installed. Without one, the scripts stay commented examples.
+ * installs what the room's own checkout installed, and the run example is the stack's. Without one, the scripts stay
+ * commented examples.
  */
-export function defaultRepoSettings(setup?: string): string {
+export function defaultRepoSettings(setup?: string, run = 'pnpm dev --port $KERNEL_PORT'): string {
   const scripts = setup
-    ? `[scripts]\n# Runs in every new workspace before the agent starts.\nsetup = ${JSON.stringify(setup)}\n# run = "pnpm dev --port $KERNEL_PORT"\n# archive = ""\n`
+    ? `[scripts]\n# Runs in every new workspace before the agent starts.\nsetup = ${JSON.stringify(setup)}\n# run = ${JSON.stringify(run)}\n# archive = ""\n`
     : '# [scripts]\n# setup = "pnpm install"\n# run = "pnpm dev --port $KERNEL_PORT"\n# archive = ""\n'
   return `# Kernel settings for this repo. Commit it so the whole team shares it.
 # Personal overrides go in .kernel/settings.local.toml, which stays out of git.
@@ -191,15 +192,67 @@ export async function ensureRepoSettings(repoPath: string): Promise<boolean> {
   const file = join(repoPath, '.kernel', 'settings.toml')
   if (await exists(file)) return false
   await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, defaultRepoSettings(await lockfileInstall(repoPath)))
+  const found = await stacksOf(repoPath)
+  await writeFile(file, defaultRepoSettings(installOf(found), found[0]?.run))
   return true
 }
 
-/** The install command a checkout's lockfile asks for, whether or not it has run. Undefined when it has no package manager. */
+/**
+ * One stack's install. `file` in the checkout's root says the repo uses it, and `leaves` is the folder the install leaves
+ * in the checkout, when it leaves one there. `runsRepoCode` marks an install that runs the repo's own code (KERNEL-444): a
+ * Gemfile and mix.exs are code, Composer runs composer.json's scripts, uv, Poetry and pip build the project, and rustup
+ * reads rust-toolchain.toml, which can name a toolchain inside the repo. `go mod download` runs nothing from the repo, and
+ * a JS install runs only package.json's install scripts, which `installScripts` reads (KERNEL-260).
+ */
+type Stack = { file: string; install: string; run: string; leaves?: string; runsRepoCode?: true }
+
+const js = (file: string, install: string, run: string): Stack => ({ file, install, run, leaves: 'node_modules' })
+
+/**
+ * The stacks Kernel knows, one list per language, each in the order it picks from. A checkout gets the first match of
+ * every language, so a Rails app with a JS bundle installs both. JS comes last, as in Rails' and Laravel's own setup.
+ */
+const STACKS: Stack[][] = [
+  [
+    { file: 'uv.lock', install: 'uv sync', run: 'uv run uvicorn main:app --port $KERNEL_PORT', leaves: '.venv', runsRepoCode: true },
+    { file: 'poetry.lock', install: 'poetry install', run: 'poetry run uvicorn main:app --port $KERNEL_PORT', runsRepoCode: true },
+    // pip installs into whichever Python comes first, and Homebrew's refuses, so each checkout gets its own .venv.
+    { file: 'requirements.txt', install: 'python3 -m venv .venv && .venv/bin/pip install -r requirements.txt', run: '.venv/bin/python -m uvicorn main:app --port $KERNEL_PORT', leaves: '.venv', runsRepoCode: true }
+  ],
+  [{ file: 'Gemfile', install: 'bundle install', run: 'bin/rails server --port $KERNEL_PORT', runsRepoCode: true }],
+  [{ file: 'mix.exs', install: 'mix deps.get', run: 'PORT=$KERNEL_PORT mix phx.server', leaves: 'deps', runsRepoCode: true }],
+  [{ file: 'composer.json', install: 'composer install', run: 'php -S localhost:$KERNEL_PORT -t public', leaves: 'vendor', runsRepoCode: true }],
+  [{ file: 'Cargo.toml', install: 'cargo fetch', run: 'PORT=$KERNEL_PORT cargo run', runsRepoCode: true }],
+  [{ file: 'go.mod', install: 'go mod download', run: 'PORT=$KERNEL_PORT go run .' }],
+  [
+    js('pnpm-lock.yaml', 'pnpm install', 'pnpm dev --port $KERNEL_PORT'),
+    js('yarn.lock', 'yarn install', 'yarn dev --port $KERNEL_PORT'),
+    js('bun.lockb', 'bun install', 'bun run dev --port $KERNEL_PORT'),
+    js('bun.lock', 'bun install', 'bun run dev --port $KERNEL_PORT'),
+    js('package-lock.json', 'npm install', 'npm run dev -- --port $KERNEL_PORT'),
+    js('package.json', 'npm install', 'npm run dev -- --port $KERNEL_PORT')
+  ]
+]
+
+/** The stacks a checkout uses, from the files in its root. */
+async function stacksOf(repoPath: string): Promise<Stack[]> {
+  const found: Stack[] = []
+  for (const language of STACKS) {
+    for (const stack of language) if (await exists(join(repoPath, stack.file))) { found.push(stack); break }
+  }
+  return found
+}
+
+const installOf = (stacks: Stack[]) => (stacks.length ? stacks.map((s) => s.install).join(' && ') : undefined)
+
+/** The install command a checkout's files ask for, whether or not it has run, one per stack. Undefined when it has no package manager Kernel knows. */
 export async function lockfileInstall(repoPath: string): Promise<string | undefined> {
-  const locks: [string, string][] = [['pnpm-lock.yaml', 'pnpm install'], ['yarn.lock', 'yarn install'], ['bun.lockb', 'bun install'], ['bun.lock', 'bun install'], ['package-lock.json', 'npm install']]
-  for (const [lock, command] of locks) if (await exists(join(repoPath, lock))) return command
-  return (await exists(join(repoPath, 'package.json'))) ? 'npm install' : undefined
+  return installOf(await stacksOf(repoPath))
+}
+
+/** Whether the checkout's install runs the repo's own code, besides package.json's install scripts, so it waits for trust (KERNEL-444). */
+export async function installRunsRepoCode(repoPath: string): Promise<boolean> {
+  return (await stacksOf(repoPath)).some((s) => s.runsRepoCode)
 }
 
 /** The scripts a package install runs from the root `package.json` itself, in the order it runs them. */
@@ -237,9 +290,16 @@ export function runsPackageInstall(script: string, lock?: string): boolean {
   })
 }
 
-/** The install command for a checkout, from its lockfile. Undefined when it has no package manager or already has node_modules. */
-export async function installCommand(repoPath: string): Promise<{ command?: string; reason?: string }> {
-  const command = await lockfileInstall(repoPath)
-  if (!command) return { reason: 'Nothing to install' }
-  return (await exists(join(repoPath, 'node_modules'))) ? { reason: 'Already installed' } : { command }
+/**
+ * What room setup's Install step runs in a checkout: the install of each stack whose folder isn't there yet, and whether
+ * one of them runs the repo's own code. An install that leaves nothing in the checkout runs every time, which changes
+ * nothing once it has run. No command when the checkout has no package manager, or every install already left its folder.
+ */
+export async function installCommand(repoPath: string): Promise<{ command?: string; reason?: string; runsRepoCode?: boolean }> {
+  const found = await stacksOf(repoPath)
+  if (!found.length) return { reason: 'Nothing to install' }
+  const left: Stack[] = []
+  for (const stack of found) if (!stack.leaves || !(await exists(join(repoPath, stack.leaves)))) left.push(stack)
+  if (!left.length) return { reason: 'Already installed' }
+  return { command: installOf(left), ...(left.some((s) => s.runsRepoCode) ? { runsRepoCode: true } : {}) }
 }

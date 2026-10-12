@@ -59,7 +59,7 @@ describe('team handlers (KERNEL-19)', () => {
       await h['agents.retire']({ roomId: room.id, agentId: 'kai' })
       expect(k.store.workspace(ws.id)?.agentId).toBe('rowan')
       expect(k.store.room(room.id)?.desks).toEqual(['rowan', 'lumi'])
-      expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['rowan'])
+      expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['rowan', 'lumi'])
       expect((await h['agents.list']({ roomId: room.id, retired: true })).map((a) => a.id)).toEqual(['kai'])
       expect((await h['agents.restore']({ roomId: room.id, agentId: 'kai' })).id).toBe('kai')
       // None of it touched the checkout.

@@ -151,6 +151,29 @@ describe('who an agent change is for (KERNEL-466)', () => {
     await clean(repo)
   })
 
+  it("keeps a hire for me on a roster room's team without changing the roster, and puts a hire for the team on it in its PR", async () => {
+    const { k, h, repo, remote, room } = await boot({ '.kernel/settings.toml': '[team]\nroster = ["kai"]\n', '.claude/agents/ivy.md': IVY })
+    expect(ids(await k.team.agents(room.id))).not.toContain('ivy')
+
+    const lumi = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Lumi' })
+    await h['agents.create']({ roomId: room.id, draft: lumi })
+    expect(ids(await k.team.agents(room.id))).toContain('lumi')
+    await clean(repo)
+
+    const nia = await h['agents.draft']({ roomId: room.id, description: 'Docs writer. Keeps the README current.', name: 'Nia' })
+    const theirs = await h['agents.create']({ roomId: room.id, draft: nia, scope: 'team' })
+    const ws = k.store.workspace(theirs.pr!.workspaceId)!
+    expect((await git(remote, 'diff', '--name-only', 'main', ws.branch)).trim().split('\n')).toEqual(['.claude/agents/nia.md', '.kernel/settings.toml'])
+    expect(await git(remote, 'show', `${ws.branch}:.kernel/settings.toml`)).toBe('[team]\nroster = ["kai", "nia"]\n')
+    await clean(repo)
+
+    // A roster the user picks is the team they want here, over the agents they joined for themselves.
+    await h['agents.setTeam']({ roomId: room.id, team: { roster: ['kai', 'ivy'] } })
+    const team = ids(await k.team.agents(room.id))
+    expect(team).toContain('ivy')
+    expect(team).not.toContain('lumi')
+  })
+
   it('restores a file the team retired: to ~/.claude/agents for me, or in a pull request for the team', async () => {
     const { h, repo, remote, home, room, k } = await boot({ '.claude/retired-agents/ivy.md': IVY })
     expect(ids(await h['agents.list']({ roomId: room.id, retired: true }))).toEqual(['ivy'])

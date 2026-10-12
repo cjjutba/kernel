@@ -13,6 +13,11 @@ export interface AgentOverride {
   edit?: OwnEdit
   /** Retired on this Mac. The file stays where it is. */
   retired?: boolean
+  /**
+   * Hired or brought back for the user in this room, so it is on their team here even when `[team] roster` leaves it out
+   * (KERNEL-465), without writing the shared roster for an agent only they have.
+   */
+  joined?: boolean
 }
 
 /** A field as an agent file holds it: no tools line, no skills line and no model pin all read as nothing, and text is trimmed. */
@@ -105,8 +110,8 @@ export class AgentOverrides {
       if (!isTable(agents)) continue
       for (const [id, o] of Object.entries(agents)) {
         if (!isTable(o)) continue
-        const own: AgentOverride = { ...(isTable(o.edit) ? { edit: o.edit as OwnEdit } : {}), ...(o.retired === true ? { retired: true } : {}) }
-        if (own.edit || own.retired) (rooms[roomId] ??= {})[id] = own
+        const own: AgentOverride = { ...(isTable(o.edit) ? { edit: o.edit as OwnEdit } : {}), ...(o.retired === true ? { retired: true } : {}), ...(o.joined === true ? { joined: true } : {}) }
+        if (own.edit || own.retired || own.joined) (rooms[roomId] ??= {})[id] = own
       }
     }
     return (this.rooms ??= rooms)
@@ -119,7 +124,7 @@ export class AgentOverrides {
   async set(roomId: string, agentId: string, next: AgentOverride): Promise<void> {
     const rooms = await this.load()
     const room = { ...rooms[roomId] }
-    if (next.edit || next.retired) room[agentId] = { ...(next.edit ? { edit: next.edit } : {}), ...(next.retired ? { retired: true } : {}) }
+    if (next.edit || next.retired || next.joined) room[agentId] = { ...(next.edit ? { edit: next.edit } : {}), ...(next.retired ? { retired: true } : {}), ...(next.joined ? { joined: true } : {}) }
     else delete room[agentId]
     if (Object.keys(room).length) rooms[roomId] = room
     else delete rooms[roomId]

@@ -222,10 +222,33 @@ CJ Jutba
 </div>
 </sc-if>
 
+<sc-if value="{{ isErr }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 16px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #1f2024; background: #0f1011">
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg><span style="flex: 1; font-weight: 500">{{ err.status }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ err.code }}</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; border-radius: 8px; border: 1px solid #1f2024; background: #0f1011">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<p style="margin: 0; font-weight: 500"><sc-for list="{{ err.title }}" as="p" hint-placeholder-count="2"><span style="{{ p.style }}">{{ p.t }}</span></sc-for></p>
+<p style="margin: 0; font-size: 12.5px; line-height: 1.55; color: #8a8f98"><sc-for list="{{ err.detail }}" as="p" hint-placeholder-count="3"><span style="{{ p.style }}">{{ p.t }}</span></sc-for></p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">{{ err.fixLabel }}</p>
+<sc-if value="{{ err.hasCmd }}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.55"><span style="flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere">{{ err.cmd }}</span><button type="button" style="flex-shrink: 0; height: 24px; padding: 0 8px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #d0d6e0; font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 12px; cursor: pointer">Copy</button></div></sc-if>
+<sc-if value="{{ err.hasLine }}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; padding: 9px 12px; border-radius: 8px; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0"><span style="white-space: pre">{{ err.line }}</span></div></sc-if>
+<sc-if value="{{ err.hasButton }}" hint-placeholder-val="{{ false }}"><div><button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ err.button }}</button></div></sc-if>
+</div>
+</div>
+<p style="margin: 0; padding: 0 2px; font-size: 12px; color: #8a8f98">Agents keep working. Their statuses stop updating, and approvals fall back to the terminal.</p>
+</div>
+</sc-if>
+
 <div style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 20px; border-top: 1px solid #26272b">
 <span style="font-size: 12px; color: #8a8f98">{{ footNote }}</span>
 <span style="flex: 1"></span>
 <sc-if value="{{ isHooks }}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reinstall hooks</button></sc-if>
+<sc-if value="{{ isErr }}" hint-placeholder-val="{{ false }}"><a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Done</a></sc-if>
 <sc-if value="{{ notHooks }}" hint-placeholder-val="{{ true }}"><a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a></sc-if>
 <a href="{{ primaryHref }}" style="display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">{{ primaryLabel }}</a>
 </div>
@@ -259,14 +282,37 @@ class Component extends DCLogic {
       var live = e[1] === 'live';
       return { name: e[0], status: live ? 'Receiving' : 'Installed', color: live ? '#d0d6e0' : '#8a8f98', seen: e[2] || 'no events', border: i === 0 ? '0' : '1px solid #1a1b1e' };
     });
+    // KERNEL-437: why hooks can't be installed, each with its one fix. A command is copied and run in Terminal, then the footer button tries again.
+    // Text in an array is plain, a pair is mono. The paths, the disk name and the command come from the real error.
+    var MONO = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0; white-space: nowrap";
+    var parts = function (list) { return list.map(function (x) { return typeof x === 'string' ? { t: x, style: '' } : { t: x[0], style: MONO }; }); };
+    var ERR = {
+      'hooks-eacces': { status: 'Hooks aren\'t installed', code: 'EACCES',
+        title: ['Kernel can\'t write to ', ['~/.claude/settings.json']], detail: ['Your account can\'t add files to ', ['~/.claude'], '. This often happens after running Claude Code with sudo.'],
+        fixLabel: 'Run this in Terminal, then install again', cmd: 'sudo chown -R "$USER" ~/.claude', primary: 'Install hooks' },
+      'hooks-erofs': { status: 'Hooks aren\'t installed', code: 'EROFS',
+        title: [['~/.claude'], ' is on a read-only disk'], detail: ['The disk that holds it, ', ['Work'], ', is mounted read-only, so Kernel can\'t add hooks to it.'],
+        fixLabel: 'Run this in Terminal, then install again', cmd: 'sudo mount -uw /Volumes/Work', primary: 'Install hooks' },
+      'hooks-symlink': { status: 'Hooks aren\'t installed', code: 'EROFS',
+        title: [['~/.claude/settings.json'], ' links to a read-only file'], detail: ['It points into ', ['/nix/store'], ', which Nix keeps read-only, so Kernel can\'t change it.'],
+        fixLabel: 'Replace the link with a copy, then install again', cmd: 'rm ~/.claude/settings.json &&\ncp /nix/store/p3v8kq-settings.json ~/.claude/settings.json', primary: 'Install hooks' },
+      'hooks-managed': { status: 'Hooks can\'t run', code: 'managed settings',
+        title: ['Your organization allows only its own hooks'], detail: [['allowManagedHooksOnly'], ' is set in ', ['/Library/Application Support/ClaudeCode/managed-settings.json'], ', so Claude Code skips the hooks in your own settings, Kernel\'s included.'],
+        fixLabel: 'Ask whoever manages this Mac to add Kernel\'s hooks to that file', button: 'Copy hooks for your admin', primary: 'Check again' },
+      'hooks-off': { status: 'Hooks can\'t run', code: 'disableAllHooks',
+        title: ['Your Claude settings turn hooks off'], detail: [['~/.claude/settings.json'], ' sets ', ['disableAllHooks'], ' to true, so Claude Code runs no hooks at all.'],
+        fixLabel: 'Kernel removes this line and keeps a copy in settings.json.kernel-backup', line: '"disableAllHooks": true', primary: 'Turn hooks on' }
+    };
+    var ER = ERR[s.mode];
     var meta = {
       repo: { title: 'Connect a repo', sub: 'Agents clone it and work on branches. Nothing is pushed without your OK.', foot: 'Clones to ~/Projects/' + s.repo, label: 'Connect repo', href: 'NewRoom.dc.html' },
       folder: { title: 'Open a folder', sub: 'Point a room at a project that already lives on your Mac.', foot: s.folder === 'sandbox' ? 'Git will be initialized on main' : 'Workspaces use worktrees by default', label: 'Open folder', href: 'NewRoom.dc.html' },
       hooks: { title: 'Check hooks', sub: 'Hooks let Kernel see what every agent is doing. They post events to a local server only.', foot: '', label: 'Done', href: 'Home.dc.html' }
-    }[s.mode];
+    }[s.mode] || { title: 'Check hooks', sub: 'Hooks let Kernel see what every agent is doing. They post events to a local server only.', foot: '', label: ER.primary, href: 'Home.dc.html' };
     return {
       accent: accent,
-      isRepo: s.mode === 'repo', isFolder: s.mode === 'folder', isHooks: s.mode === 'hooks', notHooks: s.mode !== 'hooks',
+      isErr: !!ER, err: ER ? { status: ER.status, code: ER.code, title: parts(ER.title), detail: parts(ER.detail), fixLabel: ER.fixLabel, hasCmd: !!ER.cmd, cmd: ER.cmd || '', hasLine: !!ER.line, line: ER.line || '', hasButton: !!ER.button, button: ER.button || '' } : {},
+      isRepo: s.mode === 'repo', isFolder: s.mode === 'folder', isHooks: s.mode === 'hooks', notHooks: s.mode === 'repo' || s.mode === 'folder',
       title: meta.title, sub: meta.sub, footNote: meta.foot, primaryLabel: meta.label, primaryHref: meta.href,
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       repos: repos, folders: folders, dirtyNote: s.folder === 'recipe-box',
