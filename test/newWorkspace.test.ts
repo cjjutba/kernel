@@ -18,13 +18,14 @@ import type { AgentDef, ChatPart, IssueTaken } from '../src/shared/types'
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 /** While `on`, every `git fetch` times out, the way exec reports it when its timer kills git (KERNEL-179). */
-const fetchTimesOut = vi.hoisted(() => ({ on: false, fetches: 0 }))
+const fetchTimesOut = vi.hoisted(() => ({ on: false, fetches: 0, lsRemotes: 0 }))
 vi.mock('../src/main/services/exec', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/main/services/exec')>()
   return {
     ...real,
     exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
       if (args.includes('fetch')) fetchTimesOut.fetches++
+      if (args.includes('ls-remote')) fetchTimesOut.lsRemotes++
       return fetchTimesOut.on && args.includes('fetch') ? Promise.resolve({ code: 1, stdout: '', stderr: '', timedOut: true }) : real.exec(cmd, args, opts)
     }
   }
@@ -428,6 +429,65 @@ describe('the base a workspace starts from', () => {
       expect(await fetchOrigin(repo)).toMatchObject({ ok: false })
       expect(await fetchOrigin(repo)).toMatchObject({ ok: false })
       expect(fetchTimesOut.fetches - before).toBe(5)
+    })
+
+    // KERNEL-653: a workspace being made asks the remote before it reuses that fetch.
+    describe('inside the minute a fetch is reused for', () => {
+      /** A room cloned from a bare remote, and a second clone that pushes to it as a merge on GitHub would. */
+      const remoteAndRoom = async () => {
+        const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+        await git(bare, 'init', '-q', '--bare')
+        const source = await tempRepo(team)
+        await git(source, 'remote', 'add', 'origin', bare)
+        await git(source, 'push', '-q', 'origin', 'main')
+        await git(bare, 'symbolic-ref', 'HEAD', 'refs/heads/main')
+        return { bare, source, repo: await cloneOf(bare) }
+      }
+
+      it('fetches when the remote moved, so a merge made a moment ago is in the new workspace', async () => {
+        const { source, repo } = await remoteAndRoom()
+        const k = await kernel()
+        const room = await k.addRoom(repo)
+        expect(await fetchOrigin(repo)).toEqual({ ok: true })
+        await writeFile(join(source, 'MERGED.md'), 'merged\n')
+        await git(source, 'add', '-A')
+        await git(source, 'commit', '-q', '-m', 'merged')
+        await git(source, 'push', '-q', 'origin', 'main')
+        const before = { fetches: fetchTimesOut.fetches, lsRemotes: fetchTimesOut.lsRemotes }
+        const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+        expect(fetchTimesOut.lsRemotes - before.lsRemotes).toBe(1)
+        expect(fetchTimesOut.fetches - before.fetches).toBe(1)
+        expect(ws.baseRef).toBe('origin/main')
+        expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(source, 'rev-parse', 'main'))
+        await k.stop()
+      })
+
+      it('only asks the remote when it has not moved', async () => {
+        const { source, repo } = await remoteAndRoom()
+        const k = await kernel()
+        const room = await k.addRoom(repo)
+        expect(await fetchOrigin(repo)).toEqual({ ok: true })
+        const before = { fetches: fetchTimesOut.fetches, lsRemotes: fetchTimesOut.lsRemotes }
+        const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+        expect(fetchTimesOut.lsRemotes - before.lsRemotes).toBe(1)
+        expect(fetchTimesOut.fetches - before.fetches).toBe(0)
+        expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(source, 'rev-parse', 'main'))
+        // A caller that doesn't ask, such as New chat's fetch on open, reuses it without a word to the remote.
+        await fetchOrigin(repo)
+        expect(fetchTimesOut.lsRemotes - before.lsRemotes).toBe(1)
+        await k.stop()
+      })
+
+      it('fetches when the remote can not be asked, and a fetch that failed is not reused after', async () => {
+        const { repo } = await remoteAndRoom()
+        expect(await fetchOrigin(repo)).toEqual({ ok: true })
+        await git(repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
+        const before = fetchTimesOut.fetches
+        expect(await fetchOrigin(repo, 'origin', { check: 'main' })).toMatchObject({ ok: false })
+        expect(fetchTimesOut.fetches - before).toBe(1)
+        expect(await fetchOrigin(repo)).toMatchObject({ ok: false })
+        expect(fetchTimesOut.fetches - before).toBe(2)
+      })
     })
 
     it('says nothing when the base fell back to a local branch, which no fetch updates', async () => {
