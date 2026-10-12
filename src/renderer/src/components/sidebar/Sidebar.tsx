@@ -20,6 +20,7 @@ import { RoomsMenu } from './RoomsMenu'
 import { SIDEBAR_HIDE_BELOW, SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit, useSidebarWidth } from './useSidebarWidth'
 import { liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
+import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -60,11 +61,11 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-function NavItem({ route, icon, label, right, sub, nested, slot, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** In place of going to `route`. */ onOpen?: () => void }) {
+function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
   const current = useStore((s) => same(s.ui.route, route) || (route.name === 'issues' && s.ui.route.name === 'issues'))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {slot?.hint ? <KeyHint n={slot.n} /> : right}
@@ -122,12 +123,15 @@ function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot }: { roomId: s
   })
   // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
   const g = chatGlyph({ ws, waiting, running, trust: folded && chatTrusts(owned).length > 0 })
+  // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
+  const unread = useStore((s) => chatUnread({ tabs, owned, chats: s.chats, folded, current }))
   const [busy, run] = useBusy()
   const archive = () => void run('archive', () => archiveChatFromSidebar(thread))
+  const name = g.label ? `${thread.title}, ${g.label}` : thread.title
   return (
     <div className={`hv chat-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <button
-        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title}
+        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
@@ -175,11 +179,13 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const [busy, run] = useBusy()
   const local = useLocalMerge(ws)
   const g = workspaceGlyph(ws, { waiting, running, local })
+  const current = useStore((s) => same(s.ui.route, { name: 'workspace', workspaceId: ws.id }))
+  const unread = useStore((s) => workspaceRowUnread(s.chats[ws.id], current))
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
-        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} slot={slot}
+        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} slot={slot} unread={unread ? (g.label ? `${ws.name}, ${g.label}` : ws.name) : undefined}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
@@ -234,12 +240,13 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
   const homes = chatWorkspaces(workspaces, threads, room.id).map((w) => w.id)
-  // A folded room in view still loads the Lead's chats, since ⌘1 to ⌘9 count them.
-  useChatLists(expanded ? [...homes, ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : numbered ? homes : [])
+  // A collapsed room loads its chats too: ⌘1 to ⌘9 count the Lead's, and the room is bold when any of them is unread (KERNEL-508).
+  useChatLists([...homes, ...liveWorkspaces(workspaces, room.id).map((w) => w.id)])
+  const unread = roomUnread({ rows, chats, expanded })
   return (
     <div className="nav-list">
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
-        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
+        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${room.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
           <span className="room-mark">
             <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>

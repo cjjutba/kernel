@@ -4,6 +4,8 @@
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
+/* Unread is a bold title in ink, never a dot (KERNEL-508, DESIGN.md). The icon keeps whatever state it shows. A row's title is the one .grow span. */
+.nav-item[data-unread] > .grow { font-weight: 600; color: var(--ink); }
 /* A room row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
    room's letter for a chevron, which points down while the room is expanded (Conductor). A click alone does not. */
 .room-row:hover > .nav-item { background: var(--nav-hover); }

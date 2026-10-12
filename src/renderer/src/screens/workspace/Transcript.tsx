@@ -318,6 +318,10 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     return () => cancelAnimationFrame(frame)
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
+  // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
+  // on opening the chat, and again whenever a turn ends in it while it stays open (KERNEL-507, KERNEL-508).
+  const unreadAt = chat.unreadAt
+  useEffect(() => { if (unreadAt !== undefined) void call('chats.markRead', { chatId: chat.id }).catch(() => undefined) }, [chat.id, unreadAt])
 
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
   const empty = !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
