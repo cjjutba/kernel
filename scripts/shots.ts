@@ -220,6 +220,31 @@ async function typeApiKey(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The Add account sheets (KERNEL-561): the sheet is opened from the page's button, and Browser is the sheet after Sign in. Both are local to the page.
+async function openAddAccount(page: Page, signIn?: string) {
+  await page.getByRole('button', { name: 'Add account' }).click()
+  if (signIn) {
+    await page.getByRole('button', { name: signIn }).click()
+    await page.getByText('Finish signing in in your browser.').waitFor()
+  }
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// SettingsProvidersRename is Personal's name turned into its field. Whether a row is being renamed is local to the page.
+async function renamePersonal(page: Page) {
+  await page.getByRole('button', { name: 'Rename Personal' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// SearchSwitchAccount is the palette with "switch" typed. The query is local to the palette.
+async function typeSwitch(page: Page) {
+  await page.getByRole('combobox', { name: 'Type a command or search' }).fill('switch')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // RoomSetupTeam is drawn with the Reviewer picker open. Its open state is local to the picker, so click it open.
 async function openReviewer(page: Page) {
   await page.getByRole('button', { name: 'Reviewer' }).click()
@@ -232,6 +257,12 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   PanelCompare: openCompare,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
+  SettingsAddAccount: (page) => openAddAccount(page),
+  SettingsAddAccountBrowser: (page) => openAddAccount(page, 'Sign in with Claude'),
+  SettingsAddAccountCodex: (page) => openAddAccount(page),
+  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 'Sign in with ChatGPT'),
+  SettingsProvidersRename: renamePersonal,
+  SearchSwitchAccount: typeSwitch,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   TurnFilesHover: hoverAndFocusRows,

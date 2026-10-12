@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { CLAUDE_PLANS, type ClaudePlan, type Provider } from '@shared/types'
+import type { Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Modal, SegmentedControl, Select, useBusy } from '../../../ui'
+import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
 
-type Plan = Exclude<ClaudePlan, 'unknown'>
 type Kind = 'subscription' | 'apiKey'
 
 const KINDS: { value: Kind; label: string }[] = [{ value: 'subscription', label: 'Subscription' }, { value: 'apiKey', label: 'API key' }]
@@ -14,18 +13,16 @@ const KEY_PAGE: Record<Provider, { host: string; url: string; placeholder: strin
 }
 
 /**
- * Add account, Sign in again for an added Claude account (`signIn`, KERNEL-406), or Replace key for an API key account
- * (`replaceKey`, KERNEL-524). Subscription: Codex signs in with ChatGPT in the browser. Claude runs `claude setup-token`,
- * which opens its sign-in in the browser and may ask for the code the page shows; only then does the sheet show a field for
- * it. A Claude account needs a name and its plan, which its token can't tell. A failed sign-in says why and offers Try
- * again. API key: a name and the key, checked with the provider before it is kept, and a refused key shows the provider's
- * reason in the sheet. No pasted token (D-018).
+ * Add account, Sign in again for an added account (`signIn`, KERNEL-406, with its `accountId` since KERNEL-567), or Replace key
+ * for an API key account (`replaceKey`, KERNEL-524). Subscription: one button opens the provider's sign-in in the browser, and the
+ * account is named after its email (KERNEL-561). Claude's login may ask for the code the page shows; only then does the sheet show a
+ * field for it. A failed sign-in says why and offers Try again. API key: a name and the key, checked with the provider before it is
+ * kept, and a refused key shows the provider's reason in the sheet. No pasted token (D-018).
  */
-export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider: Provider; signIn?: { label: string }; replaceKey?: { accountId: string; label: string }; onClose: () => void }) {
+export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider: Provider; signIn?: { label: string; accountId?: string }; replaceKey?: { accountId: string; label: string }; onClose: () => void }) {
   const step = useStore((s) => (s.accountAdd?.provider === provider ? s.accountAdd : null))
   const [kind, setKind] = useState<Kind>('subscription')
   const [label, setLabel] = useState('')
-  const [plan, setPlan] = useState<Plan | ''>('')
   const [code, setCode] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [started, setStarted] = useState(false)
@@ -35,16 +32,14 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
   const name = claude ? 'Claude' : 'ChatGPT'
   const keyForm = !!replaceKey || (!signIn && kind === 'apiKey')
   const page = KEY_PAGE[provider]
-  const ready = !!signIn || !claude || (!!label.trim() && !!plan)
   const keyReady = !!apiKey.trim() && (!!replaceKey || !!label.trim())
   useEffect(() => () => actions.accounts.adding(null), [])
   const start = () => run('start', async () => {
-    if (!ready) return
     actions.accounts.adding(null)
     setFailed(null)
     setStarted(true)
     try {
-      if (signIn) await call('providers.signIn', { provider })
+      if (signIn) await call('providers.signIn', { provider, ...(signIn.accountId ? { accountId: signIn.accountId } : {}) })
       else await call('accounts.add', { provider })
       actions.accounts.set(await call('accounts.list', undefined))
       onClose()
@@ -78,7 +73,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
         <span className="grow" />
         <Button variant="ghost" size="lg" disabled={busy === 'key'} onClick={close}>Cancel</Button>
         {keyForm && <Button variant="primary" size="lg" busy={busy === 'key'} busyLabel="Checking key" disabled={!keyReady || busy !== null} onClick={() => void saveKey()}>{replaceKey ? 'Replace key' : 'Add key'}</Button>}
-        {!keyForm && !started && <Button variant="primary" size="lg" busy={busy === 'start'} busyLabel="Opening" disabled={!ready} onClick={() => void start()}>{failed ? 'Try again' : `Sign in with ${name}`}</Button>}
+        {!keyForm && !started && <Button variant="primary" size="lg" busy={busy === 'start'} busyLabel="Opening" disabled={busy !== null} onClick={() => void start()}>{failed ? 'Try again' : `Sign in with ${name}`}</Button>}
         {!keyForm && started && step?.step === 'code' && <Button variant="primary" size="lg" busy={busy === 'code'} busyLabel="Sending" disabled={!code.trim()} onClick={() => void sendCode()}>Send code</Button>}
       </>
     }>
@@ -104,26 +99,13 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
             </div>
           </>
         )}
-        {!keyForm && !started && !signIn && (
-          <>
-            <p className="set-help">
-              {claude ? 'Kernel runs claude setup-token, which opens Claude’s sign-in in your browser.' : 'Kernel opens ChatGPT’s sign-in in your browser.'}
-              {' '}The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.
-            </p>
-            <div className="set-field">
-              <label htmlFor="acct-label">Name</label>
-              <input id="acct-label" className="input set-text-input" autoComplete="off" spellCheck={false} placeholder="Work" value={label} onChange={(e) => setLabel(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void start()} />
-            </div>
-            {claude && (
-              <div className="set-field">
-                <label htmlFor="acct-plan">Plan</label>
-                <Select id="acct-plan" label="Plan" value={plan} onChange={(e) => setPlan(e.target.value as Plan | '')} options={[{ value: '', label: 'Choose a plan' }, ...CLAUDE_PLANS.map((p) => ({ value: p.id, label: p.label }))]} />
-                <p className="set-help">Kernel can&rsquo;t read the plan from this kind of sign-in, so the defaults that depend on it use this one.</p>
-              </div>
-            )}
-          </>
+        {!keyForm && !started && (
+          <p className="set-help">
+            {signIn
+              ? `Kernel opens ${name}’s sign-in in your browser. The account keeps its name.`
+              : `Kernel opens ${name}’s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.`}
+          </p>
         )}
-        {!keyForm && !started && signIn && !failed && <p className="set-help">Kernel runs claude setup-token again, which opens Claude&rsquo;s sign-in in your browser. The new sign-in replaces the old one.</p>}
         {!keyForm && !started && failed && (
           <div className="set-field">
             <p className="set-error" role="alert">The sign-in didn&rsquo;t finish. {failed}</p>

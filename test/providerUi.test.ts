@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { AccountProfile, Chat, RateLimit, Workspace } from '@shared/types'
 import { bannerFor, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
-import { accountLine, tilde } from '../src/renderer/src/screens/settings/pages/Providers'
+import { tilde } from '../src/renderer/src/screens/settings/pages/Providers'
+import { accountDetail } from '../src/renderer/src/accountRows'
 import { fitEffort } from '../src/renderer/src/screens/workspace/composer/providerModels'
 import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
 
@@ -60,26 +61,35 @@ describe('the limit banner with two providers (KERNEL-406)', () => {
   })
 })
 
-describe('Settings, Providers text (KERNEL-406)', () => {
-  it("says what each account is, and how much of its 5-hour window it used", () => {
+describe('Settings, Providers text (KERNEL-406, KERNEL-561)', () => {
+  it('says what each account is and how much of its windows it used', () => {
     const usage: RateLimit[] = [{ type: 'five_hour', status: 'allowed', utilization: 0.62 }, { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'work' }, { type: 'five_hour', status: 'allowed', utilization: 0.07, provider: 'codex' }]
-    expect(accountLine(accounts[0], usage)).toBe('Claude Max · Claude Code’s own login · 62% of the 5-hour limit used')
-    expect(accountLine(accounts[1], usage)).toBe('cj@acme.dev · Claude Team · 12% of the 5-hour limit used')
-    expect(accountLine({ ...accounts[2], plan: 'ChatGPT Plus' }, usage)).toBe('ChatGPT Plus · Codex’s own login · 7% of the 5-hour limit used')
-    expect(accountLine({ ...accounts[1], signedIn: false }, usage)).toBe('Not signed in')
+    expect(accountDetail(accounts[0], usage)).toEqual(['Claude Max · Claude Code’s own login', '5-hour 62% used'])
+    expect(accountDetail(accounts[1], usage)).toEqual(['cj@acme.dev · Claude Team', '5-hour 12% used'])
+    expect(accountDetail({ ...accounts[2], plan: 'ChatGPT Plus' }, usage)).toEqual(['ChatGPT Plus · Codex’s own login', '5-hour 7% used'])
+    expect(accountDetail({ ...accounts[1], signedIn: false }, usage)).toEqual(['Signed out'])
     expect(tilde('/Users/cj/.codex/config.toml')).toBe('~/.codex/config.toml')
   })
 
-  it("gives a token account's meters as of its last turn, with when that was", () => {
-    const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', plan: 'Claude Pro', cli: false, auth: 'subscription', active: true, signedIn: true, usageFromTurns: true }
+  it('gives each window its reset time, and leaves out one that has already reset', () => {
+    const at = new Date(2026, 9, 11, 14, 10).getTime()
+    const usage: RateLimit[] = [
+      { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: (at + 3600_000) / 1000, accountId: 'work' },
+      { type: 'seven_day', status: 'allowed', utilization: 0.3, resetsAt: (at - 60_000) / 1000, accountId: 'work' }
+    ]
+    expect(accountDetail(accounts[1], usage, at)).toEqual(['cj@acme.dev · Claude Team', '5-hour 12% used · resets at 3:10 PM'])
+  })
+
+  it('asks a legacy token account to sign in again, and gives its meters as of its last turn', () => {
+    const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', cli: false, auth: 'subscription', active: true, signedIn: true, usageFromTurns: true, legacyToken: true }
     const at = new Date(2026, 9, 11, 14, 10).getTime()
     const usage: RateLimit[] = [
       { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'side', readAt: at },
       { type: 'seven_day', status: 'allowed', utilization: 0.3, accountId: 'side', readAt: at - 60_000 }
     ]
-    expect(accountLine(token, usage, at + 3600_000)).toBe('Claude Pro · 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM')
-    expect(accountLine(token, usage, at + 2 * 86400_000)).toBe('Claude Pro · 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn on Oct 11')
-    expect(accountLine(token, [], at)).toBe('Claude Pro · Usage shows after its first turn')
+    expect(accountDetail(token, usage, at + 3600_000)).toEqual(['Sign in again to show email and plan', '5-hour 12% used', 'Weekly 30% used', 'As of its last turn at 2:10 PM'])
+    expect(accountDetail(token, usage, at + 2 * 86400_000).at(-1)).toBe('As of its last turn on Oct 11')
+    expect(accountDetail(token, [], at)).toEqual(['Sign in again to show email and plan', 'Usage shows after its first turn'])
   })
 
   it("keeps an effort the new model takes, and cycles through the model's own levels", () => {

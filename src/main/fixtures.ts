@@ -6,6 +6,7 @@ import { localUrlIn } from '@shared/previewUrl'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
+import { bus } from './bus'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf, reviewOf } from './services/settings'
 import { CODEX_AUTO } from './features/permissions'
 import { chatMode } from './services/permissions'
@@ -281,7 +282,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'providers.signIn': async ({ provider }) => status(provider),
     'providers.openConfig': async () => ok,
     'accounts.list': async () => f.accounts ?? [],
-    'accounts.add': async () => { throw new Error('Adding an account needs the real app.') },
+    'accounts.add': async () => {
+      const step = f.push.find((e) => e.type === 'account.add')
+      if (!step) throw new Error('Adding an account needs the real app.')
+      bus.push(step)
+      return new Promise<never>(() => undefined)
+    },
     'accounts.addKey': async () => { throw new Error('Adding an account needs the real app.') },
     'accounts.code': async () => ok,
     'accounts.cancelAdd': async () => ok,

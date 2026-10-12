@@ -1,13 +1,14 @@
-import type { AgentDef, Approval, Chat, Room, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, AgentDef, Approval, Chat, Provider, Room, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
 
 import { workspaceRowLabel } from '../../components/sidebar/workspaceRowLabel'
+import { PROVIDER_NAME } from '../../accountRows'
 import { isLeadWorkspace } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
 import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
 import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
-export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Rooms' | 'Results'
+export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Rooms' | 'Accounts' | 'Results'
 
 export interface PaletteItem {
   id: string
@@ -79,6 +80,8 @@ export interface PaletteInput {
   chats?: { thread: Thread; tabs: Chat[]; ws?: Workspace }[]
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
   terminal?: { enabled: boolean; preset?: string }
+  /** Both providers' accounts. Each signed-in one that isn't in use gets a "Switch" entry, found by typing (KERNEL-561). */
+  accounts?: AccountProfile[]
   act: {
     go: (route: Route) => void
     newWorkspace: (roomId?: string) => void
@@ -99,6 +102,8 @@ export interface PaletteInput {
     openSharedInLead: (roomId: string, sharedId: string) => void
     /** A toast with only a title. */
     toast: (title: string) => void
+    /** The account runs the provider's next turns, as Switch to does in Settings. */
+    switchAccount?: (provider: Provider, accountId: string) => void
   }
 }
 
@@ -196,8 +201,14 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const sharedNow = sharedItems.filter((x) => x.roomId === room?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
   const sharedRest = sharedItems.map((x) => x.it).filter((x) => !sharedNow.includes(x))
 
+  // "Switch Claude Code to Personal". A search that finds only these keeps Claude Code before Codex, not the shorter label first.
+  const accountItems: PaletteItem[] = (i.accounts ?? [])
+    .filter((a) => a.signedIn && !a.active)
+    .map((a) => item(`acct-${a.provider}-${a.id}`, 'Accounts', '⇄', `Switch ${PROVIDER_NAME[a.provider]} to ${a.label}`, () => act.switchAccount?.(a.provider, a.id), { meta: a.auth === 'apiKey' ? 'API key' : a.plan, also: 'account login sign in' }))
+
   // Typing searches these too, so the default list stays short.
   const more: PaletteItem[] = [
+    ...accountItems,
     ...sharedRest,
     goto('go-home', 'Home', { name: 'home' }),
     goto('go-rooms', 'All rooms', { name: 'rooms' }),
@@ -229,6 +240,8 @@ export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: s
   const seen = new Set<string>()
   // Two chats or files can share a name, so those are told apart by id.
   const all = [...items, ...more].filter((x) => { const key = x.section === 'Shared' || x.section === 'Chats' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
-  const list = rank(all, query)
-  return list.length ? [{ section: 'Results', title: 'Results', list }] : []
+  const ranked = rank(all, query)
+  const only = ranked.length > 0 && ranked.every((x) => x.section === 'Accounts')
+  const list = only ? all.filter((x) => ranked.includes(x)) : ranked
+  return list.length ? [{ section: only ? 'Accounts' : 'Results', title: only ? 'Accounts' : 'Results', list }] : []
 }

@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
-import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus, type RateLimit } from '@shared/types'
-import { limitProvider } from '@shared/providers'
-import { clock } from '@shared/usage'
+import { useEffect, useRef, useState } from 'react'
+import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
+import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
 import { Button, SegmentedControl, Tabs, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
@@ -12,38 +11,11 @@ import { AddAccount } from './AddAccount'
 // Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406, and the API key accounts of
 // KERNEL-524). Kernel already calls teammates agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
 
-const NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex' }
 const SYSTEM: Record<Provider, string> = { claude: 'Use system Claude', codex: 'Use system Codex' }
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
 
 /** A path under the home folder as Terminal shows it: `~/.codex/config.toml`. */
 export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
-
-/** "3:40 PM" today, else "Oct 9". */
-const when = (ms: number, now: number) => (new Date(ms).toDateString() === new Date(now).toDateString() ? `at ${clock(ms)}` : `on ${new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`)
-
-/**
- * The account's usage, when Kernel has heard of it: "62% of the 5-hour limit used". An account whose usage comes only from
- * its turns (a Claude token) gives both windows and when its last turn read them, since nothing reads them between turns.
- */
-export function accountUsage(a: AccountProfile, usage: RateLimit[], now = Date.now()): string | undefined {
-  const mine = usage.filter((u) => limitProvider(u) === a.provider && (u.accountId ?? 'cli') === a.id)
-  const pct = (type: RateLimit['type']) => { const u = mine.find((l) => l.type === type)?.utilization; return u === undefined ? undefined : Math.round(u * 100) }
-  const hour = pct('five_hour')
-  if (!a.usageFromTurns) return hour !== undefined ? `${hour}% of the 5-hour limit used` : undefined
-  const week = pct('seven_day')
-  const read = Math.max(0, ...mine.filter((l) => l.type === 'five_hour' || l.type === 'seven_day').map((l) => l.readAt ?? 0))
-  if (hour === undefined && week === undefined) return 'Usage shows after its first turn'
-  const used = [hour !== undefined ? `${hour}% of the 5-hour limit` : undefined, week !== undefined ? `${week}% of the weekly limit` : undefined].filter(Boolean).join(' and ')
-  return `${used} used${read ? `, as of its last turn ${when(read, now)}` : ''}`
-}
-
-/** What an account row says under its name: the email when the name isn't it, the plan, the CLI login, and its usage. A key says how it is billed. */
-export function accountLine(a: AccountProfile, usage: RateLimit[], now = Date.now()): string {
-  if (!a.signedIn) return 'Not signed in'
-  if (a.auth === 'apiKey') return 'API key · billed per token'
-  return [a.email && a.email !== a.label ? a.email : undefined, a.plan, a.cli ? `${NAME[a.provider]}’s own login` : undefined, accountUsage(a, usage, now)].filter(Boolean).join(' · ')
-}
 
 /** The page. The route's `tab` picks Claude Code or Codex. */
 export function Providers({ s }: { s: AppSettings }) {
@@ -64,21 +36,43 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const usage = useStore((st) => st.usage)
   const [status, setStatus] = useState<ProviderStatus | null>(null)
   const [adding, setAdding] = useState(false)
-  // An added Claude account signs in again with a new token, through the same sheet, which shows the code field if asked.
-  const [renewing, setRenewing] = useState<string | null>(null)
+  // An added account signs in again through the same sheet, which shows the code field if asked.
+  const [renewing, setRenewing] = useState<AccountProfile | null>(null)
   // A key account takes a new key through the same sheet, with its field only (KERNEL-524).
   const [replacing, setReplacing] = useState<AccountProfile | null>(null)
-  const addedClaude = provider === 'claude' ? accounts.find((a) => a.active && !a.cli && a.auth !== 'apiKey') : undefined
+  // The row whose name is a field (KERNEL-561), and the row to give focus back to once its field is gone.
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
+  const renamed = useRef<string | null>(null)
+  const activeAdded = accounts.find((a) => a.active && !a.cli && a.auth !== 'apiKey')
   const activeKey = accounts.find((a) => a.active && a.auth === 'apiKey')
   const sheetOpen = adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
+  useFreshUsage(true)
   const read = () => call('providers.status', { provider }).then(setStatus)
   useEffect(() => { void read().catch(() => undefined) }, [provider])
+  useEffect(() => {
+    if (renaming || busy !== null || !renamed.current) return
+    document.getElementById(`acct-rename-${renamed.current}`)?.focus()
+    renamed.current = null
+  }, [renaming, busy])
   const act = (key: string, title: string, fn: () => Promise<unknown>) => run(key, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
   })
   const accountsCall = (key: string, title: string, fn: () => Promise<AccountProfile[]>) => act(key, title, async () => { actions.accounts.set(await fn()); await read() })
-  const signIn = () => addedClaude ? setRenewing(addedClaude.label) : act('signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider })); actions.accounts.set(await call('accounts.list', undefined)) })
+  const signIn = (a?: AccountProfile) => {
+    const target = a ?? activeAdded
+    if (target && !target.cli) return setRenewing(target)
+    return act(a ? `signin:${a.id}` : 'signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider, ...(a ? { accountId: a.id } : {}) })); actions.accounts.set(await call('accounts.list', undefined)) })
+  }
+  const stopRenaming = () => { if (renaming) renamed.current = renaming.id; setRenaming(null) }
+  const saveName = (a: AccountProfile, value: string) => {
+    if (value.trim() === a.label) return stopRenaming()
+    void accountsCall(`rename:${a.id}`, 'Could not rename the account', async () => {
+      const next = await call('accounts.rename', { provider, accountId: a.id, label: value })
+      stopRenaming()
+      return next
+    })
+  }
   const binary = s.providers[provider]
   const setPath = (key: string, o: { path?: string; useSystem?: boolean }) => act(key, 'Could not change the executable', async () => {
     setStatus(await call('providers.setPath', { provider, ...o }))
@@ -98,18 +92,51 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
         action={<Button disabled={busy !== null || sheetOpen} onClick={() => setAdding(true)}>Add account</Button>}
         note={accounts.some((a) => a.signedIn) ? 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.' : provider === 'codex' ? 'Sign in with your ChatGPT plan to run agents on Codex.' : 'Sign in with your Claude plan to run agents on Claude Code.'}
       >
-        {accounts.map((a) => (
-          <Row key={a.id} label={a.label} desc={accountLine(a, usage)}>
-            {a.active && a.signedIn && <span className="set-tag">Active</span>}
-            <div className="set-entry-actions">
-              {!a.active && a.signedIn && <Button variant="ghost" aria-label={`Use ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Use</Button>}
-              {!a.signedIn && a.active && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Sign in</Button>}
-              {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
-              {a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
-              {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
+        {accounts.map((a) => {
+          const editing = renaming?.id === a.id
+          const saving = busy === `rename:${a.id}`
+          return (
+            <div key={a.id} className="set-row">
+              <div className="set-text">
+                {editing
+                  ? (
+                    <input
+                      className="input set-rename" aria-label={`Name for ${a.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={a.email} disabled={saving} value={renaming.value}
+                      onFocus={(e) => e.currentTarget.select()} onChange={(e) => setRenaming({ id: a.id, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.nativeEvent.isComposing) return
+                        if (e.key === 'Enter') { e.preventDefault(); saveName(a, renaming.value) }
+                        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stopRenaming() }
+                      }}
+                    />
+                  )
+                  : <span className="set-label">{a.label}</span>}
+                {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
+              </div>
+              {editing
+                ? (
+                  <div className="set-entry-actions set-rename-actions">
+                    <Button variant="ghost" aria-label={`Cancel renaming ${a.label}`} disabled={saving} onClick={stopRenaming}>Cancel</Button>
+                    <Button aria-label={`Save the name for ${a.label}`} busy={saving} busyLabel="Saving" onClick={() => saveName(a, renaming.value)}>Save</Button>
+                  </div>
+                )
+                : (
+                  <>
+                    {a.active && a.signedIn && <span className="set-tag">Active</span>}
+                    <div className="set-entry-actions">
+                      {!a.active && a.signedIn && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
+                      {!a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === `signin:${a.id}`} busyLabel="Signing in" disabled={busy !== null || sheetOpen} onClick={() => void signIn(a)}>Sign in</Button>}
+                      {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
+                      <Button id={`acct-rename-${a.id}`} variant="ghost" aria-label={`Rename ${a.label}`} disabled={busy !== null} onClick={() => setRenaming({ id: a.id, value: a.label })}>Rename</Button>
+                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
+                      {a.signedIn && a.legacyToken && <Button variant="ghost" aria-label={`Sign in again to ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setRenewing(a)}>Sign in again</Button>}
+                      {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
+                    </div>
+                  </>
+                )}
             </div>
-          </Row>
-        ))}
+          )
+        })}
       </Section>
       <Section title="Status" action={<Button busy={busy === 'refresh'} busyLabel="Refreshing" disabled={busy !== null} onClick={() => void act('refresh', 'Could not read the status', read)}>Refresh</Button>}>
         <Row label="Version"><span className="set-value">{status?.version ?? (status ? 'Not found' : '')}</span></Row>
@@ -150,7 +177,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
         </Row>
       </Section>
       {adding && <AddAccount provider={provider} onClose={() => { setAdding(false); void read().catch(() => undefined) }} />}
-      {renewing && <AddAccount provider={provider} signIn={{ label: renewing }} onClose={() => { setRenewing(null); void read().catch(() => undefined) }} />}
+      {renewing && <AddAccount provider={provider} signIn={{ label: renewing.label, accountId: renewing.id }} onClose={() => { setRenewing(null); void read().catch(() => undefined) }} />}
       {replacing && <AddAccount provider={provider} replaceKey={{ accountId: replacing.id, label: replacing.label }} onClose={() => { setReplacing(null); void read().catch(() => undefined) }} />}
     </>
   )
