@@ -1,4 +1,4 @@
-import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType } from '@shared/types'
+import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
 
 // Linear issues: the new workspace modal's search, the Issues screen, Plan with Rowan and the move to In Progress (D-140).
 // The token comes from Settings > Integrations (KERNEL-26), else LINEAR_API_KEY in the environment.
@@ -184,4 +184,20 @@ export function planParts(issue: LinearIssueDetail): ChatPart[] {
     { type: 'issue', name: issue.id, title: issue.title, url: issue.url, source: 'linear' },
     { type: 'text', text: `${description}\n\nWhen you hand it off, pass ${issue.id} as issue to create_workspace.` }
   ]
+}
+
+/**
+ * Linear as a room's tracker (KERNEL-450). `token` is read on every call, so a token saved in Settings > Integrations
+ * applies at once. `start` without a token resolves to nothing: Linear isn't connected, so there is nothing to move (D-140).
+ */
+export function linearTracker(token: () => Promise<string | undefined>, fetchImpl: typeof fetch = fetch): Tracker {
+  return {
+    kind: 'linear',
+    search: async (query) => searchIssues(await token(), query, fetchImpl),
+    issue: async (id) => getIssue(await token(), id, fetchImpl),
+    start: async (id) => {
+      const key = await token()
+      return key ? moveToStarted(key, id, fetchImpl) : undefined
+    }
+  }
 }

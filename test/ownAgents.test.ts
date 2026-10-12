@@ -1,16 +1,24 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import type { ActivityEvent } from '@shared/types'
 import type { TelemetryEvent } from '@shared/telemetry'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
+import type { KernelOptions } from '../src/main/features/options'
 import { LEAD_REVIEW_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
+import { claudeAgents } from '../src/main/services/pluginAgents'
 import { tempRepo } from './helpers'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
-vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405). The stub's
+// `supportedAgents` answers with `sdk.agents`, and each query's options are kept, for plugin agents (KERNEL-463).
+const sdk = vi.hoisted(() => ({ agents: [] as { name: string; description: string; model?: string }[], options: [] as unknown[] }))
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => {
+  const stub = await import('./sdkStub')
+  return { ...await original<object>(), ...stub, query: (a: { options?: unknown }) => { sdk.options.push(a.options); return { ...stub.query(), supportedAgents: async () => sdk.agents } } }
+})
 
 // KERNEL-397: a repo that brings its own .claude/agents works as it is. Kernel's Rowan and Theo fill a missing Lead and
 // reviewer without writing a file, and [team] in .kernel/settings.toml holds what the user changes.
@@ -24,21 +32,26 @@ const AGENTS = {
 
 const SETTINGS = '# Kernel settings for this repo. Commit it so the whole team shares it.\n\n[linear]\nteam = "SHOP"\n'
 
-async function boot(files: Record<string, string> = AGENTS) {
+/** `home` writes files into the temp home folder, given its path. */
+async function boot(files: Record<string, string> = AGENTS, o: { home?: (home: string) => Record<string, string>; claudeAgents?: KernelOptions['claudeAgents'] } = {}) {
   const repo = await tempRepo({ 'README.md': '# shop\n', '.kernel/settings.toml': SETTINGS, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+  for (const [f, text] of Object.entries(o.home?.(home) ?? {})) { await mkdir(dirname(join(home, f)), { recursive: true }); await writeFile(join(home, f), text) }
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-  const k = new Kernel({ dataDir, home, starterDir: STARTERS })
+  const k = new Kernel({ dataDir, home, starterDir: STARTERS, claudeAgents: o.claudeAgents })
   onTestFinished(() => k.stop())
   await k.start()
   k.sessions.send = async () => ({ queued: false })
   const tracked: TelemetryEvent[] = []
+  const activity: ActivityEvent[] = []
   const onTrack = (e: TelemetryEvent) => tracked.push(e)
+  const onActivity = (e: ActivityEvent) => activity.push(e)
   bus.on('track', onTrack)
-  onTestFinished(() => { bus.off('track', onTrack) })
+  bus.on('activity', onActivity)
+  onTestFinished(() => { bus.off('track', onTrack); bus.off('activity', onActivity) })
   const room = await k.addRoom(repo)
-  return { k, h: k.handlers(), repo, room, tracked }
+  return { k, h: k.handlers(), repo, home, room, tracked, activity }
 }
 
 /** The Lead's tools in the room's Lead chat. */
@@ -178,5 +191,128 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     await rm(join(repo, '.claude', 'agents', 'rowan.md'))
+  })
+})
+
+// KERNEL-463: the user's own agents in ~/.claude/agents and Claude Code's plugin agents join every room's team, read the
+// way the repo's files are. Kernel never writes either.
+const PERSONAL = {
+  '.claude/agents/scout.md': '---\nname: scout\ndescription: Researcher. Finds prior art before a task starts.\n---\nYou are Scout.',
+  // The repo has a web.md too, and the repo's file wins, as it does in Claude Code.
+  '.claude/agents/my-web.md': '---\nname: web\ndescription: My own frontend agent.\nmodel: opus\n---\nYou are my web.'
+}
+
+/** A plugin named kit, installed for the user from a marketplace, as Claude Code lays it out. */
+const KIT = join('.claude', 'plugins', 'cache', 'market', 'kit', '1.0.0')
+const plugin = (home: string) => ({
+  '.claude/plugins/installed_plugins.json': JSON.stringify({ version: 2, plugins: { 'kit@market': [{ scope: 'user', installPath: join(home, KIT), version: '1.0.0' }] } }),
+  [join(KIT, '.claude-plugin', 'plugin.json')]: JSON.stringify({ name: 'kit', agents: ['./extra/writer.md', '../outside.md'] }),
+  [join(KIT, 'agents', 'code-reviewer.md')]: '---\nname: code-reviewer\ndescription: Reviews code for bugs and security problems.\ntools: Read, Grep, Glob\nmodel: sonnet\n---\nYou review code.',
+  [join(KIT, 'agents', 'builder.md')]: '---\nname: builder\ndescription: Builds features end to end.\n---\nYou build features.',
+  [join(KIT, 'extra', 'writer.md')]: '---\nname: writer\ndescription: Writes the docs.\n---\nYou write docs.',
+  // Listed in plugin.json, but outside the plugin's folder.
+  [join(dirname(KIT), 'outside.md')]: '---\nname: outside\ndescription: Not the plugin\'s.\n---\nYou are outside.'
+})
+const LISTED = [
+  { name: 'Explore', description: 'Fast read-only search agent.', model: 'inherit' },
+  { name: 'general-purpose', description: 'General-purpose agent.' },
+  { name: 'scout', description: 'Researcher.' },
+  { name: 'kit:code-reviewer', description: 'Reviews code for bugs and security problems.', model: 'sonnet' },
+  { name: 'kit:builder', description: 'Builds features end to end.' },
+  { name: 'kit:writer', description: 'Writes the docs.' },
+  { name: 'kit:outside', description: "Not the plugin's." },
+  { name: 'gone:helper', description: 'From a plugin that left no folder.' }
+]
+
+describe('personal and plugin agents (KERNEL-463)', () => {
+  it('adds the agents in ~/.claude/agents to every room, and the repo\'s file wins on the same name', async () => {
+    const { k, h, repo, home, room } = await boot(AGENTS, { home: () => PERSONAL })
+    const team = await k.agents(room.id)
+    expect(team.find((a) => a.id === 'scout')).toMatchObject({ name: 'Scout', origin: 'personal', member: true, prompt: 'You are Scout.', file: join(home, '.claude', 'agents', 'scout.md') })
+    expect(team.filter((a) => a.id === 'web')).toEqual([expect.objectContaining({ prompt: 'You build the UI.', file: join(repo, '.claude', 'agents', 'web.md') })])
+    expect(team.find((a) => a.id === 'web')?.origin).toBeUndefined()
+    // Claude Code leaves the personal file out without a word, and so does Kernel.
+    expect(team.flatMap((a) => a.warnings ?? []).map((w) => w.kind)).not.toContain('duplicate-id')
+
+    // Rowan hands it tasks like any teammate.
+    const { call } = await leadTools(k, room.id)
+    expect((await call('list_agents', {})).text).toContain('scout: Scout')
+    expect((await call('create_workspace', { agent: 'scout', title: 'Prior art', brief: 'Find prior art.' })).text).toMatch(/^Created \S+ on \S+ for scout\./)
+
+    // Its file is every room's, so this room's profile and retire leave it alone.
+    const before = await readFile(join(home, '.claude', 'agents', 'scout.md'), 'utf8')
+    await expect(h['agents.save']({ roomId: room.id, agentId: 'scout', patch: { model: 'opus' } })).rejects.toThrow("Scout's file is in ~/.claude/agents, which every room shares. Edit it there.")
+    await expect(h['agents.retire']({ roomId: room.id, agentId: 'scout' })).rejects.toThrow('Move it out of that folder to retire Scout in every room.')
+    expect(await readFile(join(home, '.claude', 'agents', 'scout.md'), 'utf8')).toBe(before)
+    expect(await readdir(join(repo, '.claude', 'agents'))).not.toContain('scout.md')
+
+    // The same team rules: [team] can make it a helper.
+    const helped = await h['agents.setTeam']({ roomId: room.id, team: { helpers: ['scout'] } })
+    expect(helped.find((a) => a.id === 'scout')).toMatchObject({ member: false })
+
+    // Another room has it too.
+    const other = await k.addRoom(await tempRepo({ 'README.md': '# blog\n' }))
+    expect((await k.agents(other.id)).find((a) => a.id === 'scout')).toMatchObject({ origin: 'personal', member: true })
+  })
+
+  it('picks up files added to and removed from ~/.claude/agents', async () => {
+    const { k, home, room, activity } = await boot(AGENTS, { home: () => PERSONAL })
+    await k.agents(room.id)
+    await writeFile(join(home, '.claude', 'agents', 'mira.md'), '---\nname: mira\ndescription: Writer. Drafts release notes.\n---\nYou are Mira.')
+    await vi.waitFor(() => expect(k.team.agentsSync(room.id).map((a) => a.id)).toContain('mira'), { timeout: 5000 })
+    expect(k.team.agentsSync(room.id).find((a) => a.id === 'mira')).toMatchObject({ origin: 'personal', role: 'Writer' })
+    expect(activity).toContainEqual(expect.objectContaining({ kind: 'agent.joined', roomId: room.id, agentId: 'mira' }))
+    await rm(join(home, '.claude', 'agents', 'scout.md'))
+    await vi.waitFor(() => expect(k.team.agentsSync(room.id).map((a) => a.id)).not.toContain('scout'), { timeout: 5000 })
+  })
+
+  it("adds plugin agents from Claude Code's list, read from the plugin's files, and never writes them", async () => {
+    sdk.agents = LISTED
+    const { k, h, repo, home, room, activity } = await boot(AGENTS, { home: (dir) => ({ ...PERSONAL, ...plugin(dir) }), claudeAgents })
+    // Claude Code started in the home folder with only the user's settings, where plugins are turned on.
+    expect(sdk.options).toContainEqual(expect.objectContaining({ cwd: home, settingSources: ['user'], settings: { disableAllHooks: true }, strictMcpConfig: true, mcpServers: {}, persistSession: false }))
+    await vi.waitFor(() => expect(k.team.agentsSync(room.id).map((a) => a.id)).toContain('kit:builder'), { timeout: 5000 })
+    const team = await k.agents(room.id)
+    // Explore and the others without a colon are Claude Code's own or come from files Kernel reads itself.
+    expect(team.filter((a) => a.origin === 'plugin').map((a) => [a.id, a.name, a.member, a.warnings])).toEqual([
+      ['kit:builder', 'Builder', true, undefined],
+      ['kit:code-reviewer', 'Code Reviewer', false, [{ kind: 'cant-open-pr' }]],
+      ['gone:helper', 'Helper', false, [{ kind: 'unreadable-file', detail: "Kernel couldn't find its file in the gone plugin" }]],
+      ['kit:outside', 'Outside', false, [{ kind: 'unreadable-file', detail: "Kernel couldn't find its file in the kit plugin" }]],
+      ['kit:writer', 'Writer', true, undefined]
+    ])
+    expect(team.find((a) => a.id === 'kit:code-reviewer')).toMatchObject({ model: 'sonnet', tools: ['Read', 'Grep', 'Glob'], prompt: 'You review code.', file: join(home, KIT, 'agents', 'code-reviewer.md') })
+    expect(team.find((a) => a.id === 'kit:writer')).toMatchObject({ prompt: 'You write docs.', file: join(home, KIT, 'extra', 'writer.md') })
+    expect(team.filter((a) => a.id === 'scout')).toHaveLength(1)
+    // They were there before Kernel heard of them, so nobody walks in.
+    expect(activity.filter((e) => e.kind === 'agent.joined')).toEqual([])
+
+    // A plugin brings its agents to every room, so its reviewer doesn't take over from Theo unless [team] says so.
+    expect(team.find((a) => a.reviewer)?.id).toBe('kernel-reviewer')
+    const named = await h['agents.setTeam']({ roomId: room.id, team: { reviewer: 'kit:code-reviewer' } })
+    expect(named.find((a) => a.reviewer)?.id).toBe('kit:code-reviewer')
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('reviewer = "kit:code-reviewer"')
+
+    // Rowan hands one a task, and its chat runs on the plugin's prompt.
+    const { call } = await leadTools(k, room.id)
+    expect((await call('create_workspace', { agent: 'kit:builder', title: 'Cart', brief: 'Build the cart.' })).text).toMatch(/^Created \S+ on \S+ for kit:builder\./)
+    const ws = k.store.workspaces(room.id).find((w) => w.agentId === 'kit:builder')!
+    expect(k.sessions['d'].agentFor(ws)).toMatchObject({ id: 'kit:builder', origin: 'plugin', prompt: 'You build features.' })
+
+    const file = join(home, KIT, 'agents', 'builder.md')
+    const before = await readFile(file, 'utf8')
+    await expect(h['agents.save']({ roomId: room.id, agentId: 'kit:builder', patch: { model: 'opus' } })).rejects.toThrow("Builder comes from the kit plugin, and Kernel doesn't change a plugin's files.")
+    await expect(h['agents.retire']({ roomId: room.id, agentId: 'kit:builder' })).rejects.toThrow('Turn the plugin off in Claude Code to remove it.')
+    expect(await readFile(file, 'utf8')).toBe(before)
+  })
+
+  it('leaves plugin agents out when Claude Code fails to list them', async () => {
+    let asked = 0
+    const { k, room } = await boot(AGENTS, { claudeAgents: async () => { asked++; throw new Error('no claude') } })
+    await k.agents(room.id)
+    await k.agents(room.id)
+    expect((await k.agents(room.id)).some((a) => a.origin === 'plugin')).toBe(false)
+    // Once a launch, so a Mac without Claude Code doesn't start a process at every read.
+    expect(asked).toBe(1)
   })
 })
