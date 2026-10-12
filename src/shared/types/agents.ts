@@ -86,10 +86,14 @@ export type AgentOrigin = 'project' | 'personal' | 'plugin'
  * And since KERNEL-465:
  * - `looks-like-subagent`: it reads as a subagent with no pull request workflow (its file names neither Edit nor Write, and
  *   never mentions a branch, a pull request or a worktree), so it starts as a helper.
+ *
+ * And since KERNEL-550:
+ * - `model-unavailable`: its `model:` pins a model no provider the user is signed in to offers. Claude offers MODELS,
+ *   Codex what its `model/list` returns.
  */
 export type AgentWarningKind =
   | 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
-  | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off' | 'looks-like-subagent'
+  | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off' | 'looks-like-subagent' | 'model-unavailable'
 
 export interface AgentWarning {
   kind: AgentWarningKind
