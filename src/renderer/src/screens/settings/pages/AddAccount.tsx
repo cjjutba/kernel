@@ -12,6 +12,13 @@ const KEY_PAGE: Record<Provider, { host: string; url: string; placeholder: strin
   codex: { host: 'platform.openai.com', url: 'https://platform.openai.com/api-keys', placeholder: 'sk-' }
 }
 
+/**
+ * Add account, Sign in again for an added account (`signIn`, KERNEL-406, with its `accountId` since KERNEL-567), or Replace key
+ * for an API key account (`replaceKey`, KERNEL-524). Subscription: one button opens the provider's sign-in in the browser, and the
+ * account is named after its email (KERNEL-561). Claude's login may ask for the code the page shows; only then does the sheet show a
+ * field for it. A failed sign-in says why and offers Try again. API key: a name and the key, checked with the provider before it is
+ * kept, and a refused key shows the provider's reason in the sheet. No pasted token (D-018).
+ */
 export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider: Provider; signIn?: { label: string; accountId?: string }; replaceKey?: { accountId: string; label: string }; onClose: () => void }) {
   const step = useStore((s) => (s.accountAdd?.provider === provider ? s.accountAdd : null))
   const [kind, setKind] = useState<Kind>('subscription')

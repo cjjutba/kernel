@@ -36,8 +36,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const usage = useStore((st) => st.usage)
   const [status, setStatus] = useState<ProviderStatus | null>(null)
   const [adding, setAdding] = useState(false)
+  // An added account signs in again through the same sheet, which shows the code field if asked.
   const [renewing, setRenewing] = useState<AccountProfile | null>(null)
+  // A key account takes a new key through the same sheet, with its field only (KERNEL-524).
   const [replacing, setReplacing] = useState<AccountProfile | null>(null)
+  // The row whose name is a field (KERNEL-561), and the row to give focus back to once its field is gone.
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
   const renamed = useRef<string | null>(null)
   const activeAdded = accounts.find((a) => a.active && !a.cli && a.auth !== 'apiKey')

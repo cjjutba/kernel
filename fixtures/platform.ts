@@ -85,8 +85,10 @@ const providerStatus: Fixture['providerStatus'] = {
   claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'Claude account', plan: 'Claude Max', email: 'cj@example.com', configFile: '/Users/you/.claude/settings.json' },
   codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: true, loginMethod: 'ChatGPT', plan: 'ChatGPT Plus', email: 'cj@example.com', configFile: '/Users/you/.codex/config.toml' }
 }
+/** The weekday `day` (0 is Sunday) at `h`:`m`, more than a day ahead, so a reset reads "Monday at 9:00 AM" whatever day the shot is taken. */
 const nextOn = (day: number, h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); while (d.getDay() !== day || d.getTime() - Date.now() < 25 * 3600_000) d.setDate(d.getDate() + 1); return d.getTime() }
 const subscription = (provider: Provider, id: string, label: string, email: string, plan: string, over: Partial<AccountProfile> = {}): AccountProfile => ({ id, provider, label, email, plan, cli: id === 'cli', auth: 'subscription', active: false, signedIn: true, ...over })
+// KERNEL-561: the accounts the canvas draws. Work is Claude Code's own login with a nickname, and Codex's own login has none, so its name is its email.
 const workClaude = subscription('claude', 'cli', 'Work', 'cj@example.com', 'Claude Max', { active: true })
 const personalClaude = subscription('claude', 'personal', 'Personal', 'cj@jutba.example', 'Claude Pro')
 const ownCodex = subscription('codex', 'cli', 'cj@example.com', 'cj@example.com', 'ChatGPT Plus', { active: true })
@@ -100,6 +102,7 @@ const providerUsage = (readAt?: number): RateLimit[] => [
   window5('codex', 'personal', 3, next(18, 20)), windowWeek('codex', 'personal', 9, nextOn(5, 8, 0))
 ]
 const richAccounts: AccountProfile[] = [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex, keyAccount('codex')]
+/** Settings, Providers on one tab, with each account's nickname, plan and usage windows (KERNEL-561). */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
   accounts: richAccounts,
   providerStatus,
@@ -107,6 +110,7 @@ const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() 
   ...extra,
   ui: { route: { name: 'settings', page: 'providers', tab } }
 }))
+/** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 const accountUsage: RateLimit[] = [
   { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
@@ -296,15 +300,18 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   SettingsProvidersCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
   SettingsAddAccountApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
+  // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude asks for a code from the start, Codex doesn't.
   SettingsAddAccount: addAccountPage('claude'),
   SettingsAddAccountBrowser: addAccountPage('claude', 'code'),
   SettingsAddAccountCodex: addAccountPage('codex'),
   SettingsAddAccountCodexBrowser: addAccountPage('codex', 'browser'),
+  // KERNEL-561: Personal being renamed, and a Claude account from before the full login that asks to sign in again with the usage its last turn read.
   SettingsProvidersRename: providersPage('claude'),
   SettingsProvidersLegacy: providersPage('claude', {
     accounts: [workClaude, { ...personalClaude, email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, keyAccount('claude'), ownCodex],
     usage: providerUsage(todayAt(14, 10))
   }),
+  // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Home, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'home' }, menu: 'account' } },
   SearchSwitchAccount: { ...teamFixtures.CommandPalette, workspaces: teamFixtures.CommandPalette.workspaces.map((w) => (w.id === ids.schema ? { ...w, status: 'archived' as const } : w)), accounts: richAccounts, usage: providerUsage() },
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.

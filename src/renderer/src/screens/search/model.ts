@@ -80,6 +80,7 @@ export interface PaletteInput {
   chats?: { thread: Thread; tabs: Chat[]; ws?: Workspace }[]
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
   terminal?: { enabled: boolean; preset?: string }
+  /** Both providers' accounts. Each signed-in one that isn't in use gets a "Switch" entry, found by typing (KERNEL-561). */
   accounts?: AccountProfile[]
   act: {
     go: (route: Route) => void
@@ -101,6 +102,7 @@ export interface PaletteInput {
     openSharedInLead: (roomId: string, sharedId: string) => void
     /** A toast with only a title. */
     toast: (title: string) => void
+    /** The account runs the provider's next turns, as Switch to does in Settings. */
     switchAccount?: (provider: Provider, accountId: string) => void
   }
 }
@@ -199,6 +201,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const sharedNow = sharedItems.filter((x) => x.roomId === room?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
   const sharedRest = sharedItems.map((x) => x.it).filter((x) => !sharedNow.includes(x))
 
+  // "Switch Claude Code to Personal". A search that finds only these keeps Claude Code before Codex, not the shorter label first.
   const accountItems: PaletteItem[] = (i.accounts ?? [])
     .filter((a) => a.signedIn && !a.active)
     .map((a) => item(`acct-${a.provider}-${a.id}`, 'Accounts', '⇄', `Switch ${PROVIDER_NAME[a.provider]} to ${a.label}`, () => act.switchAccount?.(a.provider, a.id), { meta: a.auth === 'apiKey' ? 'API key' : a.plan, also: 'account login sign in' }))

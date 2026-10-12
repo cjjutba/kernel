@@ -202,6 +202,7 @@ async function typeApiKey(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The Add account sheets (KERNEL-561): the sheet is opened from the page's button, and Browser is the sheet after Sign in. Both are local to the page.
 async function openAddAccount(page: Page, signIn?: string) {
   await page.getByRole('button', { name: 'Add account' }).click()
   if (signIn) {
@@ -212,12 +213,14 @@ async function openAddAccount(page: Page, signIn?: string) {
   await page.waitForTimeout(300)
 }
 
+// SettingsProvidersRename is Personal's name turned into its field. Whether a row is being renamed is local to the page.
 async function renamePersonal(page: Page) {
   await page.getByRole('button', { name: 'Rename Personal' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
+// SearchSwitchAccount is the palette with "switch" typed. The query is local to the palette.
 async function typeSwitch(page: Page) {
   await page.getByRole('combobox', { name: 'Type a command or search' }).fill('switch')
   await page.mouse.move(0, 0)
