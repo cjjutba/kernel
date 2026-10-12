@@ -1,6 +1,6 @@
 @import './ui/ui.css';
 /* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
-   pill fills color status words in the sidebar's hover cards (D-084); `--needs` also marks what waits on you in the sidebar.
+   pill fills color status words in the sidebar's hover cards (D-084); `--needs` is only the composer's context ring from 75%, no icon uses it (no-amber-icons).
    `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
    orange, on the Claude mark in the model picker and nowhere else. */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
@@ -35,7 +35,6 @@
   --working: #7cb2ff;
   --needs: #f2c55c;
   --tint-working: #1c2b45;
-  --tint-needs: #40330f;
   --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-merged: #2c2545;
@@ -114,7 +113,6 @@
   --working: #1a56b0;
   --needs: #7a4f00;
   --tint-working: #d6e4fb;
-  --tint-needs: #fce9a8;
   --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
   --tint-merged: #ebe5fc;

@@ -175,7 +175,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-avail svg { flex-shrink: 0; color: var(--muted); }
 /* A warning under an account's name (KERNEL-619): an amber triangle, what is wrong and the way out. The link in it is ink and spins while its call runs. */
 .set-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: var(--ink-2); }
-.set-warn > svg { flex-shrink: 0; color: var(--needs); }
+.set-warn > svg { flex-shrink: 0; color: var(--ink); }
 .set-warn .set-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12.5px; }
 .set-warn .set-link:disabled { opacity: 0.55; cursor: default; }
 .set-warn .set-link[aria-busy='true'] { opacity: 1; color: var(--ink-3); text-decoration: none; }
@@ -183,7 +183,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-row.set-sub { padding-left: 48px; }
 /* Files to copy: the files that look like production (KERNEL-449, SettingsFilesProduction.png). */
 .set-banner { display: flex; gap: 12px; padding: 16px 18px; }
-.set-banner > svg { flex-shrink: 0; margin-top: 1px; color: var(--needs); }
+.set-banner > svg { flex-shrink: 0; margin-top: 1px; color: var(--ink); }
 .set-banner-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .set-banner-text { display: flex; flex-direction: column; gap: 2px; }
 .set-banner-title { font-size: 13.5px; font-weight: 500; color: var(--ink); }
