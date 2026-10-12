@@ -533,6 +533,93 @@ describe('model and effort (D-093)', () => {
   })
 })
 
+describe('prompt suggestions (KERNEL-530)', () => {
+  type S = Awaited<ReturnType<typeof setup>>
+  const init = (s: S, call = s.call) => call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+  const finish = async (call: Call, uuid: string) => { call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 10 }); await flush() }
+  const suggest = async (call: Call, suggestion: string) => { call.feed({ type: 'prompt_suggestion', suggestion, uuid: `ps-${suggestion}`, session_id: 's' }); await flush() }
+  const saved = (s: S) => s.store.chat('chat')?.suggestion
+
+  it('turns them on, and saves the one that comes after a turn on the chat and pushes it', async () => {
+    const s = await setup()
+    expect(s.options.promptSuggestions).toBe(true)
+    const pushed: (string | undefined)[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === 'chat') pushed.push(e.chat.suggestion) }
+    bus.on('push', onPush)
+    try {
+      init(s)
+      await finish(s.call, 'r1')
+      await suggest(s.call, '  Run the migration  ')
+      expect(saved(s)).toBe('Run the migration')
+      expect(pushed.at(-1)).toBe('Run the migration')
+    } finally {
+      bus.off('push', onPush)
+    }
+  })
+
+  it('drops one that comes once the next turn is running', async () => {
+    const s = await setup()
+    init(s)
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'And backfill it' }])).toEqual({ queued: true, why: 'running' })
+    // The turn ends, the queued message goes out at once, and the first turn's guess arrives after it.
+    await finish(s.call, 'r1')
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    await suggest(s.call, 'Run the migration')
+    expect(saved(s)).toBeUndefined()
+  })
+
+  it('drops one from a stopped process once a newer one owns the chat', async () => {
+    const s = await setup()
+    init(s)
+    await finish(s.call, 'r1')
+    // The old process keeps writing while it exits.
+    s.call.late = true
+    s.sessions.stop('chat')
+    await s.sessions.send('chat', [{ type: 'text', text: 'Start over' }])
+    const fresh = sdk.calls[sdk.calls.length - 1]
+    expect(fresh).not.toBe(s.call)
+    init(s, fresh)
+    await finish(fresh, 'r2')
+    await suggest(s.call, 'Old guess')
+    expect(saved(s)).toBeUndefined()
+    await suggest(fresh, 'New guess')
+    expect(saved(s)).toBe('New guess')
+    s.call.end()
+  })
+
+  it('clears it when anything starts a turn: the user, a queued message, a Team update, the Lead, and /clear', async () => {
+    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }] }] }
+    const s = await setup()
+    init(s)
+    const turn = async (n: number) => { await finish(s.call, `r${n}`); await suggest(s.call, `Guess ${n}`); expect(saved(s)).toBe(`Guess ${n}`) }
+
+    await turn(1)
+    await s.sessions.send('chat', [{ type: 'text', text: 'Thanks' }])
+    expect(saved(s)).toBeUndefined()
+
+    await turn(2)
+    s.sessions.pause('room')
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Next' }])).toEqual({ queued: true, why: 'paused' })
+    s.sessions.resume('room')
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    expect(saved(s)).toBeUndefined()
+
+    await turn(3)
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)
+    expect(saved(s)).toBeUndefined()
+
+    await turn(4)
+    await s.sessions.send('chat', [{ type: 'text', text: 'Build T-14 from the plan' }], { from: 'lead' })
+    expect(saved(s)).toBeUndefined()
+
+    await turn(5)
+    // /clear that Claude Code reports on its own still leaves no guess about the old conversation.
+    s.call.feed({ type: 'conversation_reset', trigger: 'clear' })
+    await flush()
+    expect(saved(s)).toBeUndefined()
+  })
+})
+
 describe('Approve and hand off (KERNEL-67)', () => {
   // The kernel repo's own Lead, which only plans and says nothing about create_workspace.
   const rowan: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Rowan, the lead for building Kernel itself. You plan, you don't write feature code." }

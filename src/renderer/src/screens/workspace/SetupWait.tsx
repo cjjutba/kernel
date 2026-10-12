@@ -7,10 +7,11 @@ import { attempt } from './MessageActions'
 import { setupCommand } from './banners/model'
 import { editQueuedInComposer } from './composer/bus'
 import { PartChip } from './Transcript'
+import { bottomKindOf } from './bottomSplit'
 
 const NO_QUEUE: QueuedMessage[] = []
 
-/** A duration as M:SS, the way main writes "Setup finished in M:SS". */
+/** A duration as M:SS, for the live setup timer and the failed card. */
 export const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 
 /** Time since `from`, redrawn each second while it counts. The start is main's, from when the setup script started. */
@@ -42,19 +43,25 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
   const queue = useStore((s) => (chat ? s.queue[chat.id] : undefined)) ?? NO_QUEUE
   const cmd = useStore((s) => setupCommand(s.scripts[ws.id]))
   const panel = useStore((s) => s.ui.rightPanel)
+  const kind = useStore((s) => bottomKindOf(s, ws))
   const failed = ws.status === 'failed'
   // A run left from before this setup started doesn't count: only a run with no end is this one.
   const since = useSince(!failed && ws.setupRun && !ws.setupRun.endedAt ? ws.setupRun.startedAt : undefined)
   const [busy, track] = useBusy<'again' | 'skip'>()
 
-  // The Setup tab is on screen while this is, and the tab you were on comes back when setup is done.
+  // The Setup tab is on screen while this is, in a bottom pane that is open whatever the user left it as. The tab you were on comes back when setup is done,
+  // and so does the pane's saved state: opening it here is not saved, so a collapse made meanwhile is what comes back (KERNEL-513).
   useEffect(() => {
     const before = getState().ui.workspace.bottom
     actions.ui.setWorkspaceView({ bottom: 'setup' })
-    return () => { if (getState().ui.workspace.bottom === 'setup' && before !== 'setup') actions.ui.setWorkspaceView({ bottom: before }) }
-  }, [ws.id])
+    actions.ui.setBottomCollapsed(kind, false, false)
+    return () => {
+      if (getState().ui.workspace.bottom === 'setup' && before !== 'setup') actions.ui.setWorkspaceView({ bottom: before })
+      actions.ui.restoreBottomCollapsed(kind)
+    }
+  }, [ws.id, kind])
 
-  const showLog = () => { actions.ui.setRightPanel(true); actions.ui.setWorkspaceView({ bottom: 'setup' }) }
+  const showLog = () => { actions.ui.setRightPanel(true); actions.ui.setWorkspaceView({ bottom: 'setup' }); actions.ui.setBottomCollapsed(kind, false, false) }
   const unqueue = (q: QueuedMessage) => { if (chat) void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id }))) }
   const again = () => track('again', () => attempt('Could not run setup', () => call('scripts.run', { workspaceId: ws.id, kind: 'setup' })))
   const skip = () => track('skip', () => attempt('Could not send', () => call('scripts.skipSetup', { workspaceId: ws.id })))

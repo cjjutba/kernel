@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prQuery, prStateOf, resolveFile, reviewsOf, type PrView } from '../src/main/services/github'
-import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
+import { actionIcon, afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { checkGroups, checkRow } from '../src/renderer/src/screens/workspace/Panels'
 import { Kernel } from '../src/main/kernel'
 import { Prs } from '../src/main/features/prs'
@@ -164,6 +164,18 @@ describe('what Kernel tells the agent and the chat', () => {
 })
 
 describe('PR header and toasts', () => {
+  // KERNEL-528: every action button leads with an icon; the shared resolve action takes the one its label names.
+  it('picks each action an icon, by its label first', () => {
+    expect(actionIcon('Create PR', 'create')).toBe('pr')
+    expect(actionIcon('Merge PR', 'merge')).toBe('merged')
+    expect(actionIcon('Merge anyway', 'merge')).toBe('merged')
+    expect(actionIcon('Fix checks', 'resolve')).toBe('refresh')
+    expect(actionIcon('Address review', 'resolve')).toBe('comment')
+    expect(actionIcon('Resolve conflicts', 'resolve')).toBe('branch')
+    expect(actionIcon('Ready for review', 'ready')).toBe('check')
+    expect(actionIcon('Reopen', 'reopen')).toBe('pr')
+    expect(actionIcon('Something new')).toBeUndefined()
+  })
   it('has a layout for every state', () => {
     expect(headerView('none')).toMatchObject({ link: false, caret: true, button: { label: 'Create PR', action: 'create' } })
     expect(headerView('none', false).button).toBeUndefined()

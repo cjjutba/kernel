@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
@@ -96,6 +96,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const stored = useStore((s) => tabOf(s, workspaceId))
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
   const panels = useStore((s) => s.ui.rightPanel)
+  const bottomRatio = useStore((s) => s.ui.bottomRatio)
   // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
   const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
   const changes = fetched.workspaceId === workspaceId ? fetched.files : NO_CHANGES
@@ -280,15 +281,18 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       {panels && (
         <aside ref={aside} aria-label="Workspace panels" className="ws-aside" style={panelWidth === null ? undefined : { width: `max(${PANEL_MIN}px, min(${panelWidth}px, 100cqw - ${CHAT_MIN}px))` }}>
           <ResizeHandle
-            targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
+            targetRef={aside} edge="left" label="Resize panel" size={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultSize={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
           </div>
           {ownPr && <LocalMergeInfo ws={ws} />}
-          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
-          <BottomPanel ws={ws} />
+          {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
+          <div className="ws-split" style={{ '--bottom-ratio': bottomRatio } as CSSProperties}>
+            <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
+            <BottomPanel ws={ws} />
+          </div>
         </aside>
       )}
     </div>

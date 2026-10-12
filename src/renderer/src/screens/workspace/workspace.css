@@ -53,6 +53,9 @@ button.ws-issue:hover { background: var(--surface-3); }
 .cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
 /* transcript */
+/* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
+.ws-chat { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.icon-btn.ws-jump { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 1; margin: 0 auto; width: 32px; height: 32px; border: 1px solid var(--line-3); border-radius: 50%; background: var(--surface); }
 .ws-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 16px 32px 8px; }
 .thread { width: 100%; max-width: 760px; margin: auto auto 0; display: flex; flex-direction: column; gap: 12px; }
 /* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
@@ -177,12 +180,18 @@ button.msg-chip:hover { border-color: var(--line-4); }
 
 /* right panel */
 .panel-tabs { height: 44px; flex-shrink: 0; display: flex; align-items: center; padding: 0 10px; }
-.panel-tabs .tab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
-/* A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so Show files stays pinned after it (KERNEL-489). */
-.panel-tabs > [role='tablist'] { min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.panel-tabs > [role='tablist']::-webkit-scrollbar { display: none; }
+/* Both tab strips, the panel's and the bottom's (TabStrip). A narrow panel scrolls the tabs sideways instead of wrapping a label. Only the tablist scrolls, so what follows it stays pinned (KERNEL-489).
+   A side with hidden tabs fades into the panel and shows an arrow over the fade (KERNEL-514). `--tab-fade` is how much of the edge they cover, and a tab scrolled into view stays clear of it. */
+.tab-strip { --tab-fade: 44px; position: relative; flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; }
+.tab-strip > [role='tablist'] { min-width: 0; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: var(--tab-fade); }
+.tab-strip > [role='tablist']::-webkit-scrollbar { display: none; }
+.tab-strip .tab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
 /* The tablist clips what sits outside it, so the focus ring is drawn inside the tab. */
-.panel-tabs .tab:focus-visible { outline-offset: -2px; }
+.tab-strip .tab:focus-visible { outline-offset: -2px; }
+.tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
+.tab-more[data-side='left'] { left: 0; justify-content: flex-start; background: linear-gradient(to left, transparent, var(--panel) 58%); }
+.tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
+.tab-more[data-side='left'] svg { transform: rotate(180deg); }
 /* The Lead's strip, as LeadPrs.png draws it (KERNEL-354): 12.5px tabs with a faint count. */
 .panel-tabs[data-lead] .tab { height: auto; padding: 4px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 400; }
 .panel-tabs[data-lead] [role='tablist'] { gap: 4px !important; } /* Tabs sets its gap inline. */
@@ -212,16 +221,25 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .changes-count { font-size: 13px; color: var(--ink-2); }
 .changes-total { display: inline-flex; gap: 6px; margin-right: 4px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
-/* bottom panel: underlined tabs, the run script's Run or Stop on every tab, and centered empty states (KERNEL-274) */
-.bottom-panel { height: clamp(160px, 38%, 280px); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
-/* While setup runs or has failed, the files fold to their tabs and the log takes the height (KERNEL-430). */
-.bottom-panel[data-tall] { height: auto; flex: 1; min-height: 0; }
-.bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
-.bottom-tabs > [role='tablist'] { align-self: stretch; align-items: stretch; }
+/* The right panel under the PR band: the top pane (tabs and their list) over the bottom pane. `--bottom-ratio` is the bottom's share of this box, one for
+   every chat (store.ts, KERNEL-513), a third until it is dragged. It stays between 160px for the top and the tab bar plus 120px for the bottom (bottomSplit.ts), so
+   a short window keeps both panes. The box is a size container so the bottom's height can be a share of it. */
+.ws-split { flex: 1; min-height: 0; display: flex; flex-direction: column; container: ws-split / size; }
+/* bottom panel: underlined tabs, the run script's Run or Stop on every tab, and centered empty states (KERNEL-274). Collapsed it is its 40px tab bar under the hairline (KERNEL-513). */
+.bottom-panel { position: relative; height: clamp(160px, calc(var(--bottom-ratio, 0.3333) * 100cqh), calc(100cqh - 160px)); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.bottom-panel[data-collapsed] { height: 41px; }
+.bottom-panel[data-collapsed] .bottom-tabs { border-bottom: 0; }
+.bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
+/* The chevron points down while the pane is open and up once it is folded. */
+.bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
+.bottom-tabs > .icon-btn[aria-expanded='false'] svg { transform: rotate(180deg); }
+.bottom-tabs .tab-strip > [role='tablist'] { align-self: stretch; align-items: stretch; }
 .bottom-tabs .tab { height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
 .bottom-tabs .tab[aria-selected='true'] { background: transparent; border-bottom-color: var(--ink); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
+/* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */
+.script-empty .btn.idle-run { margin-bottom: 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
 .run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }

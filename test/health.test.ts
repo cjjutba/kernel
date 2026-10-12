@@ -598,7 +598,7 @@ describe('kernel recovery paths', () => {
     await k.stop()
   })
 
-  it('says how long setup took above the brief when Run again passes (KERNEL-430)', async () => {
+  it('writes no note above the brief when Run again passes (KERNEL-430, KERNEL-533)', async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
     await setUp(k, lead.id, 'failed')
@@ -606,8 +606,7 @@ describe('kernel recovery paths', () => {
     const chat = k.store.chats(ws.id)[0]
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
-    const notes = k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)
-    expect(notes).toContainEqual(expect.stringMatching(/^Setup finished in \d+:\d\d$/))
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
     expect(k.store.workspace(ws.id)?.setupRun).toMatchObject({ end: 0 })
     await k.stop()
   })

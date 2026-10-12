@@ -1,12 +1,15 @@
 /* A resize handle sits on one edge of a panel and is 8px wide (ResizeHandle.tsx). Hovering it, focusing it from the keyboard or dragging it lights the
    content panel's border with a glow (KERNEL-419, D-113 had only the cursor): brightest and about 2px at the middle of the edge, thinning and fading to
    nothing toward the top and bottom. It is fixed at the middle and does not follow the cursor. A radial gradient draws it, since a hard 1px line did not
-   render cleanly. The app's 2px ring shows from the keyboard too, drawn inside the strip so no parent clips it. */
+   render cleanly. The app's 2px ring shows from the keyboard too, drawn inside the strip so no parent clips it. A top edge is the same handle turned
+   90 degrees: 8px tall on the hairline between the right panel's panes, with the glow fading toward both ends (KERNEL-513, PanelResize.png). */
 .resize-handle { --edge-glow: color-mix(in srgb, var(--ink) 45%, transparent); position: absolute; top: 0; bottom: 0; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
 .resize-handle:focus-visible { outline-offset: -2px; }
 /* The sidebar's handle fills its 8px right gutter. A right panel's handle is centred on the panel's 1px left border, which is the panel's own, so the strip starts 1px outside it. */
 .resize-handle[data-edge='right'] { right: 0; }
 .resize-handle[data-edge='left'] { left: -4px; }
+/* The bottom pane's handle sits on its 1px top border the same way, across the full width. */
+.resize-handle[data-edge='top'] { top: -5px; bottom: auto; left: 0; right: 0; width: auto; height: 8px; cursor: row-resize; }
 
 /* The glow is 3px wide with the panel's 1px border at its middle column. It starts small and dim, and grows from the centre as it fades in. It leaves a little
    faster than it arrives, and arrives after a short delay so crossing the gutter on the way elsewhere doesn't flash it. */
@@ -18,6 +21,7 @@
 }
 .resize-handle[data-edge='right']::after { right: -2px; }
 .resize-handle[data-edge='left']::after { left: calc(50% - 2px); }
+.resize-handle[data-edge='top']::after { top: 3px; bottom: auto; left: 0; right: 0; width: auto; height: 3px; transform: scaleX(0.6); }
 .resize-handle:hover::after, .resize-handle:focus-visible::after, .resize-handle[data-dragging]::after {
   opacity: 1; transform: none;
   transition: opacity 200ms ease-out 80ms, transform 200ms ease-out 80ms;

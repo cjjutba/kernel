@@ -18,7 +18,7 @@ export function Sidebar({ settingsList }: { settingsList?: ReactNode }) {
     <nav ref={nav} aria-label={inSettings ? 'Settings' : 'Sidebar'} className="sidebar" style={{ width }}>
       {inSettings ? settingsList : <AppSidebar />}
       <ResizeHandle
-        targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={sidebarLimit} defaultWidth={sidebarDefault}
+        targetRef={nav} edge="right" label="Resize sidebar" size={width} min={SIDEBAR_MIN} limit={sidebarLimit} defaultSize={sidebarDefault}
         storageKey={SIDEBAR_KEY} hideBelow={inSettings ? undefined : SIDEBAR_HIDE_BELOW} onHide={inSettings ? undefined : () => actions.ui.setSidebar(false)} onCommit={onCommit}
       />
     </nav>

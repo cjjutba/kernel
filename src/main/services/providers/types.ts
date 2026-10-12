@@ -112,6 +112,8 @@ export interface RunnerHost {
   setContext(context: number, usage?: Chat['contextUsage']): void
   /** The running turn ended. */
   turnEnded(t: { id: string; ok: boolean; durationMs?: number; error?: string }): void
+  /** The provider's guess at the user's next message, after a turn ended (Claude's prompt suggestions, KERNEL-530). */
+  suggested(text: string): void
   /** The session this process resumed is gone. True when Sessions moved the turn to a fresh session. */
   sessionGone(): boolean
   /** The process ended. `reason` is null when Kernel stopped it, else why it went away ('' when it said nothing). */

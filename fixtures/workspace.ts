@@ -167,6 +167,16 @@ function terminalPresets(): Fixture {
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
+/** A workspace whose room has a run script that hasn't run, so the Run tab shows its empty state with the Run button under the icon, and a collapsed bar keeps its Run (KERNEL-512). */
+const idleRun = (f: Fixture): Fixture => ({
+  ...f,
+  push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+  roomSettings: { ...f.roomSettings, [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
+})
+
+/** The same fixture with the bottom pane folded to its tab bar, in Rowan's chats and in teammates' workspaces (KERNEL-513). */
+const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
+
 /** The invoice table's PR with two blockers from Theo on its latest commit, the only thing that holds the merge (KERNEL-501). */
 const withBlockers = (f: Fixture): Fixture => ({
   ...f,
@@ -259,6 +269,19 @@ const foldedRowsItems: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** The invoice table chat followed by six more rounds, so the transcript runs well past the window (WorkspaceScrolledUp, KERNEL-532). */
+const longChat: ChatItem[] = [
+  ...tableItems,
+  ...[
+    ['Add a sort to the client column too.', 'Done. The client column sorts A to Z, then Z to A, and keeps the order in the URL.'],
+    ['Does the empty state show while the table loads?', 'No. Loading has its own skeleton, and the empty state only shows once the list comes back with no rows.'],
+    ['Can the amount column right-align?', 'Yes. Amounts now right-align with tabular figures, so the digits line up from row to row.'],
+    ['Check what happens with 10,000 rows.', 'It stays smooth. The table renders a window of rows, so scrolling costs the same at 10 rows and at 10,000.'],
+    ['Add a test for the error state.', 'Added. It forces the request to fail and checks that the message and the Retry button show.'],
+    ['Run everything once more before review.', 'Vitest, Playwright and the type check all pass, and the linter is clean.']
+  ].flatMap(([ask, answer], i): ChatItem[] => [userMsg(`lc-u${i}`, ask), { kind: 'text', id: `lc-x${i}`, ts: at(10, 32 + i), text: answer }])
+]
+
 const toolCalls: ChatItem[] = [
   tableItems[0],
   tool('c1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
@@ -284,7 +307,7 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
 }
 
 /** A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped). */
-function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
   const setupRun = status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
@@ -292,7 +315,7 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed'), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
-    ui: { ...open, rightPanel: o.panel ?? true, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
+    ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
   }
 }
 
@@ -624,8 +647,15 @@ const LEAD_PRS: OpenPr[] = [
   { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
 
+/** What Rowan says under the PRs tab: two PRs ready, one waiting on an approval and one running checks. */
+const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will."
+
 /** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
 const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
+
+/** What the Lead's run script has printed, under the Run tab (PanelTabsOverflow). */
+const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
+  .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
 
 /** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
@@ -1097,7 +1127,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
-    items: { [ids.tableChat]: [{ kind: 'note', id: 'sd-note', ts: at(10, 1, 12), text: 'Setup finished in 1:12' }, { kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
@@ -1114,6 +1144,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRowsFolded: scene(() => ({
     items: { [ids.tableChat]: foldedRowsItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
+  WorkspaceScrolledUp: scene(() => ({
+    items: { [ids.tableChat]: longChat },
+    ui: open
   })),
   WorkspaceCheckpoints: scene(() => ({
     checkpoints: { [ids.table]: checkpoints },
@@ -1297,7 +1332,24 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
-  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
+  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
+  // The right panel's two panes (KERNEL-513, design/redesign/): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Rowan's chat, which starts with it
+  // folded to its tab bar. A teammate's can fold too, and its handle lights like the sidebar's edge. A new chat waiting on setup opens the bottom on Setup even when it was folded.
+  PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
+  PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
+  PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
+  PanelResize: idleRun(headerScene('ready', [], { panel: true })),
+  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The canvas draws the top strip beside the toolbar, which takes the room Checks needs; until the toolbar is built
+  // the Shared tab takes it instead. The bottom's two terminals past Run are stand-ins the shot adds.
+  PanelTabsOverflow: scene((f) => {
+    const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
+    return {
+      ...s,
+      settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
+      ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } }
+    }
+  }),
+  PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
@@ -1494,7 +1546,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
   WorkspaceRunScripts: runScripts(),
-  // The Run tab before the script has run: the header's Run is the only button (KERNEL-423).
+  // The Run tab before the script has run: the empty state's Run is the only button, and the strip's steps aside (KERNEL-423, KERNEL-512).
   WorkspaceRunEmpty: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
@@ -1527,6 +1579,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
   PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
   PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
+  // The capsule on a neutral band: soft Create PR with its icon and its own menu square, and a closed PR's Reopen (KERNEL-528).
+  PrNoPrHidden: headerScene('none', []),
+  PrClosedHidden: headerScene('closed', [prNote('h-note', 'PR #147 was closed without merging.', 'closed')]),
   PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
   HeaderBranchTooltip: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   WorkspaceToast: prScene('merged', [], {
@@ -1553,6 +1608,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
+  /** KERNEL-531: Claude's guess at the next message stands in for the placeholder of an empty box. Not on the canvas, see docs/decisions/KERNEL-530.md. */
+  WorkspaceSuggestion: scene((f) => ({ chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, suggestion: 'Run the tests and fix anything that fails' } : c)), ui: open })),
   // KERNEL-406: a role runs on Codex, so the picker groups models by provider. This chat has started on Claude, so Codex's open a new chat.
   WorkspaceModelPicker: scene((f) => {
     const d = DEFAULT_SETTINGS('/Users/you')
