@@ -222,19 +222,19 @@ const mcpAcrossAccounts: McpAccount[] = [
   {
     provider: 'claude', accountId: 'cli', label: 'Work', checkedAt: Date.now(),
     servers: [
-      { name: 'GitHub', connector: false, state: 'ready' }, { name: 'Linear', connector: false, state: 'ready' }, { name: 'Vercel', connector: false, state: 'ready' },
-      { name: 'claude.ai Gmail', connector: true, state: 'ready' }, { name: 'claude.ai Google Drive', connector: true, state: 'ready' }
+      { name: 'GitHub', kind: 'user', connector: false, state: 'ready' }, { name: 'Linear', kind: 'user', connector: false, state: 'ready' }, { name: 'Vercel', kind: 'user', connector: false, state: 'ready' },
+      { name: 'claude.ai Gmail', kind: 'connector', connector: true, state: 'ready' }, { name: 'claude.ai Google Drive', kind: 'connector', connector: true, state: 'ready' }
     ]
   },
   {
     provider: 'claude', accountId: 'personal', label: 'Personal', checkedAt: Date.now(),
     servers: [
-      { name: 'GitHub', connector: false, state: 'ready' }, { name: 'Linear', connector: false, state: 'needs-sign-in' }, { name: 'Vercel', connector: false, state: 'failed', error: 'Connection closed' },
-      { name: 'claude.ai Gmail', connector: true, state: 'needs-sign-in' }, { name: 'claude.ai Google Drive', connector: true, state: 'needs-sign-in' }
+      { name: 'GitHub', kind: 'user', connector: false, state: 'ready' }, { name: 'Linear', kind: 'user', connector: false, state: 'needs-sign-in' }, { name: 'Vercel', kind: 'user', connector: false, state: 'failed', error: 'Connection closed' },
+      { name: 'claude.ai Gmail', kind: 'connector', connector: true, state: 'needs-sign-in' }, { name: 'claude.ai Google Drive', kind: 'connector', connector: true, state: 'needs-sign-in' }
     ]
   },
-  { provider: 'codex', accountId: 'cli', label: 'cj@example.com', checkedAt: Date.now(), servers: [{ name: 'Supabase', connector: false, state: 'ready' }] },
-  { provider: 'codex', accountId: 'personal', label: 'Personal', checkedAt: Date.now(), servers: [{ name: 'Supabase', connector: false, state: 'ready' }] }
+  { provider: 'codex', accountId: 'cli', label: 'cj@example.com', checkedAt: Date.now(), servers: [{ name: 'Supabase', kind: 'user', connector: false, state: 'ready' }] },
+  { provider: 'codex', accountId: 'personal', label: 'Personal', checkedAt: Date.now(), servers: [{ name: 'Supabase', kind: 'user', connector: false, state: 'ready' }] }
 ]
 const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'claude.ai Gmail', 'claude.ai Google Drive'], current: 'claude.ai Gmail', done: ['Linear'], failed: [] }
 const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }
