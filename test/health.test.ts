@@ -444,8 +444,8 @@ describe('kernel recovery paths', () => {
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing of Kai's is held any more, so nothing comes back after another restart. Rowan's chat still waits for its own setup.
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([lead.id])
+    // Nothing of Kai's is held any more, so nothing comes back after another restart. Rowan's chat never waited for its setup (KERNEL-490).
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([])
     sdk.calls[sdk.calls.length - 1].feed(result('r1'))
     await flush()
     const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
@@ -486,7 +486,7 @@ describe('kernel recovery paths', () => {
     await k.stop()
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
-    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {}).sort()).toEqual([lead.id, chat.id].sort())
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([chat.id])
     await k2.stop()
   })
 

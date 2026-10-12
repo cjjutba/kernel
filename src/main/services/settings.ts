@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {

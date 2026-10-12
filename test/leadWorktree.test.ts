@@ -80,7 +80,7 @@ async function pushElsewhere(bare: string, file: string, branch = 'main') {
 }
 
 describe('a workspace per chat with Rowan (KERNEL-405)', () => {
-  it('fetches, then makes a worktree on rowan/<slug> from the latest origin/main, and holds the first message until setup passes', async () => {
+  it('fetches, then makes a worktree on rowan/<slug> from the latest origin/main, and sends the first message at once', async () => {
     const { repo, bare } = await withOrigin()
     const where = await dirs()
     const k = await boot(where)
@@ -95,13 +95,11 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'rowan-plan-wave-3-of-invoices'))
     expect(await sha(ws.path, 'HEAD')).toBe(merged)
     expect(await branchOf(ws.path)).toBe(ws.branch)
-    // The first message waits in the chat's queue, and nothing starts before setup passes.
-    expect(queuedText(k, chat.id)).toEqual(['Plan wave 3 of the invoices work'])
-    expect(k.sessions.queueReason(chat.id)).toBe('setup')
-    expect(callIn(ws.path)).toHaveLength(0)
-    await setUp(k, chat.id)
+    // Nothing waits for setup by default (KERNEL-490).
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
     expect(k.sessions.queued(chat.id)).toEqual([])
+    await setUp(k, chat.id)
     // The main checkout is left alone: same branch, same commit, its own files.
     expect(await branchOf(repo)).toBe('main')
     expect(await readFile(join(repo, 'notes.txt'), 'utf8')).toBe('mine\n')
@@ -137,10 +135,10 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     expect(await sha(ws.path, 'HEAD')).toBe(release)
   })
 
-  it('copies files and runs setup like a teammate, holds the message through a failed setup, and Run again sends it', async () => {
+  it('copies files and runs setup like a teammate, holds the message through a failed setup with Wait for setup on, and Run again sends it', async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt && echo set up"\n' })
     await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
-    const k = await boot(await dirs())
+    const k = await boot(await dirs({ leadWaitForSetup: true }))
     const room = await k.addRoom(repo)
     await trustRoom(k, room.id)
     sdk.calls.length = 0
@@ -160,9 +158,9 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     expect(k.sessions.queued(tab.id)).toEqual([])
   })
 
-  it("waits for the room's scripts to be trusted, then sets up and sends", async () => {
+  it("waits for the room's scripts to be trusted with Wait for setup on, then sets up and sends", async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.toml': '[scripts]\nsetup = "echo set up"\n' })
-    const k = await boot(await dirs())
+    const k = await boot(await dirs({ leadWaitForSetup: true }))
     const room = await k.addRoom(repo)
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
@@ -171,17 +169,6 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     await trustRoom(k, room.id)
     await setUp(k, ws.id)
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
-  })
-
-  it('sends the first message at once while setup runs when Wait for setup is off, for the room too', async () => {
-    const repo = await tempRepo({ ...REPO, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' })
-    const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
-    sdk.calls.length = 0
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
-    expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
-    await vi.waitFor(() => expect(callIn(k.store.workspace(chat.workspaceId)!.path)).toHaveLength(1))
-    await setUp(k, chat.id)
   })
 
   // Naming the branch and folder from the chat's title: leadNaming.test.ts (KERNEL-424).
@@ -242,6 +229,78 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     await setUp(k, chat.id)
     await expect(k.workspaces.forkWorkspace(chat.id)).rejects.toThrow("A chat with the Lead can't fork")
     expect(k.team.isLeadWorkspace(k.store.workspace(chat.workspaceId)!)).toBe(true)
+  })
+})
+
+// KERNEL-490: Rowan's first message waits only when Wait for setup is on and a setup script runs on create. A teammate's brief
+// always waits.
+describe('what waits for setup (KERNEL-490)', () => {
+  const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
+
+  /** A started Kernel on a trusted room made of `files`, with `workspace` in its settings. */
+  async function room(files: Record<string, string>, workspace: Record<string, unknown> = {}) {
+    const repo = await tempRepo({ ...REPO, ...files })
+    const k = await boot(await dirs(workspace))
+    const r = await k.addRoom(repo)
+    await trustRoom(k, r.id)
+    sdk.calls.length = 0
+    return { k, room: r }
+  }
+
+  /** Rowan's message went out, so the chat isn't empty and shows the turn, not the "Running setup" line. */
+  const sentAtOnce = async (k: Kernel, chat: Chat) => {
+    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(1)
+    await vi.waitFor(() => expect(callIn(k.store.workspace(chat.workspaceId)!.path)).toHaveLength(1))
+  }
+
+  it("sends Rowan's first message at once by default, while the setup script runs", async () => {
+    const { k, room: r } = await room(SETUP)
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
+    expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
+    await sentAtOnce(k, chat)
+    expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
+  })
+
+  it('holds it until setup passes with Wait for setup on and a setup script', async () => {
+    const { k, room: r } = await room(SETUP, { leadWaitForSetup: true })
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
+    const ws = k.store.workspace(chat.workspaceId)!
+    expect(queuedText(k, chat.id)).toEqual(['Plan it'])
+    expect(k.sessions.queueReason(chat.id)).toBe('setup')
+    expect(callIn(ws.path)).toHaveLength(0)
+    await setUp(k, chat.id)
+    await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
+    expect(k.sessions.queued(chat.id)).toEqual([])
+  })
+
+  it.each([
+    ['the room has no setup script', {}, true],
+    ['Run setup on create is off', SETUP, false]
+  ] as const)('sends it at once with Wait for setup on when %s, and runs no setup', async (_, files, setupOnCreate) => {
+    const { k, room: r } = await room(files, { leadWaitForSetup: true })
+    if (!setupOnCreate) await k.config.setSettings({ scripts: { setupOnCreate } })
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
+    await sentAtOnce(k, chat)
+    expect((await setUp(k, chat.id)).setupRun).toBeUndefined()
+  })
+
+  it("sends it at once when the room's own file turns Wait for setup off", async () => {
+    const { k, room: r } = await room({ ...SETUP, '.kernel/settings.local.toml': '[workspace]\nlead_wait_for_setup = false\n' }, { leadWaitForSetup: true })
+    const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
+    await sentAtOnce(k, chat)
+    await setUp(k, chat.id)
+  })
+
+  it.each([false, true])("holds a teammate's brief through a failed setup, with Wait for setup %s", async (leadWaitForSetup) => {
+    const { k, room: r } = await room({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' }, { leadWaitForSetup })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Build the invoice list', agentId: 'kai' })
+    expect(ws.status).toBe('failed')
+    const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+    expect(queuedText(k, brief.id)).toEqual(['Build the invoice list'])
+    expect(k.sessions.queueReason(brief.id)).toBe('setup')
+    expect(callIn(ws.path)).toHaveLength(0)
   })
 })
 

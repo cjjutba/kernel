@@ -1,0 +1,9 @@
+**Rowan's first message goes at once, and waits for setup only when a setup script runs on create.** KERNEL-405 held the first message of a new chat with Rowan until files.copy and setup passed (`workspace.leadWaitForSetup`, on by default). In the Kernel room that meant waiting for `pnpm install` before Rowan said anything, behind a spinner that someone new to Kernel can't read. Rowan reads and plans, so its first reply rarely needs dependencies. Now `leadWaitForSetup` is off by default, and `Lead.newLeadChat` holds the message only when the switch is on, the room has a setup script and "Run setup on create" is on. With no script there is nothing to wait for. Before, the chat showed "Running setup" with no command while files.copy ran. files.copy, setup and the trust hold still run through `Workspaces.setUpWorkspace` either way, with the log in the Setup tab.
+
+A message that goes at once starts Rowan's session before setup writes `$KERNEL_ENV` and before files.copy puts the room's env files in place. When setup passes, `newLeadChat` calls `Sessions.restartIdle` on the chat's workspace. An idle session ends then, a running one when its turn ends, and the next message resumes it by session id with setup's variables, as after a folder move (KERNEL-424). A held chat starts after setup, so it isn't restarted. Neither is a chat whose setup first waits for trust, or fails and then passes on Run again: its session keeps the variables it started with until it ends on its own.
+
+Teammates still wait. A hand-off's brief waits for setup whatever the switch says, with the trust hold, the failed card, Run again and Send anyway as before.
+
+settings.json holds only the keys a user set (KERNEL-225), and `leadWaitForSetup` arrived after that, so a file has the key only when the user flipped the switch. The new default reaches everyone who never touched it, and nobody who chose a value is moved off it.
+
+Amends KERNEL-405. KERNEL-490.
