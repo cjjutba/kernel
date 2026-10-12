@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  AskEntry, ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  AskEntry, ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -89,6 +89,8 @@ export interface State {
   accounts: AccountProfile[]
   /** Where Add account is, for its sheet. Null when no sign-in is open. */
   accountAdd: AccountAddStep | null
+  /** Where Sign in to all is on each Claude account, by account id (KERNEL-627). */
+  mcpRuns: Record<string, McpSignInAll>
   settings: AppSettings | null
   /** By room id. */
   roomSettings: Record<string, RoomSettings>
@@ -202,7 +204,7 @@ let state: State = {
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
-  usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
+  usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
   askHistory: askHistory(),
@@ -666,7 +668,9 @@ export const actions = {
   },
   accounts: {
     set: (accounts: AccountProfile[]) => setState({ accounts }),
-    adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd })
+    adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd }),
+    mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [run.accountId]: run } })),
+    clearMcpRun: (accountId: string) => setState(({ mcpRuns: { [accountId]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
   },
   shared: {
     set: (list: SharedFile[]) => setState({ shared: Object.fromEntries(list.map((f) => [f.id, f])) }),
@@ -688,6 +692,13 @@ export const actions = {
 
 /** Navigate. Shortcut for `actions.ui.go`. */
 export const go = actions.ui.go
+
+/** The notice after adding an account whose MCP servers need a sign-in. Its action opens Skills and MCP, in the room on screen or the first one, on that account. */
+function mcpNeededToast(n: McpNeeded) {
+  const s = getState()
+  const roomId = ('roomId' in s.ui.route && s.ui.route.roomId) || s.rooms[0]?.id
+  actions.ui.toast({ title: n.title, ...(roomId ? { action: { label: 'Open', route: { name: 'settings', page: 'room', roomId, section: 'skills', account: n.accountId } } } : {}) })
+}
 
 /** Apply one push event from main. Exported for tests and fixtures. */
 export function apply(e: PushEvent) {
@@ -730,6 +741,8 @@ export function apply(e: PushEvent) {
     case 'account': return actions.account.set(e.account)
     case 'accounts': return actions.accounts.set(e.accounts)
     case 'account.add': return actions.accounts.adding(e.add)
+    case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
+    case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
     case 'toast': return void actions.ui.toast(e.toast)
   }
