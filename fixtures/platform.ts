@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpServer, McpSignInAll, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpAccount, McpAccountServer, McpServer, McpSignInAll, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -212,33 +212,51 @@ const trackerRoom = (id: string, crew: string[], room: Partial<Room>, menu = fal
 
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
-/** KERNEL-627: the servers of a room whose Claude accounts differ. Work has all of them ready. Personal has no sign-in to Linear, Gmail or Google Drive, and Vercel failed there. Both Codex accounts share Supabase. */
+/** KERNEL-647: every server the page lists comes from the accounts, so a room's own list only needs the ones that differ. */
 const mcpAcrossServers: McpServer[] = [
   { name: 'GitHub', source: 'user', enabled: true }, { name: 'Linear', source: 'user', enabled: true }, { name: 'Vercel', source: 'user', enabled: true },
   { name: 'claude.ai Gmail', source: 'claudeai', enabled: true }, { name: 'claude.ai Google Drive', source: 'claudeai', enabled: true },
   { name: 'Supabase', source: 'user', provider: 'codex', enabled: true }
 ]
+const connectUrl = 'https://claude.ai/settings/connectors'
+const server = (name: string, kind: McpAccountServer['kind'], state: McpAccountServer['state'] = 'ready', more: Partial<McpAccountServer> = {}): McpAccountServer => ({ name, kind, connector: kind === 'connector', state, ...more })
+/** KERNEL-647: Work has everything ready. Personal has Linear and Gmail waiting on a sign-in, Vercel failed, Google Drive and Notion not set up, and Figma ignored. Codex has a sign-in, a failure and a server switched off in config.toml. */
 const mcpAcrossAccounts: McpAccount[] = [
   {
-    provider: 'claude', accountId: 'cli', label: 'Work', checkedAt: Date.now(),
+    provider: 'claude', accountId: 'cli', label: 'Work', email: 'cj@example.com', checkedAt: Date.now(),
     servers: [
-      { name: 'GitHub', kind: 'user', connector: false, state: 'ready' }, { name: 'Linear', kind: 'user', connector: false, state: 'ready' }, { name: 'Vercel', kind: 'user', connector: false, state: 'ready' },
-      { name: 'claude.ai Gmail', kind: 'connector', connector: true, state: 'ready' }, { name: 'claude.ai Google Drive', kind: 'connector', connector: true, state: 'ready' }
+      server('GitHub', 'user'), server('Linear', 'user'), server('Vercel', 'user'),
+      server('claude.ai Gmail', 'connector'), server('claude.ai Google Drive', 'connector'), server('claude.ai Notion', 'connector'), server('claude.ai Figma', 'connector'),
+      server('plugin:github:github', 'plugin'), server('plugin:vercel:vercel', 'plugin', 'ready', { note: 'Covered by claude.ai Vercel on this account.' })
     ]
   },
   {
-    provider: 'claude', accountId: 'personal', label: 'Personal', checkedAt: Date.now(),
+    provider: 'claude', accountId: 'personal', label: 'Personal', email: 'cj@jutba.example', checkedAt: Date.now(),
     servers: [
-      { name: 'GitHub', kind: 'user', connector: false, state: 'ready' }, { name: 'Linear', kind: 'user', connector: false, state: 'needs-sign-in' }, { name: 'Vercel', kind: 'user', connector: false, state: 'failed', error: 'Connection closed' },
-      { name: 'claude.ai Gmail', kind: 'connector', connector: true, state: 'needs-sign-in' }, { name: 'claude.ai Google Drive', kind: 'connector', connector: true, state: 'needs-sign-in' }
+      server('GitHub', 'user'), server('Linear', 'user', 'needs-sign-in'), server('Vercel', 'user', 'failed', { error: 'Connection closed' }),
+      server('claude.ai Gmail', 'connector', 'needs-sign-in'), server('claude.ai Google Drive', 'connector', 'not-set-up', { connectUrl }), server('claude.ai Notion', 'connector', 'not-set-up', { connectUrl }),
+      server('claude.ai Figma', 'connector', 'ignored', { connectUrl }),
+      server('plugin:github:github', 'plugin'), server('plugin:vercel:vercel', 'plugin', 'not-set-up', { note: 'Needs the claude.ai Vercel connector.' })
     ]
   },
-  { provider: 'codex', accountId: 'cli', label: 'cj@example.com', checkedAt: Date.now(), servers: [{ name: 'Supabase', kind: 'user', connector: false, state: 'ready' }] },
-  { provider: 'codex', accountId: 'personal', label: 'Personal', checkedAt: Date.now(), servers: [{ name: 'Supabase', kind: 'user', connector: false, state: 'ready' }] }
+  {
+    provider: 'codex', accountId: 'cli', label: 'cj@example.com', email: 'cj@example.com', checkedAt: Date.now(),
+    servers: [
+      server('Supabase', 'user'), server('Linear', 'user', 'needs-sign-in'), server('vapi', 'user', 'not-set-up', { note: 'Switched off in Codex’s config.toml.' }),
+      server('code-review', 'plugin', 'failed', { error: 'Codex lists it from the code-review plugin but didn’t start it.' })
+    ]
+  }
 ]
+/** KERNEL-647: twenty-seven servers on one account, to check the page reads at 1440x900. */
+const manyServers = (): McpAccount[] => {
+  const user = ['GitHub', 'Linear', 'Vercel', 'Supabase', 'Sentry', 'Stripe', 'PostHog', 'Neon', 'Figma', 'Mobbin', 'Porkbun', 'Slack'].map((n, i): McpAccountServer => server(n, 'user', i === 1 ? 'needs-sign-in' : i === 5 ? 'failed' : 'ready', i === 5 ? { error: 'Connection closed' } : {}))
+  const connectors = ['Gmail', 'Google Drive', 'Google Calendar', 'Notion', 'Asana', 'Canva', 'Zapier', 'Box', 'Atlassian'].map((n, i): McpAccountServer => server(`claude.ai ${n}`, 'connector', i < 4 ? 'ready' : i < 7 ? 'needs-sign-in' : i === 7 ? 'not-set-up' : 'ignored', i === 7 ? { connectUrl } : {}))
+  const plugins = ['github', 'vercel', 'figma', 'linear', 'sentry', 'superpowers'].map((n): McpAccountServer => server(`plugin:${n}:${n}`, 'plugin'))
+  return [mcpAcrossAccounts[0], { ...mcpAcrossAccounts[1], servers: [...user, ...connectors, ...plugins] }]
+}
 const signInAllRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'claude.ai Gmail', 'claude.ai Google Drive'], current: 'claude.ai Gmail', done: ['Linear'], failed: [] }
 const signInAllFailed: McpSignInAll = { ...signInAllRun, current: undefined, done: ['Linear', 'claude.ai Gmail'], failed: [{ server: 'claude.ai Google Drive', error: 'The sign-in was not finished in the browser.' }], finished: true }
-const skillsOnAccount = (extra: Partial<Fixture>) => scene(() => ({ ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts, ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'skills', account: 'personal' } } }))
+const skillsOnAccount = (extra: Partial<Fixture>, route: { tab?: Provider; account?: string } = { account: 'personal' }) => scene(() => ({ ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts, accounts: [workClaude, personalClaude, ownCodex], ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'skills', ...route } } }))
 const personalMcpSignIns = [{ server: 'Linear', connector: false }, { server: 'claude.ai Gmail', connector: true }, { server: 'claude.ai Google Drive', connector: true }]
 /** As Kernel resolves them (KERNEL-397): Rowan leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', reviewer: id === 'theo', member: id !== 'rowan' && id !== 'theo', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
@@ -503,14 +521,18 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'reviews' } }
   })),
   SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
-  // KERNEL-627: each server's state on every account in one line, an account with sign-ins missing gets Sign in to all, and Codex's two accounts share theirs.
-  SettingsSkillsAccounts: roomPage('skills', { ...clientA(), skills: ['setup', 'plan'].map(skill), mcp: mcpAcrossServers, mcpAccounts: mcpAcrossAccounts }),
-  // KERNEL-627: Sign in to all is on Gmail, the second of three, with Cancel.
-  SettingsSkillsSigningIn: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllRun }] }),
-  // KERNEL-627: it ended with Google Drive not signed in, and says why.
-  SettingsSkillsSignInFailed: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }] }),
-  // KERNEL-627: the notice's action opens the page on Personal, scrolled to its sign-in line with Sign in to all focused.
+  // KERNEL-647: one account at a time. It opens on the active account, Work, with every server ready, in three groups.
+  SettingsSkillsAccounts: skillsOnAccount({}, {}),
+  // KERNEL-647: the notice's action opens the page on Personal: sign-ins, a failure, two connectors to set up and one ignored.
   SettingsSkillsAccountFocus: skillsOnAccount({}),
+  // KERNEL-647: Codex's tab, with a sign-in, a server switched off in config.toml and a plugin that didn't start.
+  SettingsSkillsCodex: skillsOnAccount({}, { tab: 'codex', account: 'cli' }),
+  // KERNEL-647: Sign in to all is on Gmail, the second of three, with Cancel.
+  SettingsSkillsSigningIn: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllRun }] }),
+  // KERNEL-647: it ended with Google Drive not signed in, and says why.
+  SettingsSkillsSignInFailed: skillsOnAccount({ push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }] }),
+  // KERNEL-647: twenty-seven servers on Personal at 1440x900.
+  SettingsSkillsMany: skillsOnAccount({ mcpAccounts: manyServers() }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene(settingsRoom),
   // KERNEL-253: the room has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.

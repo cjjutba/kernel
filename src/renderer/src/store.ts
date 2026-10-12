@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react'
-import type { AccountAddStep, AccountProfile,
+import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   AskEntry, ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
@@ -10,6 +10,9 @@ import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
+
+/** Both providers have an account called `cli`, so a Sign in to all run is kept under both. */
+export const mcpRunKey = (provider: Provider, accountId: string) => `${provider}:${accountId}`
 export { scriptKey }
 
 /**
@@ -91,7 +94,7 @@ export interface State {
   accounts: AccountProfile[]
   /** Where Add account is, for its sheet. Null when no sign-in is open. */
   accountAdd: AccountAddStep | null
-  /** Where Sign in to all is on each Claude account, by account id (KERNEL-627). */
+  /** Where Sign in to all is on each account, by `mcpRunKey` (KERNEL-627, Codex since KERNEL-647). */
   mcpRuns: Record<string, McpSignInAll>
   settings: AppSettings | null
   /** By room id. */
@@ -683,8 +686,8 @@ export const actions = {
   accounts: {
     set: (accounts: AccountProfile[]) => setState({ accounts }),
     adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd }),
-    mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [run.accountId]: run } })),
-    clearMcpRun: (accountId: string) => setState(({ mcpRuns: { [accountId]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
+    mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [mcpRunKey(run.provider ?? 'claude', run.accountId)]: run } })),
+    clearMcpRun: (provider: Provider, accountId: string) => setState(({ mcpRuns: { [mcpRunKey(provider, accountId)]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
   },
   shared: {
     set: (list: SharedFile[]) => setState({ shared: Object.fromEntries(list.map((f) => [f.id, f])) }),
@@ -707,11 +710,17 @@ export const actions = {
 /** Navigate. Shortcut for `actions.ui.go`. */
 export const go = actions.ui.go
 
-/** The notice after adding an account whose MCP servers need a sign-in. Its action opens Skills and MCP, in the room on screen or the first one, on that account. */
-function mcpNeededToast(n: McpNeeded) {
+/** Skills and MCP on one account's tab, in the room on screen or the first one. Undefined when there is no room. */
+export function mcpRoute(provider: Provider, accountId: string): Route | undefined {
   const s = getState()
   const roomId = ('roomId' in s.ui.route && s.ui.route.roomId) || s.rooms[0]?.id
-  actions.ui.toast({ title: n.title, ...(roomId ? { action: { label: 'Open', route: { name: 'settings', page: 'room', roomId, section: 'skills', account: n.accountId } } } : {}) })
+  return roomId ? { name: 'settings', page: 'room', roomId, section: 'skills', tab: provider, account: accountId } : undefined
+}
+
+/** The notice after adding an account whose MCP servers need a sign-in. Its action opens Skills and MCP on that account's tab. */
+function mcpNeededToast(n: McpNeeded) {
+  const route = mcpRoute('claude', n.accountId)
+  actions.ui.toast({ title: n.title, ...(route ? { action: { label: 'Open', route } } : {}) })
 }
 
 /** Apply one push event from main. Exported for tests and fixtures. */
