@@ -109,6 +109,10 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `ChatRailOpen` | The same chat with the list open and one row under the pointer. The row for the message in view is in full ink (KERNEL-535) | `screens/workspace/Transcript.tsx`, `workspace.css` |
 | `ChatRailLead` | Rowan's chat with the list open. The user's messages and Team update rows share it, and Team updates are quieter (KERNEL-535) | `screens/workspace/Transcript.tsx`, `cards/teamUpdate.ts`, `workspace.css` |
 | `ChatRailNarrow` | The right panel open at its default width, where the thread fills the column. The rail sits in the column's side padding, clear of the text (KERNEL-535) | `screens/workspace/Transcript.tsx`, `workspace.css` |
+| `TurnFiles` | A finished reply with its turn files card: 3 files, one edited, one deleted and one new. The card replaces the Changed chips (KERNEL-585) | `screens/workspace/Transcript.tsx` |
+| `TurnFilesLong` | A turn that changed 12 files: the first 5, then "Show 7 more" with the hidden files' totals (KERNEL-585) | `screens/workspace/Transcript.tsx` |
+| `TurnFilesNoReply` | A turn that ended with no reply text: the card sits under the tool calls fold and right above the time line (KERNEL-585) | `screens/workspace/Transcript.tsx` |
+| `TurnFilesHover` | One row hovered and one row focused from the keyboard, with a plain row between them (KERNEL-585) | `screens/workspace/Transcript.tsx` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
 
@@ -183,6 +187,21 @@ The `ChatRail` screens draw a rail on the chat's right edge for jumping back to 
 - Pick a case at the top. Each starts with the pointer on the row's Archive button, then the archive resolves 0.7s in.
 - **Quarter speed** slows the clock, since the whole beat is 0.2s. **Frame** holds it before the archive, or at +50, +100, +150 or +200 ms. **Replay** plays it again. **Reduced motion** shows the jump.
 - The stage is a 1100 by 600 crop of the window: the sidebar, one chat column and the right panel.
+
+## Turn files card (KERNEL-585)
+
+The `TurnFiles` screens draw the card under a finished reply that lists the files the turn created, edited or deleted. It replaces the Changed chips. The chats, files and replies in them are sample content, not spec.
+
+- **Where.** Under the reply's last paragraph and above the time line (`4m 12s · 10:31`) with its actions. A turn that ended with no reply text puts the card under the tool calls fold, still above the time line (`TurnFilesNoReply`). A turn that changed no files has no card.
+- **Card.** The same look as the other cards in the thread: `--card-bg` fill, a `--card-line` hairline, 10px radius, no shadow, the width of the thread. It sits 14px under the reply text (12px under the fold when there's no reply) and 10px above the time line.
+- **Header.** 36px high with 14px side padding and a `--line-2` hairline under it. "3 files changed" in 13px `--ink-2` ("1 file changed" for one), and the totals at the right, `+99` in `--add` and `-66` in `--del`, in the same columns as the rows' counts. It reads like the Changes list's head. It is text, not a button.
+- **Rows.** The list has 6px of padding, so the rows read like a menu's. A row is 30px high with 2px between rows, 8px side padding and a 6px radius. Left to right it holds the file's icon (`FileIcon`, 16px), the name in 13px `--ink-2`, the folder in 12px `--muted`, a 56px marker column and the counts. The name comes first and the folder follows, as in the Changes list, so a long folder is cut off with an ellipsis and never cuts the name. Rows keep the Changes list's order.
+- **Counts.** Two fixed columns, 42px for `+N` and 38px for `-N`, right-aligned in Geist Mono 11.5px, so the numbers line up down the card. A side that is 0 shows nothing, so a new file has only `+N` and a deleted file only `-N`.
+- **Marker.** "New" for an added or untracked file and "Deleted" for a deleted one, in 12px `--muted`, in their own column before the counts. An edited file has no marker, since edited is what most rows are. A deleted file's name is `--muted` and struck through, as in the Changes list. A renamed file isn't drawn. It takes the marker "Renamed" and its new path.
+- **Click.** The whole row is a `button` that opens that file's diff. Its accessible name says the path, what happened and the counts, "src/main/features/inbox.ts, edited, 31 added, 12 removed". The icon and the marker are not read twice.
+- **Hover and focus.** Hover fills the row with `--surface-3` and takes the name to `--ink`. A deleted file's name goes to `--ink-2` and stays struck. Keyboard focus draws the global focus ring, 2px of `--focus` with a 1px offset, and takes the name to `--ink`, with no fill. A row that has both shows both. The ring fits in the list's padding. `TurnFilesHover` draws the two on separate rows.
+- **Fold.** Up to 6 files show in full. From 7 the card shows the first 5, then a row, "Show 7 more", with a down chevron in the icon's place and the hidden files' totals in the count columns. The fold never hides a single file. The row hovers and focuses like a file row. Pressing it opens the rest in place, and it becomes "Show less" with the chevron up and `aria-expanded` set. Expanded isn't drawn.
+- **Colour.** Monochrome apart from the counts and the focus ring. The card uses tokens only, so light needs no redraw.
 
 ## Not built
 

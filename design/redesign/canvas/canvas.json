@@ -70,7 +70,11 @@
     "ChatRailOpen.dc.html": { "x": 3040, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: list open" },
     "ChatRailLead.dc.html": { "x": 4560, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: Rowan's chat with Team updates" },
     "ChatRailNarrow.dc.html": { "x": 6080, "y": 14620, "w": 1440, "h": 900, "title": "Chat rail: right panel open" },
-    "ArchiveMotion.dc.html": { "x": 1520, "y": 15920, "w": 1440, "h": 900, "title": "Archive motion", "is_interactive": true }
+    "ArchiveMotion.dc.html": { "x": 1520, "y": 15920, "w": 1440, "h": 900, "title": "Archive motion", "is_interactive": true },
+    "TurnFiles.dc.html": { "x": 1520, "y": 17220, "w": 1440, "h": 900, "title": "Turn files: 3 files" },
+    "TurnFilesLong.dc.html": { "x": 3040, "y": 17220, "w": 1440, "h": 900, "title": "Turn files: 12 files, folded" },
+    "TurnFilesNoReply.dc.html": { "x": 4560, "y": 17220, "w": 1440, "h": 900, "title": "Turn files: no reply" },
+    "TurnFilesHover.dc.html": { "x": 6080, "y": 17220, "w": 1440, "h": 900, "title": "Turn files: hover and focus" }
   },
   "order": [
     "Main.dc.html", "Proposed.dc.html", "ProposedSetup.dc.html", "ProposedTerminal.dc.html",
@@ -84,14 +88,16 @@
     "PrLocalReady.dc.html", "PrLocalBehind.dc.html", "PrLocalConflict.dc.html", "PrLocalMerging.dc.html", "PrLocalMerged.dc.html", "PrLocalDirty.dc.html",
     "PanelSplit.dc.html", "PanelSplitLead.dc.html", "PanelCollapsed.dc.html", "PanelResize.dc.html", "PanelTabsOverflow.dc.html", "PanelToolbarPrs.dc.html", "PanelToolbarFiles.dc.html", "PanelToolbarChanges.dc.html", "PanelToolbarChecks.dc.html", "PanelFilter.dc.html", "PanelSetup.dc.html", "PanelCompare.dc.html",
     "ChatRail.dc.html", "ChatRailOpen.dc.html", "ChatRailLead.dc.html", "ChatRailNarrow.dc.html",
-    "ArchiveMotion.dc.html"
+    "ArchiveMotion.dc.html",
+    "TurnFiles.dc.html", "TurnFilesLong.dc.html", "TurnFilesNoReply.dc.html", "TurnFilesHover.dc.html"
   ],
   "notes": {
     "prstates": { "x": 1520, "y": 4080, "text": "PR states", "kind": "title1", "maxW": 7520 },
     "localmerge": { "x": 1520, "y": 10700, "text": "Local merge, for a repo with no GitHub remote", "kind": "title1", "maxW": 9040 },
     "rightpanel": { "x": 1520, "y": 12000, "text": "Right panel: split, collapse, overflow and toolbar per tab", "kind": "title1", "maxW": 9040 },
     "chatrail": { "x": 1520, "y": 14320, "text": "Chat rail: jump back to an earlier message", "kind": "title1", "maxW": 9040 },
-    "archive": { "x": 1520, "y": 15620, "text": "Archive motion: how a chat or workspace leaves", "kind": "title1", "maxW": 9040 }
+    "archive": { "x": 1520, "y": 15620, "text": "Archive motion: how a chat or workspace leaves", "kind": "title1", "maxW": 9040 },
+    "turnfiles": { "x": 1520, "y": 16920, "text": "Turn files: what a turn changed, under its reply", "kind": "title1", "maxW": 9040 }
   },
   "designSystems": []
 }
