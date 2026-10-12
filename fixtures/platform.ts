@@ -79,6 +79,8 @@ const claudeAccounts: AccountProfile[] = [
   { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true }
 ]
 const codexAccounts: AccountProfile[] = [{ id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }]
+/** An API key account (KERNEL-524): no plan, no email, no usage windows. */
+const keyAccount = (provider: Provider, active = false): AccountProfile => ({ id: 'key', provider, label: 'Work key', cli: false, auth: 'apiKey', active, signedIn: true })
 const providerStatus: Fixture['providerStatus'] = {
   claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'Claude account', plan: 'Claude Max', email: 'cj@example.com', configFile: '/Users/you/.claude/settings.json' },
   codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: true, loginMethod: 'ChatGPT', plan: 'ChatGPT Plus', email: 'cj@example.com', configFile: '/Users/you/.codex/config.toml' }
@@ -267,6 +269,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),
+  // KERNEL-524: Work key runs the agents, and the Claude Max login behind it keeps the numbers it had when the key took over.
+  SettingsAccountApiKey: settingsPage('account', { usage: accountUsage, account: { signedIn: true, name: 'Work key' }, accounts: [{ ...claudeAccounts[0], active: false }, keyAccount('claude', true), ...codexAccounts] }),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406: Frontend and Backend run on Codex. The rest stay on Claude.
   SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),
@@ -274,6 +278,14 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsProviders: providersPage('claude'),
   SettingsProvidersCodex: providersPage('codex'),
   SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, auth: 'subscription', active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
+  // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
+  SettingsProvidersApiKey: providersPage('claude', { accounts: [claudeAccounts[0], keyAccount('claude'), ...codexAccounts] }),
+  SettingsProvidersApiKeyActive: providersPage('claude', {
+    accounts: [{ ...claudeAccounts[0], active: false }, keyAccount('claude', true), ...codexAccounts],
+    providerStatus: { ...providerStatus, claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'API key', configFile: '/Users/you/.claude/settings.json' } }
+  }),
+  SettingsProvidersCodexApiKey: providersPage('codex', { accounts: [...claudeAccounts, ...codexAccounts, keyAccount('codex')] }),
+  SettingsAddAccountApiKey: providersPage('claude', { accounts: [claudeAccounts[0], keyAccount('claude'), ...codexAccounts] }),
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
@@ -407,6 +419,13 @@ export const platformFixtures: Record<string, Fixture> = {
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: claudeAccounts,
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }, { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' }],
+    ui: open
+  })),
+  // KERNEL-524: the account on offer is an API key, so the banner says it is billed per token. Kai's room runs on Codex too, as in the one above.
+  WorkspaceProviderLimitApiKey: scene(() => ({
+    settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
+    accounts: [claudeAccounts[0], keyAccount('claude')],
+    usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
   WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),

@@ -1782,6 +1782,60 @@
       "x": 6080,
       "y": 26000
     },
+    "SettingsProvidersApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Claude Code tab, API key account",
+      "w": 1440,
+      "x": 7600,
+      "y": 26000
+    },
+    "SettingsProvidersCodexApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Codex tab, API key account",
+      "w": 1440,
+      "x": 9120,
+      "y": 26000
+    },
+    "SettingsAddAccountApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Add account, API key",
+      "w": 1440,
+      "x": 10640,
+      "y": 26000
+    },
+    "WorkspaceProviderLimitApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude Code limit, Switch to an API key account",
+      "w": 1440,
+      "x": 12160,
+      "y": 26000
+    },
+    "SettingsAccountApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Account and usage, API key in use",
+      "w": 1440,
+      "x": 13680,
+      "y": 26000
+    },
+    "SettingsProvidersApiKeyActive.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Claude Code tab, API key account active",
+      "w": 1440,
+      "x": 15200,
+      "y": 26000
+    },
     "WorkspaceQuestionLong.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2188,7 +2242,7 @@
     },
     "row20": {
       "kind": "title1",
-      "maxW": 8000,
+      "maxW": 16640,
       "text": "21 \u00b7 Claude Code and Codex",
       "w": 600,
       "x": 0,
@@ -2340,6 +2394,7 @@
     "WorkspaceWeeklyLimit.dc.html",
     "WorkspaceModelLimit.dc.html",
     "WorkspaceProviderLimit.dc.html",
+    "WorkspaceProviderLimitApiKey.dc.html",
     "WorkspaceContext.dc.html",
     "WorkspaceOverloaded.dc.html",
     "WorkspaceOffline.dc.html",
@@ -2357,11 +2412,16 @@
     "SettingsAppearance.dc.html",
     "SettingsNotifications.dc.html",
     "SettingsAccount.dc.html",
+    "SettingsAccountApiKey.dc.html",
     "SettingsShortcuts.dc.html",
     "SettingsModels.dc.html",
     "SettingsProviders.dc.html",
     "SettingsProvidersCodex.dc.html",
     "SettingsProvidersCodexSignedOut.dc.html",
+    "SettingsProvidersApiKey.dc.html",
+    "SettingsProvidersApiKeyActive.dc.html",
+    "SettingsProvidersCodexApiKey.dc.html",
+    "SettingsAddAccountApiKey.dc.html",
     "SettingsTeam.dc.html",
     "SettingsPermissions.dc.html",
     "SettingsSkills.dc.html",

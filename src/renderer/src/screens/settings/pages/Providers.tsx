@@ -9,8 +9,8 @@ import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
 
-// Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406). Kernel already calls teammates
-// agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
+// Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406, and the API key accounts of
+// KERNEL-524). Kernel already calls teammates agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
 
 const NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex' }
 const SYSTEM: Record<Provider, string> = { claude: 'Use system Claude', codex: 'Use system Codex' }
@@ -38,9 +38,10 @@ export function accountUsage(a: AccountProfile, usage: RateLimit[], now = Date.n
   return `${used} used${read ? `, as of its last turn ${when(read, now)}` : ''}`
 }
 
-/** What an account row says under its name: the email when the name isn't it, the plan, the CLI login, and its usage. */
+/** What an account row says under its name: the email when the name isn't it, the plan, the CLI login, and its usage. A key says how it is billed. */
 export function accountLine(a: AccountProfile, usage: RateLimit[], now = Date.now()): string {
   if (!a.signedIn) return 'Not signed in'
+  if (a.auth === 'apiKey') return 'API key · billed per token'
   return [a.email && a.email !== a.label ? a.email : undefined, a.plan, a.cli ? `${NAME[a.provider]}’s own login` : undefined, accountUsage(a, usage, now)].filter(Boolean).join(' · ')
 }
 
@@ -65,7 +66,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const [adding, setAdding] = useState(false)
   // An added Claude account signs in again with a new token, through the same sheet, which shows the code field if asked.
   const [renewing, setRenewing] = useState<string | null>(null)
-  const addedClaude = provider === 'claude' ? accounts.find((a) => a.active && !a.cli) : undefined
+  // A key account takes a new key through the same sheet, with its field only (KERNEL-524).
+  const [replacing, setReplacing] = useState<AccountProfile | null>(null)
+  const addedClaude = provider === 'claude' ? accounts.find((a) => a.active && !a.cli && a.auth !== 'apiKey') : undefined
+  const activeKey = accounts.find((a) => a.active && a.auth === 'apiKey')
+  const sheetOpen = adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
   const read = () => call('providers.status', { provider }).then(setStatus)
   useEffect(() => { void read().catch(() => undefined) }, [provider])
@@ -90,7 +95,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     <>
       <Section
         title="Accounts"
-        action={<Button disabled={busy !== null || adding || !!renewing} onClick={() => setAdding(true)}>Add account</Button>}
+        action={<Button disabled={busy !== null || sheetOpen} onClick={() => setAdding(true)}>Add account</Button>}
         note={accounts.some((a) => a.signedIn) ? 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.' : provider === 'codex' ? 'Sign in with your ChatGPT plan to run agents on Codex.' : 'Sign in with your Claude plan to run agents on Claude Code.'}
       >
         {accounts.map((a) => (
@@ -98,8 +103,9 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
             {a.active && a.signedIn && <span className="set-tag">Active</span>}
             <div className="set-entry-actions">
               {!a.active && a.signedIn && <Button variant="ghost" aria-label={`Use ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Use</Button>}
-              {!a.signedIn && a.active && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Sign in</Button>}
-              {a.signedIn && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
+              {!a.signedIn && a.active && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Sign in</Button>}
+              {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
+              {a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
               {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
             </div>
           </Row>
@@ -111,9 +117,17 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
         {status?.signedIn && status.plan && <Row label="Plan"><span className="set-value">{status.plan}</span></Row>}
         {status?.signedIn && status.email && <Row label="Email"><span className="set-value">{status.email}</span></Row>}
         {status?.error && <Row label="Problem" desc={status.error} />}
-        <Row label={status?.signedIn ? 'Sign in again' : 'Sign in'} desc={`Opens ${provider === 'codex' ? 'ChatGPT' : 'Claude'}’s sign-in in your browser${status?.signedIn ? ', for the active account' : ''}`}>
-          <Button busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Run login</Button>
-        </Row>
+        {activeKey
+          ? (
+            <Row label="Replace key" desc="Opens Add account, where you paste a new key for the active account">
+              <Button disabled={busy !== null || sheetOpen} onClick={() => setReplacing(activeKey)}>Replace key</Button>
+            </Row>
+          )
+          : (
+            <Row label={status?.signedIn ? 'Sign in again' : 'Sign in'} desc={`Opens ${provider === 'codex' ? 'ChatGPT' : 'Claude'}’s sign-in in your browser${status?.signedIn ? ', for the active account' : ''}`}>
+              <Button busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Run login</Button>
+            </Row>
+          )}
       </Section>
       {provider === 'codex' && (
         <Section title="New chats">
@@ -137,6 +151,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
       </Section>
       {adding && <AddAccount provider={provider} onClose={() => { setAdding(false); void read().catch(() => undefined) }} />}
       {renewing && <AddAccount provider={provider} signIn={{ label: renewing }} onClose={() => { setRenewing(null); void read().catch(() => undefined) }} />}
+      {replacing && <AddAccount provider={provider} replaceKey={{ accountId: replacing.id, label: replacing.label }} onClose={() => { setReplacing(null); void read().catch(() => undefined) }} />}
     </>
   )
 }

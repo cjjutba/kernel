@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { MODELS, type RateLimit } from '@shared/types'
+import { MODELS, type AccountProfile, type RateLimit } from '@shared/types'
 import { limitProvider } from '@shared/providers'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
@@ -23,6 +23,18 @@ export function usageRows(usage: RateLimit[]): { id: string; title: string; limi
   ]
 }
 
+/**
+ * The Claude account whose meters the page shows: the one in use, or with a key in use, the subscription agents were last on.
+ * A key has no windows, and nothing reads the subscription's while it is idle, so its numbers stand as they were last read (KERNEL-524).
+ */
+export function meterAccount(accounts: AccountProfile[], usage: RateLimit[]): AccountProfile | undefined {
+  const claude = accounts.filter((a) => a.provider === 'claude')
+  const active = claude.find((a) => a.active)
+  if (active?.auth !== 'apiKey') return active
+  const read = (a: AccountProfile) => Math.max(0, ...usage.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === a.id).map((l) => l.readAt ?? 0))
+  return claude.filter((a) => a.auth !== 'apiKey').sort((a, b) => read(b) - read(a))[0]
+}
+
 /** "62% used · resets at 3:40 PM". */
 export function usageNote(l: RateLimit | undefined, now: number): string {
   if (l?.utilization === undefined) return 'No usage reported yet'
@@ -32,11 +44,14 @@ export function usageNote(l: RateLimit | undefined, now: number): string {
 
 /** Settings > Account and usage (SettingsAccount.png). The meters are white from 85%. */
 export function Account() {
-  // Claude's windows on the account Claude runs on now. Codex's have their own line on Settings, Providers (KERNEL-406).
-  const active = useStore((s) => s.accounts.find((a) => a.provider === 'claude' && a.active)?.id ?? 'cli')
+  // Claude's windows on the account Claude runs on now, or the subscription behind a key in use. Codex's have their own line on Settings, Providers (KERNEL-406).
+  const accounts = useStore((s) => s.accounts)
   const all = useStore((s) => s.usage)
-  const usage = useMemo(() => all.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === active), [all, active])
   const account = useStore((s) => s.account)
+  const keyInUse = accounts.find((a) => a.provider === 'claude' && a.active && a.auth === 'apiKey')
+  const shown = useMemo(() => meterAccount(accounts, all), [accounts, all])
+  const usage = useMemo(() => all.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === (shown?.id ?? 'cli')), [all, shown])
+  const plan = keyInUse ? shown?.plan : account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')
   const s = useSettings()
   const [busy, run] = useBusy<'signOut' | 'usage'>()
   const now = Date.now()
@@ -53,7 +68,8 @@ export function Account() {
   return (
     <Page title="Account and usage">
       <Section title="Usage">
-        {usageRows(usage).map((r) => (
+        {keyInUse && <Row label={`Agents are on ${keyInUse.label}, billed per token.`} />}
+        {(!keyInUse || usage.length > 0) && usageRows(usage).map((r) => (
           <Row key={r.id} label={r.title} full={
             <div className="set-meter">
               <Meter label={r.title} value={r.limit?.utilization ?? 0} />
@@ -63,7 +79,7 @@ export function Account() {
         ))}
       </Section>
       <Section title="Claude">
-        <Row label="Plan"><span className="set-value">{account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')}</span></Row>
+        {plan && <Row label="Plan"><span className="set-value">{plan}</span></Row>}
         <Row label="Details" desc="The same numbers Claude Code shows"><Button busy={busy === 'usage'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openUsage()}>Open /usage</Button></Row>
         {s && (
           <>

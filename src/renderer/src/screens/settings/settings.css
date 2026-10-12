@@ -128,6 +128,11 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-field .input { font: 12.5px var(--mono); }
 .set-field textarea.input { height: auto; min-height: 70px; padding: 8px 12px; line-height: 1.6; resize: vertical; }
 .set-field .set-error { font-size: 12.5px; color: var(--del); }
+.set-field .input.set-text-input { font: 13px var(--font); }
+.set-field-head { display: flex; align-items: baseline; justify-content: space-between; }
+.set-field-head .set-link { font-size: 12px; }
+.set-form > .segmented { display: flex; }
+.set-form > .segmented button { flex: 1; height: 26px; }
 .set-help { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 /* Environment (KERNEL-254): a name in mono, a value as dots, the Missing tag and Kernel's own variables */

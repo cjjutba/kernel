@@ -507,6 +507,8 @@ class Component extends DCLogic {
     if (sc === 'weekly') B('limit', "You've used your weekly limit", 'Resets Monday at 9:00 AM. Every room is paused.', [{ id: 'usage', label: 'Open /usage' }, { id: 'notify', label: 'Notify me', primary: true }], { block: true });
     // KERNEL-406: with Codex in use the banner names the provider, and offers another Claude account that isn't limited.
     if (sc === 'providerlimit') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work', primary: true }]);
+    // KERNEL-522: when the account on offer is an API key, the banner says it is billed per token, since the button starts paid use.
+    if (sc === 'providerlimitkey') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Work key is billed per token.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work key', primary: true }]);
     if (sc === 'picker') Object.assign(s, { menu: 'model', providers: true });
     if (sc === 'model') B('limit', "You've reached your Fable 5.1 limit", 'It resets in 3 days. Opus 5.5 can pick up where this left off.', [{ id: 'wait', label: 'Wait' }, { id: 'switch', label: 'Switch to Opus 5.5', primary: true }], { model: 'fable' });
     if (sc === 'context') B('context', 'Context is almost full', 'Compacting keeps a summary and frees space. A new chat starts clean on this branch.', [{ id: 'newchat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], { ctx: 92 });

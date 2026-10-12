@@ -183,9 +183,20 @@ async function openCompare(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
+async function typeApiKey(page: Page) {
+  await page.getByRole('button', { name: 'Add account' }).click()
+  await page.getByRole('radio', { name: 'API key' }).click()
+  await page.locator('#acct-label').fill('Work key')
+  await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e63')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   PanelCompare: openCompare,
   PanelFilter: filterChanges,
+  SettingsAddAccountApiKey: typeApiKey,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
   PanelResize: hoverSplitHandle,
