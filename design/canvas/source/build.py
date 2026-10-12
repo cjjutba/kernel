@@ -103,6 +103,30 @@ emit('HomeLight', rd('Home.dc.html'), 'home', light=True)
 emit('SidebarRoomsMenu', rd('Home.dc.html'), 'home', menu='rooms')
 emit('SidebarChatFolded', rd('Home.dc.html'), 'home', fold=True)
 emit('AccountMenu', rd('Home.dc.html'), 'home', menu='acct')
+MENU_ITEM='display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px'
+def menu_link(label, href, hint=''):
+    return '<a role="menuitem" class="mi" href="%s" style="%s"><span style="flex: 1">%s</span><span style="font-size: 12px; color: #8a8f98">%s</span></a>'%(href,MENU_ITEM,label,hint)
+def menu_account(name, plan, active, lines):
+    top='<span style="display: flex; align-items: baseline; gap: 8px"><span style="font-weight: 500">%s</span><span style="flex: 1; min-width: 0; font-size: 12px; color: #8a8f98">%s</span><span style="font-size: 12px; color: #8a8f98">%s</span></span>'%(name,plan,'Active' if active else 'Switch to')
+    rest=''.join('<span style="font-size: 12px; color: #8a8f98">%s</span>'%l for l in lines)
+    return '<a role="menuitem" class="mi" href="SettingsProviders.dc.html" style="display: flex; flex-direction: column; gap: 1px; padding: 7px 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px">%s%s</a>'%(top,rest)
+def menu_group(title, accounts):
+    return '<p style="margin: 0; padding: 8px 8px 4px; font-size: 12px; font-weight: 500; color: #d0d6e0">%s</p>%s'%(title,''.join(menu_account(*a) for a in accounts))
+MENU_RULE='<div style="height: 1px; margin: 6px 4px; background: #26272b"></div>'
+def account_menu():
+    claude=menu_group('Claude Code',[
+        ('Work','Claude Max',True,['5-hour 62% used · resets at 3:40 PM','Weekly 38% used · resets Monday at 9:00 AM']),
+        ('Personal','Claude Pro',False,['5-hour 8% used · resets at 5:10 PM','Weekly 14% used · resets Wednesday at 6:00 PM']),
+        ('Work key','',False,['API key · billed per token'])])
+    codex=menu_group('Codex',[
+        ('cj@example.com','ChatGPT Plus',True,['5-hour 7% used · resets at 4:15 PM','Weekly 21% used · resets Thursday at 8:00 AM']),
+        ('Personal','ChatGPT Pro',False,['5-hour 3% used · resets at 6:20 PM','Weekly 9% used · resets Friday at 8:00 AM']),
+        ('Work key','',False,['API key · billed per token'])])
+    items=menu_link('Settings','Settings.dc.html','⌘,')+menu_link('Keyboard shortcuts','SettingsShortcuts.dc.html')+menu_link('Usage','SettingsAccount.dc.html')+menu_link("What's new",'WhatsNew.dc.html')
+    return '<div role="menu" style="position: absolute; z-index: 60; width: 320px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px">'+claude+MENU_RULE+codex+MENU_RULE+items+MENU_RULE+menu_link('Manage accounts','SettingsProviders.dc.html')+'</div>'
+mp=P+'AccountMenu.dc.html'; mt=open(mp).read()
+ms=mt.index('<div role="menu" style="position: absolute; z-index: 60; width: 232px;'); me=mt.index('</div></details>',ms)
+open(mp,'w').write(mt[:ms]+account_menu()+mt[me+len('</div>'):])
 # KERNEL-258: Client B uses a GitHub avatar. Home shows it in the sidebar and on the room's card, so one room has one icon.
 hi=rd('Home.dc.html')
 tile='border: 1px solid #2a2b30; background: #1c1d21; font-size: 10.5px; font-weight: 600">{{ r.letter }}</span>'
@@ -166,6 +190,9 @@ WS=[
     ('WorkspaceModelLimit','model'),
     ('WorkspaceProviderLimit','providerlimit'),
     ('WorkspaceProviderLimitApiKey','providerlimitkey'),
+    ('WorkspaceProviderNearLimit','nearlimit'),
+    ('WorkspaceAccountNote','accountnote'),
+    ('WorkspaceAccountNoteLimit','accountnotelimit'),
     ('WorkspaceModelPicker','picker'),
     ('WorkspaceContext','context'),
     ('WorkspaceOverloaded','overloaded'),
@@ -214,6 +241,11 @@ WS=[
 for n,sc in WS:
     if n in ('WorkspaceLead','WorkspaceQuestionLong'): continue  # KERNEL-356 and KERNEL-414 draw them with the Lead workspace, below
     emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks', gh_paused=sc=='ghpaused')
+for n in ('WorkspaceAccountNote','WorkspaceAccountNoteLimit'):
+    q=P+n+'.dc.html'; s=open(q).read()
+    chip='text-decoration: none">Claude Max</a>'
+    assert s.count(chip)==1
+    open(q,'w').write(s.replace(chip,'text-decoration: none">Claude Pro</a>'))
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
@@ -290,6 +322,12 @@ for n,pg in [
     ('SettingsProvidersApiKeyActive','providers-apikey-active'),
     ('SettingsProvidersCodexApiKey','providers-codex-apikey'),
     ('SettingsAddAccountApiKey','providers-add-apikey'),
+    ('SettingsAddAccount','providers-add'),
+    ('SettingsAddAccountBrowser','providers-add-wait'),
+    ('SettingsAddAccountCodex','providers-codex-add'),
+    ('SettingsAddAccountCodexBrowser','providers-codex-add-wait'),
+    ('SettingsProvidersRename','providers-rename'),
+    ('SettingsProvidersLegacy','providers-legacy'),
     ('SettingsAccountApiKey','account-apikey'),
     ('SettingsTeam','r-agents'),
     ('SettingsPermissions','permissions'),
@@ -570,6 +608,16 @@ var __rv = Component.prototype.renderVals;
 Component.prototype.renderVals = function () { var v = __rv.call(this); v.groups = %s; v.empty = false; return v; };
 '''%json.dumps(pg))
 emit('GroupedPalette', t, 'search', rows_html=a_rows[0])
+def switch_item(provider, name, hint):
+    return {'glyph':'⇄','label':'Switch %s to %s'%(provider,name),'href':'SettingsProviders.dc.html','keys':[],'hint':hint,'hasHint':True,'bg':'transparent'}
+SW=[switch_item('Claude Code','Personal','Claude Pro'),switch_item('Claude Code','Work key','API key'),switch_item('Codex','Personal','ChatGPT Pro'),switch_item('Codex','Work key','API key')]
+SW[0]['bg']='#1f2024'
+t=rd('CommandPalette.dc.html').replace('%%SHARED%%','off')
+t=g_patch(t,'''
+var __rv = Component.prototype.renderVals;
+Component.prototype.renderVals = function () { var v = __rv.call(this); v.q = 'switch'; v.groups = %s; v.empty = false; return v; };
+'''%json.dumps([{'title':'Accounts','items':SW}]))
+emit('SearchSwitchAccount', t, 'search')
 # KERNEL-356: WorkspaceLead is the Lead's workspace like the Grouped set, with its plan file under Changes.
 # Its plan still waits for approval and Kai has no workspace yet, so only org-invites (#41) is ready.
 t=lead_workspace(ws.replace('%%SCENARIO%%','lead'), L_PRS[1:])
