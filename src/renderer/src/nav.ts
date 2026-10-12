@@ -133,7 +133,7 @@ function soundRoute(r: any): Route | undefined {
     case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
     case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId } : undefined
-    // Agents load after the first route is chosen, and the floor and the Board are hidden (D-104), so these open their room's Team page.
+    // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their room's Team page.
     case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? { name: 'team', roomId: r.roomId } : undefined
     default: return undefined // onboarding, devUi, settings and anything unknown are never reopened
   }

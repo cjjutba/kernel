@@ -6,14 +6,13 @@ import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { actions, apply, getState } from '../src/renderer/src/store'
-import { roomSeating } from '../src/renderer/src/floor/useSeating'
-import type { ActivityEvent, AgentDef } from '../src/shared/types'
+import type { ActivityEvent } from '../src/shared/types'
 
 const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'lumi', 'noor', 'rowan', 'theo']
 const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'rowan' ? 'lead: true\n' : ''}---\nYou are ${id}.`
 
 describe('rooms.lastActivity (KERNEL-104)', () => {
-  it("returns each agent's newest event from the whole log, so seating holds past the 200-event window", async () => {
+  it("returns each agent's newest event from the whole log, so it holds past the 200-event window", async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', ...Object.fromEntries(TEAM.map((id) => [`.claude/agents/${id}.md`, agentFile(id)])) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900) }))
@@ -22,7 +21,6 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
     const room = await k.addRoom(repo)
     const other = await k.addRoom(await tempRepo())
     try {
-      const agents = await k.agents(room.id)
       const h = k.handlers()
 
       // Everyone acted once, a while ago. Then Eli logged 250 events, which push the others out of any 200-event window.
@@ -40,29 +38,21 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
 
       const window = await h['activity.recent']({ roomId: room.id, limit: 200 })
       expect(new Set(window.flatMap((e) => (e.agentId ? [e.agentId] : [])))).toEqual(new Set(['eli']))
-
-      const seats = (ctx: Parameters<typeof roomSeating>[2]) => roomSeating(agents, room, ctx).seated.map((a) => a.id)
-      expect(seats({ lastActivity: last })).toEqual(['rowan', 'eli', 'theo', 'noor', 'kai', 'ivy'])
     } finally { await k.stop() }
   })
 })
 
 describe('store lastActivity', () => {
-  const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', description: '', lead, prompt: '', file: `${id}.md` })
   const ev = (agentId: string, ts: number, roomId = 'r-last'): ActivityEvent => ({ id: `${agentId}-${ts}-${roomId}`, kind: 'note', roomId, agentId, text: 'did something', ts })
 
-  it('keeps an agent ranked after its events leave the window, and new events move it forward', () => {
+  it('keeps an agent\'s time after its events leave the window, and new events move it forward', () => {
     actions.activity.setLast('r-last', { noor: 40, theo: 50, eli: 10 })
     for (let i = 0; i < 250; i++) apply({ type: 'activity', event: ev('kai', 100 + i) })
     expect(getState().activity.some((e) => e.agentId === 'noor')).toBe(false)
     expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, eli: 10, kai: 349 })
 
-    const team = [a('eli'), a('eli-opus'), a('kai'), a('noor'), a('rowan', true), a('theo')]
-    const seats = () => roomSeating(team, undefined, { lastActivity: getState().lastActivity['r-last'] }).seated.map((x) => x.id)
-    expect(seats()).toEqual(['rowan', 'kai', 'theo', 'noor', 'eli', 'eli-opus'])
-
     apply({ type: 'activity', event: ev('noor', 400) })
-    expect(seats()).toEqual(['rowan', 'noor', 'kai', 'theo', 'eli', 'eli-opus'])
+    expect(getState().lastActivity['r-last']).toEqual({ noor: 400, theo: 50, eli: 10, kai: 349 })
   })
 
   it('keeps a newer pushed time over an older loaded one, and leaves other rooms alone', () => {
