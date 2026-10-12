@@ -31,7 +31,7 @@ export interface AppSettings {
   planDefaulted?: string[]
   hookPort: number
   worktreeRoot: string
-  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter'
+  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; sendWith: 'enter' | 'cmdEnter'
     /** The Open in app last picked, by its catalog id (KERNEL-427). Unset until the first pick. */
     openIn?: string
   }
@@ -71,7 +71,7 @@ export interface AppSettings {
   /** Settings, Providers (KERNEL-406). Accounts and their credentials live apart from this file. */
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
-  team: { showNames: boolean; defaultTemplate: 'starter' | 'pair' }
+  team: { defaultTemplate: 'starter' | 'pair' }
   /**
    * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
    * permissions off a current-branch workspace. The modes were `ask`, `acceptEdits` and `bypassInWorktrees` before

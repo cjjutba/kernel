@@ -16,6 +16,7 @@ import { newChatDraftOf, saveDraft } from './composer/draftStore'
 import { ModelPicker } from './composer/ModelPicker'
 import { effortLabel, rememberEffort, useDefaultEffort, useEffortMemory } from './composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
+import { sendsOn, useSendWith } from './composer/sendKey'
 import './composer/composer.css'
 
 /**
@@ -66,9 +67,10 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
     })
   }
 
+  const sendWith = useSendWith()
   const onKey = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); start() }
+    if (sendsOn(e, sendWith)) { e.preventDefault(); start() }
     else if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); setPlan((p) => !p) }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); setMenu('linkIssue') }
