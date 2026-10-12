@@ -1,5 +1,5 @@
 import { exec, run, SLOW_MS, type ExecResult } from './exec'
-import type { IssueSummary, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import type { IssueSummary, MergeMethod, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 import { gatingChecks } from '@shared/merge'
 import { mergeTreeConflicts, stripRemote } from './worktrees'
 
@@ -327,6 +327,16 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
   await run('gh', ['pr', 'merge', ...(o.ref ? [o.ref] : []), `--${method}`, ...(o.deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
 }
 
+const ALLOWED: Record<MergeMethod, string> = { squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }
+
+/** The merge methods the repo gh finds at `cwd` allows, which anyone who can read the repo sees. Throws when gh couldn't read it. */
+export async function repoMergeMethods(cwd: string): Promise<MergeMethod[]> {
+  const r = await exec('gh', ['repo', 'view', '--json', Object.values(ALLOWED).join(',')], { cwd, timeoutMs: 20000 })
+  const json = r.code === 0 ? parsed(r.stdout) : undefined
+  if (!json || typeof json !== 'object') throw new Error(r.stderr.trim().split('\n')[0] || `gh exited with ${r.code}.`)
+  return (Object.keys(ALLOWED) as MergeMethod[]).filter((m) => json[ALLOWED[m]] === true)
+}
+
 /**
  * The calls Kernel makes for a workspace's PR, wherever the room's code is hosted (KERNEL-432). `gh` is GitHub's, and tests
  * swap it for a stub. A room with no GitHub gets the local one from `CodeHosts.hostFor` (KERNEL-467).
@@ -349,6 +359,8 @@ export interface CodeHost {
    * GitHub is known once a read says so (KERNEL-467).
    */
   merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase', o?: { base?: string; title?: string }) => Promise<void | { sha: string; base: string }>
+  /** The merge methods the repo at `cwd` allows. Rejects when the host couldn't say. A host without it takes any (KERNEL-468). */
+  mergeMethods?: (cwd: string) => Promise<MergeMethod[]>
   ready: (cwd: string, ref: string) => Promise<void>
   reopen: (cwd: string, ref: string) => Promise<void>
 }
@@ -364,6 +376,7 @@ export const gh: CodeHost = {
   },
   rateLimit: ghRateLimit,
   merge: (cwd, ref, method) => prMerge(cwd, method, { ref }),
+  mergeMethods: repoMergeMethods,
   ready: prReady,
   reopen: prReopen
 }

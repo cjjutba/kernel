@@ -377,13 +377,17 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     expect(resolved.planDefaulted).toEqual([...PLAN_KEYS])
   })
 
-  it("reads the Address review text every launch saved as unset, so the new line reaches existing installs (KERNEL-222)", async () => {
+  it("reads the Address review and Create PR texts every launch saved as unset, so the new text reaches existing installs (KERNEL-222, KERNEL-468)", async () => {
     const old = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
+    const oldCreate = '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.'
     const full = DEFAULT_SETTINGS('/home/cj')
-    const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old } }), '/home/cj', 'max')
+    const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old, createInstructions: oldCreate } }), '/home/cj', 'max')
     expect(saved).toEqual(PINNED)
     expect(resolved.pr.addressReviewInstructions).toBe(full.pr.addressReviewInstructions)
     expect(resolved.pr.addressReviewInstructions).toContain('Act only on the comments listed here.')
+    // Kernel's own Create PR text, which Create PR fits to each repo.
+    expect(resolved.pr.createInstructions).toBe(full.pr.createInstructions)
+    expect(resolved.pr.createInstructions).not.toContain('Conventional Commit')
     // Text someone wrote stays.
     const mine = await loadAppSettings(await fileOf({ pr: { addressReviewInstructions: '# Mine' } }), '/home/cj', 'max')
     expect(mine.saved).toEqual({ pr: { addressReviewInstructions: '# Mine' }, ...PINNED })
