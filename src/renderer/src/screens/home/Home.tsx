@@ -10,7 +10,7 @@ import { RoomIcon } from '../../components/RoomIcon'
 import { SortOverlap } from '../inbox/Inbox'
 import { allOverlaps, fileName, inboxItems, needsYou, type InboxItem } from '../inbox/model'
 import { openNewRoom, resetDraft } from '../rooms/draft'
-import { roomState, sourceOf, stateLabel } from '../rooms/roomInfo'
+import { roomState, sourceOf, stateLabel, teamOf } from '../rooms/roomInfo'
 import './home.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -180,7 +180,7 @@ export function Home() {
               <h3 className="hm-head">Rooms <span>{rooms.length}</span><span className="grow" /><button type="button" className="hm-see" onClick={() => go({ name: 'rooms' })}>See all</button></h3>
               <div className="col hm-rooms" style={{ gap: 10, marginTop: 10 }}>
                 {rooms.map((r) => {
-                  const team = agents[r.id] ?? []
+                  const team = teamOf(agents[r.id])
                   const state = roomState(r, approvals, status[r.id], workspaces)
                   return (
                     <button key={r.id} type="button" className="hm-room" onClick={() => void openRoom(r.id)}>
