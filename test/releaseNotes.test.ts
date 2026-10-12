@@ -88,7 +88,7 @@ describe('pnpm release:notes', () => {
     await land(dir, 'fix(workspace): a PR shows its new status (KERNEL-41) (#44)', {
       '.changes/unreleased/pr-refresh.md': fragment('fixed', 'Fixed a pull request sometimes showing its old status after a quick refresh.', 'issue: KERNEL-41\n')
     })
-    await land(dir, 'feat(floor): outside sessions (#45)', { '.changes/unreleased/outside-sessions.md': fragment('new', 'Agents you start in a terminal show up on the floor.') })
+    await land(dir, 'feat(sidebar): outside sessions (#45)', { '.changes/unreleased/outside-sessions.md': fragment('new', 'Agents you start in a terminal show up in the sidebar.') })
     await land(dir, 'chore: bump zod (#46)', { '.changes/unreleased/zod.md': fragment('internal', 'Zod 4.2.') })
     await land(dir, 'feat(team): titles (#43)', { '.changes/unreleased/titles.md': fragment('improved', "Notifications show the chat's title instead of the branch name.") })
     // Not merged yet, so no PR number.
@@ -144,7 +144,7 @@ describe('pnpm release:notes', () => {
         '',
         '## New',
         '',
-        '- Agents you start in a terminal show up on the floor. (#45)',
+        '- Agents you start in a terminal show up in the sidebar. (#45)',
         '',
         '## Improved',
         '',
@@ -189,10 +189,10 @@ const sample: Release = {
   version: '0.2.0',
   date: '2026-11-02',
   title: 'Outside sessions',
-  intro: 'Agents you start anywhere show up on the floor.',
+  intro: 'Agents you start anywhere show up in the sidebar.',
   sections: [
-    { title: 'Highlights', items: [{ lead: 'Outside sessions.', text: 'Agents you start in a terminal show up on the floor.', pr: 45 }] },
-    { title: 'Improved', items: [{ text: "Notifications show the chat's title instead of the branch name.", pr: 43 }, { text: 'The board scrolls faster.', pr: 48 }] },
+    { title: 'Highlights', items: [{ lead: 'Outside sessions.', text: 'Agents you start in a terminal show up in the sidebar.', pr: 45 }] },
+    { title: 'Improved', items: [{ text: "Notifications show the chat's title instead of the branch name.", pr: 43 }, { text: 'The Inbox scrolls faster.', pr: 48 }] },
     { title: 'Fixed', items: [{ text: 'Fixed a pull request sometimes showing its old status after a quick refresh.', pr: 44 }] }
   ]
 }
@@ -201,8 +201,8 @@ describe('notes for What\'s new', () => {
   it('reads cleanly in the parser installed 0.1.0 copies run on their first update', () => {
     const notes = parseNotesV010(renderApp(sample))
     expect(notes).toEqual([
-      { title: 'Outside sessions', body: 'Agents you start in a terminal show up on the floor.' },
-      { title: 'Improved', body: "Notifications show the chat's title instead of the branch name. The board scrolls faster." },
+      { title: 'Outside sessions', body: 'Agents you start in a terminal show up in the sidebar.' },
+      { title: 'Improved', body: "Notifications show the chat's title instead of the branch name. The Inbox scrolls faster." },
       { title: 'Fixed', body: 'Fixed a pull request sometimes showing its old status after a quick refresh.' }
     ])
     for (const n of notes) expect(`${n.title} ${n.body}`).not.toMatch(/\(#|\*\*|^-|\s-\s/)
@@ -211,7 +211,7 @@ describe('notes for What\'s new', () => {
   it('puts each change on its own line in the current parser', () => {
     expect(parseNotes(renderApp(sample))[1]).toEqual({
       title: 'Improved',
-      body: "Notifications show the chat's title instead of the branch name.\nThe board scrolls faster."
+      body: "Notifications show the chat's title instead of the branch name.\nThe Inbox scrolls faster."
     })
   })
 
@@ -225,19 +225,19 @@ describe('notes for What\'s new', () => {
 
 describe('the GitHub release body', () => {
   it('has the intro, the sections with PR numbers, then GitHub\'s generated list', () => {
-    const generated = "## What's Changed\n* feat(floor): outside sessions by @cjjutba in https://github.com/cjjutba/kernel/pull/45\n\n\n**Full Changelog**: https://github.com/cjjutba/kernel/compare/v0.1.0...v0.2.0"
+    const generated = "## What's Changed\n* feat(sidebar): outside sessions by @cjjutba in https://github.com/cjjutba/kernel/pull/45\n\n\n**Full Changelog**: https://github.com/cjjutba/kernel/compare/v0.1.0...v0.2.0"
     expect(renderGithub(sample, generated)).toBe(
       [
-        'Agents you start anywhere show up on the floor.',
+        'Agents you start anywhere show up in the sidebar.',
         '',
         '## Highlights',
         '',
-        '- **Outside sessions.** Agents you start in a terminal show up on the floor. (#45)',
+        '- **Outside sessions.** Agents you start in a terminal show up in the sidebar. (#45)',
         '',
         '## Improved',
         '',
         "- Notifications show the chat's title instead of the branch name. (#43)",
-        '- The board scrolls faster. (#48)',
+        '- The Inbox scrolls faster. (#48)',
         '',
         '## Fixed',
         '',
@@ -245,7 +245,7 @@ describe('the GitHub release body', () => {
         '',
         '## Full list of changes',
         '',
-        '* feat(floor): outside sessions by @cjjutba in https://github.com/cjjutba/kernel/pull/45',
+        '* feat(sidebar): outside sessions by @cjjutba in https://github.com/cjjutba/kernel/pull/45',
         '',
         '',
         '**Full Changelog**: https://github.com/cjjutba/kernel/compare/v0.1.0...v0.2.0',

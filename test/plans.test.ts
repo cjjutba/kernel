@@ -21,7 +21,7 @@ describe('saved plans', () => {
   it('names the file after the opening heading, or the fallback without one', () => {
     expect(planName(PLAN, 'Plan for lead')).toBe('export-invoices-as-pdf')
     expect(planName('1. Do it\n2. Test it', 'Plan for invoice-table')).toBe('plan-for-invoice-table')
-    expect(planName('## KERNEL-83 Fix batch B1: floor renderer, sequence and moments', 'x')).toBe('kernel-83-fix-batch-b1-floor-renderer-sequence-and-moments')
+    expect(planName('## KERNEL-83 Fix batch B1: sidebar glyphs, banners and toasts', 'x')).toBe('kernel-83-fix-batch-b1-sidebar-glyphs-banners-and-toasts')
     expect(planName('# ¿¿??', '!!')).toBe('plan')
   })
 
@@ -161,8 +161,8 @@ describe('a plan change request with images, through approvals.decide', () => {
   it("saves them for the Lead's task list too, which has no tool name", async () => {
     const { ws, ask, decide } = await kernel()
     const { approval, decision } = ask({ kind: 'plan' })
-    await decide({ id: approval.id, decision: { behavior: 'deny', message: 'Split T-2', images: [{ name: 'board.png', dataUrl: png('a') }] } })
-    expect(await decision).toEqual({ behavior: 'deny', message: `Split T-2\n\nAttached image: ${join(ws.path, '.kernel/attachments/board.png')}. Read it before revising the plan.` })
+    await decide({ id: approval.id, decision: { behavior: 'deny', message: 'Split T-2', images: [{ name: 'tasks.png', dataUrl: png('a') }] } })
+    expect(await decision).toEqual({ behavior: 'deny', message: `Split T-2\n\nAttached image: ${join(ws.path, '.kernel/attachments/tasks.png')}. Read it before revising the plan.` })
   })
 
   it('drops images from any other denial and writes nothing', async () => {

@@ -241,7 +241,7 @@ export class Store {
   }
   saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, room_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.roomId ?? null, e.ts, JSON.stringify(e)); return e }
 
-  // overlaps the floor flagged, so a restart doesn't flag them again
+  // overlaps the Inbox already raised, so a restart doesn't raise them again
   overlaps(): Overlap[] { return this.all('select data from overlaps') }
   saveOverlap(o: Overlap) { this.db.prepare('insert or replace into overlaps (id, room_id, data) values (?, ?, ?)').run(o.id, o.roomId, JSON.stringify(o)); return o }
   deleteOverlap(id: string) { this.db.prepare('delete from overlaps where id = ?').run(id) }

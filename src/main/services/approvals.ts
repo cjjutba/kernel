@@ -130,7 +130,7 @@ export function parsePlanSteps(lines: string[], agents: { id: string; name: stri
   })
 }
 
-/** Short human title for a tool call, used in the Inbox and on the floor card. */
+/** Short human title for a tool call, used in the Inbox and on the approval card in the transcript. */
 export function describeTool(toolName: string, input: unknown): { title: string; detail?: string } {
   const i = (input ?? {}) as Record<string, any>
   switch (toolName) {

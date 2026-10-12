@@ -47,7 +47,7 @@ const live = (w: Workspace) => w.status === 'ready' && !w.mergedAt && w.prState 
 const base = (p: string) => p.split('/').pop() ?? p
 
 /**
- * Two workspaces changing the same file will conflict at merge, so the floor says so (KERNEL-24).
+ * Two workspaces changing the same file will conflict at merge, so the Inbox says so (KERNEL-24).
  * `check` runs after each turn and when a workspace merges or is archived: it compares the changed files of the room's open
  * workspaces, raises an Overlap for each shared file, and clears it when the overlap goes away. Dismissing one (`resolve`) keeps it
  * quiet until it clears and comes back.
@@ -76,7 +76,7 @@ export class Overlaps {
     return next
   }
 
-  /** The user handed it to the Lead: it stays on record but leaves the floor. */
+  /** The user handed it to the Lead: it stays on record but leaves the Inbox. */
   resolve(id: string): Overlap | undefined {
     const o = this.known.get(id)
     if (!o) return undefined

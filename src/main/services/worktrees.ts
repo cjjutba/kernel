@@ -635,7 +635,7 @@ export async function mergeTreeConflicts(path: string, ours: string, theirs: str
   return files.length ? files : undefined
 }
 
-/** True when two worktrees changed the same file since their bases. Feeds the overlap warning on the floor. */
+/** True when two worktrees changed the same file since their bases. Feeds the overlap warning in the Inbox. */
 export function overlaps(a: ChangedFile[], b: ChangedFile[]): string[] {
   const set = new Set(a.map((f) => f.path))
   return b.filter((f) => set.has(f.path)).map((f) => f.path)

@@ -844,7 +844,7 @@ export function muteShadowedWarning(proc: Pick<NodeJS.Process, 'listeners' | 're
   proc.on('warning', (w: Error & { code?: string }) => { if (w.code !== SHADOWED_WARNING) for (const l of before) l(w) })
 }
 
-/** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
+/** Hooks whose exit code 2 stops the agent from going on, which Team and the sidebar show as blocked. */
 const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
 
 /**

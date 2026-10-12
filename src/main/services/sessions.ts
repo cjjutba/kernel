@@ -1058,7 +1058,7 @@ export class Sessions {
     // A chat stopped while idle has no process but is stopped all the same.
     if (!live && !this.turns.has(chatId)) return
     // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
-    // an idle chat that gave up blocked has no turn left to end, so the floor hears it here (Archive, Close chat).
+    // an idle chat that gave up blocked has no turn left to end, so Team and the sidebar hear it here (Archive, Close chat).
     const shown = this.turns.get(chatId)?.blocked && !live?.running
     // A Codex plan waiting on the chat ends with it, as the process's cards do in `end` (KERNEL-563).
     this.expireCards(this.turns.get(chatId)?.plans)

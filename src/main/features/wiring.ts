@@ -40,8 +40,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     // The team's reviewer, for usage data and for telling its old workspaces from reviews (KERNEL-121, KERNEL-397).
     reviewer: (roomId) => k.team.reviewerOf(roomId),
     autoReview: () => k.settings.pr.autoReview !== false,
-    // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
-    // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
+    // Logged as a note. `leadUpdate` marked it for the briefing sequence KERNEL-606 removed, and nothing reads it now.
     delivered: (roomId, chat, update) => {
       const ws = k.store.workspace(chat.workspaceId)
       const [one] = update.rows

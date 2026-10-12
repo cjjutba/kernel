@@ -237,6 +237,20 @@ describe('settings nothing read (KERNEL-540)', () => {
     expect('voice' in resolved.experimental).toBe(false)
     expect('addNewAgents' in resolved.team).toBe(false)
   })
+
+  it('loads a file with the floor settings without them, and saves it without them (KERNEL-620)', async () => {
+    // A current file, and one from before the saved version, which takes the other path through the loader.
+    for (const version of [2, undefined]) {
+      const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+      await writeFile(file, JSON.stringify({ version, floor: { style: 'plan', nameTags: false, animate: false }, appearance: { theme: 'light' } }))
+      const { saved, resolved } = await loadAppSettings(file, '/home/cj')
+      expect('floor' in saved).toBe(false)
+      expect('floor' in resolved).toBe(false)
+      expect(resolved.appearance.theme).toBe('light')
+      await saveAppSettings(file, saved)
+      expect('floor' in JSON.parse(await readFile(file, 'utf8'))).toBe(false)
+    }
+  })
 })
 
 describe('open to (replaces the default home view)', () => {
