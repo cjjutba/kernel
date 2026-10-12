@@ -4,8 +4,6 @@ import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Icon } from '../../ui'
-import { ResizeHandle } from '../../components/ResizeHandle'
-import { SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit, useSidebarWidth } from '../../components/sidebar/useSidebarWidth'
 import { ROOM_PAGES } from './roomPages'
 
 export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: string }[] }[] = [
@@ -36,15 +34,14 @@ const isTextField = (el: HTMLElement) =>
 let lastRoomId: string | undefined
 
 /**
- * The left column of Settings: back to the app, search, the app pages, and each room with its own pages under it.
- * Search filters the list by name. The top stays put; the list under it scrolls, and the open page scrolls into view there.
+ * What the sidebar frame holds in Settings (KERNEL-509): back to the app, search, the app pages, and each room with its own pages under it.
+ * Search filters the list by name. The top stays put; the list under it scrolls, and the open page scrolls into view there. The frame
+ * (components/sidebar/Sidebar.tsx) owns the `<nav>` named Settings, the width and the resize edge, so these are its direct flex children.
  */
 export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
-  const nav = useRef<HTMLElement>(null)
-  const { width, onCommit } = useSidebarWidth()
   if (page === 'room' && roomId) lastRoomId = roomId
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
@@ -80,7 +77,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
-    <nav ref={nav} aria-label="Settings" className="set-nav" style={{ width }}>
+    <>
       <div className="drag" style={{ height: 53, flexShrink: 0 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
@@ -123,8 +120,6 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         )}
         {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
       </div>
-      {/* No hide threshold: Settings is the only way to its pages, so a drag stops at the minimum. */}
-      <ResizeHandle targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={sidebarLimit} defaultWidth={sidebarDefault} storageKey={SIDEBAR_KEY} onCommit={onCommit} />
-    </nav>
+    </>
   )
 }
