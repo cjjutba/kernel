@@ -7,6 +7,8 @@ export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
   | 'models' | 'providers' | 'permissions' | 'env'
+  /** The personal and plugin agents that join every room, and the editor for one (KERNEL-641). */
+  | 'agents'
   | 'git' | 'scripts' | 'prs'
   | 'hooks' | 'integrations' | 'privacy' | 'bigterm' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */

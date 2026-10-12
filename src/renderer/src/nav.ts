@@ -73,6 +73,12 @@ export function stillThere(route: Route, s: State): boolean {
   return true
 }
 
+/** The Agents list an agent editor in Settings came from, which Back returns to: the app's Agents page or a room's (KERNEL-641). */
+export function agentListOf(route: Extract<Route, { name: 'settings' }>): Route {
+  const { agentId: _agent, ...list } = route
+  return list
+}
+
 /**
  * The workspaces of the room's open chats with Rowan as the sidebar lists them: the one the user last sent a message in first, and a
  * chat with no send yet by when it started (KERNEL-405, KERNEL-498).
