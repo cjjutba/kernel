@@ -22,6 +22,7 @@ const noCanvas = [
   'WorkspaceDiffImageAdded', // an added image in a diff tab shows the picture (KERNEL-410)
   'WorkspaceDiffImageModified', // a changed image shows Before and After (KERNEL-410)
   'WorkspaceQuestionLong', // a long answer that wraps, and options with descriptions (KERNEL-407)
+  'WorkspaceQuestionUrl', // a sign-in link in the question and an option's description wraps inside the card, with no AskUserQuestion row above it (KERNEL-591)
   'WorkspaceFilesTree', // All files drawn like VS Code's explorer, with every git status and compact folders (KERNEL-399)
   'WorkspaceChangesList', // the Changes tab as VS Code's Source Control list (KERNEL-399)
   'WorkspaceChangesTree', // the Changes tab as a folder tree, next to All changes (KERNEL-399)
