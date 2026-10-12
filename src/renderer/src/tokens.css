@@ -255,8 +255,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .modal-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 500; }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }
 
-/* A short window moves every dialog up in proportion to the canvas's 900px height. */
-@media (max-height: 799px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }
+/* A window under 800px or over 900px tall moves every dialog in proportion to the canvas's 900px height (D-080, KERNEL-577). */
+@media (max-height: 799px), (min-height: 901px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }
 
 /* composer */
 .composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
