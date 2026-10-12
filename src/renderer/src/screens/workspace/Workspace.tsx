@@ -31,6 +31,7 @@ import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
 import { githubIssueUrl, issueTracker } from './issueKey'
+import { useWorkspaceShortcuts } from './shortcuts'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
@@ -172,6 +173,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const latest = useRef({ noChat, tab })
   latest.current = { noChat, tab }
   useEffect(() => bringBoxOnAsk(workspaceId, () => latest.current, showNew), [workspaceId, showNew])
+  useWorkspaceShortcuts({ workspaceId, chatId: chat?.id, openDiff: (path) => select(diffTab(path)) })
 
   if (!ws) return <div className="panel" />
   // A chat with Rowan with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
