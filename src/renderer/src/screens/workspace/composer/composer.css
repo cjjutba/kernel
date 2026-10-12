@@ -145,40 +145,49 @@
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
    top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
    glow and the caret; its border is the modal shell's.
-   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over 0.7s each way (KERNEL-418, KERNEL-565), and
-   breathes every 8s while the box waits for input. Focus settles it. The strip opens over 1.2s and one light crosses it.
+   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
+   breathes every 8s while the box waits for input. Focus settles it. The strip opens over --plan-dur and one light crosses it.
+   Every plan mode state change reads --plan-dur (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
+   Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-4 in 160ms ease-out like the rest of the app.
+   The blue border is a ring on ::after that fades its opacity and color over --plan-dur, so turning plan mode off fades the blue
+   out over --plan-dur even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
+   on the same style).
    Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
-.cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); }
-.cmp { transition: border-color 0.7s ease-in-out; }
-.cmp:focus-within { transition: border-color 0.6s ease-out; }
+.cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); --plan-dur: 0.5s; }
+.cmp { transition: border-color 160ms ease-out; }
 .nw { position: relative; }
 .nw > * { position: relative; }
 .cmp::before, .nw::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
   opacity: 0; transform: scaleY(0.85); transform-origin: 50% 100%;
-  transition: opacity 0.7s ease-in-out, transform 0.7s ease-in-out;
+  transition: opacity var(--plan-dur) var(--ease-plan), transform var(--plan-dur) var(--ease-plan);
 }
 /* The modal shell rounds its corners and lets the pickers overflow, so the glow rounds its own bottom corners. */
 .nw::before { border-radius: 0 0 calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px); }
 .cmp[data-plan='true']::before, .nw[data-plan]::before {
   opacity: 0.9; transform: none;
-  transition: opacity 0.7s var(--ease-plan), transform 0.7s var(--ease-plan);
-  animation: plan-breathe 8s ease-in-out 0.7s infinite;
+  transition: opacity var(--plan-dur) var(--ease-plan), transform var(--plan-dur) var(--ease-plan);
+  animation: plan-breathe 8s ease-in-out var(--plan-dur) infinite;
 }
-.cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity 1s ease-out; }
+.cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity var(--plan-dur) var(--ease-plan); }
 .cmp[data-blocked]::before { animation: none; }
 @keyframes plan-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.62; } }
-.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--input-bg)); transition: border-color 0.7s var(--ease-plan); }
-.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); transition: border-color 0.6s ease-out; }
+.cmp::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--plan) 45%, var(--input-bg)); opacity: 0;
+  transition: opacity var(--plan-dur) var(--ease-plan), border-color var(--plan-dur) var(--ease-plan);
+}
+.cmp[data-plan='true']::after { opacity: 1; }
+.cmp[data-plan='true']:focus-within::after { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); }
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .cmp:has(> .cmp-planbar) { padding-top: 0; }
-/* It mounts when a plan arrives: it opens over 1.2s, then one light crosses it over 2.6s, behind its buttons. */
-.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in 1.2s var(--ease-plan) both; }
+/* It mounts when a plan arrives: it opens over --plan-dur, then one light crosses it over 1s, behind its buttons. Done by 1.5s. */
+.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
 .cmp-planbar > * { position: relative; }
-.cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--plan) 18%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: planbar-sweep 2.6s ease-in-out 0.6s both; }
+.cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--plan) 18%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: planbar-sweep 1s ease-in-out var(--plan-dur) both; }
 @keyframes planbar-in { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 44px; opacity: 1; } }
 @keyframes planbar-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .cmp-planbar .btn { height: 28px; }
@@ -189,7 +198,7 @@
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
-  .cmp, .cmp::before, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
+  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
 }
 
 /* context ring and its popover (KERNEL-96) */
