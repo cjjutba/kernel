@@ -313,6 +313,8 @@ for n,pg in [
     ('SettingsRoomInstructions','r-instructions'),
     ('SettingsRoomPermissions','r-permissions'),
     ('SettingsRoomPermissionsMode','r-permissions-mode'),
+    # KERNEL-551: the room's reviews, shared with the team.
+    ('SettingsRoomReviews','r-reviews'),
     ('SettingsEnvironment','env'),
     ('SettingsRoomEnvironment','r-env'),
     ('SettingsEnvironmentAdd','r-env-add'),
