@@ -15,12 +15,19 @@ export const toolName = (entry: string): string => {
 
 /**
  * Whether an agent with these tools can take a task through to a pull request: it edits files and runs git and gh. No
- * tools line means every tool.
+ * tools line means every tool but those `disallowed` takes away.
  */
-export function canOpenPr(tools: string[] | undefined): boolean {
-  if (!tools) return true
-  const names = new Set(tools.map(toolName))
-  return names.has('Bash') && (names.has('Edit') || names.has('Write'))
+export function canOpenPr(tools: string[] | undefined, disallowed?: string[]): boolean {
+  const has = (tool: string) => (!tools || tools.some((t) => toolName(t) === tool)) && !disallowed?.some((t) => toolName(t) === tool)
+  return has('Bash') && (has('Edit') || has('Write'))
+}
+
+/** An entry's MCP server and tool. `mcp__linear` and `mcp__linear__*` name the whole server, which has no `tool`. */
+const mcpEntry = (name: string): { server: string; tool?: string } | undefined => {
+  const [prefix, server, ...rest] = name.split('__')
+  if (prefix !== 'mcp' || !server) return undefined
+  const tool = rest.join('__')
+  return tool && tool !== '*' ? { server, tool } : { server }
 }
 
 /**
@@ -42,31 +49,64 @@ export const ALWAYS = ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion', 'Tool
 /** Tools that only reach a command Bash started. */
 const BASH_COMPANIONS = ['BashOutput', 'KillShell', 'KillBash']
 
-/** What an agent file's tools line lets a session use (KERNEL-397). */
+/** What an agent file's tools line and disallowedTools let a session use (KERNEL-397, KERNEL-451). */
 export interface ToolPolicy {
-  /** Built-in tools to leave out of the session. */
+  /** Tools to leave out of the session: built-ins the file doesn't allow, and the MCP servers and tools it takes away by name. */
   hidden: string[]
   /** `input` is the call's input, which says where a write goes. */
   allows(tool: string, input?: unknown): boolean
+  /** Whether the file's disallowedTools takes the tool away, rather than its tools line leaving it out. */
+  disallows(tool: string): boolean
+  /** How much of an MCP server the session may reach. Kernel's own is always all of it. */
+  server(name: string): ServerAccess
 }
+
+/** None of a server, all of it but `except`, or only `only`, by the tool's name on that server. */
+export type ServerAccess = { on: false } | { on: true; only?: string[]; except?: string[] }
 
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
 const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
+/** A tools or disallowedTools line as the tools it names, the servers it names whole, and the MCP tools it names one by one. */
+function readLine(entries: string[]) {
+  const names = new Set(entries.map(toolName))
+  const mcp = [...names].map(mcpEntry).filter((e) => !!e)
+  return { names, servers: new Set(mcp.filter((e) => !e.tool).map((e) => e.server)), tools: mcp.filter((e) => !!e.tool) as { server: string; tool: string }[] }
+}
+
 /**
- * The tools line as Claude Code reads it for a subagent: the tools it names, `Bash(git:*)` as Bash, `mcp__linear` or
- * `mcp__linear__*` for every tool of that server. Nothing for an agent with no tools line, which may use every tool.
+ * The file's tools as Claude Code resolves a subagent's (KERNEL-451). The tools line keeps the tools it names, `Bash(git:*)`
+ * as Bash, and `mcp__linear` or `mcp__linear__*` for every tool of that server, where `mcp__*` names nothing. With no tools
+ * line every tool is in. disallowedTools then takes away what it names, the same way, and there `mcp__*` takes every MCP
+ * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
  */
-export function toolPolicy(tools: string[] | undefined, o: { plans?: string } = {}): ToolPolicy | undefined {
-  if (!tools?.length) return undefined
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string } = {}): ToolPolicy | undefined {
+  if (!tools && !o.disallowed?.length) return undefined
   const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
-  const names = new Set(tools.map(toolName))
-  const servers = new Set([...names].map((n) => n.split('__')).filter((p) => p[0] === 'mcp' && p[1] && (p.length === 2 || (p.length === 3 && p[2] === '*'))).map((p) => p[1]))
+  const line = tools && readLine(tools)
+  const off = readLine(o.disallowed ?? [])
+  const offAll = off.servers.has('*')
+  const own = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool)
   // A background command's output and its stop belong to Bash.
-  const listed = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool))
-    || (BASH_COMPANIONS.includes(tool) && names.has('Bash')) || (tool.startsWith('mcp__') && servers.has(tool.split('__')[1]))
-  const allows = (tool: string, input?: unknown) => listed(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
-  return { hidden: HIDEABLE.filter((t) => !listed(t)), allows }
+  const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash'))
+    || (tool.startsWith('mcp__') && line.servers.has(tool.split('__')[1]))
+  const disallows = (tool: string): boolean => !own(tool) && (off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
+    || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
+  const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
+  const allows = (tool: string, input?: unknown) => usable(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
+  const server = (name: string): ServerAccess => {
+    if (name === 'kernel') return { on: true }
+    if (offAll || off.servers.has(name)) return { on: false }
+    const except = off.tools.filter((t) => t.server === name).map((t) => t.tool)
+    if (line && !line.servers.has(name)) {
+      const only = line.tools.filter((t) => t.server === name && !except.includes(t.tool)).map((t) => t.tool)
+      return only.length ? { on: true, only } : { on: false }
+    }
+    return except.length ? { on: true, except } : { on: true }
+  }
+  // `mcp__*` can't go in the session's list: it would take Kernel's own server too. The gate refuses those calls instead.
+  const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
+  return { hidden: [...HIDEABLE.filter((t) => !usable(t)), ...named], allows, disallows, server }
 }
 
 /** A server the tools line names that the session doesn't have, and a connected one whose name contains it. */
@@ -81,9 +121,9 @@ export function missingServers(tools: string[] | undefined, connected: string[])
   const have = new Set(connected)
   const missing = new Map<string, MissingServer>()
   for (const entry of tools ?? []) {
-    const p = toolName(entry).split('__')
-    const server = p[0] === 'mcp' && p.length <= 3 ? p[1] : undefined
-    if (!server || server === 'kernel' || have.has(server) || missing.has(server)) continue
+    const server = mcpEntry(toolName(entry))?.server
+    // `mcp__*` names no server in a tools line.
+    if (!server || server === '*' || server === 'kernel' || have.has(server) || missing.has(server)) continue
     const suggestion = connected.find((c) => c !== 'kernel' && c.toLowerCase().includes(server.toLowerCase()))
     missing.set(server, { server, entry: toolName(entry), ...(suggestion ? { suggestion } : {}) })
   }

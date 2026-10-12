@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getIssue, getScope, listIssues, linearToken } from '../src/main/services/linear'
+import { getIssue, getScope, listIssues, linearToken } from '../src/main/services/trackers/linear'
 
 // The read queries against the real Linear API, to catch a field Linear renamed or removed. Read-only: it never moves an issue.
 // LINEAR_API_KEY=lin_api_... pnpm test test/linear.live.test.ts
