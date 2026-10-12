@@ -10,3 +10,6 @@ copy = [".env", ".env.local"]
 [workspace]
 base_ref = "origin/main"
 branch_pattern = "{type}/{task}-{slug}"
+
+[mcp.aliases]
+claude_ai_Linear = "linear"
