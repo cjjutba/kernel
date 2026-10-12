@@ -99,7 +99,7 @@ export class Workspaces extends Feature {
         const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
-        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(roomId, issue.id) : [])
+        const labels = o.labels ?? (issue && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(roomId, issue) : [])
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
@@ -135,8 +135,8 @@ export class Workspaces extends Feature {
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     if (!o.lead) bus.track({ name: 'workspace.created', by: o.leadChatId ? 'lead' : 'user', review: !!(o.reviewOf ?? o.linkReviewOf) })
     if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
-    // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
-    if (!o.lead && o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.k.integrations.startIssue(ws, o.source.id)
+    // The issue goes to In Progress in the room's tracker, when it came from there.
+    if (!o.lead && o.source?.kind === 'issue' && o.source.id) void this.k.integrations.startIssue(ws, o.source)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }

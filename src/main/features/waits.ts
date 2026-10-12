@@ -2,7 +2,8 @@ import type { ChatPart, NoteRef, PrState, Workspace } from '@shared/types'
 import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
 import { fastForward, fetchOrigin, stripRemote } from '../services/worktrees'
-import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
+import { issueTracker } from '../services/trackers'
+import { buildsIssue, isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
 import { head } from './shared'
 import { Feature } from './feature'
 
@@ -221,12 +222,14 @@ export class Waits extends Feature {
    */
   async waitOnBlockers(ws: Workspace, blockedBy: string[]): Promise<Workspace | undefined> {
     const now = this.mustWs(ws.id)
-    if (now.status !== 'ready' || now.waitsFor) return undefined
-    const keys = new Set(blockedBy.map((k) => k.toLowerCase()))
+    if (now.status !== 'ready' || now.waitsFor || now.source?.kind !== 'issue') return undefined
+    // The blockers are keys in the room's tracker, which read them with the workspace's own issue and tagged it, so only
+    // work on that tracker's issues counts (KERNEL-470).
+    const tracker = issueTracker(now.source)
     const all = this.store.workspaces(ws.roomId)
     const isLead = (w: Workspace) => !!this.agentsSync(ws.roomId).find((a) => a.id === w.agentId)?.lead
     const on = all
-      .filter((w) => w.status !== 'archived' && !w.reviewOf && !isMerged(w) && w.source?.kind === 'issue' && keys.has(w.source.id.toLowerCase()))
+      .filter((w) => w.status !== 'archived' && !w.reviewOf && !isMerged(w) && blockedBy.some((key) => buildsIssue(w, key, tracker)))
       .filter((w) => !waitRefusal({ workspaces: all, refs: [w.id], waiter: now, isLead }))
       .map((w) => w.id)
     return on.length ? this.setWait(ws.id, on) : undefined

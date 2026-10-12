@@ -673,6 +673,20 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     await k.stop()
   }, 20_000)
 
+  it("counts only work on the blocking tracker's issues, and an old record's by its key (KERNEL-470)", async () => {
+    const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-199'] })
+    const { k, room, lead, target } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
+    // A Jira issue with the same key as Linear's blocker, and work saved before sources had a tracker.
+    const jira = await target(k, 164, 'Jira rows')
+    k.store.saveWorkspace({ ...jira, source: { kind: 'issue', id: 'KERNEL-197', title: 'Jira rows', tracker: 'jira' } })
+    const old = await target(k, 170, 'Old rows')
+    k.store.saveWorkspace({ ...old, source: { kind: 'issue', id: 'KERNEL-199', title: 'Old rows' } })
+    const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-199, which Noor is building. Kai starts now, and Kernel messages Kai when PR #170 merges. Pass wait_for to hold the brief instead.`)
+    expect(w.waitsFor).toEqual({ on: [old.id], held: false })
+    await k.stop()
+  }, 20_000)
+
   it('leaves the hand-off as it was when Linear fails or has no token', async () => {
     vi.stubEnv('LINEAR_API_KEY', '')
     try {
@@ -751,6 +765,23 @@ describe('waits, the rules', () => {
     expect(resolveTarget(all, '164')?.id).toBe('w1')
     expect(resolveTarget(all, 'kernel-197')?.id).toBe('w1')
     expect(resolveTarget(all, 'KERNEL-1')).toBeUndefined()
+  })
+
+  it("tells a GitHub issue's number from a PR's by the issue's tracker, and an old record's by its id (KERNEL-470)", () => {
+    const issue = ws('gh', { prNumber: 45, source: { kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'github' } })
+    const pr = ws('pr', { prNumber: 41 })
+    const linear = ws('lin', { prNumber: 46, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows', tracker: 'linear' } })
+    const old = ws('old', { prNumber: 47, source: { kind: 'issue', id: '#52', title: 'Saved before trackers' } })
+    // GitHub numbers issues and PRs together, so in one repo #41 is the issue or the PR.
+    expect(resolveTarget([issue, linear, old], '#41')?.id).toBe('gh')
+    expect(resolveTarget([issue, linear, old], '41')?.id).toBe('gh')
+    expect(refuse(['#41'], { workspaces: [issue] })).toBeUndefined()
+    expect(resolveTarget([pr, linear, old], '#41')?.id).toBe('pr')
+    expect(resolveTarget([issue, linear, old], 'kernel-197')?.id).toBe('lin')
+    expect(resolveTarget([issue, linear, old], '#52')?.id).toBe('old')
+    expect(resolveTarget([issue, linear, old], 'KERNEL-197')?.id).toBe('lin')
+    // The tag decides, not the id's shape.
+    expect(resolveTarget([ws('j', { source: { kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'jira' } })], '#41')).toBeUndefined()
   })
 
   it('refuses each target that can never release the wait', () => {
