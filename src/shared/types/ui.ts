@@ -27,7 +27,11 @@ export type Route =
   /** `section` is for `page: 'room'`, and none means General. */
   /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
   /** `account` is the id of the account Skills and MCP puts first in view (KERNEL-627). */
-  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string }
+  /**
+   * `agentId` opens that agent's editor inside the Agents page it came from: `page: 'agents'` for the app's list, or `page: 'room'`
+   * with `section: 'agents'` and a `roomId` for a room's (KERNEL-641).
+   */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string; agentId?: string }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 

@@ -18,11 +18,14 @@ export function agentLabel(a: Pick<AgentDef, 'name' | 'role'>): string {
   return !role || role.toLowerCase() === a.name.trim().toLowerCase() ? a.name : `${a.name} · ${role}`
 }
 
+/** The plugin an agent comes from: the part of its id before the colon. */
+export const pluginOf = (a: Pick<AgentDef, 'id'>): string => (a.id.includes(':') ? a.id.slice(0, a.id.indexOf(':')) : a.id)
+
 export function agentSource(a: Pick<AgentDef, 'id' | 'builtIn' | 'origin'>): string {
   if (a.builtIn) return 'Built into Kernel'
   const group = agentGroup(a)
   if (group === 'personal') return `~/.claude/agents/${a.id}.md`
-  if (group === 'plugin') return `From the ${a.id.includes(':') ? a.id.slice(0, a.id.indexOf(':')) : a.id} plugin`
+  if (group === 'plugin') return `From the ${pluginOf(a)} plugin`
   return `.claude/agents/${a.id}.md`
 }
 

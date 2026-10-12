@@ -6,12 +6,13 @@ import { actions, useStore } from '../../store'
 import { Button, Icon, Kbd, Menu, useBusy } from '../../ui'
 import { useRoomSettings } from './useSettings'
 
-/** One settings page: the title, an optional intro and its sections. `action` sits at the right of the title. */
-export function Page({ title, intro, action, children }: { title: string; intro?: string; action?: ReactNode; children: ReactNode }) {
+/** One settings page: the title, an optional intro and its sections. `action` sits at the right of the title, and `back` is the link above it to the page it opened from. */
+export function Page({ title, intro, action, back, children }: { title: string; intro?: string; action?: ReactNode; back?: ReactNode; children: ReactNode }) {
   return (
     <div className="set-scroll">
       <div className="set-page">
         <div>
+          {back}
           <div className="set-head">
             <h1>{title}</h1>
             {action}

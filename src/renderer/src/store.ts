@@ -30,6 +30,8 @@ export interface State {
   agents: Record<string, AgentDef[]>
   /** By room id, then agent id. */
   status: Record<string, Record<string, AgentStatus>>
+  /** The personal and plugin agents that join every room, with no room needed. Null until `agents.listGlobal` answers (KERNEL-641). */
+  globalAgents: AgentDef[] | null
   // workspaces
   workspaces: Workspace[]
   /** By workspace id. Lines carry the run script's `name`, and each script keeps its own last 400. */
@@ -199,7 +201,7 @@ const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
-  agents: {}, status: {},
+  agents: {}, status: {}, globalAgents: null,
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
@@ -538,6 +540,7 @@ export const actions = {
   },
   agents: {
     set: (roomId: string, list: AgentDef[]) => setState((s) => ({ agents: { ...s.agents, [roomId]: list } })),
+    setGlobal: (list: AgentDef[]) => setState({ globalAgents: list }),
     setStatus: (roomId: string, agentId: string, status: AgentStatus) => setState((s) => ({
       status: { ...s.status, [roomId]: { ...(s.status[roomId] ?? {}), [agentId]: status } }
     }))
@@ -729,6 +732,7 @@ export function apply(e: PushEvent) {
     case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
     case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.roomId, e.agents)
+    case 'globalAgents': return actions.agents.setGlobal(e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)

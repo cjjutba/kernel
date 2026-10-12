@@ -23,7 +23,7 @@ function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
 
 /**
  * Settings > a room > Agents (SettingsTeam.png): who leads and who reviews, who takes tasks, and the room's agent files,
- * with Edit opening the profile (KERNEL-397). A change goes to `[team]` in the shared settings.toml. The team a new room
+ * with Edit opening the agent's editor in Settings (KERNEL-397, KERNEL-641). A change goes to `[team]` in the shared settings.toml. The team a new room
  * starts with is on General. The Open workspaces row, under the switches, saves the room's own cap to its personal file (KERNEL-493).
  */
 export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
@@ -95,7 +95,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           <Section key={key} title={title}>
             {group.map((a) => (
               <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={a.description ? <span className="set-clamp">{cleanDescription(a.description)}</span> : undefined}>
-                {key !== 'plugin' && <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'agent', roomId, agentId: a.id })}>Edit</Button>}
+                <Button aria-label={`${key === 'plugin' ? 'View' : 'Edit'} ${a.name}`} onClick={() => go({ name: 'settings', page: 'room', roomId, section: 'agents', agentId: a.id })}>{key === 'plugin' ? 'View' : 'Edit'}</Button>
               </Row>
             ))}
           </Section>

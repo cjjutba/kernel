@@ -96,7 +96,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
     case 'leadNew': return <LeadNewScreen roomId={route.roomId} />
-    case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} />
+    case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} agentId={route.agentId} />
     case 'devUi': return <DevUi page={route.page} />
   }
 }
