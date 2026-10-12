@@ -31,6 +31,8 @@ export interface KernelApi {
   'hooks.restart': { req: { port?: number }; res: HookStatus }
   /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
   'hooks.uninstall': { req: void; res: HookStatus }
+  /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
+  'hooks.turnOn': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
@@ -226,6 +228,8 @@ export interface KernelApi {
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
+  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */
@@ -286,6 +290,11 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /**
+   * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
+   * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
+   */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
   /**

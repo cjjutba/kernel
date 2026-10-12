@@ -15,7 +15,8 @@ export function usePrToasts() {
     const s = getState()
     for (const w of workspaces) {
       const agent = s.agents[w.roomId]?.find((a) => a.id === w.agentId)?.name
-      const t = prToast(before.get(w.id), w, { method: s.settings?.pr.mergeMethod, agent, remote: remoteOf(s.roomSettings[w.roomId], s.settings) })
+      // The method Kernel's merge used, which is the room's and can differ from the app's (KERNEL-468).
+      const t = prToast(before.get(w.id), w, { method: w.mergedWith ?? s.settings?.pr.mergeMethod, agent, remote: remoteOf(s.roomSettings[w.roomId], s.settings) })
       if (t) actions.ui.toast(t)
     }
   }, [workspaces])

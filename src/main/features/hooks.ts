@@ -1,12 +1,14 @@
 import { join } from 'node:path'
 import type { Server } from 'node:http'
-import type { AgentStatus, HookStatus } from '@shared/types'
+import type { AgentStatus, HookProblem, HookStatus } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
+import { hooksPolicy, type HooksPolicy } from '../services/claudeSettings'
 import { startHookServer } from '../services/hookServer'
 import { hookToken } from '../services/hookToken'
-import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from '../services/hooksInstaller'
+import { HooksFileError, hookStatus, installedEvents, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, turnHooksOn, uninstallHooks, withKernelHooks, type HookWriteProblem } from '../services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
+import { tildify } from '../services/rooms'
 import { Feature } from './feature'
 
 /** How a hook from an outside session moves its agent on the floor. */
@@ -19,11 +21,27 @@ export class Hooks extends Feature {
   private hooksNeedInstall = false
   /** When each hook event last arrived from a real session. The test event is not counted. */
   private hookSeen = new Map<string, number>()
+  /** The last write of the hooks that failed in a way Check hooks explains, until a write works (KERNEL-461). */
+  private writeProblem?: HookWriteProblem
+  /** Reads what Claude Code's managed and user settings do to hooks. Tests swap it. */
+  readPolicy: () => Promise<HooksPolicy> = () => hooksPolicy()
 
   async start() {
     // Hooks from before KERNEL-206, or from another port or timeout, get a 401. Rewrite Kernel's own entries, never add any.
-    this.hooksNeedInstall = await refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
+    this.hooksNeedInstall = await this.write(() => refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken)).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
     await this.listenHooks(this.settings.hookPort)
+  }
+
+  /** A write of the hooks file. One that works clears the last failure, and one Check hooks can explain is kept for it. */
+  private async write<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      const out = await fn()
+      this.writeProblem = undefined
+      return out
+    } catch (e) {
+      if (e instanceof HooksFileError) this.writeProblem = e.problem
+      throw e
+    }
   }
 
   stop(): Promise<void> {
@@ -79,7 +97,7 @@ export class Hooks extends Feature {
 
   /** Install, and every rewrite after a port or timeout change. A write that works clears the start-up failure. */
   async writeHooks(port: number): Promise<string[]> {
-    const events = await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken)
+    const events = await this.write(() => installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken))
     this.hooksNeedInstall = false
     return events
   }
@@ -91,16 +109,38 @@ export class Hooks extends Feature {
   }
 
   async hooksStatus(): Promise<HookStatus> {
-    const installed = new Set(await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[]))
+    const policy = await this.readPolicy().catch((e) => { console.warn('[hooks] could not read Claude Code settings', e); return undefined })
+    // Kernel's entries an admin put in managed settings count too, and run when only managed hooks do.
+    const managed = new Set(policy ? installedEvents({ hooks: policy.managedHooks } as Parameters<typeof installedEvents>[0], this.hookToken) : [])
+    const installed = new Set([...managed, ...await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[])])
+    const problem = this.problem(policy, KERNEL_HOOK_EVENTS.every((e) => managed.has(e)))
     return {
       port: this.settings.hookPort,
       listening: !!this.hookServer?.listening,
       installed: KERNEL_HOOK_EVENTS.every((e) => installed.has(e)),
       events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) })),
       token: this.hookToken,
-      needsInstall: this.hooksNeedInstall
+      needsInstall: this.hooksNeedInstall,
+      ...(problem ? { problem } : {})
     }
   }
+
+  /**
+   * Why the hooks can't run or weren't written (KERNEL-461). Managed policy comes first, because nothing on this Mac changes
+   * it, then the last failed write, then the user's own disableAllHooks, which Turn hooks on removes. Managed hooks run under
+   * the user's disableAllHooks, so Kernel's entries there clear it.
+   */
+  private problem(policy: HooksPolicy | undefined, inManaged: boolean): HookProblem | undefined {
+    if (policy?.managedOff) return { kind: 'managed', setting: 'disableAllHooks', ...this.source(policy.managedOff.path) }
+    if (policy?.managedOnly && !inManaged) {
+      const block = JSON.stringify({ hooks: withKernelHooks({}, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken).hooks }, null, 2)
+      return { kind: 'managed', setting: 'allowManagedHooksOnly', ...this.source(policy.managedOnly.path), block }
+    }
+    if (this.writeProblem) return this.writeProblem
+    if (policy?.userOff && !inManaged) return { kind: 'off', file: tildify(policy.userOff.path ?? this.claudeSettings, this.home) }
+  }
+
+  private source(path?: string) { return path ? { source: tildify(path, this.home) } : {} }
 
   private resolveCwd(cwd: string) {
     const ws = this.store.workspaces().filter((w) => w.status !== 'archived').sort((a, b) => b.path.length - a.path.length).find((w) => cwd === w.path || cwd.startsWith(w.path + '/'))
@@ -135,6 +175,7 @@ export class Hooks extends Feature {
         return this.hooksStatus()
       },
       'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
+      'hooks.turnOn': async () => { await this.write(() => turnHooksOn(this.claudeSettings)); return this.pushHooks() },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await this.writeHooks(port) })
     } satisfies Partial<Handlers>
   }
