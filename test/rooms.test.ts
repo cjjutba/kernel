@@ -9,9 +9,9 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, roomState } from '../src/renderer/src/screens/rooms/roomInfo'
-import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installScripts, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
+import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, lockfileInstall, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
 import { loadRepoSettings } from '../src/main/services/settings'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
@@ -80,6 +80,42 @@ describe('rooms service', () => {
     const plain = await tempRepo()
     await ensureRepoSettings(plain)
     expect((await loadRepoSettings(plain)).scripts.setup).toBeUndefined()
+  })
+
+  it('picks the install and the run example from the stack, one install per language (KERNEL-444)', async () => {
+    const stacks: [Record<string, string>, string, string][] = [
+      [{ 'uv.lock': '', 'requirements.txt': '' }, 'uv sync', 'uv run uvicorn main:app --port $KERNEL_PORT'],
+      [{ 'poetry.lock': '' }, 'poetry install', 'poetry run uvicorn main:app --port $KERNEL_PORT'],
+      [{ 'requirements.txt': '' }, 'python3 -m venv .venv && .venv/bin/pip install -r requirements.txt', '.venv/bin/python -m uvicorn main:app --port $KERNEL_PORT'],
+      [{ Gemfile: '', 'Gemfile.lock': '' }, 'bundle install', 'bin/rails server --port $KERNEL_PORT'],
+      [{ 'mix.exs': '' }, 'mix deps.get', 'PORT=$KERNEL_PORT mix phx.server'],
+      [{ 'composer.json': '{}' }, 'composer install', 'php -S localhost:$KERNEL_PORT -t public'],
+      [{ 'Cargo.toml': '' }, 'cargo fetch', 'PORT=$KERNEL_PORT cargo run'],
+      [{ 'go.mod': '' }, 'go mod download', 'PORT=$KERNEL_PORT go run .'],
+      [{ 'package.json': '{}', 'yarn.lock': '' }, 'yarn install', 'yarn dev --port $KERNEL_PORT'],
+      // A Rails app with a JS bundle installs both, JS last, and shows the Rails run example.
+      [{ Gemfile: '', 'package.json': '{}', 'yarn.lock': '' }, 'bundle install && yarn install', 'bin/rails server --port $KERNEL_PORT']
+    ]
+    for (const [files, setup, run] of stacks) {
+      const repo = await tempRepo(files)
+      expect(await lockfileInstall(repo), setup).toBe(setup)
+      await ensureRepoSettings(repo)
+      expect((await loadRepoSettings(repo)).scripts.setup, setup).toBe(setup)
+      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain(`# run = ${JSON.stringify(run)}`)
+    }
+  })
+
+  it("installs only what a checkout lacks, and says when an install runs the repo's own code (KERNEL-444)", async () => {
+    const repo = await tempRepo({ 'composer.json': '{}', 'go.mod': 'module demo\n', 'package.json': '{}' })
+    expect(await installCommand(repo)).toEqual({ command: 'composer install && go mod download && npm install', runsRepoCode: true })
+    await mkdir(join(repo, 'vendor'))
+    await mkdir(join(repo, 'node_modules'))
+    // go mod download leaves nothing in the checkout, so it runs every time, and it runs nothing from the repo.
+    expect(await installCommand(repo)).toEqual({ command: 'go mod download' })
+    const js = await tempRepo({ 'package.json': '{}', 'pnpm-lock.yaml': '' })
+    await mkdir(join(js, 'node_modules'))
+    expect(await installCommand(js)).toEqual({ reason: 'Already installed' })
+    expect(await installCommand(await tempRepo())).toEqual({ reason: 'Nothing to install' })
   })
 
   it('refuses to clone into a folder that has files', async () => {
@@ -259,11 +295,12 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
 
   /**
    * Runs `fn` with an `npm` first on the PATH that runs the root package.json's postinstall, as the real one does, so a test
-   * can tell whether an install ran without a network or a registry.
+   * can tell whether an install ran without a network or a registry. `more` puts other commands there too.
    */
-  async function withFakeNpm<T>(fn: () => Promise<T>): Promise<T> {
+  async function withFakeNpm<T>(fn: () => Promise<T>, more: Record<string, string> = {}): Promise<T> {
     const bin = await mkdtemp(join(tmpdir(), 'kernel-bin-'))
     await writeFile(join(bin, 'npm'), '#!/bin/sh\ncmd=$(sed -n \'s/.*"postinstall":"\\([^"]*\\)".*/\\1/p\' package.json)\n[ -n "$cmd" ] && sh -c "$cmd"\nexit 0\n', { mode: 0o755 })
+    for (const [name, script] of Object.entries(more)) await writeFile(join(bin, name), script, { mode: 0o755 })
     const path = process.env.PATH
     process.env.PATH = `${bin}:${path}`
     try { return await fn() } finally { process.env.PATH = path }
@@ -355,6 +392,63 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
       expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "npm install"')
       await k.stop()
     })
+  }, 90000)
+
+  // Stands in for bundle install running the Gemfile, which is Ruby from the repo.
+  const bundle = { bundle: '#!/bin/sh\ntouch ran.txt\n' }
+
+  it("holds an install that runs the repo's own code until the user trusts it, then runs it (KERNEL-444)", async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's scripts" })
+      // Kernel wrote the setup script, but it runs the Gemfile, so it isn't trusted on its own.
+      const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+      expect(trust).toMatchObject({ scripts: { setup: 'bundle install' } })
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
+      expect(ws.status).toBe('trust')
+
+      await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      // The workspace's setup runs in the login shell, which doesn't see the fake bundle, so the release is what shows.
+      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).not.toBe('trust'), { timeout: 15000 })
+      await k.stop()
+    }, bundle)
+  }, 90000)
+
+  it("leaves that install to the user when the repo's own settings have nothing to trust (KERNEL-444)", async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ Gemfile: '', '.kernel/settings.toml': '# Nothing to run.\n' })
+      // Nothing would ever ask, so holding it would hold it for good.
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped: bundle install runs this repo's code, so run it yourself if you trust it" })
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+      await k.stop()
+    }, bundle)
+  }, 90000)
+
+  it('runs go mod download without asking, since it runs nothing from the repo (KERNEL-444)', async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ 'go.mod': 'module demo\n' })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok' })
+      expect(steps.find((s) => s.id === 'install')?.detail).not.toContain('Skipped')
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(true)
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      await k.stop()
+    }, { go: '#!/bin/sh\ntouch ran.txt\n' })
+  }, 90000)
+
+  it("doesn't ask about package.json again once node_modules exists, though bundle install runs every time (KERNEL-444)", async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, h } = await start({ 'package.json': pkg('touch ran.txt'), Gemfile: '', '.kernel/settings.toml': '[scripts]\nsetup = "make setup"\n' })
+      await trustRoom(k, room.id)
+      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      await mkdir(join(repo, 'node_modules'))
+      // Only a JS install runs package.json's install scripts, and none is left to run, so a changed one asks nothing.
+      await writeFile(join(repo, 'package.json'), pkg('touch ran-2.txt'))
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      await k.stop()
+    }, { bundle: '#!/bin/sh\nexit 0\n' })
   }, 90000)
 })
 

@@ -1,6 +1,8 @@
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
+import type { AgentWarning, McpStatus } from '@shared/types'
+import { toolServerName } from './mcp'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
 
@@ -15,12 +17,19 @@ export const toolName = (entry: string): string => {
 
 /**
  * Whether an agent with these tools can take a task through to a pull request: it edits files and runs git and gh. No
- * tools line means every tool.
+ * tools line means every tool but those `disallowed` takes away.
  */
-export function canOpenPr(tools: string[] | undefined): boolean {
-  if (!tools) return true
-  const names = new Set(tools.map(toolName))
-  return names.has('Bash') && (names.has('Edit') || names.has('Write'))
+export function canOpenPr(tools: string[] | undefined, disallowed?: string[]): boolean {
+  const has = (tool: string) => (!tools || tools.some((t) => toolName(t) === tool)) && !disallowed?.some((t) => toolName(t) === tool)
+  return has('Bash') && (has('Edit') || has('Write'))
+}
+
+/** An entry's MCP server and tool. `mcp__linear` and `mcp__linear__*` name the whole server, which has no `tool`. */
+const mcpEntry = (name: string): { server: string; tool?: string } | undefined => {
+  const [prefix, server, ...rest] = name.split('__')
+  if (prefix !== 'mcp' || !server) return undefined
+  const tool = rest.join('__')
+  return tool && tool !== '*' ? { server, tool } : { server }
 }
 
 /**
@@ -42,52 +51,143 @@ export const ALWAYS = ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion', 'Tool
 /** Tools that only reach a command Bash started. */
 const BASH_COMPANIONS = ['BashOutput', 'KillShell', 'KillBash']
 
-/** What an agent file's tools line lets a session use (KERNEL-397). */
+/** What an agent file's tools line and disallowedTools let a session use (KERNEL-397, KERNEL-451). */
 export interface ToolPolicy {
-  /** Built-in tools to leave out of the session. */
+  /** Tools to leave out of the session: built-ins the file doesn't allow, and the MCP servers and tools it takes away by name. */
   hidden: string[]
   /** `input` is the call's input, which says where a write goes. */
   allows(tool: string, input?: unknown): boolean
+  /** Whether the file's disallowedTools takes the tool away, rather than its tools line leaving it out. */
+  disallows(tool: string): boolean
+  /** How much of an MCP server the session may reach. Kernel's own is always all of it. */
+  server(name: string): ServerAccess
 }
+
+/** None of a server, all of it but `except`, or only `only`, by the tool's name on that server. */
+export type ServerAccess = { on: false } | { on: true; only?: string[]; except?: string[] }
 
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
 const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
 /**
- * The tools line as Claude Code reads it for a subagent: the tools it names, `Bash(git:*)` as Bash, `mcp__linear` or
- * `mcp__linear__*` for every tool of that server. Nothing for an agent with no tools line, which may use every tool.
+ * The room's `[mcp.aliases]` as tool names: each name agent files use, and the server's name as its tools carry it. An
+ * alias to or from Kernel's own server, or `*`, is left out (KERNEL-464).
  */
-export function toolPolicy(tools: string[] | undefined, o: { plans?: string } = {}): ToolPolicy | undefined {
-  if (!tools?.length) return undefined
-  const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
-  const names = new Set(tools.map(toolName))
-  const servers = new Set([...names].map((n) => n.split('__')).filter((p) => p[0] === 'mcp' && p[1] && (p.length === 2 || (p.length === 3 && p[2] === '*'))).map((p) => p[1]))
-  // A background command's output and its stop belong to Bash.
-  const listed = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool))
-    || (BASH_COMPANIONS.includes(tool) && names.has('Bash')) || (tool.startsWith('mcp__') && servers.has(tool.split('__')[1]))
-  const allows = (tool: string, input?: unknown) => listed(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
-  return { hidden: HIDEABLE.filter((t) => !listed(t)), allows }
+function aliasMap(aliases: Record<string, string> | undefined): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [from, to] of Object.entries(aliases ?? {})) {
+    const a = toolServerName(from.trim())
+    const b = toolServerName(to.trim())
+    if (a && b && a !== b && ![a, b].some((n) => n === 'kernel' || n === '*' || /^_+$/.test(n))) out.set(a, b)
+  }
+  return out
 }
 
-/** A server the tools line names that the session doesn't have, and a connected one whose name contains it. */
-export interface MissingServer { server: string; entry: string; suggestion?: string }
+/** A line's entries, each MCP one followed by the same entry on the server its name stands for in this room (KERNEL-464). */
+function withAliases(entries: string[], aliases: Map<string, string>): string[] {
+  return entries.flatMap((entry) => {
+    const name = toolName(entry)
+    const e = mcpEntry(name)
+    const to = e && aliases.get(e.server)
+    return to ? [name, e.tool ? `mcp__${to}__${e.tool}` : `mcp__${to}`] : [name]
+  })
+}
+
+/** A tools or disallowedTools line as the tools it names, the servers it names whole, and the MCP tools it names one by one. */
+function readLine(entries: string[]) {
+  const names = new Set(entries.map(toolName))
+  const mcp = [...names].map(mcpEntry).filter((e) => !!e)
+  return { names, servers: new Set(mcp.filter((e) => !e.tool).map((e) => e.server)), tools: mcp.filter((e) => !!e.tool) as { server: string; tool: string }[] }
+}
 
 /**
- * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that aren't among the
- * session's connected servers. Kernel's own server is always there. A server that failed or needs auth still counts as
- * connected: its name matches, so the gate lets its tools through and the problem is elsewhere.
+ * The file's tools as Claude Code resolves a subagent's (KERNEL-451). The tools line keeps the tools it names, `Bash(git:*)`
+ * as Bash, and `mcp__linear` or `mcp__linear__*` for every tool of that server, where `mcp__*` names nothing. With no tools
+ * line every tool is in. disallowedTools then takes away what it names, the same way, and there `mcp__*` takes every MCP
+ * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
+ * `aliases` is the room's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
+ * (KERNEL-464).
  */
-export function missingServers(tools: string[] | undefined, connected: string[]): MissingServer[] {
-  const have = new Set(connected)
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string> } = {}): ToolPolicy | undefined {
+  if (!tools && !o.disallowed?.length) return undefined
+  const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
+  const aliases = aliasMap(o.aliases)
+  const line = tools && readLine(withAliases(tools, aliases))
+  const off = readLine(withAliases(o.disallowed ?? [], aliases))
+  const offAll = off.servers.has('*')
+  const own = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool)
+  // A background command's output and its stop belong to Bash.
+  const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash'))
+    || (tool.startsWith('mcp__') && line.servers.has(tool.split('__')[1]))
+  const disallows = (tool: string): boolean => !own(tool) && (off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
+    || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
+  const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
+  const allows = (tool: string, input?: unknown) => usable(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
+  const server = (name: string): ServerAccess => {
+    if (name === 'kernel') return { on: true }
+    if (offAll || off.servers.has(name)) return { on: false }
+    const except = off.tools.filter((t) => t.server === name).map((t) => t.tool)
+    if (line && !line.servers.has(name)) {
+      const only = line.tools.filter((t) => t.server === name && !except.includes(t.tool)).map((t) => t.tool)
+      return only.length ? { on: true, only } : { on: false }
+    }
+    return except.length ? { on: true, except } : { on: true }
+  }
+  // `mcp__*` can't go in the session's list: it would take Kernel's own server too. The gate refuses those calls instead.
+  const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
+  return { hidden: [...HIDEABLE.filter((t) => !usable(t)), ...named], allows, disallows, server }
+}
+
+/**
+ * A server the tools line names that the session can't use. With no `status`, no server by its name, or by the name it
+ * stands for in this room, is there, and `suggestion` is a usable one whose name contains it, as its tools name it.
+ * Otherwise `name` is the server that is there and `status` why it can't be used: it `failed`, `needs-auth`, Claude Code or
+ * Codex has it `disabled`, or the room switched it `off` (KERNEL-464).
+ */
+export interface MissingServer { server: string; entry: string; status?: 'failed' | 'needs-auth' | 'disabled' | 'off'; name?: string; suggestion?: string }
+
+/** A server as `missingServers` reads it: its name, what its provider said, and whether the room has it on. */
+export type KnownServer = { name: string; status?: McpStatus | string; enabled?: boolean }
+
+/** Why a server can't be used, or undefined when it can. Pending and unknown servers count as there. */
+const unusable = (s: KnownServer): MissingServer['status'] =>
+  s.enabled === false ? 'off' : s.status === 'failed' || s.status === 'needs-auth' || s.status === 'disabled' ? s.status : undefined
+
+/**
+ * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that the session can't
+ * use. `servers` are the ones it knows of, by their names or their tools', a later entry for the same server winning.
+ * Kernel's own server is always there. A server that failed, needs sign-in or is switched off no longer counts as there,
+ * since its tools fail in the same way a missing one's do (amends KERNEL-397). `aliases` is the room's `[mcp.aliases]`.
+ */
+export function missingServers(tools: string[] | undefined, servers: KnownServer[], aliases?: Record<string, string>): MissingServer[] {
+  const known = new Map(servers.map((s) => [toolServerName(s.name), s]))
+  const alias = aliasMap(aliases)
   const missing = new Map<string, MissingServer>()
   for (const entry of tools ?? []) {
-    const p = toolName(entry).split('__')
-    const server = p[0] === 'mcp' && p.length <= 3 ? p[1] : undefined
-    if (!server || server === 'kernel' || have.has(server) || missing.has(server)) continue
-    const suggestion = connected.find((c) => c !== 'kernel' && c.toLowerCase().includes(server.toLowerCase()))
+    const server = mcpEntry(toolName(entry))?.server
+    // `mcp__*` names no server in a tools line.
+    if (!server || server === '*' || server === 'kernel' || missing.has(server)) continue
+    const there = [server, alias.get(server)].flatMap((n) => (n && known.get(n)) || [])
+    if (there.some((s) => !unusable(s))) continue
+    if (there.length) { missing.set(server, { server, entry: toolName(entry), status: unusable(there[0]), name: there[0].name }); continue }
+    const suggestion = [...known.entries()].find(([n, s]) => n !== 'kernel' && !unusable(s) && n.toLowerCase().includes(server.toLowerCase()))?.[0]
     missing.set(server, { server, entry: toolName(entry), ...(suggestion ? { suggestion } : {}) })
   }
   return [...missing.values()]
+}
+
+/**
+ * What an agent's tools line needs from the room's MCP servers that it doesn't have, as warnings for Team (KERNEL-464). A
+ * missing server's `detail` is the name its file uses, else the server's own name. `complete` says the list holds every
+ * server the agent could reach, so one it lacks is missing. Claude's isn't until a probe or a session has reported, since
+ * claude.ai's connectors are in no file.
+ */
+export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[], o: { aliases?: Record<string, string>; complete?: boolean } = {}): AgentWarning[] {
+  const kind = { failed: 'mcp-failed', 'needs-auth': 'mcp-needs-auth', disabled: 'mcp-off', off: 'mcp-off' } as const
+  return missingServers(tools, servers, o.aliases).flatMap((m): AgentWarning[] => {
+    if (m.status) return [{ kind: kind[m.status], detail: m.name }]
+    return o.complete ? [{ kind: 'mcp-missing', detail: m.server, ...(m.suggestion ? { suggestion: m.suggestion } : {}) }] : []
+  })
 }
 
 /** A tool as usage data names it: a built-in by name, any MCP tool as `mcp`, since server names are the user's own. */
