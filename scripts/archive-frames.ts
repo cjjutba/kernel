@@ -2,7 +2,7 @@
 // Runs on plain Node with built-in type stripping, so only erasable TypeScript here.
 //
 //   node scripts/archive-frames.ts after       this checkout's code
-//   node scripts/archive-frames.ts before      origin/main's code, built in a temporary git worktree that is removed afterwards
+//   node scripts/archive-frames.ts before      the code this branch was cut from (origin/main at that time), built in a temporary git worktree that is removed afterwards
 //   node scripts/archive-frames.ts table       the before and after results of the last runs, as a markdown table
 //
 //   --only chat-row,last-tab   run some paths (ids are in `paths` below)
@@ -375,9 +375,14 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   for (const key of ['nav', 'button']) writeFileSync(join(workspaces[key].path, `${key}-notes.md`), 'half done\n')
   // Pushed to the bare origin, so the commits are on the remote and Archive on merge finds nothing to keep the branch for.
   for (const [key, file] of [['billing', 'billing.ts'], ['reviewed', 'invites.ts']] as const) { commit(key, file); sh('git', ['push', 'origin', 'HEAD'], workspaces[key].path) }
+  // A chat with Rowan that has done work: a commit on the remote, so the PR header has a state to show on its own workspace.
+  const worked = (await listWs(page)).find((w) => w.id === chats['Export invoices as PDF'].workspaceId)
+  workspaces.worked = { id: worked.id, path: worked.path }
+  commit('worked', 'invoices.pdf.ts')
+  sh('git', ['push', 'origin', 'HEAD'], worked.path)
   await page.reload()
   await pastOnboarding(page)
-  for (const key of ['billing', 'reviewed']) await call(page, 'pr.refresh', { workspaceId: workspaces[key].id })
+  for (const key of ['billing', 'reviewed', 'worked']) await call(page, 'pr.refresh', { workspaceId: workspaces[key].id })
   await quiet(page)
   // Folders deleted outside Kernel, which the window notices when the workspace opens.
   const gone = (await listWs(page)).find((w) => w.id === chats['Draft the changelog'].workspaceId)
@@ -466,6 +471,26 @@ export const paths: PathDef[] = [
         note: `"${title}"`, done: archived(page, w.chats[title].workspaceId),
         prepare: async () => { await expand(page); const e = await place(page, where, () => openChat(page, title)); await chatRow(page, title).hover(); return e },
         trigger: () => rowArchive(page, title).click()
+      }
+    }
+  },
+  {
+    id: 'chat-with-work', name: 'chat with committed work, so its PR header is on screen (ConfirmArchiveChat)', where: ['screen'],
+    plan(ctx, w) {
+      const { page } = ctx
+      const title = 'Export invoices as PDF'
+      return {
+        note: `"${title}", with a commit on the remote`, done: archived(page, w.chats[title].workspaceId),
+        // A commit that is ahead of its base is something to lose, so the chat asks first.
+        prepare: async () => {
+          await expand(page)
+          const e = await place(page, 'screen', () => openChat(page, title))
+          await chatRow(page, title).hover()
+          await rowArchive(page, title).click()
+          await dialog(page).waitFor()
+          return e
+        },
+        trigger: () => confirmButton(page).click()
       }
     }
   },
@@ -733,7 +758,7 @@ function git(args: string[], cwd = root) {
   return spawnSync('git', args, { cwd, encoding: 'utf8' })
 }
 
-/** origin/main in a temporary worktree next to nothing of yours, sharing this checkout's node_modules. Removed by `done`. */
+/** The code this branch started from (origin/main when it was cut), in a temporary worktree sharing this checkout's node_modules. Removed by `done`. */
 export function mainsCode(): { dir: string; done: () => void } {
   const dir = join(tmpdir(), 'kernel-596-before')
   const done = () => {
@@ -745,7 +770,9 @@ export function mainsCode(): { dir: string; done: () => void } {
   done()
   const fetched = git(['fetch', 'origin', 'main'])
   if (fetched.status !== 0) console.warn(`Could not fetch origin/main, so this uses the copy you have:\n${fetched.stderr}`)
-  const added = git(['worktree', 'add', '--detach', dir, 'origin/main'])
+  // The commit this branch was cut from, which is origin/main without what landed since. That can bring packages this checkout's node_modules does not have.
+  const base = git(['merge-base', 'HEAD', 'origin/main']).stdout.trim() || 'origin/main'
+  const added = git(['worktree', 'add', '--detach', dir, base])
   if (added.status !== 0) throw new Error(`Could not make a worktree of origin/main:\n${added.stderr}`)
   symlinkSync(join(root, 'node_modules'), join(dir, 'node_modules'))
   return { dir, done }
@@ -826,9 +853,9 @@ async function main() {
     }
     // A run of some paths leaves the other paths' results where they were.
     const kept = readResults(label).filter((r) => !done.some((d) => d.id === r.id && d.where === r.where))
-    writeFileSync(results(label), JSON.stringify({ code: label === 'before' ? `origin/main at ${head}` : `this checkout at ${head}`, results: [...kept, ...done] }, null, 1))
+    writeFileSync(results(label), JSON.stringify({ code: label === 'before' ? `the branch's base, origin/main at ${head}` : `this checkout at ${head}`, results: [...kept, ...done] }, null, 1))
     const report = [
-      `Archive frames, ${label} (${label === 'before' ? `origin/main at ${head}` : `this checkout at ${head}`}), real main process`,
+      `Archive frames, ${label} (${label === 'before' ? `the branch's base, origin/main at ${head}` : `this checkout at ${head}`}), real main process`,
       '',
       ...done.flatMap((r) => [`${r.verdict.padEnd(5)} ${r.name}, ${WHERE_WORDS[r.where]}${r.note ? `: ${r.note}` : ''}`, ...r.lines.map((l) => `      ${l}`)]),
       '',
