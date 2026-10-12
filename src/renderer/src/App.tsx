@@ -200,7 +200,13 @@ export function App() {
         stepHistory(e.code === 'BracketLeft' ? 'back' : 'forward')
         return
       }
-      if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
+      // ⌘K opens search, and closes it when it is already open (like Esc). Over any other modal it does nothing (it would replace that modal) and so it does during onboarding.
+      if (e.key === 'k') {
+        e.preventDefault()
+        const s = getState()
+        if (s.ui.modal?.name === 'search') actions.ui.closeModal()
+        else if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'search' })
+      }
       if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
       // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513). Match the physical key, as ⌘B does.
