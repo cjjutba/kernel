@@ -7,7 +7,7 @@ import type { TelemetryEvent } from '@shared/telemetry'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { KernelOptions } from '../src/main/features/options'
-import { LEAD_REVIEW_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { claudeAgents } from '../src/main/services/pluginAgents'
 import { tempRepo } from './helpers'
@@ -82,7 +82,8 @@ describe("a repo's own agents (KERNEL-397)", () => {
     const { chat, call } = await leadTools(k, room.id)
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect(k.sessions['d'].agentFor(k.store.workspace(chat.workspaceId)!)).toMatchObject({ id: 'kernel-lead', builtIn: 'lead', prompt: expect.stringMatching(/^You are Rowan/) })
-    expect(k.tools.rulesFor(k.store.workspace(chat.workspaceId)!, team[0])).toContain(LEAD_REVIEW_RULE)
+    // Kernel starts reviews itself, so the Lead's rule has no review line (KERNEL-549).
+    expect(k.tools.rulesFor(k.store.workspace(chat.workspaceId)!, team[0])).toBe(LEAD_SHARING_RULE)
 
     const list = (await call('list_agents', {})).text
     expect(list).toContain('kernel-lead: Rowan, Lead (the Lead, you).')
@@ -120,11 +121,11 @@ describe("a repo's own agents (KERNEL-397)", () => {
     let team = await h['agents.setTeam']({ roomId: room.id, team: { lead: 'api', reviewer: 'none', members: ['api', 'web', 'architect'], helpers: [] }, from: 'settings' })
     expect(team.map((a) => [a.id, a.lead, a.reviewer, a.member])).toEqual([['api', true, false, false], ['architect', false, false, true], ['web', false, false, true]])
     expect(await readFile(settings, 'utf8')).toBe(`${before.replace(/\n+$/, '')}\n\n[team]\nlead = "api"\nreviewer = "none"\nmembers = ["architect"]\n`)
-    // The Lead's workspace, with its chats, is the new Lead's now. With no reviewer, the Lead isn't told to ask for reviews.
+    // The Lead's workspace, with its chats, is the new Lead's now.
     const ws = k.store.workspace(chat.workspaceId)!
     expect(ws.agentId).toBe('api')
     expect(k.chatTabs(ws.id).map((c) => c.id)).toContain(chat.id)
-    expect(k.tools.rulesFor(ws, team[0]) ?? '').not.toContain(LEAD_REVIEW_RULE)
+    expect(k.tools.rulesFor(ws, team[0])).toBe(LEAD_SHARING_RULE)
 
     // Back to what Kernel works out on its own: the table goes, and the rest of the file is as it was.
     team = await h['agents.setTeam']({ roomId: room.id, team: { lead: 'kernel-lead', reviewer: 'kernel-reviewer', members: [], helpers: ['architect'] } })

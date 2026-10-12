@@ -13,7 +13,7 @@ import { checkGroups, checkRow } from '../src/renderer/src/screens/workspace/Pan
 import { Kernel } from '../src/main/kernel'
 import { Prs } from '../src/main/features/prs'
 import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
-import { LEAD_REVIEW_RULE, LEAD_RULE } from '../src/main/services/handoff'
+import { LEAD_RULE, LEAD_SHARING_RULE } from '../src/main/services/handoff'
 import { mergeBlock, mergeableState } from '@shared/merge'
 
 describe('checks from statusCheckRollup', () => {
@@ -674,12 +674,12 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     const { k, ws, gh } = await setup()
     const verdict = (v: 'approved' | 'blockers', sha: string, ts: number): NonNullable<Workspace['reviews']>[number] => ({ workspaceId: 'rev', agentId: 'theo', verdict: v, summary: '', sha, prNumber: 42, ts })
     const review = (...reviews: NonNullable<Workspace['reviews']>) => k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviews })
-    const refusal = "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+    const refusal = "The code review hasn't approved the latest commit. Merging waits for every required review (Settings, Pull requests)."
     gh.pr = { ...info({ state: 'ready', checks: [{ name: 'e2e', state: 'pass' }] }), head: 'b'.repeat(40) }
     await k.prs.refreshPr(ws.id)
 
     review(verdict('blockers', 'b'.repeat(40), 1))
-    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('Theo found 1 blocker on the latest commit. Merge anyway to go ahead.')
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('The code review found 1 blocker on the latest commit. Merge anyway to go ahead.')
     // An approval of the commit before the latest push doesn't count.
     review(verdict('approved', 'a'.repeat(40), 2))
     await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
@@ -712,7 +712,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
 
   describe('blockers on the latest commit (KERNEL-497)', () => {
     const B = 'b'.repeat(40)
-    const found = 'Theo found 1 blocker on the latest commit. Merge anyway to go ahead.'
+    const found = 'The code review found 1 blocker on the latest commit. Merge anyway to go ahead.'
     /** A ready PR at head B, with the reviewer rule off and Theo's blockers on B. */
     async function blocked() {
       const t = await setup({ pr: { requireReviewer: false } })
@@ -766,14 +766,15 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     })
   })
 
-  it("describes the automatic review in the Lead's prompt only while auto review is on (KERNEL-115)", async () => {
+  it("leaves starting reviews out of the Lead's prompt, since Kernel starts them itself (KERNEL-115, KERNEL-549)", async () => {
     const lead = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
     const on = await setup()
-    expect(on.k.tools.rulesFor(on.ws, lead)).toContain(LEAD_REVIEW_RULE)
+    expect(on.k.tools.rulesFor(on.ws, lead)).toBe(LEAD_SHARING_RULE)
     const off = await setup({ pr: { autoReview: false } })
-    expect(off.k.tools.rulesFor(off.ws, lead) ?? '').not.toContain(LEAD_REVIEW_RULE)
+    expect(off.k.tools.rulesFor(off.ws, lead)).toBe(LEAD_SHARING_RULE)
+    expect(LEAD_RULE).toContain('Kernel starts the reviews each PR needs once it passes checks')
     // Asked for, a review still goes to the reviewer.
-    expect(LEAD_RULE).toContain('When the user asks for a review, hand the PR to the team\'s reviewer')
+    expect(LEAD_RULE).toContain("When the user asks for a review Kernel didn't start, hand the PR to the team's reviewer")
     await on.k.stop()
     await off.k.stop()
   })

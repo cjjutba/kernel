@@ -42,6 +42,9 @@ const HIDEABLE = ['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'Note
 /** The tools that write a file, which every agent may still use for its plan. */
 const WRITERS = ['Write', 'Edit', 'MultiEdit']
 
+/** What a read-only session never gets, whatever its file's tools line says: every tool that writes a file (KERNEL-549). */
+const READ_ONLY_OFF = [...WRITERS, 'NotebookEdit']
+
 /**
  * Tools every agent keeps, whatever its file lists: plan mode and its approval, questions to the user, finding deferred
  * tools such as Kernel's own, skills, and the agent's task list. Kernel's `mcp__kernel__` tools are always allowed too.
@@ -107,10 +110,11 @@ function readLine(entries: string[]) {
  * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
  * `aliases` is the room's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
  * (KERNEL-464). `allow` is the room's `[agents.<id>] allow`: MCP servers the user let this agent use though its tools line
- * doesn't name them, which count as named unless disallowedTools takes them away (KERNEL-537).
+ * doesn't name them, which count as named unless disallowedTools takes them away (KERNEL-537). `readOnly` is a review chat's
+ * (KERNEL-549): Edit, Write and NotebookEdit are out whatever the lines say, a plan file included. Bash stays, for git and gh.
  */
-export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string>; allow?: string[] } = {}): ToolPolicy | undefined {
-  if (!tools && !o.disallowed?.length) return undefined
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string>; allow?: string[]; readOnly?: boolean } = {}): ToolPolicy | undefined {
+  if (!tools && !o.disallowed?.length && !o.readOnly) return undefined
   const allowed = new Set(withAliases((o.allow ?? []).map((s) => `mcp__${s}`), aliasMap(o.aliases)).map((e) => e.split('__')[1]))
   const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
   const aliases = aliasMap(o.aliases)
@@ -121,10 +125,10 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   // A background command's output and its stop belong to Bash.
   const listed = (tool: string): boolean => !line || line.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && listed('Bash'))
     || (tool.startsWith('mcp__') && (line.servers.has(tool.split('__')[1]) || allowed.has(tool.split('__')[1])))
-  const disallows = (tool: string): boolean => !own(tool) && (off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
+  const disallows = (tool: string): boolean => !own(tool) && ((!!o.readOnly && READ_ONLY_OFF.includes(toolName(tool))) || off.names.has(toolName(tool)) || (BASH_COMPANIONS.includes(tool) && disallows('Bash'))
     || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
   const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
-  const allows = (tool: string, input?: unknown) => usable(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
+  const allows = (tool: string, input?: unknown) => usable(tool) || (!o.readOnly && WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
   const server = (name: string): ServerAccess => {
     if (name === 'kernel') return { on: true }
     if (offAll || off.servers.has(name)) return { on: false }
@@ -137,7 +141,8 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   }
   // `mcp__*` can't go in the session's list: it would take Kernel's own server too. The gate refuses those calls instead.
   const named = [...[...off.servers].filter((s) => s !== '*' && s !== 'kernel').map((s) => `mcp__${s}`), ...off.tools.filter((t) => t.server !== 'kernel').map((t) => `mcp__${t.server}__${t.tool}`)]
-  return { hidden: [...HIDEABLE.filter((t) => !usable(t)), ...named], allows, disallows, server }
+  // A read-only session's writers go from its list too, so the model never reaches for them.
+  return { hidden: [...new Set([...HIDEABLE.filter((t) => !usable(t)), ...(o.readOnly ? READ_ONLY_OFF : []), ...named])], allows, disallows, server }
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { AgentDef, PrInfo, Workspace } from '@shared/types'
-import { mergeBlock, mergeNeedsPr, mergeableState, reviewPhrase, reviewVerdicts } from '@shared/merge'
+import { mergeBlock, mergeNeedsPr, mergeableState, verdictPhrase } from '@shared/merge'
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
@@ -31,21 +31,11 @@ export const listsPr = (ws: Workspace, leadId: string | undefined) =>
   !ws.reviewOf && ws.status !== 'archived' && !!ws.prNumber && !['none', 'merged', 'closed'].includes(ws.prState) && !isLeadWorkspace(ws, ws.roomId, leadId)
 
 /**
- * "Theo approved", "Theo found 2 blockers" or "Not reviewed", from the verdicts on the PR's head commit (KERNEL-349), in the
- * words the Team update card uses too (`reviewPhrase`, KERNEL-411).
+ * "Code approved", "Security found 2 blockers" or "Not reviewed", from the verdicts on the PR's head commit (KERNEL-349), by
+ * kind of review (KERNEL-549), in the words the Team update card uses too (`reviewPhrase`, KERNEL-411).
  */
-export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined, name: (agentId: string) => string): LeadPr['review'] {
-  const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })
-  if (!verdicts.length) return reviewPhrase({})
-  const latest = <T extends { ts: number }>(vs: T[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
-  const blocking = current.filter((v) => v.verdict === 'blockers')
-  if (blocking.length) {
-    const v = latest(blocking)
-    return reviewPhrase({ blockers: { name: name(v.agentId), count: v.blockers?.length || 1 } })
-  }
-  const approved = current.filter((v) => v.verdict === 'approved')
-  if (approved.length) return reviewPhrase({ approvedBy: [name(latest(approved).agentId)] })
-  return reviewPhrase({ stale: name(latest(verdicts).agentId) })
+export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined): LeadPr['review'] {
+  return verdictPhrase({ ...ws, prHead: pr?.head ?? ws.prHead })
 }
 
 /**
@@ -57,7 +47,7 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
   const rows = workspaces.filter((w) => w.roomId === o.roomId && listsPr(w, o.leadId)).map((ws): LeadPr => {
     const pr = o.prs[ws.id]
     const why = mergeBlock(ws, pr, o.rules, name)
-    const base = { ws, name: name(ws.agentId), key: ws.source?.kind === 'issue' ? ws.source.id : undefined, review: reviewLine(ws, pr, name) }
+    const base = { ws, name: name(ws.agentId), key: ws.source?.kind === 'issue' ? ws.source.id : undefined, review: reviewLine(ws, pr) }
     // A PR merging stays where Merge was pressed, with the ready ones, until GitHub says it merged (KERNEL-411).
     if (!why || ws.prState === 'merging') return { ...base, ready: true }
     const status = prStatus(ws.prState)

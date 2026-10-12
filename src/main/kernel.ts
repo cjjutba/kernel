@@ -67,7 +67,7 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to its feature's `handlers()`.
  * Empty since KERNEL-30 built the last ones (update.*).
  */
-export const UNBUILT = { 'settings.setReview': 'KERNEL-549' } as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
+export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
 type Unbuilt = keyof typeof UNBUILT
 
@@ -294,7 +294,7 @@ export class Kernel {
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
-      this.permissions.handlers(), this.mcp.handlers())
+      this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)

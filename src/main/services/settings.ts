@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 import { createPrText } from './conventions'
@@ -512,6 +512,8 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     preview: { urls: preview.urls ?? [] },
     env: { files: env.files ?? [] },
     ...(Object.keys(team).length ? { team } : {}),
+    // `[review]` comes from the shared file only: it is the team's policy, and a PR reads it from its base branch (KERNEL-549).
+    review: reviewOf(sharedDoc.review),
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
     ...(Object.keys(jira).length ? { jira } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
@@ -529,16 +531,101 @@ function teamValues(table: unknown): TeamConfig {
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
 }
 
+/** How many review rounds a PR gets when `[review] rounds` doesn't say, and the most it may say (KERNEL-549, KERNEL-552). */
+export const REVIEW_ROUNDS = { default: 2, min: 1, max: 10 }
+
+const PROVIDER_IDS: readonly string[] = ['claude', 'codex']
+
+/**
+ * A `[review]` table as Kernel reads it, the defaults filled in (KERNEL-549). The code review runs on every PR and is required
+ * unless its table says otherwise. Security and UX run once a room adds their table, and are required too. A value of the
+ * wrong type is left out, so its default applies.
+ */
+export function reviewOf(table: unknown): ReviewConfig {
+  const t = isTable(table) ? table : {}
+  const rounds = Number.isInteger(t.rounds) && (t.rounds as number) >= REVIEW_ROUNDS.min && (t.rounds as number) <= REVIEW_ROUNDS.max ? t.rounds as number : REVIEW_ROUNDS.default
+  const kinds = {} as Record<ReviewKind, ReviewKindConfig>
+  for (const { id } of REVIEW_KINDS) {
+    const own = isTable(t[id]) ? t[id] as Record<string, unknown> : undefined
+    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+    const agent = text(own?.agent)
+    const model = text(own?.model)
+    const provider = text(own?.provider)
+    kinds[id] = {
+      enabled: typeof own?.enabled === 'boolean' ? own.enabled : id === 'code' || !!own,
+      paths: strings(own?.paths).map((p) => p.trim()).filter(Boolean),
+      required: typeof own?.required === 'boolean' ? own.required : true,
+      ...(agent ? { agent } : {}),
+      ...(model ? { model } : {}),
+      ...(provider && PROVIDER_IDS.includes(provider) ? { provider: provider as ReviewKindConfig['provider'] } : {})
+    }
+  }
+  return { rounds, kinds }
+}
+
+/**
+ * `[review]` and `[team]` from a settings file's text, as a branch holds it (`git show <base>:.kernel/settings.toml`), so a PR
+ * that edits them is still reviewed by its base branch's (KERNEL-549). No text, or text that doesn't parse, is the defaults.
+ */
+export function reviewPolicyOf(text: string | undefined): { review: ReviewConfig; team: TeamConfig } {
+  let doc: Record<string, unknown> = {}
+  try { if (text !== undefined) doc = parseToml(text) as Record<string, unknown> } catch { doc = {} }
+  return { review: reviewOf(doc.review), team: teamValues(doc.team) }
+}
+
+/**
+ * Writes a `[review]` change to the shared `.kernel/settings.toml` (KERNEL-549), as `saveTeamSettings` writes `[team]`: each
+ * table is spliced into the text, so comments and everything else stay as written. `rounds` is in `[review]`, each kind in
+ * `[review.<kind>]`. `null`, a blank text and an empty list remove a key. Turning a kind on writes `enabled = true`, so its
+ * table stays even with nothing else in it.
+ */
+export async function saveReviewSettings(repo: string, patch: ReviewPatch): Promise<RepoSettings> {
+  const file = repoFile(repo, 'settings.toml')
+  const src = await readFile(file, 'utf8').catch(() => '')
+  let next = src
+  if (patch.rounds !== undefined) {
+    const r = patch.rounds
+    if (r !== null && !(Number.isInteger(r) && r >= REVIEW_ROUNDS.min && r <= REVIEW_ROUNDS.max)) throw new Error(`Review rounds must be a whole number from ${REVIEW_ROUNDS.min} to ${REVIEW_ROUNDS.max}.`)
+    next = upsertTomlTable(next, 'review', { rounds: r })
+  }
+  for (const { id, label } of REVIEW_KINDS) {
+    const own = patch.kinds?.[id]
+    if (!own) continue
+    const values: Record<string, TomlValue> = {}
+    for (const [k, v] of Object.entries(own)) {
+      if (v === undefined) continue
+      if (k === 'provider' && v !== null && !PROVIDER_IDS.includes(v as string)) throw new Error(`${label} review: ${String(v)} is not a provider Kernel runs.`)
+      const blank = v === null || (typeof v === 'string' && !v.trim())
+      values[k] = blank ? null : Array.isArray(v) ? (v as string[]).map((p) => p.trim()).filter(Boolean) : typeof v === 'string' ? v.trim() : v as boolean
+      if (Array.isArray(values[k]) && !(values[k] as string[]).length) values[k] = null
+    }
+    next = upsertTomlTable(next, `review.${id}`, values)
+  }
+  if (next !== src) {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, next)
+  }
+  return loadRepoSettings(repo)
+}
+
+/** A value `upsertTomlTable` writes. `null` removes the key. */
+export type TomlValue = string | string[] | number | boolean | null
+
+/** A value's JSON with every table's keys sorted, so two tables with the same keys in another order read the same. */
+const canonical = (v: unknown): string => JSON.stringify(v, (_k, x) => (isTable(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x))
+
 /**
  * `table` in a TOML file's text, with `values` set and `null` keys removed, everything else kept as written: comments,
  * other tables, the order of the keys (KERNEL-397). `stringify` would drop the comments of a file the repo commits. The
  * result is parsed back and refused when anything but `table` came out different, so a file this can't splice is never
  * written. A table left empty goes, header and all.
  */
-export function upsertTomlTable(src: string, table: string, values: Record<string, string | string[] | null>): string {
+export function upsertTomlTable(src: string, table: string, values: Record<string, TomlValue>): string {
   const lines = src.length ? src.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n') : []
   const isHeader = (l: string) => /^\s*\[/.test(l)
-  let start = lines.findIndex((l) => new RegExp(`^\\s*\\[\\s*${table}\\s*\\]\\s*(#.*)?$`).test(l))
+  // A dotted name is a table inside another, `[review.code]` (KERNEL-549).
+  const name = table.split('.').join('\\s*\\.\\s*')
+  let start = lines.findIndex((l) => new RegExp(`^\\s*\\[\\s*${name}\\s*\\]\\s*(#.*)?$`).test(l))
   if (start < 0) {
     if (!Object.values(values).some((v) => v !== null)) return src
     while (lines.length && !lines[lines.length - 1].trim()) lines.pop()
@@ -548,7 +635,7 @@ export function upsertTomlTable(src: string, table: string, values: Record<strin
   }
   let end = lines.findIndex((l, i) => i > start && isHeader(l))
   if (end < 0) end = lines.length
-  const render = (v: string | string[]) => (Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v))
+  const render = (v: Exclude<TomlValue, null>) => (Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v))
   const body = lines.slice(start + 1, end)
   for (const [key, v] of Object.entries(values)) {
     const at = body.findIndex((l) => new RegExp(`^\\s*${key}\\s*=`).test(l))
@@ -567,16 +654,27 @@ export function upsertTomlTable(src: string, table: string, values: Record<strin
   const out = [...lines.slice(0, start), ...(empty ? [] : [lines[start], ...body]), ...lines.slice(end)]
   while (out.length && !out[out.length - 1].trim()) out.pop()
   const text = out.length ? `${out.join('\n')}\n` : ''
-  // Nothing but `table` may change, and `table` must read back as asked.
+  // Nothing but `table`'s own keys may change, and they must read back as asked. Tables inside it count as the rest.
   const refuse = `Kernel couldn't change [${table}] in .kernel/settings.toml without changing the rest of it. Edit the file by hand.`
   let before: Record<string, unknown>
   try { before = parseToml(src) as Record<string, unknown> } catch { throw new Error(".kernel/settings.toml isn't valid TOML, so Kernel left it alone. Fix the file first.") }
   let after: Record<string, unknown>
   try { after = parseToml(text) as Record<string, unknown> } catch { throw new Error(refuse) }
-  const want = { ...((before[table] as Record<string, unknown>) ?? {}) }
+  const path = table.split('.')
+  const at = (d: Record<string, unknown>) => path.reduce<unknown>((o, k) => (isTable(o) ? o[k] : undefined), d)
+  const own = (t: unknown) => Object.fromEntries(Object.entries(isTable(t) ? t : {}).filter(([, v]) => !isTable(v)))
+  const want = own(at(before))
   for (const [k, v] of Object.entries(values)) { if (v === null) delete want[k]; else want[k] = v }
-  const rest = (d: Record<string, unknown>) => JSON.stringify(Object.fromEntries(Object.entries(d).filter(([k]) => k !== table)))
-  if (rest(before) !== rest(after) || JSON.stringify(after[table] ?? {}) !== JSON.stringify(want)) throw new Error(refuse)
+  // The document without `table`'s own keys, and without the tables that leaves empty, which a removed header can take away.
+  const rest = (d: Record<string, unknown>): string => {
+    const copy = structuredClone(d)
+    const chain = [copy]
+    for (const k of path) { const next = chain[chain.length - 1][k]; if (!isTable(next)) break; chain.push(next) }
+    if (chain.length === path.length + 1) for (const k of Object.keys(own(chain[path.length]))) delete chain[path.length][k]
+    for (let i = chain.length - 1; i > 0; i--) if (!Object.keys(chain[i]).length) delete chain[i - 1][path[i - 1]]
+    return canonical(copy)
+  }
+  if (rest(before) !== rest(after) || canonical(own(at(after))) !== canonical(want)) throw new Error(refuse)
   return text
 }
 

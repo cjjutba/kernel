@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { Chat, ChatPart, CompareTarget, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { AgentDef, Chat, ChatPart, CompareTarget, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
@@ -28,6 +28,11 @@ export interface CutWorkspace {
   prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string
   provider?: Provider; model?: string; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
+  /**
+   * The agent itself, for one that isn't on the room's team: Kernel's own reviewer, which runs the reviews Kernel starts with
+   * its own prompts (KERNEL-549). Without it, an `agentId` the team doesn't have falls back to the Lead.
+   */
+  agent?: AgentDef
   /** Start from the remote as last fetched, as the chats with Rowan that move at startup do (KERNEL-405). */
   noFetch?: boolean
   /**
@@ -76,7 +81,7 @@ export class Workspaces extends Feature {
     const agents = await this.k.team.agents(roomId)
     const lead = o.lead ? agents.find((a) => a.lead) : undefined
     if (o.lead && !lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one in Settings, Agents.')
-    const agent = lead ?? agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
+    const agent = lead ?? o.agent ?? agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
     if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
     // A review gets its own worktree started from the work it reviews (KERNEL-130).
     // The branch the author is on now, which may not be the one the workspace started on (KERNEL-68).

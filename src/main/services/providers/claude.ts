@@ -107,7 +107,8 @@ export class ClaudeRunner implements Runner {
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
     // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
-    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow })
+    // A review only reads, whatever its agent's file says (KERNEL-549).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass

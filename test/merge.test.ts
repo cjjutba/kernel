@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { MergeMethod, PrInfo, PrState, Workspace } from '@shared/types'
-import { blockedText, gatingChecks, headBlockers, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
+import { blockedText, gatingChecks, headBlockers, kindStates, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
@@ -19,8 +19,9 @@ const info = (o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: 'w', number: 4
 const both = { requireGreen: true, requireReviewer: true }
 const reviewer = { requireGreen: false, requireReviewer: true }
 const name = (id: string) => (id === 'theo' ? 'Theo' : id)
-const held = "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
-const found = 'Theo found 1 blocker on the latest commit. Merge anyway to go ahead.'
+// Verdicts from before review kinds count as the code review's (KERNEL-549).
+const held = "The code review hasn't approved the latest commit. Merging waits for every required review (Settings, Pull requests)."
+const found = 'The code review found 1 blocker on the latest commit. Merge anyway to go ahead.'
 const notReady = 'This pull request is not ready to merge.'
 const STATES = Object.keys({ none: 1, creating: 1, draft: 1, open: 1, checks: 1, cifail: 1, changes: 1, conflict: 1, resolving: 1, ready: 1, merging: 1, merged: 1, closed: 1 } satisfies Record<PrState, 1>) as PrState[]
 
@@ -127,13 +128,49 @@ describe('the review', () => {
     expect(mergeBlock(ws({ prHead: A, reviews: [v('approved', A, 1)] }), info({ head: B }), both, name)).toBe(held)
   })
 
-  it('holds on blockers on the head commit, naming the reviewer who found them and how many', () => {
+  it('holds on blockers on the head commit, naming the review that found them and how many', () => {
     expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both, name)).toBe(found)
     expect(mergeBlock(ws({ reviews: [v('approved', B, 1, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 2)] }), info(), both, name)).toBe(found)
     const three = [{ text: 'a' }, { text: 'b' }, { text: 'c' }]
-    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1, { blockers: three })] }), info(), both, name)).toBe('Theo found 3 blockers on the latest commit. Merge anyway to go ahead.')
-    // Without a name lookup it falls back to the agent id.
-    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both)).toContain('theo found 1 blocker')
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1, { blockers: three })] }), info(), both, name)).toBe('The code review found 3 blockers on the latest commit. Merge anyway to go ahead.')
+  })
+})
+
+describe('kinds of review (KERNEL-549)', () => {
+  const code = (verdict: 'approved' | 'blockers', sha = B, o = {}) => v(verdict, sha, 1, { lens: 'code', ...o })
+  const security = (verdict: 'approved' | 'blockers', sha = B, o = {}) => v(verdict, sha, 2, { lens: 'security', agentId: 'kernel-reviewer', ...o })
+
+  it('counts the verdicts of two kinds on the head commit, one review workspace holding one of each', () => {
+    expect(kindStates(ws({ reviews: [code('approved'), security('approved')] }))).toMatchObject({ ran: ['code', 'security'], approved: ['code', 'security'], blocking: [], waiting: [] })
+    expect(mergeBlock(ws({ reviews: [code('approved'), security('approved')] }), info(), both, name)).toBeUndefined()
+  })
+
+  it('holds the merge on blockers from either kind, and names it', () => {
+    const one = ws({ reviews: [code('approved'), security('blockers', B, { blockers: [{ text: 'a' }, { text: 'b' }] })] })
+    expect(mergeBlock(one, info(), both, name)).toBe('The security review found 2 blockers on the latest commit. Merge anyway to go ahead.')
+    // With the reviewer rule off too: blockers always hold (KERNEL-497).
+    expect(mergeBlock(one, info(), { requireGreen: false, requireReviewer: false }, name)).toContain('The security review found 2 blockers')
+    expect(headBlockers(one)).toEqual({ agentId: 'kernel-reviewer', count: 2, lenses: ['security'] })
+    const both2 = ws({ reviews: [code('blockers'), security('blockers')] })
+    expect(mergeBlock(both2, info(), both, name)).toBe('The code and security reviews found 2 blockers on the latest commit. Merge anyway to go ahead.')
+    expect(mergeBlock(both2, info(), both, name, { override: true })).toBeUndefined()
+  })
+
+  it('waits for every required kind that reviewed the PR to approve its head commit', () => {
+    // The security review approved an earlier commit: it has to look at this one too.
+    expect(mergeBlock(ws({ reviews: [code('approved'), security('approved', A)] }), info(), both, name))
+      .toBe("The security review hasn't approved the latest commit. Merging waits for every required review (Settings, Pull requests).")
+    expect(mergeBlock(ws({ reviews: [code('approved', A), security('approved', A)] }), info(), both, name)).toContain("The code and security reviews haven't approved")
+    // An optional kind's approval doesn't count toward the merge, but its blockers still hold it.
+    expect(mergeBlock(ws({ reviews: [code('approved'), security('approved', A, { optional: true })] }), info(), both, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [code('approved'), security('blockers', B, { optional: true })] }), info(), both, name)).toContain('The security review found 1 blocker')
+    // A kind that hasn't reported yet holds nothing, as a PR nobody reviewed merges.
+    expect(mergeBlock(ws({ reviews: [code('approved')] }), info(), both, name)).toBeUndefined()
+  })
+
+  it('lets a later approval of the head commit by the same kind clear its blockers on an older one, but not blockers on the head commit', () => {
+    expect(mergeBlock(ws({ reviews: [code('blockers', A), code('approved', B, { workspaceId: 'r2' })] }), info(), both, name)).toBeUndefined()
+    expect(kindStates(ws({ reviews: [code('blockers'), code('approved', B, { workspaceId: 'r2' })] }))).toMatchObject({ approved: [], blocking: ['code'] })
   })
 })
 
@@ -142,11 +179,11 @@ describe('blockers on the head commit (KERNEL-497)', () => {
   const override = { override: true }
 
   it('names the reviewer who found blockers on the head commit and how many, built on reviewVerdicts', () => {
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { blockers: [{ text: 'a' }, { text: 'b' }] })] }))).toEqual({ agentId: 'theo', count: 2 })
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { blockers: [{ text: 'a' }, { text: 'b' }] })] }))).toEqual({ agentId: 'theo', count: 2, lenses: ['code'] })
     // A verdict with no list of blockers still found one.
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 1)] }))).toEqual({ agentId: 'theo', count: 1 })
-    // The latest review with blockers names them.
-    expect(headBlockers(ws({ reviews: [v('blockers', B, 2, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 1)] }))).toEqual({ agentId: 'ivy', count: 1 })
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1)] }))).toEqual({ agentId: 'theo', count: 1, lenses: ['code'] })
+    // The latest review with blockers of a kind counts them.
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 2, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 1)] }))).toEqual({ agentId: 'ivy', count: 1, lenses: ['code'] })
     // Blockers on an earlier commit, or on another PR from this branch, aren't on the head commit.
     expect(headBlockers(ws({ reviews: [v('blockers', A, 1)] }))).toBeUndefined()
     expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { prNumber: 7 })] }))).toBeUndefined()

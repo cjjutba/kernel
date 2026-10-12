@@ -132,12 +132,13 @@ describe('the review link (KERNEL-130)', () => {
   it('reads reviews of the PR: approved on its head commit, stale after a push, running while the reviewer works', async () => {
     const { k, review, author, tip } = await setup()
     const state = () => k.reviews.reviewState(k.store.workspace(author.id)!)
-    expect(state()).toMatchObject({ approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: review.id } })
+    expect(state()).toMatchObject({ approved: [], blockers: false, inProgress: false, open: { workspaceId: review.id } })
     await k.submitReview(review.id, { verdict: 'approved', summary: 'Looks right.' })
     k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prHead: tip })
-    expect(state()).toMatchObject({ approvedBy: ['Theo'], stale: false })
+    // A review the Lead started has no kind, and counts as the code review (KERNEL-549).
+    expect(state()).toMatchObject({ approved: ['code'], stale: false })
     k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prHead: 'f'.repeat(40) })
-    expect(state()).toMatchObject({ approvedBy: [], stale: true })
+    expect(state()).toMatchObject({ approved: [], waiting: ['code'], stale: true })
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => k.store.chats(review.id).some((c) => c.id === id)
     expect(state().inProgress).toBe(true)

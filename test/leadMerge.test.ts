@@ -110,8 +110,8 @@ describe('merge_workspace (KERNEL-352)', () => {
       ws('moved', { prNumber: 42, prHead: B, reviews: blockers('a'.repeat(40), 1) })
     ])
     expect(await t.merge(['one', 'two', 'moved'])).toBe([
-      'Skipped #42: Theo found 1 blocker. Merge it from its Merge anyway button if you want it in.',
-      'Skipped #42: Theo found 2 blockers. Merge it from its Merge anyway button if you want it in.',
+      'Skipped #42: the code review found 1 blocker. Merge it from its Merge anyway button if you want it in.',
+      'Skipped #42: the code review found 2 blockers. Merge it from its Merge anyway button if you want it in.',
       'Merged #42.'
     ].join('\n'))
     // Blockers on an earlier commit don't hold the PR.
