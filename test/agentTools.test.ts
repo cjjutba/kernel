@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { canOpenPr, missingServers, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
+import { canOpenPr, mcpWarnings, missingServers, serverReach, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
+import { toolServerName } from '../src/main/services/mcp'
 
 // KERNEL-397: an agent file's tools line holds in Kernel the way it does when Claude Code runs the file as a subagent.
 describe('agent tools', () => {
@@ -90,8 +91,11 @@ describe('agent tools', () => {
     expect(['Write', 'MultiEdit', 'mcp__acme_secret__deploy', 'Monitor'].map(toolKind)).toEqual(['Write', 'Edit', 'mcp', 'other'])
   })
 
+  const up = (...names: string[]) => names.map((name) => ({ name, status: 'connected' }))
+
   it('names each MCP server the tools line lists that the session lacks, once, with a connected match', () => {
-    const connected = ['kernel', 'claude_ai_Linear', 'github']
+    // A session names a claude.ai connector as Claude Code lists it, and its tools by the name made from that (KERNEL-464).
+    const connected = up('kernel', 'claude.ai Linear', 'github')
     expect(missingServers(['Read', 'mcp__linear', 'mcp__linear__get_issue', 'mcp__sentry__*', 'mcp__github__create_pr'], connected)).toEqual([
       { server: 'linear', entry: 'mcp__linear', suggestion: 'claude_ai_Linear' },
       { server: 'sentry', entry: 'mcp__sentry__*' },
@@ -101,6 +105,84 @@ describe('agent tools', () => {
   it("finds nothing missing without a tools line, for Kernel's own tools, or when every server is connected", () => {
     expect(missingServers(undefined, [])).toEqual([])
     expect(missingServers(['Read', 'mcp__kernel__submit_review', 'mcp__kernel'], [])).toEqual([])
-    expect(missingServers(['mcp__linear__get_issue', 'mcp__github'], ['linear', 'github'])).toEqual([])
+    expect(missingServers(['mcp__linear__get_issue', 'mcp__github'], up('linear', 'github'))).toEqual([])
+    expect(missingServers(['mcp__claude_ai_Linear__get_issue'], up('claude.ai Linear'))).toEqual([])
+    // A server still connecting, or one a probe hasn't reached, counts as there.
+    expect(missingServers(['mcp__linear'], [{ name: 'linear', status: 'pending' }, { name: 'github' }])).toEqual([])
+  })
+
+  // KERNEL-464: a server that failed, needs sign-in or is switched off fails its tools the way a missing one does.
+  it('counts a server that failed, needs sign-in or is switched off as unusable, with why', () => {
+    const servers = [
+      { name: 'linear', status: 'failed' }, { name: 'claude.ai Notion', status: 'needs-auth' }, { name: 'fal-ai', status: 'disabled' },
+      { name: 'figma', status: 'connected', enabled: false }, { name: 'github', status: 'connected' }
+    ]
+    expect(missingServers(['mcp__linear', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma__get_code', 'mcp__github'], servers)).toEqual([
+      { server: 'linear', entry: 'mcp__linear', status: 'failed', name: 'linear' },
+      { server: 'claude_ai_Notion', entry: 'mcp__claude_ai_Notion__search', status: 'needs-auth', name: 'claude.ai Notion' },
+      { server: 'fal-ai', entry: 'mcp__fal-ai', status: 'disabled', name: 'fal-ai' },
+      { server: 'figma', entry: 'mcp__figma__get_code', status: 'off', name: 'figma' }
+    ])
+    // A later report on the same server wins, so the room's switched-off list overrides a session that had it.
+    expect(missingServers(['mcp__linear'], [{ name: 'linear', status: 'failed' }, { name: 'linear', status: 'connected' }])).toEqual([])
+    // A failed server is never offered in place of a missing one.
+    expect(missingServers(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'needs-auth' }])).toEqual([{ server: 'linear', entry: 'mcp__linear' }])
+  })
+
+  it("makes a server's tool name the way Claude Code does", () => {
+    expect(['claude.ai Linear', 'claude.ai  Google Drive ', 'my server', 'fal-ai', 'plugin:github:github'].map(toolServerName)).toEqual(['claude_ai_Linear', 'claude_ai_Google_Drive', 'my_server', 'fal-ai', 'plugin_github_github'])
+  })
+
+  // KERNEL-464: a confirmed `[mcp.aliases]` entry lets a file written for one Mac's server name reach this Mac's.
+  it('reads a tools line through the room\'s aliases, adding the server each name stands for', () => {
+    const aliases = { linear: 'claude.ai Linear', sentry: 'claude_ai_Sentry', kernel: 'linear', github: 'kernel', figma: '*' }
+    const p = toolPolicy(['Read', 'mcp__linear', 'mcp__sentry__get_issue', 'mcp__figma'], { aliases, disallowed: ['mcp__linear__delete_issue'] })!
+    for (const t of ['mcp__linear__get_issue', 'mcp__claude_ai_Linear__get_issue', 'mcp__claude_ai_Sentry__get_issue', 'mcp__sentry__get_issue']) expect(p.allows(t), t).toBe(true)
+    for (const t of ['mcp__claude_ai_Linear__delete_issue', 'mcp__linear__delete_issue', 'mcp__claude_ai_Sentry__list_issues', 'mcp__github__search']) expect(p.allows(t), t).toBe(false)
+    expect(p.hidden).toEqual(['Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent', 'mcp__linear__delete_issue', 'mcp__claude_ai_Linear__delete_issue'])
+    expect(['claude_ai_Linear', 'claude_ai_Sentry', 'linear', 'kernel'].map((s) => p.server(s))).toEqual([
+      { on: true, except: ['delete_issue'] }, { on: true, only: ['get_issue'] }, { on: true, except: ['delete_issue'] }, { on: true }
+    ])
+    // disallowedTools reads through them too.
+    expect(toolPolicy(undefined, { aliases, disallowed: ['mcp__linear'] })!.allows('mcp__claude_ai_Linear__get_issue')).toBe(false)
+    expect(missingServers(['mcp__linear__get_issue'], up('claude.ai Linear'), aliases)).toEqual([])
+    expect(missingServers(['mcp__linear__get_issue'], [{ name: 'claude.ai Linear', status: 'failed' }], aliases)).toEqual([{ server: 'linear', entry: 'mcp__linear__get_issue', status: 'failed', name: 'claude.ai Linear' }])
+  })
+
+  it('turns what a tools line lacks into Team warnings, naming a missing server only once the list is whole', () => {
+    const servers = [{ name: 'claude.ai Linear', status: 'needs-auth' }, { name: 'neon', status: 'failed' }, { name: 'figma', enabled: false }, { name: 'claude.ai Sentry', status: 'connected' }]
+    const tools = ['Read', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__figma', 'mcp__sentry', 'mcp__slack']
+    expect(mcpWarnings(tools, servers)).toEqual([
+      { kind: 'mcp-needs-auth', detail: 'claude.ai Linear' }, { kind: 'mcp-failed', detail: 'neon' }, { kind: 'mcp-off', detail: 'figma' }
+    ])
+    expect(mcpWarnings(tools, servers, { complete: true }).slice(3)).toEqual([
+      { kind: 'mcp-missing', detail: 'sentry', suggestion: 'claude_ai_Sentry' }, { kind: 'mcp-missing', detail: 'slack' }
+    ])
+    expect(mcpWarnings(tools, servers, { complete: true, aliases: { sentry: 'claude_ai_Sentry' } }).map((w) => w.detail)).toEqual(['claude.ai Linear', 'neon', 'figma', 'slack'])
+    expect(mcpWarnings(undefined, servers, { complete: true })).toEqual([])
+  })
+
+  // KERNEL-476: the hire card and hire_agent's result list what a new agent can reach and what its file names but can't use.
+  it("lists the servers a tools line reaches and the ones it names but can't use, never Kernel's own", () => {
+    const servers = [
+      { name: 'figma', status: 'connected' }, { name: 'claude.ai Linear', status: 'needs-auth' }, { name: 'neon', status: 'failed' },
+      { name: 'github', enabled: false }, { name: 'notion', status: 'pending' }, { name: 'sentry' }, { name: 'kernel', status: 'connected' }
+    ]
+    const tools = ['Read', 'Edit', 'Bash', 'mcp__figma__*', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__github', 'mcp__notion', 'mcp__slack']
+    // A starting or unreported server counts as there. Slack isn't named missing until the list is whole.
+    expect(serverReach(tools, servers)).toEqual({
+      reach: ['figma', 'notion'],
+      blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'github', why: 'off' }]
+    })
+    expect(serverReach(tools, servers, { complete: true }).blocked.slice(3)).toEqual([{ name: 'slack', why: 'missing' }])
+    // No tools line reaches every working server. A line with no MCP entries reaches none.
+    expect(serverReach(undefined, servers)).toEqual({ reach: ['figma', 'notion', 'sentry'], blocked: [] })
+    expect(serverReach(['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'], servers, { complete: true })).toEqual({ reach: [], blocked: [] })
+    // disallowedTools takes a server away, one tool of it leaves the rest, and an alias reaches the server it stands for.
+    expect(serverReach(undefined, servers, { disallowed: ['mcp__figma', 'mcp__notion__search'] }).reach).toEqual(['notion', 'sentry'])
+    expect(serverReach(['mcp__sentry__get_issue', 'mcp__lin'], [{ name: 'claude.ai Linear', status: 'connected' }, { name: 'sentry' }], { complete: true })).toEqual({
+      reach: ['sentry'], blocked: [{ name: 'lin', why: 'missing', suggestion: 'claude_ai_Linear' }]
+    })
+    expect(serverReach(['mcp__linear'], [{ name: 'claude.ai Linear', status: 'connected' }], { aliases: { linear: 'claude.ai Linear' }, complete: true })).toEqual({ reach: ['claude.ai Linear'], blocked: [] })
   })
 })
