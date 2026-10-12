@@ -178,6 +178,8 @@ export interface UiState {
   foldedChats: string[]
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
+  /** Whether Back and Forward have somewhere reachable to go. Kept in step with the history by store.ts, so the title bar buttons can follow it (KERNEL-643). */
+  nav: { canBack: boolean; canForward: boolean }
   /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
