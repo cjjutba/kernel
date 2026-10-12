@@ -1,6 +1,6 @@
 import type { ChatPart, Effort, HeldChat } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, loadWorkspace } from '../../store'
+import { actions } from '../../store'
 import { openLeadChat } from '../../lead'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { clearDraft, NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
@@ -18,8 +18,8 @@ export interface ChatStart {
 }
 
 /**
- * Opens a new chat with the room's Lead, sends the brief there and lands on it. Resolves with why it couldn't send, and nothing
- * once it has. The box keeps its draft until a send succeeds.
+ * Opens a new chat with the room's Lead, sends the brief there and lands on it as soon as the engine answers, before its worktree
+ * exists (KERNEL-542). Resolves with why it couldn't send, and nothing once it has. The box keeps its draft until a send succeeds.
  */
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
@@ -27,13 +27,8 @@ export async function startChat(c: ChatStart): Promise<string | undefined> {
   try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.baseRef ? { baseRef: c.baseRef } : {}) }) }
   catch (e) { return cleanError(e) }
   clearDraft(NEW_CHAT_DRAFT)
-  // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
-  try {
-    const ws = (await call('workspaces.list', { roomId: c.roomId })).find((w) => w.id === chat.workspaceId)
-    if (ws) actions.workspaces.upsert(ws)
-    actions.chats.upsert(chat)
-    await loadWorkspace(chat.workspaceId)
-  } catch { actions.chats.upsert(chat) }
+  // The engine answered before the worktree exists and pushes the workspace, so the chat opens now and says what it waits for.
+  actions.chats.upsert(chat)
   // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
   focusComposerWhenOpen(chat.id)
   actions.ui.closeModal()

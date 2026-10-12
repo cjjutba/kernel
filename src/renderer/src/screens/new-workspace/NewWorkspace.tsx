@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from '../workspace/composer/providerModels'
-import type { ChatPart, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, IssueTakenFinding, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
@@ -61,6 +61,8 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   const busy = creating !== null
   const [checking, setChecking] = useState(false)
   const alive = useRef(true)
+  /** The issue check for the picked source, started when it was picked, so Create finds it answered (KERNEL-543). */
+  const taken = useRef<{ key: string; found: Promise<IssueTakenFinding[]> } | null>(null)
   const [error, setError] = useState<{ message: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
@@ -90,6 +92,18 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
     call('git.branches', { roomId: room }).then((b) => { if (!stale) setBranches(b) }, () => undefined)
     return () => { stale = true }
   }, [room])
+
+  // Kernel fetches the room's remote now, so the fetch Create needs is done or under way by then. Nothing waits on it.
+  useEffect(() => {
+    if (room) void call('lead.prefetch', { roomId: room }).catch(() => undefined)
+  }, [room])
+  // An issue source starts its check at once and keeps the answer. Clearing or changing the source, or the room, drops it.
+  const issueId = source?.kind === 'issue' ? source.id : ''
+  const issueKey = room && issueId ? `${room}:${issueId}` : ''
+  useEffect(() => {
+    if (!issueKey) { taken.current = null; return }
+    if (taken.current?.key !== issueKey) taken.current = { key: issueKey, found: takenFindings((req) => call('issues.taken', req), room, issueId) }
+  }, [issueKey])
 
   const close = () => actions.ui.closeModal()
   const toggle = (id: 'branch' | 'from' | 'model' | 'plus') => { setRoomMenu(false); actions.ui.toggleMenu(id) }
@@ -128,7 +142,9 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   const someoneIsOn = async (room: string, issue: Extract<WorkspaceSource, { kind: 'issue' }>, parts: ChatPart[]) => {
     setChecking(true)
     let found
-    try { found = await takenFindings((req) => call('issues.taken', req), room, issue.id) }
+    // The check started when the issue was picked, and Create waits only for what is left of it.
+    const asked = taken.current?.key === `${room}:${issue.id}` ? taken.current.found : takenFindings((req) => call('issues.taken', req), room, issue.id)
+    try { found = await asked }
     finally { setChecking(false) }
     if (!alive.current) return true
     if (!found.length) return false
