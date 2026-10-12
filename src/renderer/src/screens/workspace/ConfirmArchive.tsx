@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, useStore } from '../../store'
+import { actions, getState, useStore } from '../../store'
 import { Button, ConfirmDialog, useBusy } from '../../ui'
 import { useRoomSettings } from '../settings/useSettings'
 import { archiveByHand } from './byHand'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/** Closes this dialog and nothing else: a route change has closed it already, and a modal opened since is not ours to close. */
+function closeArchiveDialog(workspaceId: string) {
+  const modal = getState().ui.modal
+  if (modal?.name === 'confirm' && modal.kind === 'archive' && modal.workspaceId === workspaceId) actions.ui.closeModal()
+}
 
 /**
  * Archive a workspace (ConfirmArchive.png). With commits that never reached GitHub, the main button pushes first and
@@ -29,6 +35,10 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch(() => setUnread(true))
   }, [workspaceId])
+  // The dialog leaves in the commit that archives the workspace, with its sidebar row and, when it is open, its screen going to History.
+  // It doesn't wait for the call to return, which is after the pushes that follow (KERNEL-547).
+  const archived = ws?.status === 'archived'
+  useLayoutEffect(() => { if (archived) closeArchiveDialog(workspaceId) }, [archived, workspaceId])
   if (!ws) return null
 
   const unpushed = git?.ahead ?? 0
@@ -40,7 +50,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
     try {
       // Archive anyway keeps the branch: it holds the only copy of the unpushed commits. Main refuses to delete it too.
       await archiveByHand({ workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
-      actions.ui.closeModal()
+      closeArchiveDialog(workspaceId)
     } catch (e) { setError(cleanError(e)) }
   })
 
