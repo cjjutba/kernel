@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Approval } from '@shared/types'
+import type { Approval, Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, go, useStore } from '../../store'
 import { isLeadWorkspace, leadOf, openLead, openRoom } from '../../lead'
@@ -16,6 +16,8 @@ const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: c
 
 /** Allow the one tool request, the same call the Inbox and the floor make. */
 const approve = (a: Approval) => void call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }).then(actions.approvals.upsert).catch(fail('Could not send your answer'))
+
+const switchAccount = (provider: Provider, accountId: string) => void call('accounts.switch', { provider, accountId }).then(actions.accounts.set).catch(fail('Could not switch accounts'))
 
 /** A tab opens in the workspace you are in, and takes focus. In the Lead's workspace a chat tab joins the chat on screen (KERNEL-339), as + does. */
 function newChat(workspaceId: string, kind?: 'terminal') {
@@ -51,6 +53,7 @@ export function CommandPalette() {
   const agents = useStore((s) => s.agents)
   const shared = useStore((s) => s.shared)
   const chats = useStore((s) => s.chats)
+  const accounts = useStore((s) => s.accounts)
   const threads = useStore((s) => s.threads)
   const terminalSettings = useStore((s) => s.settings?.terminal)
   const presets = useTerminalPresets()
@@ -65,9 +68,9 @@ export function CommandPalette() {
     return room ? openThreads(room, workspaces, chats, threads) : []
   }, [route, rooms, workspaces, chats, threads])
   const { items, more } = useMemo(() => buildItems({
-    route, rooms, workspaces, approvals, agents, terminal, chats: roomChats, shared: Object.values(shared),
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs, ws) => openRow(roomId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }) }
-  }), [route, rooms, workspaces, approvals, agents, terminal, roomChats, shared])
+    route, rooms, workspaces, approvals, agents, terminal, accounts, chats: roomChats, shared: Object.values(shared),
+    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs, ws) => openRow(roomId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }), switchAccount }
+  }), [route, rooms, workspaces, approvals, agents, terminal, accounts, roomChats, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)
   const cur = Math.min(at, Math.max(0, flat.length - 1))
