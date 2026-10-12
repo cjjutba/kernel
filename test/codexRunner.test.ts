@@ -34,7 +34,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -52,7 +52,8 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
-    codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
+    codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
+    ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
     disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, onMcp: o.onMcp
   })
   const items = () => store.items(chat.id)
@@ -734,5 +735,52 @@ describe('Codex helpers (KERNEL-406)', () => {
     expect(await callTool(none, 'kernel_get_issue', {})).toEqual({ success: false, contentItems: [{ type: 'inputText', text: "Not read: this room has no issue tracker, so Kernel can't read #41." }] })
     // A teammate's rule names the tool as Codex calls it.
     expect(forProvider(TEAMMATE_RULE, 'codex')).toContain('call kernel_get_issue')
+  })
+})
+
+describe('switching accounts while a chat waits on the user, on Codex (KERNEL-618)', () => {
+  /** Two Codex homes, Work's and Personal's, and the one in use, which each new process starts in. */
+  async function accounts() {
+    const homes: Record<string, string> = { work: await mkdtemp(join(tmpdir(), 'kernel-work-')), personal: await mkdtemp(join(tmpdir(), 'kernel-personal-')) }
+    const state = { active: 'work' }
+    return { homes, state, account: { id: () => state.active, home: () => homes[state.active] } }
+  }
+  /** What `Providers.switchTo` asks of Sessions. */
+  const switchTo = (t: { sessions: Sessions }, state: { active: string }, to: string) => { state.active = to; t.sessions.restartProvider('codex'); t.sessions.drainWaiting() }
+  const started = async (t: { fake: { messages: () => Promise<any[]> } }) => (await t.fake.messages()).filter((m) => 'started' in m).map((m) => m.started)
+  const notes = (t: { of: (k: 'note') => { text: string }[] }) => t.of('note').map((n) => n.text)
+
+  it('finishes a turn waiting on an approval on the account it started on, and the next turn runs on the new one', async () => {
+    const a = await accounts()
+    const t = track(await setup({ mode: 'default', account: a.account }))
+    await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: 'c1', startedAtMs: 1, environmentId: 'local', command: '/bin/zsh -lc "pnpm build"' } }) }])
+    const card = await t.pending()
+    switchTo(t, a.state, 'personal')
+    expect(t.sessions.isRunning('chat')).toBe(true)
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    await t.idle()
+    // Codex got the answer from the one process there was, in Work's home.
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
+    expect(await started(t)).toEqual([a.homes.work])
+    await t.sessions.send('chat', [{ type: 'text', text: 'Run the tests' }])
+    await t.idle()
+    expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
+    expect(notes(t)).toEqual(['Now on personal'])
+  })
+
+  it("keeps a plan waiting through a switch, whose turn already ended on the old account, and the approved plan's work runs on the new one", async () => {
+    const a = await accounts()
+    const t = track(await setup({ chat: { plan: true }, account: a.account }))
+    await t.sessions.send('chat', [{ type: 'text', text: script({ notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Add the column' } } }) }])
+    const card = await t.pending()
+    await t.idle()
+    switchTo(t, a.state, 'personal')
+    expect(t.store.approval(card.id)?.status).toBe('pending')
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
+    expect((await t.sent('turn/start'))[1].params).toMatchObject({ input: [{ type: 'text', text: PLAN_APPROVED }] })
+    expect(notes(t)).toEqual(['Now on personal'])
   })
 })

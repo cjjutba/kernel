@@ -16,6 +16,9 @@ const LIMIT_RECHECK_MS = 90_000
 /** The reason a signed-out Codex holds its chats by. Claude's is 'auth', as it always was. */
 const CODEX_AUTH = 'codex-auth'
 
+/** The reason Claude's chats wait while the account in use waits on a macOS Keychain prompt (KERNEL-618). */
+const KEYCHAIN = 'keychain'
+
 /** A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). */
 interface Move { at?: number; state: 'reading' | 'waiting' | 'done' }
 
@@ -87,10 +90,33 @@ export class Account extends Feature {
   /**
    * A session reported an auth failure: its provider is signed out. That provider's chats wait until it is signed in again,
    * by Sign in here or in a terminal (`claude /login`, `codex login`), which a check every 10 seconds picks up. The other
-   * provider's chats go on (KERNEL-406).
+   * provider's chats go on (KERNEL-406). Claude's chats wait at once while Kernel checks whether the login only waits on a
+   * Keychain prompt, which Claude Code reads as signed out. Then it isn't marked signed out: its chats wait for the prompt,
+   * until someone allows it or Kernel stops keeping it up, and after one nobody allowed they don't wait (KERNEL-618).
    */
   signedOut(provider: Provider = 'claude') {
     if (provider === 'codex') return this.codexSignedOut()
+    const check = this.k.providers.keychainWaiting()
+    if (!check) return this.claudeSignedOut()
+    this.sessions.holdAll('auth', { provider: 'claude' })
+    void check.catch(() => undefined).then((wait) => {
+      if (this.stopped) return
+      if (!wait) return this.claudeSignedOut()
+      if (wait === 'prompt') this.sessions.holdAll(KEYCHAIN, { provider: 'claude' })
+      if (!this.authTimer) this.sessions.releaseAll('auth')
+    })
+  }
+
+  /**
+   * Claude's chats wait on a Keychain prompt no more: someone allowed it, Kernel stopped keeping it up, or Claude moved to
+   * another account. With `read`, the account in use is read again (KERNEL-618).
+   */
+  keychainDone(read = false) {
+    this.sessions.releaseAll(KEYCHAIN)
+    if (read) void this.accountChanged().catch(() => undefined)
+  }
+
+  private claudeSignedOut() {
     // An added account's token or API key was refused. It reads as signed out until a new one replaces it, or the next check
     // would lift the hold at once.
     this.k.providers.credentialRefused('claude')
