@@ -309,7 +309,7 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   SettingsProvidersCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
   SettingsAddAccountApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
-  // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude asks for a code from the start, Codex doesn't.
+  // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude's `code` step arrives from the start and the sheet shows a link for it (KERNEL-615), Codex has no such step.
   SettingsAddAccount: addAccountPage('claude'),
   SettingsAddAccountBrowser: addAccountPage('claude', 'code'),
   SettingsAddAccountCodex: addAccountPage('codex'),
