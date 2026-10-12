@@ -3,7 +3,7 @@ import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
-import { fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
+import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
 import { PrCadence } from '../services/prCadence'
 import { mergeableState, mergeBlock, mergeNeedsPr, notMergeable } from '@shared/merge'
 import type { Handlers } from '../kernel'
@@ -54,18 +54,22 @@ export class Prs extends Feature {
    * when GitHub couldn't be read, after telling the poll to hold off when it was the rate limit (KERNEL-388).
    */
   private async read(ws: Workspace, cwd: string, ref: string, o: { conflicts?: boolean; remote?: string } = {}): Promise<PrInfo | null> {
+    const host = this.host(ws.roomId)
     try {
       const optional = await this.optionalOf(ws.roomId)
-      return await this.k.github.info(cwd, ref, ws.id, { ...o, ...(optional.length ? { optional } : {}) })
+      return await host.info(cwd, ref, ws.id, { ...o, ...(optional.length ? { optional } : {}) })
     } catch (e) {
-      if (e instanceof GhReadError && e.rateLimited) await this.limited(e, cwd)
+      if (e instanceof GhReadError && e.rateLimited) await this.limited(e, host, cwd)
       throw e
     }
   }
 
+  /** Where the room's PRs live (KERNEL-453). */
+  private host(roomId: string): CodeHost { return this.k.codeHost.hostFor(this.mustRoom(roomId)) }
+
   /** A read GitHub refused for its rate limit. The primary limit's reset comes from `gh api rate_limit`, which costs nothing. */
-  private async limited(e: GhReadError, cwd: string) {
-    const resetAt = e.secondary ? undefined : (await this.k.github.rateLimit?.(cwd).catch(() => undefined))?.resetAt
+  private async limited(e: GhReadError, host: CodeHost, cwd: string) {
+    const resetAt = e.secondary ? undefined : (await host.rateLimit?.(cwd).catch(() => undefined))?.resetAt
     this.cadence.limited({ secondary: e.secondary, resetAt })
     this.syncGitHub()
   }
@@ -284,7 +288,7 @@ export class Prs extends Feature {
     this.merging.add(id)
     this.setPrState(ws, 'merging')
     try {
-      await this.k.github.merge(ws.path, ws.branch, method)
+      await this.host(ws.roomId).merge(ws.path, ws.branch, method)
       this.mergedWith.set(id, method)
     } catch (e) {
       this.merging.delete(id)
@@ -342,8 +346,8 @@ export class Prs extends Feature {
     }
   }
 
-  private async readyPr(id: string) { const ws = await this.syncBranch(id); await this.k.github.ready(ws.path, ws.branch); return this.k.refreshPr(id) }
-  private async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.k.github.reopen(ws.path, ws.branch); return this.k.refreshPr(id) }
+  private async readyPr(id: string) { const ws = await this.syncBranch(id); await this.host(ws.roomId).ready(ws.path, ws.branch); return this.k.refreshPr(id) }
+  private async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.host(ws.roomId).reopen(ws.path, ws.branch); return this.k.refreshPr(id) }
 
   /**
    * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, for
@@ -444,8 +448,7 @@ export class Prs extends Feature {
         if (ws.status === 'archived' || ['none', 'merged', 'closed'].includes(ws.prState)) { this.polls.delete(ws.id); continue }
         open.push(ws)
       }
-      if (this.k.github.prs) await this.readBatched(open, start)
-      else for (const ws of open) await this.readOne(ws, start)
+      await this.readBatched(open, start)
     }
     if (o.chores ?? true) {
       // Updates held for a busy or paused Lead go out once it can take them.
@@ -476,13 +479,19 @@ export class Prs extends Feature {
    * One read per room for every PR it has open, then the full read, with review comments and conflicting files, only for a
    * PR whose batch read differs from Kernel's last full read or moves its state (KERNEL-388). A workspace with no PR number
    * yet, or whose PR the batch didn't return, is read on its own schedule. A PR whose full reads fail keeps its backoff.
+   * A room whose host can't read many PRs at once has each read on its own schedule.
    */
   private async readBatched(open: Workspace[], start: number) {
     const rooms = new Map<string, Workspace[]>()
     for (const ws of open) rooms.set(ws.roomId, [...(rooms.get(ws.roomId) ?? []), ws])
     for (const [roomId, list] of rooms) {
       const room = this.store.room(roomId)
-      if (!room || this.cadence.paused()) continue
+      if (!room) continue
+      let host: CodeHost
+      // A room whose host Kernel can't reach yet has no PR to read, and the other rooms are still read (KERNEL-453).
+      try { host = this.k.codeHost.hostFor(room) } catch { continue }
+      if (!host.prs) { for (const ws of list) await this.readOne(ws, start); continue }
+      if (this.cadence.paused()) continue
       // A branch switched by hand drops the old branch's PR, and the workspace is read on its own below (KERNEL-68).
       const current = await Promise.all(list.map((ws) => this.syncBranch(ws.id).catch(() => ws)))
       const numbers = [...new Set(current.flatMap((ws) => (ws.prNumber ? [ws.prNumber] : [])))]
@@ -490,12 +499,12 @@ export class Prs extends Feature {
       if (numbers.length) {
         try {
           const optional = await this.optionalOf(roomId)
-          const read = await this.k.github.prs!(room.path, numbers, optional.length ? { optional } : {})
+          const read = await host.prs(room.path, numbers, optional.length ? { optional } : {})
           probe = read.infos
           if (read.rate) { this.cadence.rated(read.rate); this.syncGitHub() }
           this.cadence.ok()
         } catch (e) {
-          if (e instanceof GhReadError && e.rateLimited) await this.limited(e, room.path)
+          if (e instanceof GhReadError && e.rateLimited) await this.limited(e, host, room.path)
           // The room is read again on the next poll.
           continue
         }

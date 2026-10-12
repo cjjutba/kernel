@@ -7,21 +7,21 @@
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
   color-scheme: dark;
-  --canvas: #08090a;
-  --panel: #0f1011;
-  --surface: #141516;
-  --surface-2: #18191b;
-  --surface-3: #1c1d21;
-  --hover: #232428;
-  --line: #1a1b1e;
-  --line-2: #23252a;
-  --line-3: #2a2b30;
-  --line-4: #3a3c42;
-  --ink: #f7f8f8;
-  --ink-2: #d0d6e0;
-  --ink-3: #b7bcc4;
-  --muted: #8a8f98;
-  --faint: #62666d;
+  --canvas: #070707;
+  --panel: #0f0f0f;
+  --surface: #141414;
+  --surface-2: #181818;
+  --surface-3: #1e1e1e;
+  --hover: #242424;
+  --line: #1c1c1c;
+  --line-2: #262626;
+  --line-3: #2e2e2e;
+  --line-4: #3d3d3d;
+  --ink: #f5f5f5;
+  --ink-2: #e0e0e0;
+  --ink-3: #c4c4c4;
+  --muted: #9c9c9c;
+  --faint: #7a7a7a;
   --add: #4cb782;
   --del: #eb5757;
   /* A modified file's name and letter, VS Code's gitDecoration.modifiedResourceForeground (KERNEL-399). */
@@ -35,8 +35,8 @@
   --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-merged: #2c2545;
-  --tint-muted: #222428;
-  --aside: #0c0d0e;
+  --tint-muted: #232323;
+  --aside: #0b0b0b;
   --plan: #5aa2ff;
   --on-plan: #06101e;
   --claude: #d97757;
@@ -62,27 +62,27 @@
   --pr-fail-text: #ff8a8a;
   --danger: #e5484d;
   --on-solid: #ffffff;
-  --on-ink: #08090a;
+  --on-ink: #070707;
   --ink-hover: #ffffff;
-  --panel-line: #1d1e22;
-  --nav-hover: #141518;
-  --input-bg: #0b0c0d;
-  --card-bg: #141517;
-  --card-line: #26272b;
-  --code-bg: #0a0b0c;
-  --chip-line: #2e3036;
-  --pill-line: #1f2024;
-  --track: #3e3e44;
+  --panel-line: #1f1f1f;
+  --nav-hover: #151515;
+  --input-bg: #121212;
+  --card-bg: #141414;
+  --card-line: #282828;
+  --code-bg: #0b0b0b;
+  --chip-line: #303030;
+  --pill-line: #222222;
+  --track: #404040;
   --scrim: rgba(0, 0, 0, 0.3);
-  --focus: rgba(247, 248, 248, 0.55);
-  --term-black: #62666d;
+  --focus: rgba(245, 245, 245, 0.55);
+  --term-black: #7a7a7a;
   --term-red: #eb5757;
   --term-green: #4cb782;
   --term-yellow: #d9b44a;
   --term-blue: #6ea8fe;
   --term-magenta: #b9a3f5;
   --term-cyan: #5ec8d8;
-  --term-white: #d0d6e0;
+  --term-white: #e0e0e0;
 }
 [data-theme='light'] {
   color-scheme: light;
@@ -198,7 +198,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .header > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .header .menu { white-space: normal; }
 .header h1 { margin: 0; font-size: 13px; font-weight: 500; }
-/* Sidebar hidden: the traffic lights move into the header row (system.trafficLights), so the header clears them and drags the window. */
+/* Sidebar hidden: the header clears the traffic lights, which always sit on its row (KERNEL-431), and drags the window. */
 .app[data-sidebar='hidden'] .main { padding-left: 8px; }
 .app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; -webkit-app-region: drag; }
 .app[data-sidebar='hidden'] .panel > .header > :not(.grow) { -webkit-app-region: no-drag; }
