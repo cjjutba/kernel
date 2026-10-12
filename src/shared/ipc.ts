@@ -283,6 +283,11 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /**
+   * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
+   * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
+   */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
   /**

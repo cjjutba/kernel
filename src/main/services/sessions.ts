@@ -1,7 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import type { Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
@@ -17,7 +17,9 @@ import type { McpReport } from './mcp'
 import { revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
-import { ClaudeRunner, claudeCommands, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
+import { ClaudeRunner, claudeCommands, claudeModels, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
+import { claudeExecutable } from './providers/binary'
+import { effectiveMode, type ChatAvailability, type RunMode } from './permissions'
 import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 import { CodexRunner } from './providers/codex/runner'
 import { chatProvider, limitProvider } from '@shared/providers'
@@ -54,6 +56,8 @@ interface Live {
   failed?: 'auth' | 'network'
   /** The account the process runs on, which its usage windows belong to. Undefined is the CLI's own login (KERNEL-406). */
   account?: string
+  /** A Claude process started allowed to take Bypass permissions, which it keeps for life (KERNEL-447). Undefined on Codex. */
+  bypass?: boolean
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
   sent?: ChatPart[]
   sentItem?: ChatItem & { kind: 'user' }
@@ -110,6 +114,11 @@ export interface SessionDeps {
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
+  /**
+   * What the chat can run now (KERNEL-447): Auto for its provider and model, and Bypass permissions under admin policy.
+   * `wants` is the mode the chat asks for, so a read only starts when it matters. Without it, Bypass is allowed and Auto isn't.
+   */
+  availability?: (chat: Chat, ws: Workspace, wants: RunMode) => ChatAvailability
   /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
   accountFor?: (provider: Provider) => string | undefined
   /** What a Claude chat's process adds to its environment for the active account, such as its token (KERNEL-406). */
@@ -485,6 +494,60 @@ export class Sessions {
   }
 
   /**
+   * Claude Code's models on the active account, with what each one supports, for Auto (KERNEL-447). A live session on that
+   * account answers; without one, Claude Code starts with no prompt, no settings and no transcript, answers and stops.
+   */
+  claudeModels(cwd: string): Promise<ModelInfo[]> {
+    const account = this.d.accountFor?.('claude')
+    const live = [...this.live.values()].find((l) => !l.runner.closed && l.runner instanceof ClaudeRunner && l.account === account)
+    if (live) return (live.runner as ClaudeRunner).models()
+    return claudeModels(cwd, { env: this.d.claudeEnv?.() ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
+  }
+
+  /**
+   * The mode the chat runs in (`effectiveMode`), and `bypass`: its own choice is Bypass permissions, plan mode aside, which
+   * a Claude process needs from its start to take it (KERNEL-447).
+   */
+  private modes(chat: Chat, ws: Workspace): { mode: RunMode; bypass: boolean } {
+    const room = this.d.store.room(ws.roomId)
+    const agent = this.d.agentFor(ws)
+    const settings = this.d.settings()
+    const base = (avail: ChatAvailability) => effectiveMode({ ...chat, plan: false }, ws, room, settings, avail, agent)
+    const wants = base({ auto: true, bypass: true })
+    const chosen = base(this.d.availability?.(chat, ws, wants) ?? { auto: false, bypass: true })
+    return { mode: chat.plan ? 'plan' : chosen, bypass: chosen === 'bypassPermissions' }
+  }
+
+  /**
+   * Puts every live chat in the mode it should run in now: Settings, a room or the chat changed it, or Kernel learned what a
+   * provider can run (KERNEL-447).
+   */
+  applyModes() {
+    for (const [id, live] of [...this.live]) {
+      const chat = this.d.store.chat(id)
+      const ws = chat && this.d.store.workspace(chat.workspaceId)
+      if (chat && ws) void this.moveTo(chat, ws, live)
+    }
+  }
+
+  /**
+   * A Claude process takes Bypass permissions only if it started allowed to, and keeps that permission for life. So a change
+   * across that line restarts it: an idle one ends now and a busy one when its turn and background tasks end, and the next
+   * message resumes the conversation in the new mode. Meanwhile it runs in the stricter mode of the two.
+   */
+  private moveTo(chat: Chat, ws: Workspace, live: Live): Promise<void> {
+    const { mode, bypass } = this.modes(chat, ws)
+    const restart = live.bypass !== undefined && live.bypass !== bypass
+    const switched = restart && mode === 'bypassPermissions' ? Promise.resolve() : live.runner.setMode(mode)
+    if (!restart) return switched
+    if (live.running || live.tasks.size) {
+      this.stale.add(chat.id)
+      if (bypass) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: 'Bypass permissions starts once this turn ends.' })
+    } else this.end(chat.id, live)
+    return switched
+  }
+
+  /**
    * Starts a turn, or holds the message when one is running. A held message shows in the composer
    * (edit or remove it until it goes) and is sent, in order, when the turn ends. `why` says what it waits for.
    * `from` marks a message the user didn't type, and it stays on the message while it waits (KERNEL-116).
@@ -684,13 +747,8 @@ export class Sessions {
    * limit starts waiting work. The usage switches count too, so the limits go out again for Kernel to act on them (KERNEL-220).
    */
   applySettings(before?: AppSettings) {
-    if (!before || before.permissions.mode !== this.d.settings().permissions.mode) {
-      for (const [id, l] of this.live) {
-        if (this.d.store.chat(id)?.plan) continue
-        // Plan mode off puts the session on the mode Settings, Permissions now has.
-        void l.runner.setPlan(false)
-      }
-    }
+    const now = this.d.settings().permissions
+    if (!before || before.permissions.mode !== now.mode || before.permissions.bypassOnlyInWorktrees !== now.bypassOnlyInWorktrees) this.applyModes()
     this.pushLimits()
   }
 
@@ -844,7 +902,7 @@ export class Sessions {
     this.item(this.mustChat(chatId), { kind: 'interrupted', id: randomUUID(), ts: Date.now() })
   }
 
-  async configure(chatId: string, patch: Partial<Pick<Chat, 'model' | 'effort' | 'plan'>>): Promise<Chat> {
+  async configure(chatId: string, patch: Partial<Pick<Chat, 'model' | 'effort' | 'plan' | 'mode'>>): Promise<Chat> {
     const chat = { ...this.mustChat(chatId), ...patch }
     this.d.store.saveChat(chat)
     // The composer follows changes Kernel makes too, like leaving plan mode when a plan is approved.
@@ -854,7 +912,8 @@ export class Sessions {
       if (patch.model) await live.runner.setModel(patch.model)
       // After the model, so a model switch keeps the effort picked with it (D-093).
       if (patch.effort) await live.runner.setEffort(patch.effort)
-      if (patch.plan !== undefined) await live.runner.setPlan(patch.plan)
+      // Plan mode and the chat's own mode decide the mode it runs in, and the model whether Auto can be it (KERNEL-447).
+      if (patch.plan !== undefined || patch.mode !== undefined || patch.model) await this.moveTo(chat, this.mustWorkspace(chat.workspaceId), live)
     }
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
@@ -1054,12 +1113,14 @@ export class Sessions {
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
+    const { mode, bypass } = this.modes(chat, ws)
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws) })
     } else {
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root, aliases: this.d.aliasesFor?.(ws) })
+      live.bypass = bypass
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root, aliases: this.d.aliasesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()
@@ -1072,6 +1133,7 @@ export class Sessions {
       chatId, workspace: ws, agent,
       chat: () => this.mustChat(chatId),
       settings: () => this.d.settings(),
+      mode: () => this.modes(this.mustChat(chatId), ws).mode,
       roomAllow: () => this.d.roomAllow(ws.roomId),
       allowInRoom: (rule) => this.d.allowInRoom(ws.roomId, rule),
       held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
@@ -1259,7 +1321,7 @@ export class Sessions {
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
     const { approval, decision } = this.d.approvals.request({
       kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
-      toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions
+      toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions, ...(a.reason ? { reason: a.reason } : {})
     } as Parameters<Approvals['request']>[0], { signal: o.signal, timeoutMs: o.timeoutMs })
     this.placeApproval(chatId, approval.id)
     if (plan?.trim() && existsSync(ws.path)) {

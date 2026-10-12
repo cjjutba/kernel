@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bashVerdict, matchesRoomRule, matchesRule, parse, pushesTo, unwrap, usesNetwork } from '../src/main/services/bashGuard'
+import { bashVerdict, matchesRoomRule, matchesRule, parse, pushesTo, pushMightReach, unwrap, usesNetwork } from '../src/main/services/bashGuard'
 
 // KERNEL-230: the guard reads a command the way a shell does, so quoting, wrappers, aliases, flag order and redirections
 // don't get past Never allow, Always ask or a room rule.
@@ -257,6 +257,54 @@ describe('Never allow and protected branches', () => {
   it('leaves a protected branch alone when none is protected', () => {
     expect(bashVerdict('git push origin main', { neverAllow: [], alwaysAsk: [] }, [])).toBeUndefined()
     expect(bashVerdict('git push --all', { neverAllow: [], alwaysAsk: [], protectedBranches: [] }, [])).toBeUndefined()
+  })
+})
+
+// KERNEL-447: Bypass permissions never asks, so a push that might reach a protected branch is refused instead.
+describe('a push that might reach a protected branch', () => {
+  const branches = ['main', 'dev']
+
+  it.each([
+    ['git push origin main'],
+    ['git push origin HEAD:refs/heads/dev'],
+    ['git push --all origin'],
+    // Git picks the branch from the upstream and push.default, which a worktree branched from main may point at.
+    ['git push'],
+    ['git push origin'],
+    ['git push -u origin'],
+    ['git push --set-upstream origin HEAD'],
+    ['git push origin @'],
+    ['git push origin +HEAD'],
+    ['git -C ../other push'],
+    ['cd sub && git push'],
+    // A ref or a command only known when it runs.
+    ['git push origin "$BRANCH"'],
+    ['git push origin "feat/*"'],
+    ['git $SUB origin feat/x'],
+    // A command git doesn't provide that mentions a protected branch, such as an alias from a config file.
+    ['git ship main']
+  ])('%s', (command) => {
+    expect(pushMightReach(command, branches)).toBe(true)
+  })
+
+  it.each([
+    ['git push origin feat/invoice-schema'],
+    ['git push -u origin feat/invoice-schema'],
+    ['git push origin HEAD:feat/invoice-schema'],
+    ['git push origin HEAD:refs/heads/feat/x'],
+    ['git push --tags'],
+    ['git push origin --tags'],
+    ['git push -o ci.skip origin feat/x'],
+    ['git status && git log -1'],
+    ['git ship'],
+    ['ls']
+  ])('lets %s through', (command) => {
+    expect(pushMightReach(command, branches)).toBe(false)
+  })
+
+  it('lets every push through when no branch is protected', () => {
+    expect(pushMightReach('git push', [])).toBe(false)
+    expect(pushMightReach('git push origin main', [])).toBe(false)
   })
 })
 

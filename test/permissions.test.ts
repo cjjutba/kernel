@@ -1,21 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import type { Decision } from '@shared/types'
+import type { Decision, PermissionMode } from '@shared/types'
 import type { AppSettings } from '../src/main/services/settings'
-import { ALWAYS_ASK, decide, guardVerdict, NETWORK_OFF, neverAllowed, rulesOf, saveAlwaysAllow, type Rules, type Step } from '../src/main/services/permissions'
+import { ALWAYS_ASK, decide, effectiveMode, guardVerdict, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
-type Mode = AppSettings['permissions']['mode']
-
-function rules(o: { mode?: Mode; network?: boolean; roomAllow?: string[]; worktree?: boolean } = {}): Rules & { reads: number } {
-  const permissions = { mode: o.mode ?? 'acceptEdits', bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: ['main'], approvalTimeoutSec: 300 }
-  const r = { permissions, mode: permissions.mode, worktree: o.worktree ?? true, reads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] } }
+function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; branches?: string[] } = {}): Rules & { reads: number } {
+  const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
+  const r = { permissions, mode: o.mode ?? 'acceptEdits', branch: 'feat/invoice-schema', reads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] } }
   return r
 }
+
+/** A push to the protected branch, built so this file's text never holds the command itself. */
+const toMain = ['git', 'push', 'origin', 'main'].join(' ')
 
 describe('guardVerdict', () => {
   it('denies Never allow and protected-branch pushes, allows a room rule and asks for Always ask', () => {
     const r = rules({ roomAllow: ['pnpm test'] })
     expect(guardVerdict('rm -rf /', r)).toEqual({ behavior: 'deny', message: 'Kernel blocks "rm -rf /" in every room.' })
-    expect(guardVerdict('git push origin main', r)).toEqual({ behavior: 'deny', message: neverAllowed('git push origin main') })
+    expect(guardVerdict(toMain, r)).toEqual({ behavior: 'deny', message: neverAllowed(toMain) })
     expect(guardVerdict('pnpm test', r)).toEqual({ behavior: 'allow' })
     expect(guardVerdict('pnpm drizzle-kit push', r)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
     expect(guardVerdict('ls', r)).toBeUndefined()
@@ -23,6 +24,93 @@ describe('guardVerdict', () => {
 
   it('folds Network off into a Never allow denial, as the Claude hook has always said it', () => {
     expect(guardVerdict('curl https://example.com', rules({ network: false }))).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
+  })
+
+  it('in Bypass permissions keeps only the denials, with no opinion on Always ask or a room rule (KERNEL-447)', () => {
+    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['pnpm test'] })
+    expect(guardVerdict('rm -rf /', bypass)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(guardVerdict('curl https://example.com', rules({ mode: 'bypassPermissions', network: false }))).toEqual({ behavior: 'deny', message: neverAllowed('curl https://example.com') })
+    expect(guardVerdict('pnpm drizzle-kit push', bypass)).toBeUndefined()
+    expect(guardVerdict('pnpm test', bypass)).toBeUndefined()
+    expect(guardVerdict('ls', bypass)).toBeUndefined()
+  })
+
+  it('in Bypass permissions denies a push that might reach a protected branch, and tells the agent to push its own (KERNEL-447)', () => {
+    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['git push:*'] })
+    const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
+    for (const push of [toMain, 'git push', 'git push origin', 'git push -u origin HEAD', 'git push origin "$BRANCH"', 'git push origin "feat/*"']) expect(guardVerdict(push, bypass), push).toEqual(own)
+    expect(guardVerdict('git push -u origin feat/invoice-schema', bypass)).toBeUndefined()
+    expect(guardVerdict('git push origin HEAD:feat/invoice-schema', bypass)).toBeUndefined()
+    // No protected branch, nothing to keep a push from.
+    expect(guardVerdict('git push', rules({ mode: 'bypassPermissions', branches: [] }))).toBeUndefined()
+    // Every other mode leaves a bare push to the user's own settings, and asks about a ref it can't read, as before.
+    expect(guardVerdict('git push', rules())).toBeUndefined()
+    expect(guardVerdict('git push origin "$BRANCH"', rules())).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
+  })
+
+  it("keeps Bypass permissions' push denials on top of a stricter mode's asks while Claude Code may still run in bypass", () => {
+    const leaving = { ...rules({ roomAllow: ['git push:*'] }), mayBypass: true }
+    const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
+    for (const push of ['git push', 'git push -u origin HEAD', 'git push origin "$BRANCH"', toMain]) expect(guardVerdict(push, leaving), push).toEqual(own)
+    // The stricter mode's asks and denials still hold.
+    expect(guardVerdict('pnpm drizzle-kit push', leaving)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
+    expect(guardVerdict('rm -rf /', leaving)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(guardVerdict('git push -u origin feat/invoice-schema', leaving)).toEqual({ behavior: 'allow' })
+    expect(guardVerdict('ls', leaving)).toBeUndefined()
+  })
+
+  it('names the protected branches, and the push that works when the workspace has its own branch', () => {
+    expect(pushOwnBranch(['main'], 'feat/x')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name: git push origin feat/x.')
+    expect(pushOwnBranch(['main', 'dev', 'release'], 'feat/x')).toContain('might reach main, dev or release')
+    expect(pushOwnBranch(['main'], 'main')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name.')
+  })
+})
+
+describe('effectiveMode (KERNEL-447)', () => {
+  const settings = (mode: PermissionMode, bypassOnlyInWorktrees?: boolean) => ({ permissions: { mode, ...(bypassOnlyInWorktrees === undefined ? {} : { bypassOnlyInWorktrees }) } }) as unknown as AppSettings
+  const all: ChatAvailability = { auto: true, bypass: true }
+  const worktree = { mode: 'worktree' as const }
+  const current = { mode: 'current' as const }
+  const chat = (o: { plan?: boolean; mode?: PermissionMode } = {}) => ({ plan: o.plan ?? false, mode: o.mode })
+
+  it('takes plan first, then the chat, then the room, then the app', () => {
+    expect(effectiveMode(chat({ plan: true, mode: 'bypassPermissions' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('plan')
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('bypassPermissions')
+    expect(effectiveMode(chat(), worktree, { permissionMode: 'auto' }, settings('default'), all)).toBe('auto')
+    expect(effectiveMode(chat(), worktree, {}, settings('default'), all)).toBe('default')
+    expect(effectiveMode(chat(), worktree, undefined, settings('acceptEdits'), all)).toBe('acceptEdits')
+  })
+
+  it("lets an agent file's mode only tighten, with its plan and dontAsk as Manual", () => {
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), all, { permissionMode: 'acceptEdits' })).toBe('acceptEdits')
+    expect(effectiveMode(chat({ mode: 'default' }), worktree, undefined, settings('default'), all, { permissionMode: 'bypassPermissions' })).toBe('default')
+    expect(effectiveMode(chat({ mode: 'auto' }), worktree, undefined, settings('default'), all, { permissionMode: 'acceptEdits' })).toBe('acceptEdits')
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), all, { permissionMode: 'plan' })).toBe('default')
+    expect(effectiveMode(chat({ mode: 'acceptEdits' }), worktree, undefined, settings('default'), all, { permissionMode: 'dontAsk' })).toBe('default')
+  })
+
+  it('runs Auto as Accept edits where the chat cannot run it', () => {
+    expect(effectiveMode(chat({ mode: 'auto' }), worktree, undefined, settings('default'), { auto: false, bypass: true })).toBe('acceptEdits')
+  })
+
+  it('runs Bypass permissions as Accept edits where policy turns it off, and on a current-branch workspace with Only in worktrees on', () => {
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), { auto: true, bypass: false })).toBe('acceptEdits')
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), current, undefined, settings('default', true), all)).toBe('acceptEdits')
+    // Unset counts as on.
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), current, undefined, settings('default'), all)).toBe('acceptEdits')
+    expect(effectiveMode(chat({ mode: 'bypassPermissions' }), current, undefined, settings('default', false), all)).toBe('bypassPermissions')
+  })
+
+  it('reads a mode it does not know as Manual, wherever it comes from', () => {
+    expect(effectiveMode({ plan: false, mode: 'bypassInWorktrees' as never }, worktree, undefined, settings('acceptEdits'), all)).toBe('acceptEdits')
+    expect(effectiveMode(chat(), worktree, undefined, settings('ask' as never), all)).toBe('default')
+  })
+
+  it('orders the modes from plan, the strictest, to Bypass permissions', () => {
+    expect(stricter<RunMode>('plan', 'default')).toBe('plan')
+    expect(stricter<RunMode>('bypassPermissions', 'acceptEdits')).toBe('acceptEdits')
+    expect(stricter<RunMode>('auto', 'acceptEdits')).toBe('acceptEdits')
+    expect(stricter<RunMode>('auto', 'bypassPermissions')).toBe('auto')
   })
 })
 
@@ -42,9 +130,9 @@ describe('decide', () => {
   })
 
   it('lets the lists decide a command before the mode', () => {
-    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['pnpm test'] })
-    expect(decide({ tool: 'Bash', command: 'rm -rf /' }, bypass)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
-    expect(decide({ tool: 'Bash', command: 'pnpm drizzle-kit push' }, bypass)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
+    const edits = rules({ roomAllow: ['pnpm test'] })
+    expect(decide({ tool: 'Bash', command: 'rm -rf /', sandbox: 'inside' }, edits)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(decide({ tool: 'Bash', command: 'pnpm drizzle-kit push', sandbox: 'inside' }, edits)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
     expect(decide({ tool: 'Bash', command: 'pnpm test', sandbox: 'outside' }, rules({ mode: 'default', roomAllow: ['pnpm test'] }))).toEqual({ behavior: 'allow' })
   })
 
@@ -57,38 +145,56 @@ describe('decide', () => {
     expect(r.reads).toBe(1)
   })
 
-  it('on Claude, lets Bypass in worktrees through in a worktree only, and never a question or a plan', () => {
-    const step = { tool: 'Bash', command: 'ls' }
-    expect(decide(step, rules({ mode: 'bypassPermissions' }))).toEqual({ behavior: 'allow' })
-    expect(decide(step, rules({ mode: 'bypassPermissions', worktree: false }))).toBeUndefined()
-    expect(decide(step, rules({ mode: 'acceptEdits' }))).toBeUndefined()
-    expect(decide(step, rules({ mode: 'default' }))).toBeUndefined()
+  it('on Claude, gives no opinion by mode, so in Bypass permissions whatever Claude Code still asks about goes to the user (KERNEL-447)', () => {
+    for (const mode of ['plan', 'default', 'acceptEdits', 'auto', 'bypassPermissions'] as const) {
+      expect(decide({ tool: 'Bash', command: 'rm -rf node_modules' }, rules({ mode })), mode).toBeUndefined()
+      expect(decide({ tool: 'Edit' }, rules({ mode })), mode).toBeUndefined()
+    }
     expect(decide({ tool: 'AskUserQuestion' }, rules({ mode: 'bypassPermissions' }))).toBeUndefined()
     expect(decide({ tool: 'ExitPlanMode' }, rules({ mode: 'bypassPermissions' }))).toBeUndefined()
+    // The denials still hold.
+    expect(decide({ tool: 'Bash', command: 'rm -rf /' }, rules({ mode: 'bypassPermissions' }))).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(decide({ tool: 'WebFetch' }, rules({ mode: 'bypassPermissions', network: false }))).toEqual({ behavior: 'deny', message: NETWORK_OFF })
   })
 
-  it("on Codex, accepts inside the sandbox in every mode but Ask, and leaves a step outside it to the user in every mode", () => {
+  it('on Codex, accepts inside the sandbox in every mode that takes edits, and leaves a step outside it to the user but in Bypass permissions', () => {
     const inside = { tool: 'Bash', command: 'y', sandbox: 'inside' as const }
     const outside = { tool: 'Bash', command: 'pnpm test', sandbox: 'outside' as const }
-    for (const mode of ['acceptEdits', 'bypassPermissions'] as const) {
-      expect(decide(inside, rules({ mode, worktree: false }))).toEqual({ behavior: 'allow' })
+    for (const mode of ['acceptEdits', 'auto'] as const) {
+      expect(decide(inside, rules({ mode }))).toEqual({ behavior: 'allow' })
       expect(decide(outside, rules({ mode }))).toBeUndefined()
     }
-    expect(decide(inside, rules({ mode: 'default' }))).toBeUndefined()
-    expect(decide(outside, rules({ mode: 'default' }))).toBeUndefined()
+    for (const mode of ['default', 'plan'] as const) {
+      expect(decide(inside, rules({ mode }))).toBeUndefined()
+      expect(decide(outside, rules({ mode }))).toBeUndefined()
+    }
     expect(decide({ tool: 'Edit', sandbox: 'inside' }, rules())).toEqual({ behavior: 'allow' })
     expect(decide({ tool: 'Edit', sandbox: 'outside' }, rules())).toBeUndefined()
+  })
+
+  it('on Codex in Bypass permissions, accepts what the denials let through, outside the sandbox and Always ask included (KERNEL-447)', () => {
+    const bypass = rules({ mode: 'bypassPermissions' })
+    expect(decide({ tool: 'Bash', command: 'pnpm build', sandbox: 'outside' }, bypass)).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Bash', command: 'pnpm drizzle-kit push', sandbox: 'outside' }, bypass)).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Write', sandbox: 'outside' }, bypass)).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Permissions', network: true, sandbox: 'outside' }, bypass)).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Bash', command: 'rm -rf /', sandbox: 'outside' }, bypass)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(decide({ tool: 'Bash', command: 'git push', sandbox: 'outside' }, bypass)).toEqual({ behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') })
+    const off = rules({ mode: 'bypassPermissions', network: false })
+    expect(decide({ tool: 'Bash', command: 'curl https://example.com', sandbox: 'outside' }, off)).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+    expect(decide({ tool: 'Permissions', network: true, sandbox: 'outside' }, off)).toEqual({ behavior: 'deny', message: NETWORK_OFF })
   })
 })
 
 describe('rulesOf', () => {
-  it("reads the mode and network from Settings, Permissions, and the worktree from the workspace", () => {
-    const permissions = { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
+  it('reads the lists from Settings, Permissions, the mode from the chat unless the runner names one, and the branch from the workspace', () => {
+    const permissions = { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
     let reads = 0
-    const r = rulesOf({ settings: () => ({ permissions }) as unknown as AppSettings, roomAllow: () => { reads++; return ['ls'] }, workspace: { mode: 'worktree' } as never })
-    expect(r).toMatchObject({ permissions, mode: 'bypassPermissions', worktree: true })
+    const host = { settings: () => ({ permissions }) as unknown as AppSettings, mode: () => 'bypassPermissions' as const, roomAllow: () => { reads++; return ['ls'] }, workspace: { mode: 'worktree', branch: 'feat/x' } as never }
+    expect(rulesOf(host)).toMatchObject({ permissions, mode: 'bypassPermissions', branch: 'feat/x' })
+    expect(rulesOf(host, 'default').mode).toBe('default')
     expect(reads).toBe(0)
-    expect(r.roomAllow()).toEqual(['ls'])
+    expect(rulesOf(host).roomAllow()).toEqual(['ls'])
   })
 })
 

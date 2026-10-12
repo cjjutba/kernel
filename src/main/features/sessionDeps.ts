@@ -19,6 +19,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
+    availability: (chat, ws, wants) => k.permissions.forChat(chat, ws, wants),
     envFor: (ws) => k.env.envFor(ws),
     allowInRoom: (roomId, rule) => {
       const room = k.store.room(roomId)

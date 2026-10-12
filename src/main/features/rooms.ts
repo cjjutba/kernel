@@ -218,7 +218,7 @@ export class Rooms extends Feature {
     return room
   }
 
-  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>>): Promise<Room> {
+  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'permissionMode'>>): Promise<Room> {
     const before = this.mustRoom(roomId)
     // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
     if (patch.archived && !before.archived) {
@@ -231,6 +231,8 @@ export class Rooms extends Feature {
     }
     const room = this.store.saveRoom({ ...before, ...patch })
     bus.push({ type: 'room', room })
+    // The room's mode moves its live chats now (KERNEL-447).
+    if ('permissionMode' in patch && patch.permissionMode !== before.permissionMode) this.sessions.applyModes()
     return room
   }
 

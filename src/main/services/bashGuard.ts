@@ -715,6 +715,46 @@ export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAs
   return undefined
 }
 
+/**
+ * A push Bypass permissions can't let through, because it might reach a protected branch (KERNEL-447): one `pushVerdict`
+ * denies or asks about, a command Kernel can't read that mentions a protected branch, a `git` whose command is only known at
+ * run time, and a `git push` that leaves its destination to git (`pushesUnnamed`). Every mode but Bypass asks about the
+ * ones `bashVerdict` asks about and leaves the unnamed ones to the user's own settings.
+ */
+export function pushMightReach(command: string, branches: string[]): boolean {
+  if (!branches.length) return false
+  return analyze(command.trim()).effective.some((s) => {
+    if (pushVerdict(s, branches) || (s.unknown && mentions(s.words, branches))) return true
+    const g = gitCall(s)
+    return !!g && ((g.sub === undefined && !g.scripts.length) || pushesUnnamed(g))
+  })
+}
+
+/**
+ * A `git push` that names no branch to push to, so git picks it from the upstream and `push.default`, which can be a
+ * protected branch: a bare push, one naming only the remote, or one pushing `HEAD` or `@` without `:dst`. With `--tags` and
+ * no refspec it pushes tags only.
+ */
+function pushesUnnamed(g: GitCall): boolean {
+  if (g.sub !== 'push') return false
+  const words: string[] = []
+  let tags = false
+  let end = false
+  for (let k = 0; k < g.args.length; k++) {
+    const a = g.args[k]
+    if (!end && a === '--') { end = true; continue }
+    if (!end && a.startsWith('-')) {
+      if (a === '--tags') tags = true
+      if (PUSH_ARGS.has(a)) k++
+      continue
+    }
+    words.push(a)
+  }
+  const refspecs = words.slice(1)
+  if (!refspecs.length) return !tags
+  return refspecs.some((r) => /^\+?(?:HEAD|@)$/.test(r))
+}
+
 /** A `git push` that names a protected branch (`origin main`, `origin "main"`, `origin HEAD:refs/heads/main`, `git -C dir push ...`), or pushes `--all` or `--mirror`. A bare `git push` names none, so it is left alone. */
 export function pushesTo(command: string, branches: string[]): boolean {
   return analyze(command.trim()).effective.some((s) => pushVerdict(s, branches) === 'deny')
