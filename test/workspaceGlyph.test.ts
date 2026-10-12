@@ -71,3 +71,21 @@ describe('a ready PR GitHub blocks (KERNEL-401)', () => {
     expect(workspaceGlyph(ws({ prBlocked: 'behind' }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
   })
 })
+
+describe('a PR action pending (KERNEL-520)', () => {
+  const ws = (o: Partial<Workspace>) => ({ id: 'w', status: 'ready', prState: 'ready', ...o }) as Workspace
+  const idle = { waiting: [], running: false }
+
+  it("spins in the action's word from the press, before the PR state moves, and reads the PR again when it ends", () => {
+    expect(workspaceGlyph(ws({}), { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+    expect(workspaceGlyph(ws({ prState: 'draft' }), { ...idle, pending: 'ready' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Marking ready' })
+    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+  })
+
+  it('waits behind what needs you and what is working, and never covers a merged PR', () => {
+    expect(workspaceGlyph(ws({}), { waiting: [plan], running: false, pending: 'merge' })).toMatchObject({ icon: 'plan' })
+    expect(workspaceGlyph(ws({ status: 'setup' }), { ...idle, pending: 'merge' })).toMatchObject({ label: 'Setting up' })
+    expect(workspaceGlyph(ws({}), { waiting: [], running: true, pending: 'merge' })).toMatchObject({ label: 'Working' })
+    expect(workspaceGlyph(ws({ prState: 'merged' }), { ...idle, pending: 'merge' })).toEqual({ icon: 'merged', tone: 'merged', label: 'Merged' })
+  })
+})

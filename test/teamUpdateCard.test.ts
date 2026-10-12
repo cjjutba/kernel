@@ -1,18 +1,25 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import type { ChatItem, PrInfo, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
+import type { ChatItem, PrInfo, PrPending, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { cardData, eventTone, legacyRows, newestRows, sections, taskParts } from '../src/renderer/src/screens/workspace/cards/teamUpdate'
 
 // KERNEL-127: Kernel's team update draws as a card, from the data saved with it or from an older update's lines.
 
 Object.assign(globalThis, { React })
 
-// The store reads need a browser, so the card gets a stand-in for MergeButton that shows which workspace it was given.
-vi.mock('../src/renderer/src/screens/workspace/pr/MergeButton', async (original) => ({
-  ...(await original<object>()),
-  MergeButton: ({ ws }: { ws: Workspace }) => React.createElement('b', { className: 'stub-merge' }, `Merge #${ws.prNumber}`)
-}))
+// The store reads need a browser, so the card gets a stand-in for MergeButton. It shows which workspace it was given, and draws
+// the Merge place MergeButton draws, with `pending` standing for the store's prPending (KERNEL-520).
+const pending = vi.hoisted(() => ({}) as Record<string, PrPending>)
+vi.mock('../src/renderer/src/screens/workspace/pr/MergeButton', async (original) => {
+  const real = await original<typeof import('../src/renderer/src/screens/workspace/pr/MergeButton')>()
+  const noRules = { requireGreen: false, requireReviewer: false }
+  return {
+    ...real,
+    MergeButton: ({ ws }: { ws: Workspace }) => React.createElement('span', { className: 'stub-merge' },
+      React.createElement(real.MergeSlot, { ws, view: real.mergeView(ws, undefined, noRules, undefined, undefined, pending[ws.id]), onMerge: () => undefined }))
+  }
+})
 
 const LEGACY = [
   'Update from Kernel (not the user):',
@@ -175,6 +182,24 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(html.indexOf('Merge #162')).toBeLessThan(html.indexOf('>Open<'))
   })
 
+  it('spins a row whose merge is pending, wherever it was pressed, and leaves the other rows on Merge (KERNEL-520)', async () => {
+    const { TeamUpdateView } = await load()
+    const items = [card('new', ['w1'], ['w2'])]
+    const useNewest = (target: string, itemId: string) => newestRows(items, workspaces).get(target) === itemId
+    const draw = () => renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest, workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
+    expect(draw()).toContain('aria-label="Merge PR #162"')
+    pending.w1 = 'merge'
+    try {
+      const html = draw()
+      // w1 spins in its Merge place, disabled and saying Merging, while w2 keeps its button.
+      expect(html).not.toContain('aria-label="Merge PR #162"')
+      expect(html).toMatch(/<button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button>/)
+      expect(html).toContain('aria-label="Merge PR #161"')
+    } finally { delete pending.w1 }
+    // The merge was refused: the pending clears and the row reads Merge again.
+    expect(draw()).toContain('aria-label="Merge PR #162"')
+  })
+
   it('offers no Merge for an archived workspace, whose row says In History', async () => {
     const { TeamUpdateView } = await load()
     const gone = [ws('w1', { status: 'archived', prState: 'merged' })]
@@ -200,6 +225,10 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1'), pr(), rules, undefined, queue)).toEqual({ kind: 'next' })
     expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules, undefined, { ids: ['w1'], current: 'w1' })).toEqual({ kind: 'merging' })
     expect(mergeView(ws('w1'), pr(), rules, undefined, { ids: ['w1', 'w2'], current: 'w2' })).toEqual({ kind: 'ready' })
+    // A merge pending on the PR reads merging before GitHub's state moves, whoever pressed it, including the PR Merge all is on (KERNEL-520).
+    expect(mergeView(ws('w1'), pr(), rules, undefined, undefined, 'merge')).toEqual({ kind: 'merging' })
+    expect(mergeView(ws('w1'), pr(), rules, undefined, { ids: ['w1', 'w2'], current: 'w1' }, 'merge')).toEqual({ kind: 'merging' })
+    expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules, undefined, undefined, 'merge')).toEqual({ kind: 'merged' })
     expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
     const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
     expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("Theo hasn't approved") })

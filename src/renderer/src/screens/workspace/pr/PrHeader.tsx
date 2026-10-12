@@ -54,7 +54,9 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const agents = useStore((s) => s.agents[ws.roomId])
   const held = blockersHold(ws, pr, rules, (agentId) => agents?.find((a) => a.id === agentId)?.name ?? agentId)
   const [confirm, setConfirm] = useState<NonNullable<typeof held> | null>(null)
-  const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held)
+  // An action started from another button or by a tool spins this band too, and turns its keys off (KERNEL-520).
+  const pending = useStore((s) => s.prPending[ws.id])
+  const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held, pending)
   const override = !!view.button?.override
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
@@ -94,7 +96,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
 
   // ⌘⇧ and the action's letter press the main button, and ⌘⇧A presses Archive, only while that button shows (KERNEL-341).
-  // A busy button has no action, so it has no key, and an open modal turns them all off.
+  // A busy button has no action, so it has no key, whether its own press or a pending action spins it, and an open modal turns them all off.
   const action = view.button?.action
   const key = action && actionKey[action]
   const canArchive = view.merged || view.archive

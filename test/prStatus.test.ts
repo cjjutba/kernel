@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { PrInfo, PrState, Workspace } from '../src/shared/types'
+import type { MergeQueue, PrInfo, PrPending, PrState, Workspace } from '../src/shared/types'
 import { workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
-import { PR_STATUS, headerView, localNote, localRow, localStand, localStatus } from '../src/renderer/src/screens/workspace/pr/model'
+import { PR_STATUS, busyLabel, headerView, localNote, localRow, localStand, localStatus, type PrAction } from '../src/renderer/src/screens/workspace/pr/model'
 import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 import { MergeSlot, PrStatusTag, mergeView } from '../src/renderer/src/screens/workspace/pr/MergeButton'
 
@@ -46,6 +46,68 @@ describe("a PR's state in every place it shows", () => {
     const ready = draw({ ...ws('ready'), id: 'w2', prNumber: 8 })
     expect(ready).toMatch(/<button[^>]*aria-label="Merge PR #8"[^>]*>Merge #8<\/button>/)
     expect(ready).not.toContain('aria-busy')
+  })
+})
+
+// KERNEL-520: an action main announces as pending spins every place showing the PR in the same frame, before the PR's own state moves.
+
+describe('a PR action pending (KERNEL-520)', () => {
+  const draw = (w: Workspace, pending?: PrPending, queue?: MergeQueue) => html(React.createElement(MergeSlot, { ws: w, view: mergeView(w, undefined, rules, undefined, queue, pending), onMerge: () => undefined }))
+  const idle = { waiting: [], running: false }
+
+  it('spins a ready PR as Merging in the band, the sidebar, a Team update row and the PRs tab, and returns them together', () => {
+    const w = ws('ready')
+    // The PRs tab draws a ready row with the same Merge place as a Team update row.
+    const [row] = leadPrs([w], { leadId: undefined, roomId: 'room', prs: {}, rules, agents: [] })
+    expect(row.ready).toBe(true)
+    expect(headerView('ready', true, false, undefined, false, 'merge')).toMatchObject({ state: { label: 'Ready to merge', tone: 'ready' }, button: { label: 'Merging', kind: 'busy' } })
+    expect(workspaceGlyph(w, { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+    const spinning = draw(w, 'merge')
+    expect(spinning).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
+    // It reads as the engine's own merging state does, so the two can't disagree.
+    expect(spinning).toBe(draw(ws('merging')))
+    // Another PR in the same list has nothing pending and keeps its button.
+    expect(draw({ ...w, id: 'w2', prNumber: 8 })).toMatch(/aria-label="Merge PR #8"/)
+    // A refused merge clears the pending, and every place reads Merge again from the same state.
+    expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })
+    expect(workspaceGlyph(w, idle)).toMatchObject({ icon: 'pr', label: 'Ready to merge' })
+    expect(draw(w)).toContain('Merge #7')
+  })
+
+  it("shows Merge all's current row as Merging, never a live Merge", () => {
+    const queue = { ids: ['w1', 'w2'], current: 'w1' }
+    expect(draw(ws('ready'), undefined, queue)).toContain('Merge #7')
+    const current = draw(ws('ready'), 'merge', queue)
+    expect(current).toContain('aria-busy="true"')
+    expect(current).not.toContain('Merge PR')
+  })
+
+  it("spins the band in each action's word, with nothing to press and no key to answer", () => {
+    for (const action of Object.keys(busyLabel) as PrAction[]) {
+      const view = headerView('closed', true, false, undefined, false, action)
+      // No action means no ⌘⇧ key, and no Archive or caret to press while it runs.
+      expect(view.button, action).toEqual({ label: busyLabel[action], kind: 'busy' })
+      expect([view.archive, view.caret, view.merged]).toEqual([false, false, false])
+    }
+    expect(headerView('none', true, false, undefined, false, 'create')).toMatchObject({ caret: false, state: { label: 'No PR yet' } })
+    // The state's own word and tone stay, as they do under the pressed button's own spinner.
+    expect(headerView('cifail', true, false, undefined, false, 'resolve')).toMatchObject({ state: { label: 'Checks failed', tone: 'fail' }, button: { label: 'Sending', kind: 'busy' } })
+    // A branch that merges on the Mac keeps its pill, and Merge anyway spins instead of asking.
+    expect(headerView('ready', true, false, { base: 'main', stand: 'ready' }, false, 'merge')).toMatchObject({ pill: 'main', button: { label: 'Merging', kind: 'busy' } })
+    expect(headerView('ready', true, false, undefined, true, 'merge').button).toEqual({ label: 'Merging', kind: 'busy' })
+  })
+
+  it("spins the sidebar icon in each action's word, after what waits on you and what runs", () => {
+    for (const action of Object.keys(busyLabel) as PrAction[]) expect(workspaceGlyph(ws('conflict'), { ...idle, pending: action }), action).toEqual({ icon: 'spin', tone: 'muted', label: busyLabel[action] })
+    // A branch on the Mac spins instead of showing its branch glyph.
+    expect(workspaceGlyph(ws('ready'), { ...idle, pending: 'merge', local: { stand: 'ready', base: 'main' } })).toMatchObject({ icon: 'spin', label: 'Merging' })
+    expect(workspaceGlyph(ws('ready'), { waiting: [], running: true, pending: 'merge' })).toMatchObject({ label: 'Working' })
+  })
+
+  it('leaves a merged PR as it is, since its merge is done and the pending clears a moment later', () => {
+    expect(headerView('merged', true, false, undefined, false, 'merge')).toEqual(headerView('merged'))
+    expect(draw(ws('merged'), 'merge')).toContain('tucard-merged')
+    expect(workspaceGlyph(ws('merged'), { ...idle, pending: 'merge' })).toMatchObject({ icon: 'merged', label: 'Merged' })
   })
 })
 

@@ -1,4 +1,4 @@
-import type { AppSettings, ChatItem, ChatPart, PrInfo, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
+import type { AppSettings, ChatItem, ChatPart, PrInfo, PrPending, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
 import { headBlockers, mergeBlock, mergeableState } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
 
@@ -28,7 +28,8 @@ export interface PrHeaderView {
 /** The header band: grey while nothing needs doing, green when it can merge, red when something needs fixing, violet once merged. */
 export type PrTone = 'idle' | 'ready' | 'fail' | 'merged'
 
-export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen' | 'update'
+/** A PR button's action: the same names main announces while one runs (`PrPending`, KERNEL-520). */
+export type PrAction = PrPending
 
 /** An open PR's state in its word and the band's tone. `spin` means something runs: every place draws a spinner with the word. */
 export interface PrStatus { label: string; tone: PrTone; spin: boolean }
@@ -169,8 +170,17 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
  * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349). `blocked`
  * is a ready PR GitHub won't merge yet, which reads Open as PrOpen.png draws it; Merge PR then says why (KERNEL-388). `held` is
  * a PR whose only block is blockers on its latest commit: the band reads red, and a soft Merge anyway asks first (KERNEL-501).
+ * `pending` is the action main runs on the PR, from whichever button or tool started it: the band keeps its state and its button
+ * spins in the action's word, as the pressed button's own does, so nothing is left to press or to answer to a key (KERNEL-520).
+ * A merged PR keeps Continue and Archive, since its merge is done and the pending clears a moment later.
  */
-export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }, held = false): PrHeaderView {
+export function headerView(state: PrState, changed = true, blocked = false, local?: { base: string; stand: LocalStand }, held = false, pending?: PrAction): PrHeaderView {
+  const view = stateView(state, changed, blocked, local, held)
+  if (!pending || view.merged) return view
+  return { ...view, caret: false, archive: false, button: { label: busyLabel[pending], kind: 'busy' } }
+}
+
+function stateView(state: PrState, changed: boolean, blocked: boolean, local: { base: string; stand: LocalStand } | undefined, held: boolean): PrHeaderView {
   if (local) return localHeaderView(local.stand, local.base, changed)
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
@@ -219,7 +229,7 @@ function localHeaderView(stand: LocalStand, base: string, changed: boolean): PrH
   }
 }
 
-/** The spinner label while an action's call is in flight. */
+/** The spinner label while an action runs, in the button that pressed it and in every place showing the PR (KERNEL-520). */
 export const busyLabel: Record<PrAction, string> = { create: 'Creating PR', resolve: 'Sending', merge: 'Merging', ready: 'Marking ready', reopen: 'Reopening', update: 'Sending' }
 /** The toast title when an action's call fails. */
 export const failTitle: Record<PrAction, string> = { create: 'Could not create the PR', resolve: 'Could not send to the agent', merge: 'Could not merge', ready: 'Could not mark it ready', reopen: 'Could not reopen', update: 'Could not send to the agent' }
