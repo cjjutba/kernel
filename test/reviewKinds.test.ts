@@ -7,7 +7,7 @@ import { mergeBlock } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
-import { loadRepoSettings, reviewOf, reviewPolicyOf, saveReviewSettings, upsertTomlTable } from '../src/main/services/settings'
+import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings, sharedMergeOf, upsertTomlTable } from '../src/main/services/settings'
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { reviewRule } from '../src/main/services/handoff'
@@ -267,6 +267,30 @@ describe('[review] in the shared settings file', () => {
     // The personal file can't change the team's reviews.
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[review.security]\nenabled = true\n')
     expect((await loadRepoSettings(repo)).review?.kinds.security.enabled).toBe(false)
+  })
+
+  it('writes [merge] always_review through settings.setAlwaysReview, keeping comments and every other key as written (KERNEL-594)', async () => {
+    const original = '# Shared with the team.\n[merge]\nauto = true # Kernel ignores this here\n\n[review.code]\npaths = ["src/**"]\n'
+    const { k, repo, room } = await setup({ settings: original })
+    const file = join(repo, '.kernel', 'settings.toml')
+    expect((await loadRepoSettings(repo)).merge).toEqual({ alwaysReview: [] })
+    const out = await k.handlers()['settings.setAlwaysReview']({ roomId: room.id, paths: [' src/billing/** ', '', 'db/migrations/**', 'src/billing/**'] })
+    expect(await readFile(file, 'utf8')).toBe('# Shared with the team.\n[merge]\nauto = true # Kernel ignores this here\nalways_review = ["src/billing/**", "db/migrations/**"]\n\n[review.code]\npaths = ["src/**"]\n')
+    expect(out.merge).toEqual({ alwaysReview: ['src/billing/**', 'db/migrations/**'] })
+    // Auto-merge reads the same key, so what Settings writes is what a PR is held back by.
+    expect(sharedMergeOf(await readFile(file, 'utf8'))).toEqual({ alwaysReview: ['src/billing/**', 'db/migrations/**'], ignored: ['auto'] })
+    // The personal file's own list is the user's, not the team's.
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[merge]\nalways_review = ["infra/**"]\n')
+    expect((await loadRepoSettings(repo)).merge).toEqual({ alwaysReview: ['src/billing/**', 'db/migrations/**'] })
+    // An empty list takes the key back out and leaves the rest.
+    expect((await k.handlers()['settings.setAlwaysReview']({ roomId: room.id, paths: [] })).merge).toEqual({ alwaysReview: [] })
+    expect(await readFile(file, 'utf8')).toBe(original)
+    // A file with no [merge] gets the table, and its last table goes untouched.
+    await writeFile(file, '[review.code]\npaths = ["src/**"]\n')
+    await saveAlwaysReview(repo, ['CHANGELOG.md'])
+    expect(await readFile(file, 'utf8')).toBe('[review.code]\npaths = ["src/**"]\n\n[merge]\nalways_review = ["CHANGELOG.md"]\n')
+    await writeFile(file, '[merge]\n[merge]\n')
+    await expect(saveAlwaysReview(repo, ['a/**'])).rejects.toThrow(".kernel/settings.toml isn't valid TOML")
   })
 
   it('refuses a change it can\'t splice in without touching the rest of the file', () => {

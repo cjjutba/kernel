@@ -544,6 +544,8 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     ...(Object.keys(team).length ? { team } : {}),
     // `[review]` comes from the shared file only: it is the team's policy, and a PR reads it from its base branch (KERNEL-549).
     review: reviewOf(sharedDoc.review),
+    // `[merge] always_review` too: the team's paths. The personal file's own list is the user's, and Settings, Pull requests shows it (KERNEL-594).
+    merge: { alwaysReview: sharedMerge(sharedDoc).alwaysReview },
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
     ...(Object.keys(jira).length ? { jira } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
@@ -665,6 +667,24 @@ export async function saveReviewSettings(repo: string, patch: ReviewPatch): Prom
     }
     next = upsertTomlTable(next, `review.${id}`, values)
   }
+  if (next !== src) {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, next)
+  }
+  return loadRepoSettings(repo)
+}
+
+/**
+ * Writes the repo's always-review paths to `[merge] always_review` in the shared `.kernel/settings.toml` (KERNEL-594), the way
+ * `saveReviewSettings` writes `[review]`: the table is spliced into the text, so comments and every other table stay as written,
+ * and `auto` or `max_lines` a hand edit left in `[merge]` stay too (Kernel ignores them there). `paths` is the whole list, trimmed,
+ * without blanks or repeats. An empty list removes the key, and the table with it when nothing else is in it.
+ */
+export async function saveAlwaysReview(repo: string, paths: string[]): Promise<RepoSettings> {
+  const file = repoFile(repo, 'settings.toml')
+  const src = await readFile(file, 'utf8').catch(() => '')
+  const list = [...new Set(paths.map((p) => p.trim()).filter(Boolean))]
+  const next = upsertTomlTable(src, 'merge', { always_review: list.length ? list : null })
   if (next !== src) {
     await mkdir(dirname(file), { recursive: true })
     await writeFile(file, next)
