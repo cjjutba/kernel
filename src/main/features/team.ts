@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Provider, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { rolePick } from '@shared/rolePick'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { countRange } from '@shared/telemetry'
@@ -14,6 +14,12 @@ import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../ser
 import { loadRepoSettings, saveTeamSettings } from '../services/settings'
 import { adviseRoster, resolveTeam, takesTasksByDefault, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
+
+/**
+ * The provider and model an agent file's `model:` pins it to, as its chats start on them, or undefined without a pin.
+ * `inherit` and an id Kernel can't place pin nothing, since the agent follows its role then (KERNEL-406).
+ */
+const pinOf = (a: AgentDef) => { const pick = rolePick(a, { provider: 'claude', model: '', effort: 'high' }); return pick.model ? pick : undefined }
 
 /**
  * Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
@@ -87,8 +93,10 @@ export class Team extends Feature {
     const [files, repo] = await Promise.all([this.ownFiles(roomId, plugins), loadRepoSettings(room.path)])
     const builtins = await loadBuiltins(this.o.starterDir, files)
     // A config passed in is a choice being weighed, read as it is. The saved one gets the agents the user joined themselves.
-    const r = resolveTeam({ files, config: config ?? await this.ownRoster(roomId, repo.team), builtins })
-    if (config) return { ...r, builtins }
+    const resolved = resolveTeam({ files, config: config ?? await this.ownRoster(roomId, repo.team), builtins })
+    if (config) return { ...resolved, builtins }
+    // Only here does Kernel know who is signed in, so the pure `resolveTeam` leaves pinned models alone (KERNEL-550).
+    const r = { ...resolved, agents: await this.flagPins(resolved.agents) }
     this.agentCache.set(roomId, r.agents)
     this.builtins.set(roomId, builtins)
     this.adoptLead(roomId, r.agents.find((a) => a.lead))
@@ -96,6 +104,30 @@ export class Team extends Feature {
     // The plugin list came back while this ran, so the room reads it now.
     if (plugins !== this.plugins) this.reload(roomId, { quiet: true })
     return { ...r, builtins }
+  }
+
+  /**
+   * Flags each agent whose file pins a model no signed-in provider offers (KERNEL-550). Every read asks again, so signing in
+   * clears the warning on the next one. Only the providers the pins name are asked, so a team without a pin starts neither
+   * CLI. When Kernel can't tell, it flags nothing.
+   */
+  private async flagPins(agents: AgentDef[]): Promise<AgentDef[]> {
+    const pins = new Map(agents.flatMap((a) => { const pin = pinOf(a); return pin ? [[a.id, pin] as const] : [] }))
+    if (!this.o.checkPins || !pins.size) return agents
+    const providers = [...new Set([...pins.values()].map((p) => p.provider))]
+    const offered = new Map(await Promise.all(providers.map(async (p) => [p, await this.offered(p)] as const)))
+    return agents.map((a) => {
+      const pin = pins.get(a.id)
+      const models = pin && offered.get(pin.provider)
+      return !pin || !models || models.includes(pin.model) ? a : { ...a, warnings: [...(a.warnings ?? []), { kind: 'model-unavailable' as const }] }
+    })
+  }
+
+  /** The models a provider offers now: Claude's MODELS or Codex's `model/list`, none while it is signed out, undefined when Kernel can't tell. */
+  private async offered(provider: Provider): Promise<string[] | undefined> {
+    const signedIn = await this.k.providers.signedIn(provider).catch(() => undefined)
+    if (!signedIn) return signedIn === false ? [] : undefined
+    return (await this.k.providers.models(provider).catch(() => undefined))?.map((m) => m.id)
   }
 
   /** Whether Room setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */

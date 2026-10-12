@@ -11,6 +11,11 @@ export interface KernelOptions {
    * Claude Code to ask. Tests pass a stub or leave it out, and then no room has plugin agents.
    */
   claudeAgents?: (home: string) => Promise<import('@anthropic-ai/claude-agent-sdk').AgentInfo[]>
+  /**
+   * Team asks Claude Code or Codex whether it is signed in when an agent file pins one of its models, to flag a pin no
+   * signed-in provider offers (KERNEL-550). The app passes true. Tests leave it out, so reading a team starts neither CLI.
+   */
+  checkPins?: boolean
   /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
   probeNetwork?: () => Promise<boolean>
   /**
