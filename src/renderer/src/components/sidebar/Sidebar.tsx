@@ -19,6 +19,7 @@ import { ResizeHandle } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
 import { SIDEBAR_HIDE_BELOW, SIDEBAR_KEY, SIDEBAR_MIN, sidebarDefault, sidebarLimit, useSidebarWidth } from './useSidebarWidth'
 import { liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -173,7 +174,8 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, run] = useBusy()
-  const g = workspaceGlyph(ws, { waiting, running })
+  const local = useLocalMerge(ws)
+  const g = workspaceGlyph(ws, { waiting, running, local })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>

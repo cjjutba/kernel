@@ -2,7 +2,7 @@ import type { AgentStatus, Approval, Workspace } from '@shared/types'
 import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
-import { PR_STATUS } from '../../screens/workspace/pr/model'
+import { localStatus, PR_STATUS, type LocalStand, type PrTone } from '../../screens/workspace/pr/model'
 
 /**
  * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
@@ -39,7 +39,10 @@ const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'T
  * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, something that needs you, or scripts to trust), then what is running, then the pull request.
  * Every input is a real signal: a pending approval, the workspace's status, a running chat, the PR state from GitHub.
  */
-export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
+const TONE: Record<PrTone, GlyphTone> = { idle: 'muted', ready: 'add', fail: 'del', merged: 'merged' }
+
+/** `local` is set for a branch that merges on the Mac, with where it stands and the branch it merges into (KERNEL-478). */
+export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean; local?: { stand: LocalStand; base: string } }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
   // Nothing can run in a worktree deleted outside Kernel (KERNEL-291).
   if (ws.folderGone) return FOLDER_GONE
@@ -47,6 +50,11 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
+  // A branch on the Mac takes the branch glyph in the band's tone, never the PR's. What runs and a merged branch read as a PR does (KERNEL-478).
+  if (o.local && ['none', 'ready', 'behind', 'dirty', 'conflict'].includes(o.local.stand)) {
+    const status = localStatus(o.local.stand, o.local.base, !!ws.stat?.files)
+    return { icon: 'branch', tone: TONE[status.tone], label: status.label }
+  }
   switch (ws.prState) {
     // What runs spins, and every state says the word the PR band, the PRs tab and a Team update row say (KERNEL-417).
     case 'creating': case 'checks': case 'resolving': case 'merging': return spin(PR_STATUS[ws.prState].label)

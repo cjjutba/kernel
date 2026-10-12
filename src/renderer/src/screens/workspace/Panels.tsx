@@ -8,7 +8,8 @@ import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
-import { OUTSIDE_THE_REPO } from './pr/model'
+import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
+import { useLocalMerge } from './pr/useLocalMerge'
 import { useLeadPrs } from './pr/leadPrList'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
@@ -57,9 +58,10 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
 // ---------- Changes
 
 /** One changed file the way VS Code's Source Control lists it: icon, name in its git color, the folder after it, the counts, then the letter. */
-function ChangeRow({ f, active, onOpen }: { f: ChangedFile; active: boolean; onOpen: () => void }) {
+function ChangeRow({ f, active, conflicted, onOpen }: { f: ChangedFile; active: boolean; conflicted?: boolean; onOpen: () => void }) {
   const { dir, name } = split(f.path)
-  const deco = gitDecoration(f.status)
+  // A file a local merge would conflict in reads C in the diff's red, the letter the merge note lists it with (KERNEL-478).
+  const deco = conflicted ? { letter: 'C', label: 'Conflict', color: 'var(--del)', struck: false } : gitDecoration(f.status)
   return (
     <button type="button" className="tree-row change-row" aria-current={active || undefined} onClick={onOpen}>
       <FileIcon path={f.path} />
@@ -77,6 +79,8 @@ function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; c
   const view = useStore((s) => s.ui.workspace.changesView ?? 'list')
   const entries = useMemo(() => changesToEntries(changes), [changes])
   const byPath = useMemo(() => new Map(changes.map((f) => [f.path, f])), [changes])
+  const local = useLocalMerge(ws)
+  const conflicts = useMemo(() => new Set(local?.stand === 'conflict' ? local.info?.conflicts : []), [local])
   // Every folder of the tree starts open. This keeps the ones closed by hand.
   const [closed, setClosed] = useState<Set<string>>(() => new Set())
   const expanded = useMemo(() => new Set(entries.filter((e) => e.dir && !closed.has(e.path)).map((e) => e.path)), [entries, closed])
@@ -95,7 +99,7 @@ function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; c
       </div>
       {view === 'tree'
         ? <FileTree label="Changed files" entries={entries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
-        : changes.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} onOpen={() => onOpenDiff(f.path)} />)}
+        : changes.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} onOpen={() => onOpenDiff(f.path)} />)}
       {ws.mode === 'current' && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
     </div>
   )
@@ -125,15 +129,23 @@ export function checkRow(c: PrCheck): CheckRow {
   return { state: c.state === 'fail' ? 'warn' : ciState[c.state], label: c.name, meta: word ? `${word}, optional` : 'optional' }
 }
 
-/** `remote` is the room's git remote, which a base ref like `origin/main` names. */
-export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin'): { title: string; rows: CheckRow[] }[] {
+/**
+ * `remote` is the room's git remote, which a base ref like `origin/main` names. `local` is set for a branch that merges on the Mac,
+ * which has no PR and no checks: Git says how it stands against its base and CI reads "No checks reported", as it does for a PR with none (KERNEL-478).
+ */
+export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin', local?: { stand: LocalStand; base: string }): { title: string; rows: CheckRow[] }[] {
   const hasPr = !!ws.prNumber
-  const base = stripRemote(ws.baseRef, remote)
+  const base = local?.base ?? stripRemote(ws.baseRef, remote)
   const merged = ws.prState === 'merged'
   const conflict = ws.prState === 'conflict'
+  const files = `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed`
+  const behind = local?.stand === 'behind' ? pr?.local?.behind ?? 0 : 0
   const git: CheckRow = conflict
     ? { state: 'warn', label: `${pr?.conflicts.length || 1} ${(pr?.conflicts.length || 1) === 1 ? 'conflict' : 'conflicts'} with ${base}` }
-    : { state: 'ok', label: merged ? `Merged into ${base}` : `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed, up to date with ${base}` }
+    : behind
+      ? { state: 'idle', label: `${files}, ${behind} behind ${base}` }
+      : { state: 'ok', label: merged ? `Merged into ${base}` : `${files}, up to date with ${base}` }
+  if (local) return [{ title: 'Git', rows: [git] }, { title: 'CI', rows: [{ state: 'idle', label: 'No checks reported', dim: true }] }]
   const prRow: CheckRow = hasPr
     ? { state: conflict ? 'warn' : 'ok', label: `#${ws.prNumber}${ws.prTitle ? ` ${ws.prTitle}` : ''}`, meta: merged ? 'merged' : ws.prState === 'closed' ? 'closed' : 'open' }
     : { state: 'idle', label: 'No pull request yet', meta: '⌘⇧P', dim: true }
@@ -174,7 +186,8 @@ function OpenPreview({ ws }: { ws: Workspace }) {
 
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
-  const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId))
+  const local = useLocalMerge(ws)
+  const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId), local)
   return (
     <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
       {groups.map((g) => (
