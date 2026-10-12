@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Icon, Meter, Popover } from '../../ui'
-import { usageNote, usageRows } from '../../screens/settings/pages/Account'
+import { accountWindows, meterAccount, usageNote, usageRows } from '../../screens/settings/pages/Account'
 
 /**
  * The plan pill at the bottom of the sidebar. It opens a popover with the account and the same usage windows as Settings > Account:
@@ -11,7 +11,9 @@ import { usageNote, usageRows } from '../../screens/settings/pages/Account'
 export function PlanButton({ plan }: { plan: string }) {
   const open = useStore((s) => s.ui.menu === 'plan')
   const account = useStore((s) => s.account)
-  const usage = useStore((s) => s.usage)
+  const accounts = useStore((s) => s.accounts)
+  const all = useStore((s) => s.usage)
+  const usage = useMemo(() => accountWindows(all, meterAccount(accounts, all)), [accounts, all])
   const anchor = useRef<HTMLDivElement>(null)
   // A running session answers with fresh numbers. Without one, main returns the last ones it saw.
   useEffect(() => {
