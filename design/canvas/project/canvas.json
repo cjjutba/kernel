@@ -1827,6 +1827,15 @@
       "x": 13680,
       "y": 26000
     },
+    "SettingsProvidersApiKeyActive.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Claude Code tab, API key account active",
+      "w": 1440,
+      "x": 15200,
+      "y": 26000
+    },
     "WorkspaceQuestionLong.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2233,7 +2242,7 @@
     },
     "row20": {
       "kind": "title1",
-      "maxW": 15120,
+      "maxW": 16640,
       "text": "21 \u00b7 Claude Code and Codex",
       "w": 600,
       "x": 0,
@@ -2410,6 +2419,7 @@
     "SettingsProvidersCodex.dc.html",
     "SettingsProvidersCodexSignedOut.dc.html",
     "SettingsProvidersApiKey.dc.html",
+    "SettingsProvidersApiKeyActive.dc.html",
     "SettingsProvidersCodexApiKey.dc.html",
     "SettingsAddAccountApiKey.dc.html",
     "SettingsTeam.dc.html",

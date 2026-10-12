@@ -287,6 +287,7 @@ for n,pg in [
     ('SettingsProvidersCodexSignedOut','providers-codex-out'),
     # KERNEL-522: an API key as another account. Its row, the Add account sheet's key step, and Account and usage with a key in use.
     ('SettingsProvidersApiKey','providers-apikey'),
+    ('SettingsProvidersApiKeyActive','providers-apikey-active'),
     ('SettingsProvidersCodexApiKey','providers-codex-apikey'),
     ('SettingsAddAccountApiKey','providers-add-apikey'),
     ('SettingsAccountApiKey','account-apikey'),

@@ -205,7 +205,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <button type="button" role="radio" aria-checked="false" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
 <button type="button" role="radio" aria-checked="true" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #24252a; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
 </div>
-<div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-label" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="acct-label" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="Work key" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-label" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="acct-label" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="Work key" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div>
 <div style="display: flex; flex-direction: column; gap: 6px">
 <div style="display: flex; align-items: baseline; justify-content: space-between"><label for="acct-key" style="font-size: 12px; font-weight: 500; color: #8a8f98">API key</label><button type="button" aria-label="Get a key at console.anthropic.com" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer">Get key</button></div>
 <input id="acct-key" type="password" autocomplete="off" spellcheck="false" value="{{ modal.key }}" placeholder="sk-ant-" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none">
@@ -556,16 +556,23 @@ class Component extends DCLogic {
     all['r-permissions-mode'] = Object.assign({}, all['r-permissions'], { nav: 'r-permissions' });
     all['r-permissions-mode'].sections = all['r-permissions'].sections.map(function (sec, i) { return i !== 0 ? sec : Object.assign({}, sec, { rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, true)] }); });
     // KERNEL-522: an API key is another account in the same list. Where a login row says its plan and usage, the key row says how it is billed.
-    // It has no Sign out and no meters. The Add account sheet opens over the Claude Code tab, with Subscription and API key as its two steps.
+    // It has no Sign out and no meters of its own. The Add account sheet opens over the Claude Code tab, with Subscription and API key as its two steps.
     var keyRow = account('Work key', 'API key · billed per token', false, ['Use', 'Remove']);
     var withKey = function (page) { return Object.assign({}, page, { sections: page.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: sec.rows.slice(0, 1).concat([keyRow]) }); }) }); };
     all['providers-apikey'] = Object.assign(withKey(all.providers), { nav: 'providers' });
     all['providers-codex-apikey'] = withKey(all['providers-codex']);
     all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
-    all['account-apikey'] = { title: 'Account and usage', nav: 'account', sections: [
-      { title: 'Usage', rows: [text('Work key is billed per token, so there are no limits to show.')] },
-      { title: 'Claude', rows: [val('Plan', 'API key')] }
-    ] };
+    // A key in use changes nothing about the subscription behind it: its meters, plan and controls stay, with one line above them saying where agents are running.
+    all['account-apikey'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: [text('Agents are on Work key, billed per token.')].concat(sec.rows) }); }) });
+    // The key is the active account. Status reads the key: its login method, and no plan or email. Sign in again becomes Replace key, which opens Add account to paste a new key.
+    all['providers-apikey-active'] = Object.assign({}, all.providers, { nav: 'providers', sections: [
+      Object.assign({}, all.providers.sections[0], { rows: [
+        account('cj@example.com', 'Claude Max · Claude Code’s own login · 62% of the 5-hour limit used', false, ['Use', 'Sign out']),
+        account('Work key', 'API key · billed per token', true, ['Remove'])
+      ] }),
+      { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'API key'), btn('Replace key', 'Replace key', 'Opens Add account, where you paste a new key for the active account')] },
+      all.providers.sections[2]
+    ] });
     return all;
   }
 
