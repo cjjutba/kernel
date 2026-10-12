@@ -3,7 +3,7 @@ import { type AccountProfile, type AppSettings, type CodexPersonality, type Prov
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
-import { Button, SegmentedControl, Tabs, useBusy } from '../../../ui'
+import { Button, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
@@ -137,6 +137,9 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
             </div>
           )
         })}
+        <Row label="At a limit, switch to another account" desc={`Kernel moves agents to the ${NAME[provider]} account with the most room and says so in the chat. It never moves to an API key.`}>
+          <Toggle label="At a limit, switch to another account" checked={s.accounts.switchAtLimit[provider]} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { [provider]: v } } })} />
+        </Row>
       </Section>
       <Section title="Status" action={<Button busy={busy === 'refresh'} busyLabel="Refreshing" disabled={busy !== null} onClick={() => void act('refresh', 'Could not read the status', read)}>Refresh</Button>}>
         <Row label="Version"><span className="set-value">{status?.version ?? (status ? 'Not found' : '')}</span></Row>

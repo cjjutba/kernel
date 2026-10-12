@@ -37,6 +37,17 @@ describe('transcript thread', () => {
     expect(last.kind === 'item' && last.item.id).toBe('n1')
   })
 
+  it('keeps a note the turn began with above its folded work (KERNEL-569)', () => {
+    const note = { kind: 'note' as const, id: 'n-account', ts: tableItems[0].ts, text: 'Now on Personal' }
+    const blocks = buildThread([tableItems[0], note, ...tableItems.slice(1)])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'group', 'reply'])
+    const opening = blocks[1]
+    expect(opening.kind === 'item' && opening.item.id).toBe('n-account')
+    // With no work to fold, the note sits where it was written, ahead of the reply.
+    const reply = tableItems.filter((i) => i.id === 'x1' || i.kind === 'result')
+    expect(buildThread([tableItems[0], note, ...reply]).map((b) => b.kind)).toEqual(['item', 'item', 'reply'])
+  })
+
   it('shows every item of a turn that is still running', () => {
     const running = tableItems.filter((i) => i.kind !== 'result' && i.id !== 'x1')
     const blocks = buildThread(running)

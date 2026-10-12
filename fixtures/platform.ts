@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, ChatItem, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -52,6 +52,15 @@ const next = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 
 /** Today at `h`:`m`, past or not: when a token account's last turn read its usage. */
 const todayAt = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
 const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return d.getTime() }
+/** Kai's next turn on the invoice table, after a move to another account: the note, then three tool calls and the reply (KERNEL-569). */
+const afterSwitch = (note: string): ChatItem[] => [
+  ...tableItems,
+  { kind: 'user', id: 'u-skeleton', ts: at(10, 43), parts: [{ type: 'text', text: 'Also add a loading skeleton.' }] },
+  { kind: 'note', id: 'n-account', ts: at(10, 44), text: note },
+  ...(['Read table.tsx', 'Edit table.tsx', 'Run unit tests'] as const).map((label, i): ChatItem => ({ kind: 'tool', id: `t-skeleton-${i}`, ts: at(10, 44, 10 + i * 10), toolUseId: `toolu_skeleton_${i}`, name: 'Bash', label, detail: label, status: 'done', durationMs: 100 })),
+  { kind: 'text', id: 'x-skeleton', ts: at(10, 44, 40), text: 'Added a loading skeleton to the invoice table and held it for 200ms. The tests still pass.' },
+  { kind: 'result', id: 'r-skeleton', ts: at(10, 44, 38), durationMs: 38_000, ok: true }
+]
 /** The invoice table chat with a change. */
 const withChat = (f: Fixture, change: Partial<Fixture['chats'][number]>) => f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ...change } : c))
 
@@ -471,6 +480,23 @@ export const platformFixtures: Record<string, Fixture> = {
     settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
     accounts: [claudeAccounts[0], keyAccount('claude')],
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
+    ui: open
+  })),
+  // KERNEL-569: Work is at 90% of its 5-hour window and Personal has room, so the banner offers the move before the limit. Switching at a limit is off.
+  WorkspaceProviderNearLimit: scene(() => ({
+    accounts: [workClaude, personalClaude],
+    usage: [window5('claude', 'cli', 90, next(15, 40)), window5('claude', 'personal', 8, next(17, 10))],
+    ui: open
+  })),
+  // KERNEL-569: the chat after a switch to Personal, plain and after Work hit its 5-hour limit. The footer says Personal's plan.
+  WorkspaceAccountNote: scene(() => ({
+    accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
+    items: { [ids.tableChat]: afterSwitch('Now on Personal') },
+    ui: open
+  })),
+  WorkspaceAccountNoteLimit: scene(() => ({
+    accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
+    items: { [ids.tableChat]: afterSwitch('Now on Personal (Work hit its 5-hour limit)') },
     ui: open
   })),
   WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),
