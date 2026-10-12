@@ -203,7 +203,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   it('asks with plan mode on', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: true })
     expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
-    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: plan.steps }))
+    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: plan.steps }), undefined)
   })
 
   it('reads plan mode on each call, so turning it on mid-session lets the next call ask', async () => {
@@ -286,7 +286,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
   it('asks with the plan as the detail and the task lines as they are', async () => {
     const t = leadTools({ behavior: 'allow' })
     await t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps })
-    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps })
+    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps }, undefined)
   })
 
   it('saves the plan to .kernel/plans, a revision to the same file and the next plan after an approval to its own (D-092)', { timeout: 30_000 }, async () => {

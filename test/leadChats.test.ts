@@ -7,6 +7,7 @@ import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp
 import { issueText } from '../src/main/services/issueMcp'
 import { askedQuestions, type QueueReason } from '../src/main/services/sessions'
 import { Nudges } from '../src/main/services/nudges'
+import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { setUp, tempRepo, trustRoom } from './helpers'
@@ -65,10 +66,11 @@ async function setup(files: Record<string, string> = {}) {
   const first = await named('Lead')
   const icons = await named('Chat icons sizing')
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
-  const run = async (chat: Chat, name: string, args: Record<string, unknown>) => {
+  /** `extra` is what the MCP server passes a handler, as the call's abort signal. */
+  const run = async (chat: Chat, name: string, args: Record<string, unknown>, extra: { signal?: AbortSignal } = {}) => {
     k.lead['leadTools'](room.id, rowan, chat)
     const tool = kernelTools(wired!).find((t) => t.name === name)!
-    const r = await tool.handler(args as never, {})
+    const r = await tool.handler(args as never, extra)
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
@@ -586,9 +588,9 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   })
 })
 
-describe("the Lead's ask_user options (KERNEL-407)", () => {
-  const waiting = async (k: Kernel) => vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
+const waiting = async (k: Kernel) => vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
 
+describe("the Lead's ask_user options (KERNEL-407)", () => {
   it('keeps each option\'s description for the card and sends back the label that was picked', async () => {
     const { k, first, call } = await setup()
     const options = [{ label: 'Guided sign-in', description: 'Kernel opens the sign-in in your browser. Recommended.' }, { label: 'Paste a token' }]
@@ -643,6 +645,55 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
       { label: 'MySQL' },
       { label: '(Recommended)' }
     ])
+  })
+})
+
+// KERNEL-496: the user writes in the message box instead of answering Rowan's card. Kernel interrupts the turn, Claude Code
+// cancels the tool call, and its abort signal ends the card.
+describe("a card whose turn stopped before the user answered (KERNEL-496)", () => {
+  const asks = [
+    { tool: 'ask_user', args: { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, kind: 'question', reply: 'No answer yet.' },
+    { tool: 'request_plan_approval', args: { title: 'Raise the workspace limit', plan: '## Plan\nRaise it to 8.', steps: ['Raise the limit · Kai'] }, kind: 'plan', reply: 'No answer yet. Wait and ask again later.' },
+    { tool: 'hire_agent', args: { id: 'qa', description: 'Tests releases.', prompt: 'You are QA.' }, kind: 'agent', reply: 'The user did not approve this agent.' }
+  ] as const
+
+  for (const ask of asks) {
+    it(`ends ${ask.tool}'s card as expired with no answer, and settles its Inbox row`, async () => {
+      const { k, first, run } = await setup()
+      // request_plan_approval asks only while the chat is in plan mode (KERNEL-176).
+      k.store.saveChat({ ...k.store.chat(first.id)!, plan: true })
+      const stop = new AbortController()
+      const asking = run(first, ask.tool, ask.args, { signal: stop.signal })
+      const p = await waiting(k)
+      expect(p.kind).toBe(ask.kind)
+      stop.abort()
+      expect(await asking).toEqual({ text: ask.reply, isError: false })
+      expect(k.store.approval(p.id)).toMatchObject({ status: 'expired' })
+      expect(k.store.approval(p.id)?.answer).toBeUndefined()
+      expect(k.approvals.isPending(p.id)).toBe(false)
+      expect(k.store.notification(approvalNotificationId(p.id))).toMatchObject({ needsYou: false, resolved: 'This request ended before you answered.' })
+      // Nothing else ends: the chat is still planning.
+      expect(k.store.chat(first.id)?.plan).toBe(true)
+    })
+  }
+
+  it('still takes an answer on the card, and a stop after it changes nothing', async () => {
+    const { k, first, run } = await setup()
+    const stop = new AbortController()
+    const asking = run(first, 'ask_user', { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, { signal: stop.signal })
+    const p = await waiting(k)
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'Yes' })
+    expect((await asking).text).toBe('Yes')
+    stop.abort()
+    expect(k.store.approval(p.id)).toMatchObject({ status: 'answered', answer: 'Yes' })
+  })
+
+  it('shows no card when the turn stopped before it went up', async () => {
+    const { k, first, run } = await setup()
+    const stop = new AbortController()
+    stop.abort()
+    expect((await run(first, 'ask_user', { question: 'Raise the workspace limit to 8?' }, { signal: stop.signal })).text).toBe('No answer yet.')
+    expect(k.store.approvals()).toEqual([])
   })
 })
 
