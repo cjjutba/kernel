@@ -307,6 +307,21 @@ export const WORKSPACES: { key: string; title: string; chat?: string }[] = [
   { key: 'renderer', title: 'invoice-pdf-renderer', chat: 'Client portal login' }, { key: 'button', title: 'invoice-pdf-button', chat: 'Client portal login' }
 ]
 
+/**
+ * A workspace made through the app starts a Claude turn for its first chat, which has no credentials here and never ends by itself. Kernel keeps
+ * a workspace with a turn running (it goes when the turn ends), and a Kernel that quits mid-turn starts it again. So the turns are stopped, and
+ * the room is saved with none running.
+ */
+async function quiet(page: Page) {
+  for (let calm = 0; calm < 4;) {
+    const live = (await call(page, 'chats.live')) as { running: string[] }
+    if (!live.running.length) { calm++; await sleep(250); continue }
+    calm = 0
+    for (const chatId of live.running) await call(page, 'chats.interrupt', { chatId }).catch(() => undefined)
+    await sleep(400)
+  }
+}
+
 /** Makes the room: chats with Rowan, workspaces, a dirty tree, a merged branch and a branch ready to merge, all through the app. Returns what the paths need. */
 async function buildWorld(ctx: Ctx): Promise<World> {
   const { page } = ctx
@@ -363,6 +378,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   await page.reload()
   await pastOnboarding(page)
   for (const key of ['billing', 'reviewed']) await call(page, 'pr.refresh', { workspaceId: workspaces[key].id })
+  await quiet(page)
   // Folders deleted outside Kernel, which the window notices when the workspace opens.
   const gone = (await listWs(page)).find((w) => w.id === chats['Draft the changelog'].workspaceId)
   for (const path of [workspaces.folder.path, gone.path]) rmSync(path, { recursive: true, force: true })
@@ -652,6 +668,7 @@ async function run(def: PathDef, where: Where, o: { dir: string; live: string; s
     ctx = await launch(o.dir, o.live)
     const { app, page } = ctx
     await pastOnboarding(page)
+    await quiet(page)
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     const plan = def.plan(ctx, o.world, where)
     const expect = await plan.prepare()
