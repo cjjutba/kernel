@@ -259,6 +259,19 @@ const foldedRowsItems: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** The invoice table chat followed by six more rounds, so the transcript runs well past the window (WorkspaceScrolledUp, KERNEL-532). */
+const longChat: ChatItem[] = [
+  ...tableItems,
+  ...[
+    ['Add a sort to the client column too.', 'Done. The client column sorts A to Z, then Z to A, and keeps the order in the URL.'],
+    ['Does the empty state show while the table loads?', 'No. Loading has its own skeleton, and the empty state only shows once the list comes back with no rows.'],
+    ['Can the amount column right-align?', 'Yes. Amounts now right-align with tabular figures, so the digits line up from row to row.'],
+    ['Check what happens with 10,000 rows.', 'It stays smooth. The table renders a window of rows, so scrolling costs the same at 10 rows and at 10,000.'],
+    ['Add a test for the error state.', 'Added. It forces the request to fail and checks that the message and the Retry button show.'],
+    ['Run everything once more before review.', 'Vitest, Playwright and the type check all pass, and the linter is clean.']
+  ].flatMap(([ask, answer], i): ChatItem[] => [userMsg(`lc-u${i}`, ask), { kind: 'text', id: `lc-x${i}`, ts: at(10, 32 + i), text: answer }])
+]
+
 const toolCalls: ChatItem[] = [
   tableItems[0],
   tool('c1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
@@ -1114,6 +1127,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRowsFolded: scene(() => ({
     items: { [ids.tableChat]: foldedRowsItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
+  WorkspaceScrolledUp: scene(() => ({
+    items: { [ids.tableChat]: longChat },
+    ui: open
   })),
   WorkspaceCheckpoints: scene(() => ({
     checkpoints: { [ids.table]: checkpoints },

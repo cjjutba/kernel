@@ -15,6 +15,7 @@ const noCanvas = [
   'TrustScripts', // the dialog Review opens: the scripts and files.copy list to trust (KERNEL-218)
   'WorkspaceRowsOpen', // a Thinking, a Bash and an Edit row open in place, and a running tool (KERNEL-198)
   'WorkspaceRowsFolded', // the folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198)
+  'WorkspaceScrolledUp', // a long chat scrolled up, with the Scroll to bottom button over it; CJ skipped the design pass (KERNEL-532)
   'WorkspaceDiffTab',
   'WorkspaceDiffImageAdded', // an added image in a diff tab shows the picture (KERNEL-410)
   'WorkspaceDiffImageModified', // a changed image shows Before and After (KERNEL-410)
