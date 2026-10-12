@@ -467,9 +467,7 @@ const linearIssues = (): LinearIssueDetail[] => {
 
 const linearIntegrations: Integration[] = [
   { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
-  { id: 'linear', name: 'Linear', connected: true, detail: 'Token saved. Create workspaces from issues' },
-  { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
-  { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
+  { id: 'linear', name: 'Linear', connected: true, detail: 'Token saved. Create workspaces from issues' }
 ]
 
 /** Everything the Issues screen reads. Client A's Linear team is KERNEL, unless `linkedRoom` is off (IssuesNoRoom.png). */

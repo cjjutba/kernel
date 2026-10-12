@@ -293,7 +293,6 @@ for n,pg in [
     ('SettingsFiles','r-files'),
     ('SettingsHooks','hooks'),
     ('SettingsIntegrations','integrations'),
-    ('SettingsExperimental','experimental'),
     ('SettingsAbout','about'),
     ('SettingsPrivacy','privacy'),
     ('SettingsRoom','r-general'),

@@ -30,7 +30,7 @@ export const settingsPages: [SettingsPage, string][] = [
   ['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Keyboard shortcuts'],
   ['models', 'Models'], ['permissions', 'Permissions'],
   ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'],
-  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']
+  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']
 ]
 
 /**
