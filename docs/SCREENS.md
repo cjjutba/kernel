@@ -247,7 +247,7 @@ Every Floor row, plus Board, BoardEmpty and TaskDetail, is hidden (D-104). For S
 
 TeamUpdateShared, TeamUpdateMerge, the LeadPrs screens and the PrLocal screens (a local merge, KERNEL-441) are drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and their PNGs are also copied to `design/screens/` so `pnpm shots:compare` can find them.
 
-RoomSetupGitHub and RoomSetupLocal (KERNEL-441) add the Code host row to Room setup, after the first step. RoomSetup and RoomSetupTeam are not redrawn, and gain the same row when it is built. The two room setup screens have no fixture yet, and the ticket that builds the host row adds them. The PrLocal screens have fixtures in `fixtures/workspace.ts` (KERNEL-478).
+RoomSetupGitHub and RoomSetupLocal (KERNEL-441) add the Code host row to Room setup, after the first step. RoomSetupGitHub also keeps the push check row from RoomSetup, and RoomSetupLocal leaves it out. The other room setup screens are not redrawn, and gain the same row when it is built. The two room setup screens have no fixture yet, and the ticket that builds the host row adds them. The PrLocal screens have fixtures in `fixtures/workspace.ts` (KERNEL-478).
 
 The Lead's workspace screens (WorkspaceLead and the Grouped set, except GroupedCloseLastTab) show the Lead after KERNEL-354 and KERNEL-355 (KERNEL-356): the header reads `lead` with "latest main" and has no Create PR button, and the right panel opens on the PRs tab under the "2 ready to merge" band from LeadPrs. The Client A rows in that tab are fixture content in LeadPrs's row layout. LeadPrs and LeadPrsEmpty read the same way (KERNEL-356).
 

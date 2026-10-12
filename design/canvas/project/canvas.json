@@ -1717,7 +1717,7 @@
       "radius": 12,
       "title": "Setting up a room on GitHub, code host shown",
       "w": 1440,
-      "x": 10640,
+      "x": 21280,
       "y": 1300
     },
     "RoomSetupLocal.dc.html": {
@@ -1725,7 +1725,7 @@
       "radius": 12,
       "title": "Setting up a room with no GitHub remote, code host shown",
       "w": 1440,
-      "x": 12160,
+      "x": 22800,
       "y": 1300
     },
     "SettingsPrivacy.dc.html": {
