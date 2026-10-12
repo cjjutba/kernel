@@ -305,8 +305,9 @@ export interface KernelApi {
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
   /**
-   * Every subscription account's usage windows on both providers, each read now unless Kernel read it in the last minute.
-   * The account menu and Settings, Providers ask when they open (KERNEL-567).
+   * The usage windows Kernel has, at once, since the window waits on it at launch. It also starts a read of every
+   * subscription account on both providers that Kernel didn't read in the last minute, and what that finds arrives as
+   * `usage` and `accounts` pushes. The account menu and Settings, Providers ask when they open (KERNEL-567).
    */
   'usage.get': { req: void; res: RateLimit[] }
   /** "Notify me" on a limit banner: one notification when the limit resets. */
