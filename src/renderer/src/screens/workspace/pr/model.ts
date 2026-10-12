@@ -310,6 +310,23 @@ export function archiveLanding(ws: Workspace, reviewed: Workspace | undefined, a
 }
 
 /**
+ * The toast for a workspace Kernel archived on its own while it was on screen (KERNEL-132, KERNEL-114): one whose PR merged, or a review
+ * whose work merged or closed. The screen has already gone to the room's front door (KERNEL-596), so the toast says what happened. An archive
+ * by hand has none (KERNEL-495), and neither has any other archive. `agent` is the workspace's agent and `reviewed` the work a review
+ * looked at.
+ */
+export function archiveToast(ws: Workspace, reviewed: Workspace | undefined, agent: string | undefined): { title: string; sub: string } | undefined {
+  const whose = agent ? `${agent}'s` : 'the'
+  if (!ws.reviewOf) {
+    if (ws.prState !== 'merged') return undefined
+    return { title: `Archived ${whose} workspace${ws.prNumber ? ` after PR #${ws.prNumber} merged` : ''}`, sub: 'Restore it from History.' }
+  }
+  if (!reviewed || (reviewed.prState !== 'merged' && reviewed.prState !== 'closed')) return undefined
+  const after = reviewed.prNumber ? ` after PR #${reviewed.prNumber} ${reviewed.prState === 'merged' ? 'merged' : 'was closed'}` : ''
+  return { title: `Archived ${whose} review${after}`, sub: 'Restore it from History.' }
+}
+
+/**
  * A PR's title as the Team update and the PRs tab both show it (KERNEL-411): the workspace's own title, else the PR's without
  * a Conventional Commits prefix ("feat(workspace): ") or the issue key it ends on (" (KERNEL-395)"), which the row shows apart.
  */
