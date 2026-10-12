@@ -50,6 +50,7 @@ import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
+import { useArchiveLanding } from './screens/workspace/archiveLanding'
 import { ArchiveGhost, useArchiveStage } from './screens/workspace/archiveMotion'
 import { toggleBottomPanel } from './screens/workspace/bottomSplit'
 import { DevUi } from './ui/DevUi'
@@ -164,6 +165,7 @@ export function App() {
   useDevUiHash()
   useAppearance()
   useFoldPanels()
+  useArchiveLanding()
   const archiving = useArchiveStage()
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)

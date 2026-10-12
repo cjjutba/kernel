@@ -1,4 +1,5 @@
-import type { AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, TeamConfig, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, Approval, Chat, ChatItem, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, PrInfo, Room, RoomSetupStep, Skill, Task, TeamConfig, Thread, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
@@ -311,23 +312,112 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats. The first waits on a plan, the second is running and
- * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon. org-invites has no chat, and its row
+ * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats, the way `grouped` builds them. The first waits on a plan, the second is running and
+ * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon and its spinner. org-invites has no chat, and its row
  * reads its task title (KERNEL-587).
  */
 const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
   const home = homeScene(f)
-  const owner = 'chat-lead-table'
+  const sent: Record<string, number> = { 't-export': at(10, 30), 't-table': at(10, 20), 't-login': at(10, 10) }
+  const g = grouped(f, {
+    threads: (t) => t.filter((x) => x.id in sent).map((x) => ({ ...x, lastSentAt: sent[x.id] })),
+    chats: (c) => c.filter((x) => !x.threadId || x.threadId in sent)
+  })
   return {
     ...home,
-    chats: [
-      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
-      leadChatRow('chat-lead-export', 'Export invoices as PDF', 5), leadChatRow(owner, 'Invoice table and empty states', 6), leadChatRow('chat-lead-login', 'Client portal login', 7)
-    ],
-    workspaces: home.workspaces!.map((w) => (w.id === ids.table || w.id === ids.schema ? { ...w, leadChatId: owner } : w.id === ids.invites ? { ...w, title: 'Invite people to an org' } : w)),
-    approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: 'chat-lead-export' } : a)),
-    push: [{ type: 'chat.running', chatId: owner, running: true }],
-    ui: { route: { name: 'home' }, foldedChats: [owner] }
+    threads: g.threads, chats: g.chats,
+    // The export chat started nothing here. The merged workspaces stay for Home's Shipped recently.
+    workspaces: [...g.workspaces!.filter((w) => !w.id.startsWith('ws-pdf')), ...home.workspaces!.filter((w) => w.id.startsWith('ws-m'))].map((w) => (w.id === ids.invites ? { ...w, title: 'Invite people to an org' } : w)),
+    prs: {},
+    approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: ids.leadChat } : a)),
+    push: [{ type: 'chat.running', chatId: 'chat-table', running: true }],
+    ui: { route: { name: 'home' }, foldedChats: ['t-table'] }
+  }
+}
+
+/**
+ * SidebarChatGroups.png (KERNEL-600, KERNEL-601): the room Kernel at rest, with five Lead chats in the order the sidebar lists them. The first is running and started
+ * nothing. The second is unread and started one running workspace. The third waits on a plan, and is folded over the two ready PRs the right panel lists, so they stay out
+ * of the sidebar as the PNG leaves them out. The fourth started five workspaces, one running. The fifth is on screen and started three, two of them running and unread.
+ * The last two workspaces have diff counts, which show from 300px of sidebar and not in the PNG. The other rooms are hidden, and two approvals in them with the plan make the 3 on Inbox.
+ */
+const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
+  const A = ids.roomA
+  const slug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  type Row = { title: string; run?: boolean; unread?: boolean; stat?: [number, number] }
+  const CHATS: (Row & { key: string; plan?: boolean; ws?: Row[] })[] = [
+    { key: 'jitter', title: 'Chat archive screen jitter', run: true },
+    { key: 'popup', title: 'Popup closure in composer menus', unread: true, ws: [{ title: 'Limit banners: close control and retry', run: true }] },
+    { key: 'changed', title: 'Changed indicator not clearing after commit', plan: true },
+    { key: 'multi', title: 'Multi-account switching when a limit hits', ws: [
+      { title: 'Accounts sign-in and the picker', run: true }, { title: 'Switch accounts at a limit, keep the chat going' }, { title: 'One-button Add account, no terminal' },
+      { title: 'Auto-switch toggle, a warning on switch' }, { title: 'End-to-end check of seamless account switching' }] },
+    { key: 'review', title: 'Kernel review pipeline rollout', ws: [
+      { title: 'End-to-end check of the review pipeline' }, { title: 'Land KERNEL-557 review states', run: true, unread: true, stat: [48, 6] }, { title: 'Reviews page: required and optional reviews', run: true, unread: true, stat: [212, 34] }] }
+  ]
+  const model = { model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false }
+  const threads: Thread[] = CHATS.map((c, i) => ({ id: `t-${c.key}`, roomId: A, title: c.title, createdAt: at(10, 50 - i * 10) }))
+  const workspaces: Workspace[] = []
+  const chats: Chat[] = []
+  const running: string[] = []
+  CHATS.forEach((c, i) => {
+    const own: Workspace = {
+      id: `ws-chat-${c.key}`, roomId: A, name: slug(c.title), branch: `rowan/${slug(c.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/rowan-${slug(c.title)}`, mode: 'worktree',
+      agentId: 'rowan', lead: true, threadId: `t-${c.key}`, port: 4300 + i * 10, status: 'ready', prState: 'none', createdAt: at(10, 50 - i * 10)
+    }
+    workspaces.push(own)
+    chats.push({ id: `chat-${c.key}`, workspaceId: own.id, title: c.title, kind: 'chat', ...model, threadId: `t-${c.key}`, createdAt: own.createdAt, ...(c.unread ? { unreadAt: at(10, 45) } : {}) })
+    if (c.run) running.push(`chat-${c.key}`)
+    c.ws?.forEach((w, j) => {
+      const id = `ws-${c.key}-${j}`
+      workspaces.push({
+        id, roomId: A, name: slug(w.title), branch: `feat/${slug(w.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/${slug(w.title)}`, mode: 'worktree',
+        agentId: 'kai', port: 4400 + workspaces.length, status: 'ready', prState: 'none', createdAt: at(10, 51 - i * 10 + j), title: w.title, threadId: `t-${c.key}`,
+        ...(w.stat ? { stat: { files: 3, added: w.stat[0], removed: w.stat[1] } } : {})
+      })
+      chats.push({ id: `chat-${id}`, workspaceId: id, title: w.title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 51 - i * 10 + j), ...(w.unread ? { unreadAt: at(10, 45) } : {}) })
+      if (w.run) running.push(`chat-${id}`)
+    })
+  })
+  // The two ready PRs sit on workspaces of the folded chat, which the sidebar doesn't draw.
+  const pr = (key: string, agentId: string, n: number, issue: string, title: string, stat: [number, number]) => {
+    const id = `ws-pr-${n}`
+    const prTitle = `feat(workspace): ${title.charAt(0).toLowerCase()}${title.slice(1)} (${issue})`
+    workspaces.push({
+      id, roomId: A, name: `${issue.toLowerCase()}-${key}`, branch: `feat/${issue.toLowerCase()}-${key}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/${issue.toLowerCase()}-${key}`, mode: 'worktree',
+      agentId, port: 4500 + n % 50, status: 'ready', createdAt: at(10, 12), threadId: 't-changed', title, source: { kind: 'issue', id: issue, title }, prState: 'ready', prNumber: n,
+      prUrl: `https://github.com/cjjutba/kernel/pull/${n}`, prTitle, prHead: `h${n}`, stat: { files: 3, added: stat[0], removed: stat[1] },
+      reviews: [{ workspaceId: `${id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${n}`, prNumber: n, ts: at(10, 30) }]
+    })
+    chats.push({ id: `chat-${id}`, workspaceId: id, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 12) })
+    const info: PrInfo = { workspaceId: id, number: n, url: `https://github.com/cjjutba/kernel/pull/${n}`, title: prTitle, state: 'ready', baseRef: 'main', comments: [], conflicts: [], head: `h${n}`, checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }] }
+    return [id, info] as const
+  }
+  const prs: Record<string, PrInfo> = Object.fromEntries([
+    pr('review-states', 'kai', 524, 'KERNEL-557', 'Reviews page and the review states', [110, 10]),
+    pr('room-setup', 'ivy', 522, 'KERNEL-590', 'Room setup says No reviewer when review is off', [23, 4])
+  ])
+  const open = { ws: 'ws-chat-review', tab: 'chat-review' }
+  const items: ChatItem[] = [
+    { kind: 'user', id: 'cg-u', ts: at(10, 41), parts: [{ type: 'text', text: 'Roll out the review pipeline. Check it end to end once the review states land.' }] },
+    { kind: 'thinking', id: 'cg-th', ts: at(10, 42), text: 'Two workspaces are running. The end-to-end check needs both.' },
+    { kind: 'tool', id: 'cg-tool', ts: at(10, 42), toolUseId: 'toolu_cg', name: 'Bash', label: "List this chat's workspaces", detail: 'kernel workspaces', status: 'done', durationMs: 100 },
+    { kind: 'text', id: 'cg-tx', ts: at(10, 42), text: 'Land KERNEL-557 review states and Reviews page are both running. The end-to-end check of the review pipeline starts when they open pull requests.' },
+    { kind: 'result', id: 'cg-r', ts: at(10, 42), durationMs: 7000, ok: true }
+  ]
+  const plan: Approval = { id: 'ap-plan-changed', kind: 'plan', source: 'sdk', roomId: A, agentId: 'rowan', workspaceId: 'ws-chat-changed', chatId: 'chat-changed', title: 'Plan for the changed indicator', detail: '1. Find where the indicator reads\n2. Clear it on commit', status: 'pending', createdAt: at(10, 44) }
+  return {
+    rooms: f.rooms.map((r) => (r.id === A ? { ...r, name: 'Kernel' } : { ...r, hidden: true })),
+    threads, workspaces, chats, prs,
+    items: { [open.tab]: items },
+    approvals: [...f.approvals.slice(0, 2), plan],
+    activity: [], changes: {}, diffs: {}, tree: {}, fileText: {},
+    push: running.map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true })),
+    ui: {
+      route: { name: 'workspace', workspaceId: open.ws }, foldedChats: ['t-changed'],
+      workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
+      tabs: { [open.ws]: { tab: open.tab, lastChat: open.tab, files: [], diffs: [] } }
+    }
   }
 }
 
@@ -668,6 +758,7 @@ export const teamFixtures: Record<string, Fixture> = {
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
+  SidebarChatGroups: scene(sidebarChatGroups),
   SidebarTrustHeld: scene(sidebarTrustHeld),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))

@@ -35,8 +35,8 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch(() => setUnread(true))
   }, [workspaceId])
-  // The dialog leaves in the commit that archives the workspace, with its sidebar row and, when it is open, its screen going to History.
-  // It doesn't wait for the call to return, which is after the pushes that follow (KERNEL-547).
+  // The dialog leaves in the commit that archives the workspace, with its sidebar row and, when it is open, its screen going to the room's
+  // front door. It doesn't wait for the call to return, which is after the pushes that follow (KERNEL-547, KERNEL-596).
   const archived = ws?.status === 'archived'
   useLayoutEffect(() => { if (archived) closeArchiveDialog(workspaceId) }, [archived, workspaceId])
   if (!ws) return null

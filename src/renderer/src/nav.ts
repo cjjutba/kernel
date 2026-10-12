@@ -90,9 +90,28 @@ export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, 
 export function roomHome(roomId: string, s: State): Route {
   const chat = chatWorkspaces(s.workspaces, s.threads, roomId).find((w) => !w.folderGone)
   if (chat) return { name: 'workspace', workspaceId: chat.id }
+  return frontDoor(roomId, s)
+}
+
+/**
+ * A room's neutral home: New chat with Rowan, or Team when the room has no Lead (D-104, KERNEL-405). It never picks a chat, so it is the
+ * same place whatever else is open in the room.
+ */
+export function frontDoor(roomId: string, s: State): Route {
   const agents = s.agents[roomId]
   const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.roomId === roomId && !!w.lead)
   return lead ? { name: 'leadNew', roomId } : { name: 'team', roomId }
+}
+
+/**
+ * Where an archive takes you (KERNEL-596), one rule for every way a chat or workspace is archived. Archiving the one on screen goes to its
+ * room's front door, never History and never another chat. Archiving anything else leaves you where you are, which is nothing here.
+ * `archived` says which workspaces the archive just stored.
+ */
+export function archiveDestination(route: Route, s: State, archived: (workspaceId: string) => boolean): Route | undefined {
+  if (route.name !== 'workspace' || !archived(route.workspaceId)) return undefined
+  const roomId = s.workspaces.find((w) => w.id === route.workspaceId)?.roomId
+  return roomId ? frontDoor(roomId, s) : undefined
 }
 
 /** The route if it is still there, else its room's Lead workspace, then the room's Team page, then Home. */
