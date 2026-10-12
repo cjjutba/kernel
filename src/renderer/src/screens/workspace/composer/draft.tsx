@@ -331,7 +331,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       return
     }
     const t = data.getData('text/plain').replace(/\r\n?/g, '\n')
-    const part = pastedText(t)
+    const part = pastedText(t, read())
     if (part) insert(part)
     else if (t) insertText(t)
   }

@@ -6,7 +6,7 @@ import { cleanError } from '../../../api'
 // Attachments for every composer: the workspace chat, the new workspace prompt and the floor brief.
 
 const MAX_ATTACH_BYTES = 1024 * 1024
-let pasteCount = 1
+const PASTE_NAME = /^pasted_text_(\d+)\.txt$/
 
 const readAsDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
   const r = new FileReader()
@@ -44,6 +44,9 @@ export async function attachFiles(files: File[], add: (part: ChatPart) => void) 
 /** Images on the clipboard: a screenshot, or images copied in Finder. */
 export const clipboardImages = (data: DataTransfer) => [...data.files].filter((f) => f.type.startsWith('image/'))
 
-/** A paste long enough to become a chip, or null to leave it in the text box. */
-export const pastedText = (text: string): ChatPart | null =>
-  isLongPaste(text) ? { type: 'file', name: `pasted_text_${pasteCount++}.txt`, lines: pasteLines(text), text } : null
+/** A paste long enough to become a chip, or null to leave it in the text box. It is numbered after the pastes already in the draft, so every message starts at pasted_text_1. */
+export function pastedText(text: string, draft: ChatPart[]): ChatPart | null {
+  if (!isLongPaste(text)) return null
+  const last = Math.max(0, ...draft.map((p) => (p.type === 'file' ? Number(PASTE_NAME.exec(p.name)?.[1] ?? 0) : 0)))
+  return { type: 'file', name: `pasted_text_${last + 1}.txt`, lines: pasteLines(text), text }
+}
