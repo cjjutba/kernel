@@ -15,9 +15,9 @@ export class Env extends Feature {
   /**
    * Every variable a session, script or terminal in the workspace gets: Kernel's defaults, the Mac's, the app's, the room's
    * env files, the room's, what the workspace's setup wrote to `$KERNEL_ENV` once it passed (KERNEL-405), then Kernel's
-   * own (KERNEL-247). Synchronous, since a session starts synchronously. Scripts also get PORT and FORCE_COLOR=0. Sessions
-   * and terminals take `ANTHROPIC_*` and `CLAUDE_CODE_*` names from the Mac only, and drop the API key afterwards, in
-   * `sessionEnv`. Scripts get every layer whole.
+   * own (KERNEL-247). Synchronous, since a session starts synchronously. Scripts also get PORT, and run in a terminal of
+   * their own, so they print colors (KERNEL-655). Sessions and terminals take `ANTHROPIC_*` and `CLAUDE_CODE_*` names from
+   * the Mac only, and drop the API key afterwards, in `sessionEnv`. Scripts get every layer whole.
    */
   envFor(ws: Workspace, o: { script?: boolean } = {}): Record<string, string> {
     const room = this.store.room(ws.roomId)
@@ -27,7 +27,7 @@ export class Env extends Feature {
     const files = room && settings ? this.envFiles(room, ws, settings).map(keep) : []
     // Setup's variables count once it passed, in a room whose scripts are trusted, the way setup itself only ran then.
     const setup = room && ws.status === 'ready' && this.k.trust.roomTrusted.get(room.id) ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
-    const kernel: Record<string, string> = { ...kernelVars(ws, room), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
+    const kernel: Record<string, string> = { ...kernelVars(ws, room), ...(o.script ? { PORT: String(ws.port) } : {}) }
     // Each worktree is its own Compose project, so two workspaces' containers and volumes never meet. A current-branch
     // workspace is the room's own checkout and keeps the project the user's terminal gets there (KERNEL-449).
     const defaults: Record<string, string> = ws.mode === 'worktree' ? { COMPOSE_PROJECT_NAME: kernel.KERNEL_WORKSPACE_SLUG } : {}

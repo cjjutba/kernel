@@ -7,7 +7,7 @@ import { tempRepo, trustRoom } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { BLOCK_STARTS, blocksOverlap, portBlock, runningRuns } from '../src/main/services/scripts'
+import { BLOCK_STARTS, blocksOverlap, plainLine, portBlock, resizeScript, runningRuns, runScript, stopScript } from '../src/main/services/scripts'
 import { configuredRemote, loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { listBranches } from '../src/main/services/worktrees'
 import { fixtureHandlers } from '../src/main/fixtures'
@@ -20,9 +20,9 @@ process.env.SHELL = '/bin/sh'
 
 const kai = { 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' }
 
-/** Every `script.output` and `script.exit` while the test runs. */
+/** Every `script.output`, `script.data`, `script.url` and `script.exit` while the test runs. */
 const events: PushEvent[] = []
-const record = (e: PushEvent) => { if (e.type === 'script.output' || e.type === 'script.exit') events.push(e) }
+const record = (e: PushEvent) => { if (e.type === 'script.output' || e.type === 'script.data' || e.type === 'script.url' || e.type === 'script.exit') events.push(e) }
 bus.on('push', record)
 const kernels: Kernel[] = []
 afterEach(async () => {
@@ -186,6 +186,9 @@ describe('a window that loads while scripts run (KERNEL-340)', () => {
     expect(runLines(serving)).toEqual(expect.arrayContaining([`run: serving http://localhost:${ws.port}`, 'once: once']))
     expect(serving.url).toEqual({ run: `http://localhost:${ws.port}` })
     expect(serving.exit).toEqual({ 'run:once': 3 })
+    // The terminal output too, for the script view (KERNEL-655).
+    expect(serving.data.run).toContain(`serving http://localhost:${ws.port}\r\n`)
+    expect(serving.data['run:once']).toContain('once\r\n')
 
     await h['scripts.stop']({ workspaceId: ws.id, kind: 'run' })
     await until(() => exited(ws, 'run'), 'run to exit')
@@ -207,7 +210,7 @@ describe('a window that loads while scripts run (KERNEL-340)', () => {
     expect(runLines(await replay(h, ws.id))).toContain(`run: started-${ws.port}`)
     await k.archiveWorkspace(ws.id)
     await until(() => exited(ws, 'run'), 'run to exit')
-    expect(await replay(h, ws.id)).toMatchObject({ lines: [], exit: {}, url: {} })
+    expect(await replay(h, ws.id)).toMatchObject({ lines: [], exit: {}, url: {}, data: {} })
   })
 })
 
@@ -376,5 +379,79 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
     const narrowed = await h['git.branches']({ roomId: room.id })
     expect(narrowed).toContain('upstream/main')
     expect(narrowed).not.toContain('origin/main')
+  })
+})
+
+describe('scripts run in a terminal (KERNEL-655)', () => {
+  let n = 0
+  async function start(script: string, o: { kind?: 'setup' | 'run'; name?: string; timeoutMs?: number } = {}) {
+    const cwd = await mkdtemp(join(tmpdir(), 'kernel-pty-'))
+    const workspaceId = `pty-${++n}`
+    const done = runScript({ workspaceId, kind: o.kind ?? 'setup', name: o.name, script, cwd, env: { ...process.env } as Record<string, string>, timeoutMs: o.timeoutMs })
+    return { workspaceId, done }
+  }
+  const dataOf = (workspaceId: string) => events.flatMap((e) => (e.type === 'script.data' && e.workspaceId === workspaceId ? [e.data] : [])).join('')
+  const linesOf = (workspaceId: string) => events.flatMap((e) => (e.type === 'script.output' && e.workspaceId === workspaceId ? e.lines.map((l) => l.line) : []))
+
+  it('sends colors and in-place progress as printed, and the same output as plain lines', async () => {
+    const { workspaceId, done } = await start("printf '\\033[32mgreen\\033[0m\\n'; printf 'step 1\\rstep 2\\n'; [ -t 1 ] && echo tty-$TERM; exit 3")
+    expect(await done).toBe(3)
+    const data = dataOf(workspaceId)
+    expect(data).toMatch(/^\$ printf .*\r\n/)
+    expect(data).toContain('\x1b[32mgreen\x1b[0m\r\n')
+    expect(data).toContain('step 1\rstep 2\r\n')
+    expect(linesOf(workspaceId)).toEqual([expect.stringMatching(/^\$ printf /), 'green', 'step 2', 'tty-xterm-256color'])
+    expect(events.find((e) => e.type === 'script.exit' && e.workspaceId === workspaceId)).toMatchObject({ code: 3 })
+  })
+
+  it("finds a run script's URL on a colored line", async () => {
+    const { workspaceId, done } = await start("printf '  \\033[32m➜\\033[39m  \\033[1mLocal\\033[22m:   \\033[36mhttp://localhost:\\033[1m5173\\033[22m/\\033[39m\\n'; sleep 30", { kind: 'run', name: 'web' })
+    await until(() => events.some((e) => e.type === 'script.url' && e.workspaceId === workspaceId && e.url), 'the URL')
+    expect(events.find((e) => e.type === 'script.url' && e.workspaceId === workspaceId && e.url)).toMatchObject({ url: 'http://localhost:5173/' })
+    stopScript(workspaceId, 'run', 'web')
+    expect(await done).toBeNull()
+  })
+
+  it('ends a script that reads stdin, however many times it reads', async () => {
+    // A run script has no time limit, so only an empty stdin ends it.
+    const { workspaceId, done } = await start('read a; read b; echo "after-$a-$b"', { kind: 'run' })
+    expect(await done).toBe(0)
+    expect(linesOf(workspaceId)).toContain('after--')
+    expect(dataOf(workspaceId)).not.toContain('^D')
+  })
+
+  it('starts at 120 by 30, resizes while running and starts the next run at the new size', async () => {
+    const { workspaceId, done } = await start('stty size </dev/tty; echo resize-me; sleep 1; stty size </dev/tty', { kind: 'run' })
+    await until(() => linesOf(workspaceId).includes('resize-me'), 'the script to ask for a resize')
+    resizeScript(workspaceId, 'run', undefined, 90.6, 20)
+    expect(await done).toBe(0)
+    expect(linesOf(workspaceId).filter((l) => /^\d+ \d+$/.test(l))).toEqual(['30 120', '20 90'])
+    const again = runScript({ workspaceId, kind: 'run', script: 'stty size </dev/tty', cwd: tmpdir(), env: { ...process.env } as Record<string, string> })
+    expect(await again).toBe(0)
+    expect(linesOf(workspaceId).filter((l) => /^\d+ \d+$/.test(l))).toEqual(['30 120', '20 90', '20 90'])
+  })
+
+  it('stops the whole group on a timeout, with SIGKILL for a process that ignores SIGTERM', async () => {
+    const { workspaceId, done } = await start("trap '' TERM HUP; sleep 30 & echo pid-$!; wait", { timeoutMs: 300 })
+    expect(await done).toBe('timeout')
+    const pid = Number(linesOf(workspaceId).find((l) => l.startsWith('pid-'))?.slice(4))
+    expect(pid).toBeGreaterThan(0)
+    const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
+    await until(() => !alive(), 'the sleep that ignores SIGTERM to die', 6000)
+  })
+
+  it("puts Kernel's own setup lines in the terminal output, after the script's", async () => {
+    const { k, room } = await kernelOn(scripts('[scripts]\nsetup = "echo installing; exit 1"\n'), { scripts: { setupOnCreate: true } })
+    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    expect(ws.status).toBe('failed')
+    expect(dataOf(ws.id)).toMatch(/installing\r\n(.|\n|\r)*Setup failed with exit code 1\r\n$/)
+    expect(linesOf(ws.id).at(-1)).toBe('Setup failed with exit code 1')
+  })
+
+  it('plainLine drops escape sequences and keeps what the last redraw left', () => {
+    expect(plainLine('\x1b[32m✓\x1b[39m done\r')).toBe('✓ done')
+    expect(plainLine('Progress: 1\rProgress: 2\x1b[K')).toBe('Progress: 2')
+    expect(plainLine('\x1b]8;;http://x\x07link\x1b]8;;\x07 \x1b(Bok')).toBe('link ok')
+    expect(plainLine('\x1b[1A\x1b[2Kredrawn')).toBe('redrawn')
   })
 })
