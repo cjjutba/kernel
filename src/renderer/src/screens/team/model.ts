@@ -93,6 +93,12 @@ export function warningText(w: AgentWarning): string {
     case 'reserved-id': return `${w.detail ?? 'A file'} uses a name Kernel keeps for its own agents, so Kernel skips that file.`
     case 'duplicate-id': return `${w.detail ?? 'Another file'} has the same name, so Kernel skips that file.`
     case 'looks-like-lead': return 'Its description says it leads. Add lead: true to its file to make it the Lead.'
+    // Nothing raises these yet (KERNEL-432). The words are plain stand-ins until Team's design for them lands.
+    case 'unreadable-file': return `Kernel couldn’t read its file${w.detail ? `: ${w.detail}` : ''}.`
+    case 'mcp-missing': return `${w.detail ?? 'A server'} in its file isn’t set up on this Mac.`
+    case 'mcp-failed': return `${w.detail ?? 'A server'} in its file didn’t start.`
+    case 'mcp-needs-auth': return `${w.detail ?? 'A server'} in its file needs you to sign in.`
+    case 'mcp-off': return `${w.detail ?? 'A server'} in its file is switched off in this room.`
   }
 }
 

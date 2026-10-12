@@ -84,8 +84,8 @@ const WEB_TOOLS = new Set(['WebFetch', 'WebSearch'])
  */
 function byMode(step: Step, rules: Rules): Verdict {
   if (needsUser(step.tool) || step.sandbox === 'outside') return undefined
-  if (step.sandbox === 'inside') return rules.mode !== 'ask' ? ALLOW : undefined
-  return rules.mode === 'bypassInWorktrees' && rules.worktree ? ALLOW : undefined
+  if (step.sandbox === 'inside') return rules.mode !== 'default' ? ALLOW : undefined
+  return rules.mode === 'bypassPermissions' && rules.worktree ? ALLOW : undefined
 }
 
 /**

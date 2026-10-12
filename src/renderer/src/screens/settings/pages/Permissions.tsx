@@ -12,7 +12,7 @@ export function Permissions({ s }: { s: AppSettings }) {
     <Page title="Permissions">
       <Section title="Mode">
         <Row label="Permission mode" desc="Bypass only applies inside isolated worktrees, never on your current branch">
-          <SegmentedControl label="Permission mode" value={p.mode} onChange={(v) => void patchSettings({ permissions: { mode: v as AppSettings['permissions']['mode'] } })} options={[{ value: 'ask', label: 'Ask' }, { value: 'acceptEdits', label: 'Accept edits' }, { value: 'bypassInWorktrees', label: 'Bypass in worktrees' }]} />
+          <SegmentedControl label="Permission mode" value={p.mode} onChange={(v) => void patchSettings({ permissions: { mode: v as AppSettings['permissions']['mode'] } })} options={[{ value: 'default', label: 'Ask' }, { value: 'acceptEdits', label: 'Accept edits' }, { value: 'bypassPermissions', label: 'Bypass in worktrees' }]} />
         </Row>
         <Row label="Allow network access"><Toggle label="Allow network access" checked={p.network} onChange={(v) => void patchSettings({ permissions: { network: v } })} /></Row>
       </Section>

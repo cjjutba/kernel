@@ -8,7 +8,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { bashVerdict, pushesTo, usesNetwork } from '../src/main/services/bashGuard'
 import { Sessions } from '../src/main/services/sessions'
 import { Kernel } from '../src/main/kernel'
-import { applySettingsPatch, deepMerge, DEFAULT_SETTINGS, loadAppSettings, PLAN_KEYS, planDefaults, planOf, saveAppSettings } from '../src/main/services/settings'
+import { applySettingsPatch, deepMerge, DEFAULT_SETTINGS, loadAppSettings, PLAN_KEYS, planDefaults, planOf, resolveSettings, saveAppSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
@@ -135,7 +135,62 @@ describe('loadAppSettings', () => {
     expect((await loadAppSettings(file, '/home/cj')).resolved.pr).toMatchObject({ leadMerge: true, mergeMethod: 'rebase' })
   })
 
-  describe('open to (replaces the default home view)', () => {
+  describe('permission modes (KERNEL-432)', () => {
+  const load = async (data?: unknown) => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    if (data !== undefined) await writeFile(file, JSON.stringify(data))
+    return { file, ...(await loadAppSettings(file, '/home/cj')) }
+  }
+
+  it('reads Ask as Manual, and keeps the rest of the permissions as saved', async () => {
+    const { saved, resolved } = await load({ version: 2, permissions: { mode: 'ask', alwaysAsk: ['rm -rf'], network: false } })
+    expect(saved.permissions).toEqual({ mode: 'default', alwaysAsk: ['rm -rf'], network: false })
+    expect(resolved.permissions).toMatchObject({ mode: 'default', bypassOnlyInWorktrees: true, alwaysAsk: ['rm -rf'], network: false })
+  })
+
+  it('reads Bypass in worktrees as Bypass permissions with Only in worktrees on', async () => {
+    const { saved, resolved } = await load({ version: 2, permissions: { mode: 'bypassInWorktrees' } })
+    expect(saved.permissions).toEqual({ mode: 'bypassPermissions', bypassOnlyInWorktrees: true })
+    expect(resolved.permissions).toMatchObject({ mode: 'bypassPermissions', bypassOnlyInWorktrees: true })
+  })
+
+  it('pins a file with no mode to Accept edits, so a later default leaves it where it was', async () => {
+    const { saved, resolved } = await load({ version: 2, general: { menuBar: false } })
+    expect(saved.permissions).toEqual({ mode: 'acceptEdits' })
+    expect(resolved.permissions.mode).toBe('acceptEdits')
+    const auto = deepMerge(DEFAULT_SETTINGS('/home/cj'), { permissions: { mode: 'auto' } })
+    expect(resolveSettings(auto, saved, 'unknown').permissions.mode).toBe('acceptEdits')
+    // A file from before KERNEL-225 saved Accept edits on every launch, which reads as unset, and is pinned the same way.
+    expect((await load({ permissions: { mode: 'acceptEdits', network: true } })).saved.permissions).toEqual({ mode: 'acceptEdits' })
+  })
+
+  it('pins a mode Kernel does not know, and permissions that are not a table, to Accept edits', async () => {
+    expect((await load({ version: 2, permissions: { mode: 'plan' } })).saved.permissions).toEqual({ mode: 'acceptEdits' })
+    expect((await load({ version: 2, permissions: 'bypass' })).saved.permissions).toEqual({ mode: 'acceptEdits' })
+  })
+
+  it('keeps the new modes as saved', async () => {
+    for (const mode of ['default', 'acceptEdits', 'auto'] as const) expect((await load({ version: 2, permissions: { mode } })).resolved.permissions.mode).toBe(mode)
+    const { resolved } = await load({ version: 2, permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: false } })
+    expect(resolved.permissions).toMatchObject({ mode: 'bypassPermissions', bypassOnlyInWorktrees: false })
+  })
+
+  it('gives a new install, with no file, the default and pins nothing', async () => {
+    const { saved, resolved } = await load()
+    expect(saved).toEqual({})
+    expect(resolved.permissions).toMatchObject({ mode: 'acceptEdits', bypassOnlyInWorktrees: true })
+  })
+
+  it('reads a moved mode back the same after a save', async () => {
+    const { file, saved, resolved } = await load({ version: 2, permissions: { mode: 'ask' } })
+    await saveAppSettings(file, saved)
+    const again = await loadAppSettings(file, '/home/cj')
+    expect(again.saved).toEqual(saved)
+    expect(again.resolved.permissions).toEqual(resolved.permissions)
+  })
+})
+
+describe('open to (replaces the default home view)', () => {
     const load = async (general?: Record<string, unknown>) => {
       const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
       if (general) await writeFile(file, JSON.stringify({ general }))
@@ -252,6 +307,8 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   const dir = () => mkdtemp(join(tmpdir(), 'kernel-settings-'))
   const fileOf = async (saved?: object) => { const file = join(await dir(), 'settings.json'); if (saved) await writeFile(file, JSON.stringify(saved)); return file }
   /** The models group as every launch saved it before KERNEL-406. */
+  /** An existing file that saved no permission mode reads as Accept edits, pinned (KERNEL-432). */
+  const PINNED = { permissions: { mode: 'acceptEdits' } }
   const OLD_MODELS = { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high' }
   const MAX_LIKE = { roles: { lead: { model: 'claude-opus-5-5', effort: 'high' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' } }, agentLimit: 0 }
 
@@ -292,7 +349,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const file = await fileOf({ ...DEFAULT_SETTINGS('/home/cj'), models: { ...rest, ...OLD_MODELS, reviewer: 'claude-opus-5-5', agentTeams: true }, hookPort: 7421, permissions: { ...DEFAULT_SETTINGS('/home/cj').permissions, alwaysAsk: ['rm -rf', 'make deploy'] } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
     // Only what differs from the defaults survives: the port, the extra rule, and agent teams, which was saved on and nobody can tell from a choice.
-    expect(saved).toEqual({ hookPort: 7421, permissions: { alwaysAsk: ['rm -rf', 'make deploy'] }, models: { agentTeams: true } })
+    expect(saved).toEqual({ hookPort: 7421, permissions: { alwaysAsk: ['rm -rf', 'make deploy'], mode: 'acceptEdits' }, models: { agentTeams: true } })
     expect(resolved.models).toMatchObject({ roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } }, agentLimit: 2, agentTeams: true })
     expect(resolved.pr.autoReview).toBe(false)
     expect(resolved.hookPort).toBe(7421)
@@ -304,21 +361,21 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const old = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
     const full = DEFAULT_SETTINGS('/home/cj')
     const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old } }), '/home/cj', 'max')
-    expect(saved).toEqual({})
+    expect(saved).toEqual(PINNED)
     expect(resolved.pr.addressReviewInstructions).toBe(full.pr.addressReviewInstructions)
     expect(resolved.pr.addressReviewInstructions).toContain('Act only on the comments listed here.')
     // Text someone wrote stays.
     const mine = await loadAppSettings(await fileOf({ pr: { addressReviewInstructions: '# Mine' } }), '/home/cj', 'max')
-    expect(mine.saved).toEqual({ pr: { addressReviewInstructions: '# Mine' } })
+    expect(mine.saved).toEqual({ pr: { addressReviewInstructions: '# Mine' }, ...PINNED })
   })
 
   it('keeps only the terminal keys a file has, so one saved key does not pin the rest (KERNEL-248)', async () => {
     const { saved, resolved } = await loadAppSettings(await fileOf({ version: 2, terminal: { preset: 'shell' } }), '/home/cj', 'max')
-    expect(saved).toEqual({ terminal: { preset: 'shell' } })
+    expect(saved).toEqual({ terminal: { preset: 'shell' }, ...PINNED })
     expect(resolved.terminal).toEqual({ ...DEFAULT_SETTINGS('/home/cj').terminal, preset: 'shell' })
     // A value Kernel can't use is still corrected, in what is saved too.
     const bad = await loadAppSettings(await fileOf({ version: 2, terminal: { preset: 7, custom: [{ id: 'codex', name: 'x', command: 'x' }] } }), '/home/cj', 'max')
-    expect(bad.saved).toEqual({ terminal: { preset: 'claude', custom: [] } })
+    expect(bad.saved).toEqual({ terminal: { preset: 'claude', custom: [] }, ...PINNED })
   })
 
   it('keeps a value from before that differs from the old default', async () => {
@@ -327,7 +384,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const file = await fileOf({ ...full, models: { ...rest, ...OLD_MODELS, lead: 'claude-sonnet-5-5', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', agentLimit: 4 }, pr: { ...full.pr, autoReview: false } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'max')
     const roles = { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' }, reviewer: { provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' }, engineers: { effort: 'low' }, qa: { effort: 'low' } }
-    expect(saved).toEqual({ models: { roles, agentLimit: 4 }, pr: { autoReview: false } })
+    expect(saved).toEqual({ models: { roles, agentLimit: 4 }, pr: { autoReview: false }, ...PINNED })
     expect(resolved.models).toMatchObject({ roles, agentLimit: 4 })
     expect(resolved.pr.autoReview).toBe(false)
     expect(resolved.planDefaulted).toEqual([])
@@ -336,7 +393,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it("keeps a choice made after the change, even one equal to what the setting used to default to", async () => {
     const file = await fileOf({ version: 2, models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5' }, lead: { effort: 'high' } } } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
-    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5' }, lead: { effort: 'high' } } } })
+    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5' }, lead: { effort: 'high' } } }, ...PINNED })
     expect(resolved.models).toMatchObject({ roles: { reviewer: { model: 'claude-opus-5-5', effort: 'medium' }, lead: { model: 'claude-sonnet-5-5', effort: 'high' } }, agentLimit: 2 })
     expect(resolved.planDefaulted).toEqual(['models.roles.lead.model', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort', 'models.agentLimit', 'pr.autoReview'])
   })
@@ -344,7 +401,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it('reads a file written since KERNEL-225 with the models as they were then, keeping each choice in its role (KERNEL-406)', async () => {
     const file = await fileOf({ version: 2, models: { reviewer: 'claude-opus-5-5', effort: 'high' } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
-    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' }, lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' } } } })
+    expect(saved).toEqual({ models: { roles: { reviewer: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' }, lead: { effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' } } }, ...PINNED })
     expect(resolved.models.roles.reviewer).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
     expect(resolved.models.roles.lead).toEqual({ provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' })
     expect(resolved.planDefaulted).toEqual(['models.roles.lead.model', 'models.agentLimit', 'pr.autoReview'])
@@ -355,7 +412,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     await saveAppSettings(file, { appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
     const again = await loadAppSettings(file, '/home/cj', 'pro')
-    expect(again.saved).toEqual({ appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } } })
+    expect(again.saved).toEqual({ appearance: { theme: 'light' }, models: { roles: { qa: { effort: 'high' } } }, ...PINNED })
     expect(again.resolved.models.roles.qa.effort).toBe('high')
     expect(again.resolved.appearance.theme).toBe('light')
     // The two fields Kernel fills in are never read back from the file.

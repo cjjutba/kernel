@@ -6,7 +6,7 @@ import { ALWAYS_ASK, decide, guardVerdict, NETWORK_OFF, neverAllowed, rulesOf, s
 type Mode = AppSettings['permissions']['mode']
 
 function rules(o: { mode?: Mode; network?: boolean; roomAllow?: string[]; worktree?: boolean } = {}): Rules & { reads: number } {
-  const permissions = { mode: o.mode ?? 'acceptEdits', network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: ['main'], approvalTimeoutSec: 300 }
+  const permissions = { mode: o.mode ?? 'acceptEdits', bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: ['main'], approvalTimeoutSec: 300 }
   const r = { permissions, mode: permissions.mode, worktree: o.worktree ?? true, reads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] } }
   return r
 }
@@ -28,7 +28,7 @@ describe('guardVerdict', () => {
 
 describe('decide', () => {
   it("allows Kernel's own tools before any rule, Network off included", () => {
-    expect(decide({ tool: 'mcp__kernel__create_workspace' }, rules({ mode: 'ask', network: false }))).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'mcp__kernel__create_workspace' }, rules({ mode: 'default', network: false }))).toEqual({ behavior: 'allow' })
   })
 
   it('denies with the network message for web tools, networked commands and steps that ask for the network', () => {
@@ -42,10 +42,10 @@ describe('decide', () => {
   })
 
   it('lets the lists decide a command before the mode', () => {
-    const bypass = rules({ mode: 'bypassInWorktrees', roomAllow: ['pnpm test'] })
+    const bypass = rules({ mode: 'bypassPermissions', roomAllow: ['pnpm test'] })
     expect(decide({ tool: 'Bash', command: 'rm -rf /' }, bypass)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
     expect(decide({ tool: 'Bash', command: 'pnpm drizzle-kit push' }, bypass)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
-    expect(decide({ tool: 'Bash', command: 'pnpm test', sandbox: 'outside' }, rules({ mode: 'ask', roomAllow: ['pnpm test'] }))).toEqual({ behavior: 'allow' })
+    expect(decide({ tool: 'Bash', command: 'pnpm test', sandbox: 'outside' }, rules({ mode: 'default', roomAllow: ['pnpm test'] }))).toEqual({ behavior: 'allow' })
   })
 
   it('reads the room rules only for a command', () => {
@@ -59,23 +59,23 @@ describe('decide', () => {
 
   it('on Claude, lets Bypass in worktrees through in a worktree only, and never a question or a plan', () => {
     const step = { tool: 'Bash', command: 'ls' }
-    expect(decide(step, rules({ mode: 'bypassInWorktrees' }))).toEqual({ behavior: 'allow' })
-    expect(decide(step, rules({ mode: 'bypassInWorktrees', worktree: false }))).toBeUndefined()
+    expect(decide(step, rules({ mode: 'bypassPermissions' }))).toEqual({ behavior: 'allow' })
+    expect(decide(step, rules({ mode: 'bypassPermissions', worktree: false }))).toBeUndefined()
     expect(decide(step, rules({ mode: 'acceptEdits' }))).toBeUndefined()
-    expect(decide(step, rules({ mode: 'ask' }))).toBeUndefined()
-    expect(decide({ tool: 'AskUserQuestion' }, rules({ mode: 'bypassInWorktrees' }))).toBeUndefined()
-    expect(decide({ tool: 'ExitPlanMode' }, rules({ mode: 'bypassInWorktrees' }))).toBeUndefined()
+    expect(decide(step, rules({ mode: 'default' }))).toBeUndefined()
+    expect(decide({ tool: 'AskUserQuestion' }, rules({ mode: 'bypassPermissions' }))).toBeUndefined()
+    expect(decide({ tool: 'ExitPlanMode' }, rules({ mode: 'bypassPermissions' }))).toBeUndefined()
   })
 
   it("on Codex, accepts inside the sandbox in every mode but Ask, and leaves a step outside it to the user in every mode", () => {
     const inside = { tool: 'Bash', command: 'y', sandbox: 'inside' as const }
     const outside = { tool: 'Bash', command: 'pnpm test', sandbox: 'outside' as const }
-    for (const mode of ['acceptEdits', 'bypassInWorktrees'] as const) {
+    for (const mode of ['acceptEdits', 'bypassPermissions'] as const) {
       expect(decide(inside, rules({ mode, worktree: false }))).toEqual({ behavior: 'allow' })
       expect(decide(outside, rules({ mode }))).toBeUndefined()
     }
-    expect(decide(inside, rules({ mode: 'ask' }))).toBeUndefined()
-    expect(decide(outside, rules({ mode: 'ask' }))).toBeUndefined()
+    expect(decide(inside, rules({ mode: 'default' }))).toBeUndefined()
+    expect(decide(outside, rules({ mode: 'default' }))).toBeUndefined()
     expect(decide({ tool: 'Edit', sandbox: 'inside' }, rules())).toEqual({ behavior: 'allow' })
     expect(decide({ tool: 'Edit', sandbox: 'outside' }, rules())).toBeUndefined()
   })
@@ -83,10 +83,10 @@ describe('decide', () => {
 
 describe('rulesOf', () => {
   it("reads the mode and network from Settings, Permissions, and the worktree from the workspace", () => {
-    const permissions = { mode: 'bypassInWorktrees', network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
+    const permissions = { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, network: false, alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }
     let reads = 0
     const r = rulesOf({ settings: () => ({ permissions }) as unknown as AppSettings, roomAllow: () => { reads++; return ['ls'] }, workspace: { mode: 'worktree' } as never })
-    expect(r).toMatchObject({ permissions, mode: 'bypassInWorktrees', worktree: true })
+    expect(r).toMatchObject({ permissions, mode: 'bypassPermissions', worktree: true })
     expect(reads).toBe(0)
     expect(r.roomAllow()).toEqual(['ls'])
   })
