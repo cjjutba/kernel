@@ -1,6 +1,12 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatItem, ChatPart } from '@shared/types'
 import { packagedClaude, sessionEnv } from './sessions'
+import { withCodex } from './providers/codex/client'
+import type { ModelListResponse } from './providers/codex/protocol/v2/ModelListResponse'
+import type { ThreadStartParams } from './providers/codex/protocol/v2/ThreadStartParams'
+import type { ThreadStartResponse } from './providers/codex/protocol/v2/ThreadStartResponse'
+import type { Turn } from './providers/codex/protocol/v2/Turn'
+import type { TurnStartParams } from './providers/codex/protocol/v2/TurnStartParams'
 
 /** The model that names chats. Small and fast: a name is a few words (KERNEL-202). */
 export const TITLE_MODEL = 'claude-haiku-4-5-20251001'
@@ -57,29 +63,71 @@ export function cleanTitle(raw: string): string | undefined {
   return t
 }
 
+/** What a naming request sends: the current name, when there is one, then the conversation. */
+function titlePrompt(text: string, current?: string) { return `${current ? `Current name: ${current}\n\n` : ''}Conversation:\n\n${text}` }
+
+/** Why a naming request brought back no name, for the main log: a line at most, never a credential. */
+function failed(why: string): Error { return new Error(why.replace(/\s+/g, ' ').trim().slice(0, 200) || 'no answer') }
+
 /**
- * A name for a conversation from Haiku. Claude Code starts with no settings, no tools and no saved session, so the request
- * never shows in its session list. It gives up after 30 seconds. Undefined when there is no usable answer.
+ * A name for a conversation from Haiku. Claude Code starts on `env`, the active Claude account's (`Providers.claudeEnv`,
+ * KERNEL-624), with no settings, no tools and no saved session, so the request never shows in its session list. It gives
+ * up after 30 seconds. Undefined when the answer is no usable name. Throws with the reason when no answer came.
  */
-export async function askTitle(text: string, o: { cwd: string; current?: string }): Promise<string | undefined> {
+export async function askTitle(text: string, o: { cwd: string; current?: string; env?: Record<string, string>; bin?: string }): Promise<string | undefined> {
   if (!text.trim()) return undefined
   const abort = new AbortController()
   const timer = setTimeout(() => abort.abort(), 30_000)
-  const prompt = `${o.current ? `Current name: ${o.current}\n\n` : ''}Conversation:\n\n${text}`
   try {
     const q = query({
-      prompt,
+      prompt: titlePrompt(text, o.current),
       options: {
         cwd: o.cwd, model: TITLE_MODEL, maxTurns: 1, tools: [], systemPrompt: PROMPT, settingSources: [], persistSession: false,
-        abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude()
+        abortController: abort, env: sessionEnv(process.env, o.env ?? {}), pathToClaudeCodeExecutable: o.bin ?? packagedClaude()
       }
     })
     for await (const msg of q) {
-      if (msg.type === 'result') return msg.subtype === 'success' && !msg.is_error ? cleanTitle(msg.result) : undefined
+      if (msg.type !== 'result') continue
+      // A login at its limit answers with a success that is an error, its text the limit's message (KERNEL-624).
+      if (msg.subtype === 'success') { if (msg.is_error) throw failed(msg.result); return cleanTitle(msg.result) }
+      throw failed(`${msg.subtype}: ${msg.errors.join('; ')}`)
     }
-    return undefined
+    throw failed('Claude Code ended without a result')
   } finally {
     clearTimeout(timer)
     abort.abort()
   }
+}
+
+/** The Codex model that names chats when Claude can't: Codex's small, fast one. An account without it uses its default. */
+export const CODEX_TITLE_MODEL = 'gpt-5.6-luna'
+
+/**
+ * A name for a conversation from Codex, for when no Claude account can name it (KERNEL-624). `codex app-server` starts on
+ * the Codex account (`home`, `apiKey`), runs one turn on a thread it doesn't save, with low effort, a read-only sandbox and
+ * nothing to approve, and stops. It gives up after 30 seconds. Undefined when the answer is no usable name. Throws with
+ * the reason when no answer came.
+ */
+export async function askCodexTitle(text: string, o: { cwd: string; current?: string; bin: string; home?: string; apiKey?: string }): Promise<string | undefined> {
+  if (!text.trim()) return undefined
+  let reply = ''
+  let done: (t: Turn) => void = () => undefined
+  const ended = new Promise<Turn>((resolve) => { done = resolve })
+  // The process runs this one thread, so every item and turn end is its own.
+  const notify = (method: string, p: any) => {
+    if (method === 'item/completed' && p?.item?.type === 'agentMessage') reply = p.item.text ?? ''
+    else if (method === 'turn/completed' && p?.turn) done(p.turn)
+  }
+  return withCodex(o.bin, o.home, async (rpc) => {
+    const models = await rpc.request<ModelListResponse>('model/list', {}).catch(() => undefined)
+    const model = models?.data?.some((m) => m.id === CODEX_TITLE_MODEL) ? CODEX_TITLE_MODEL : undefined
+    const r = await rpc.request<ThreadStartResponse>('thread/start', {
+      cwd: o.cwd, model, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only', baseInstructions: PROMPT
+    } satisfies ThreadStartParams)
+    await rpc.request('turn/start', { threadId: r.thread.id, input: [{ type: 'text', text: titlePrompt(text, o.current), text_elements: [] }], effort: 'low' } satisfies TurnStartParams)
+    const turn = await ended
+    if (turn.status !== 'completed') throw failed(turn.error?.message ?? `turn ${turn.status}`)
+    const last = [...(turn.items ?? [])].reverse().find((i) => i.type === 'agentMessage')
+    return cleanTitle(last?.type === 'agentMessage' ? last.text : reply)
+  }, { cwd: o.cwd, apiKey: o.apiKey, timeoutMs: 30_000, handlers: { notify } })
 }

@@ -34,7 +34,7 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
     customTitle: undefined as string | undefined,
     infoAsked: [] as string[]
   }
-  k.titleFor = async (text, x) => { t.asked.push({ text, current: x.current }); return t.answer(text, x.current) }
+  k.chats.titleFor = async (text, x) => { t.asked.push({ text, current: x.current }); return t.answer(text, x.current) }
   k.sessionInfo = (async (id: string) => { t.infoAsked.push(id); return t.customTitle ? { customTitle: t.customTitle } : undefined }) as typeof k.sessionInfo
   k.refreshPr = (async (id: string) => k.store.workspace(id)!) as typeof k.refreshPr
   await k.start()

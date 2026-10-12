@@ -58,7 +58,7 @@ async function room() {
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
-  k.titleFor = async () => undefined
+  k.chats.titleFor = async () => undefined
   k.sessionInfo = async () => undefined
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))

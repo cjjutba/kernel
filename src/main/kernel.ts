@@ -11,7 +11,6 @@ import { LeadUpdates } from './services/leadUpdates'
 import { Nudges } from './services/nudges'
 import { SharedFiles } from './services/sharedFiles'
 import { Sessions, type CutOffReason } from './services/sessions'
-import { askTitle } from './services/titles'
 import { Ptys } from './services/pty'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
 import { loadAppSettings, type AppSettings } from './services/settings'
@@ -148,8 +147,6 @@ export class Kernel {
   listSessions: typeof ListSessions = async (o) => (await import('@anthropic-ai/claude-agent-sdk')).listSessions(o)
   /** The SDK call that deletes a session's transcript (KERNEL-333). Tests swap it for a stub. */
   deleteSession: typeof DeleteSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).deleteSession(id, o)
-  /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
-  titleFor: typeof askTitle = askTitle
   /** Reads `claude auth status`. Tests swap it for a stub. */
   accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = () => readAccount(this.providers.binary('claude').path)
   /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */

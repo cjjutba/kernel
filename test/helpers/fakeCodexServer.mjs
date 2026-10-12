@@ -71,7 +71,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (method === 'turn/start') {
     const turnId = `turn-${++turns}`
     let script
-    try { script = JSON.parse(params.input?.[0]?.text ?? '') } catch { script = [{ notify: 'item/completed', params: { item: { type: 'agentMessage', id: `msg-${turnId}`, text: 'Done.', phase: 'final_answer' } } }] }
+    // Text that isn't a script gets one reply, FAKE_CODEX_REPLY or "Done.".
+    try { script = JSON.parse(params.input?.[0]?.text ?? '') } catch { script = [{ notify: 'item/completed', params: { item: { type: 'agentMessage', id: `msg-${turnId}`, text: process.env.FAKE_CODEX_REPLY ?? 'Done.', phase: 'final_answer' } } }] }
     const start = () => {
       send({ id, result: { turn: { id: turnId, items: [], status: 'inProgress' } } })
       send({ method: 'turn/started', params: { threadId: params.threadId, turn: { id: turnId } } })
@@ -125,6 +126,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (method === 'account/login/cancel') { send({ id, result: {} }); return send({ method: 'account/login/completed', params: { loginId: 'login-1', success: false, error: 'canceled' } }) }
   if (method === 'account/logout') { if (home) rmSync(join(home, 'auth.json'), { force: true }); return send({ id, result: {} }) }
+  // Codex's models, the ids in FAKE_CODEX_MODELS (KERNEL-624).
+  if (method === 'model/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MODELS ?? '[]').map((m) => ({ id: m, model: m, displayName: m, description: '', hidden: false, isDefault: false, supportedReasoningEfforts: [], defaultReasoningEffort: 'medium' })), nextCursor: null } })
   if (method === 'thread/compact/start') return send({ id, result: {} })
   // Codex's MCP servers, a JSON table in FAKE_CODEX_MCP. `error` fails the request.
   if (method === 'config/read') {

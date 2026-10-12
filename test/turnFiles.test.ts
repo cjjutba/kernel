@@ -47,7 +47,7 @@ const text = (t: string) => [{ type: 'text' as const, text: t }]
 async function kernel(where: { dataDir: string; home: string }) {
   const k = new Kernel(where)
   await k.start()
-  k.titleFor = async () => undefined
+  k.chats.titleFor = async () => undefined
   k.github = { info: async () => null, merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const pushed: { chatId: string; item: ChatItem }[] = []
   const onPush = (e: PushEvent) => { if (e.type === 'chat.item' && e.item.kind === 'result') pushed.push({ chatId: e.chatId, item: e.item }) }
