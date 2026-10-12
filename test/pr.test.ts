@@ -893,7 +893,8 @@ describe("Kernel's PR texts fitted to the workspace (KERNEL-564)", () => {
     expect(text).toContain(`Branch \`${ws.branch}\` into \`main\` on \`upstream\`.`)
     expect(text).toContain("The repo's own steps for pull requests are in `.claude/skills/create-pr/SKILL.md`. Read it first.")
     expect(text).not.toContain('skills/issue')
-    expect(text).toContain('`git push -u upstream HEAD`')
+    // The branch by name, since Bypass permissions refuses a push of HEAD (KERNEL-447).
+    expect(text).toContain(`\`git push -u upstream ${ws.branch}\``)
     expect(text).toContain('`gh pr create --base main` and print the URL.')
     // Draft, asked for or set in Settings, goes in the command and nowhere else.
     expect(await create(true)).toBe(createPrText({ guides }, { ...ctx, draft: true }))

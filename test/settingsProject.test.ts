@@ -349,7 +349,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     ]
     const create = createPrText(c, ctx).split('\n')
     expect(create.slice(0, 5)).toEqual(['# Create a pull request', 'Branch `feat/invoice-table` into `main` on `upstream`.', createPrText().split('\n')[1], ...read])
-    expect(create).toContain('4. Push the branch and set its upstream with `git push -u upstream HEAD`. Use `--force-with-lease` if you rebased commits that were already pushed.')
+    expect(create).toContain('4. Push the branch and set its upstream with `git push -u upstream feat/invoice-table`. Use `--force-with-lease` if you rebased commits that were already pushed.')
     expect(create).toContain('7. Open it with `gh pr create --base main` and print the URL.')
     expect(createPrText(c, { ...ctx, draft: true })).toContain('7. Open it with `gh pr create --base main --draft` and print the URL.')
     // The fix buttons name the PR, and Resolve conflicts the branch to rebase onto. Their steps are otherwise the defaults.

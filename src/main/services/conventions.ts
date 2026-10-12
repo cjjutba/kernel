@@ -101,7 +101,7 @@ export function createPrText(c: RepoConventions = {}, ctx?: PrContext): string {
     'Commit any uncommitted work.',
     'Rebase onto the base branch if it has moved.',
     'Run the checks the repo asks for before a push. If it names none, run the tests that cover what you changed.',
-    `Push the branch and set its upstream${ctx ? ` with \`git push -u ${ctx.remote} HEAD\`` : ''}. Use \`--force-with-lease\` if you rebased commits that were already pushed.`,
+    `Push the branch and set its upstream${ctx ? ` with \`git push -u ${ctx.remote} ${ctx.branch}\`` : ''}. Use \`--force-with-lease\` if you rebased commits that were already pushed.`,
     c.commitlint ? `Title it and write its commits as Conventional Commits. The repo checks them with commitlint (\`${c.commitlint}\`).` : "Title it in the style of the repo's recent commits.",
     `Write the body about every change on the branch, not only this chat's. ${body}`,
     `Open it with \`${create}\` and print the URL.`
