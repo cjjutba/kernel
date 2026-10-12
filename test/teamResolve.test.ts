@@ -55,7 +55,7 @@ describe('resolveTeam', () => {
 
   it("shows the reviewing agent, else none when the repo turned review off, else Kernel's code review (KERNEL-590)", async () => {
     expect(reviewerChoice((await team([KAI, THEO])).agents)).toBe('theo')
-    const cases: [TeamConfig | undefined, string][] = [[undefined, 'kernel-reviewer'], [{ reviewer: 'kernel-reviewer' }, 'kernel-reviewer'], [{ reviewer: 'none' }, 'none']]
+    const cases: [TeamConfig | undefined, string][] = [[undefined, 'kernel-reviewer'], [{ reviewer: 'kernel-reviewer' }, 'kernel-reviewer'], [{ reviewer: 'none' }, 'none'], [{ reviewer: 'ghost' }, 'kernel-reviewer']]
     for (const [config, shown] of cases) expect(reviewerChoice((await team([KAI], config)).agents, config)).toBe(shown)
   })
 

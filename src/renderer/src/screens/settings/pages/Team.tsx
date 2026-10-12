@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { AgentDef, AppSettings, TeamPatch } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, Select, Toggle, useBusy } from '../../../ui'
@@ -34,7 +34,6 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const team = agents.filter((a) => !a.retired)
   const files = team.filter((a) => !a.builtIn)
   const lead = team.find((a) => a.lead)
-  const reviewer = team.find((a) => a.reviewer)
   const preset = s.team.defaultTemplate === 'pair' ? 'pair' : 'starter team'
   const seed = () => run('seed', async () => {
     try {
@@ -55,7 +54,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
   const leadOptions = [...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Kernel’s Rowan' }]
-  const reviewerOptions = [...files.filter((a) => !a.lead).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s Theo' }, { value: NO_REVIEWER, label: 'No reviewer' }]
+  const reviewerOptions = [...files.filter((a) => !a.lead).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]
   return (
     <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.">
       {!!files.length && (
@@ -64,7 +63,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             <Select label="Lead" value={lead?.id ?? KERNEL_LEAD} disabled={busy !== null} options={leadOptions} onChange={(e) => void setTeam('lead', { lead: e.target.value })} />
           </Row>
           <Row label="Reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request before it merges">
-            <Select label="Reviewer" value={reviewer?.id ?? NO_REVIEWER} disabled={busy !== null} options={reviewerOptions} onChange={(e) => void setTeam('reviewer', { reviewer: e.target.value })} />
+            <Select label="Reviewer" value={reviewerChoice(team, rs?.team)} disabled={busy !== null} options={reviewerOptions} onChange={(e) => void setTeam('reviewer', { reviewer: e.target.value })} />
           </Row>
         </Section>
       )}

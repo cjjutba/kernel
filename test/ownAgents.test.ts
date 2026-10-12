@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { ActivityEvent } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -237,6 +238,29 @@ describe("a room whose reviewer was Kernel's Theo (KERNEL-553)", () => {
       }
     })
   }
+
+  it("gives the renderer Kernel's Theo, retired, while the room has a review on kernel-reviewer, so it can name it", async () => {
+    const { k, h, room } = await boot()
+    const listed = async () => (await h['agents.list']({ roomId: room.id })).filter((a) => a.id === 'kernel-reviewer')
+    expect(await listed()).toEqual([])
+    const pushed: PushEvent[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'agents') pushed.push(e) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+
+    // Kernel's code review starts on the room's first PR. Its session's first status sends the list again, once.
+    const work = await pr(k, room.id, 1)
+    await k.reviews.onReady(work.id)
+    bus.push({ type: 'agent.status', roomId: room.id, agentId: 'kernel-reviewer', status: 'working' })
+    bus.push({ type: 'agent.status', roomId: room.id, agentId: 'kernel-reviewer', status: 'idle' })
+    expect(pushed).toHaveLength(1)
+    const theo = pushed[0].type === 'agents' ? pushed[0].agents.find((a) => a.id === 'kernel-reviewer') : undefined
+    expect(theo).toMatchObject({ name: 'Theo', retired: true, reviewer: false, member: false, builtIn: 'reviewer' })
+    expect(await listed()).toEqual([theo])
+    // Every team view leaves a retired agent out, and Kernel's own team never has it.
+    expect((await k.agents(room.id)).map((a) => a.id)).not.toContain('kernel-reviewer')
+    expect((await h['agents.setTeam']({ roomId: room.id, team: {} })).find((a) => a.id === 'kernel-reviewer')).toEqual(theo)
+  })
 
   it('reviews no PR with [team] reviewer = "none", and keeps that choice when Settings saves it', async () => {
     const { k, h, repo, room } = await boot()
