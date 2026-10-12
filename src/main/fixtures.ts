@@ -241,6 +241,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'scripts.replay': async () => ok,
+    'scripts.skipSetup': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}

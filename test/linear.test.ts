@@ -276,7 +276,7 @@ describe('the saved Linear token (KERNEL-445)', () => {
 
 describe('Linear in the kernel', () => {
   const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
-  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor.'
+  const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.'
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 

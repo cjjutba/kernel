@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import type { KernelApi } from '@shared/ipc'
-import type { AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
+import type { AgentOrigin, AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -12,8 +12,11 @@ import { defaultBranch, remoteRepo, roomWorktreeRoot, slugify } from '../service
 import { exec } from '../services/exec'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installRunsRepoCode, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
+
+/** Where Room setup says a room's agents came from, when it asks for a roster (RoomSetupRoster.png). */
+const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
 export class Rooms extends Feature {
@@ -112,13 +115,16 @@ export class Rooms extends Feature {
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
       // The install command runs the repo's own install scripts, though, and those still wait for the user (KERNEL-260, D-078).
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length) await this.k.trust.trustCurrent(room)
+      // So does an install that runs the repo's own code, as `bundle install` runs the Gemfile (KERNEL-444).
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length && !(await installRunsRepoCode(room.path))) await this.k.trust.trustCurrent(room)
     })
     await step('install', async () => {
-      const { command, reason } = await installCommand(room.path)
+      const { command, reason, runsRepoCode } = await installCommand(room.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
-      // The install would run the repo's install scripts. Trusting them runs it (KERNEL-260).
-      if (await this.k.trust.holdInstall(room)) return { detail: "Skipped until you trust this repo's install scripts" }
+      // A repo whose settings have nothing to trust never asks, so an install that runs its code is left to the user (KERNEL-444).
+      if (runsRepoCode && !(await this.k.trust.trustState(room)).subject) return { detail: `Skipped: ${command} runs this repo's code, so run it yourself if you trust it` }
+      // The install would run the repo's install scripts, or its own code. Trusting them runs it (KERNEL-260).
+      if (await this.k.trust.holdInstall(room, runsRepoCode)) return { detail: runsRepoCode ? "Skipped until you trust this repo's scripts" : "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
@@ -134,6 +140,7 @@ export class Rooms extends Feature {
     })
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
     // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
+    // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
       const brought = (await agentFiles(room.path)).length
       if (!brought) {
@@ -143,10 +150,17 @@ export class Rooms extends Feature {
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: list })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
+      // Personal and plugin agents join every room, so they count toward a roster even when the repo brought none.
+      const roster = await this.k.team.rosterOf(room.id)
+      if (roster.needed) {
+        const where = [...new Set(list.filter((a) => !a.builtIn).map((a) => AGENT_PLACES[a.origin ?? 'project']))]
+        const places = where.length > 1 ? `${where.slice(0, -1).join(', ')} and ${where[where.length - 1]}` : where[0]
+        return { detail: `${roster.agents} agents found in ${places}`, ...(brought ? { brought } : {}), roster }
+      }
       const own = list.filter((a) => !a.builtIn).map((a) => a.name)
       const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
-      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}) }
+      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
   }
 
