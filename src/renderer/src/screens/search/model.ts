@@ -3,6 +3,7 @@ import type { AccountProfile, AgentDef, Approval, Chat, Provider, Room, Route, S
 import { workspaceRowLabel } from '../../components/sidebar/workspaceRowLabel'
 import { PROVIDER_NAME } from '../../accountRows'
 import { isLeadWorkspace } from '../../lead'
+import { roomAgents } from '../../nav'
 import { roomLetter } from '../rooms/roomInfo'
 import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
@@ -161,7 +162,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     goto('go-issues', 'Issues', room ? { name: 'issues', roomId: room.id } : { name: 'issues' }, { also: 'linear github tickets' }),
     ...(shown ? [goto('go-ws', `${workspaceRowLabel(shown)} workspace`, { name: 'workspace', workspaceId: shown.id }, { also: `${shown.name} ${shown.branch}` })] : []),
     goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
-    ...(room ? [goto('go-team', 'Team', { name: 'team', roomId: room.id }, { also: 'agents' })] : []),
+    ...(room ? [goto('go-agents', 'Agents', roomAgents(room.id), { also: 'team subagents' })] : []),
     goto('go-history', 'History', { name: 'history' }, { also: 'archived restore' }),
     item('go-new', 'Go to', '◇', "What's new", act.whatsNew, { also: 'update release notes' })
   ]
@@ -215,7 +216,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...visible.flatMap((r) => {
       const roomLead = i.agents[r.id]?.find((a) => a.lead)
       return [
-        goto(`go-team-${r.id}`, `${r.name} team`, { name: 'team', roomId: r.id }, { also: 'agents' }),
+        goto(`go-agents-${r.id}`, `${r.name} agents`, roomAgents(r.id), { also: 'team subagents' }),
         // The room in view has "Open Rowan's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
         // so a shorter room name can't outrank it.
         ...(roomLead && r.id !== room?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${roomLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])

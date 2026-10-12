@@ -237,12 +237,12 @@ describe('back and forward', () => {
   it('keeps 50 entries and drops the oldest', () => {
     const rooms = Array.from({ length: 60 }, (_, i) => `rm${i}`)
     setState({ rooms: rooms.map(room) })
-    for (const r of rooms) go({ name: 'team', roomId: r })
+    for (const r of rooms) go({ name: 'leadNew', roomId: r })
     let steps = 0
     while (back()) steps++
     expect(steps).toBe(50)
     // Home and rm0 to rm8 fell off, so the oldest place left is rm9.
-    expect(route()).toEqual({ name: 'team', roomId: 'rm9' })
+    expect(route()).toEqual({ name: 'leadNew', roomId: 'rm9' })
   })
 })
 

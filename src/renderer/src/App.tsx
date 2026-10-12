@@ -9,7 +9,6 @@ import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead } from './lead'
-import { AgentProfile } from './screens/agent/AgentProfile'
 // Settings loads lazily (below), but its stylesheet stays eager, in the slot the screen's import used to fill. Other screens lean on
 // rules in settings.css (the compact .nav-item). A new stylesheet under screens/settings has to be imported here too, or it becomes
 // a lazy chunk that lands after tokens.css.
@@ -38,9 +37,8 @@ import { CommandPalette } from './screens/search/CommandPalette'
 import { roomInView } from './screens/search/model'
 import './screens/settings/settings.css'
 import { useAppearance } from './screens/settings/appearance'
-import { ConfirmRetire } from './screens/team/ConfirmRetire'
-import { NewAgent } from './screens/team/NewAgent'
-import { Team } from './screens/team/Team'
+import { ConfirmRetire } from './screens/agent/ConfirmRetire'
+import { NewAgent } from './screens/agent/NewAgent'
 import { WhatsNew } from './screens/update/WhatsNew'
 import { EnvVarForm } from './screens/settings/pages/EnvVarForm'
 import { openSlot } from './components/sidebar/slots'
@@ -92,8 +90,6 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
-    case 'team': return <Team roomId={route.roomId} />
-    case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
     case 'leadNew': return <LeadNewScreen roomId={route.roomId} />
     case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} agentId={route.agentId} />

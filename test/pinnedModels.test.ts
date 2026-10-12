@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, ClaudeAccount, Provider, ProviderModel } from '@shared/types'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { warningText } from '../src/renderer/src/screens/team/model'
+import { warningText } from '../src/renderer/src/screens/agent/model'
 import { tempRepo } from './helpers'
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'

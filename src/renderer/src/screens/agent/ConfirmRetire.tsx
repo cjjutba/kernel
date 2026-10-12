@@ -3,7 +3,7 @@ import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { shortFile } from './model'
-import './team.css'
+import './agent.css'
 
 /**
  * ConfirmRetire.png. The file moves to .claude/retired-agents (D-003) and open workspaces go to the Lead, or a reviewer's
@@ -24,9 +24,7 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
     try {
       await call('agents.retire', { roomId, agentId })
       actions.agents.set(roomId, (getState().agents[roomId] ?? []).filter((a) => a.id !== agentId))
-      const route = getState().ui.route
-      if (route.name === 'agent' && route.agentId === agentId) actions.ui.go({ name: 'team', roomId })
-      else actions.ui.closeModal()
+      actions.ui.closeModal()
     } catch (e) { setError(cleanError(e)) }
   })
   const leadName = lead?.name ?? 'the Lead'

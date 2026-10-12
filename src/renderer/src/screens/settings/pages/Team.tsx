@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AgentDef, AppSettings, TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
-import { Button, Select, Toggle, useBusy } from '../../../ui'
+import { Button, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
+import { shortFile, warningText } from '../../agent/model'
+import { STARTER_TEAMMATES } from '../../rooms/draft'
 import { NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { AGENT_GROUPS, agentGroup, agentLabel, agentSource, cleanDescription } from './agentRows'
@@ -21,16 +23,35 @@ function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
   ]
 }
 
+/** An agent's description, then what Kernel noticed in its file (KERNEL-397), one line each. */
+function rowDesc(a: AgentDef) {
+  if (!a.description && !a.warnings?.length) return undefined
+  return (
+    <>
+      {a.description && <span className="set-clamp">{cleanDescription(a.description)}</span>}
+      {a.warnings?.map((w, i) => <span key={i} className="set-warn"><Icon name="warning" size={12} />{warningText(w)}</span>)}
+    </>
+  )
+}
+
 /**
  * Settings > a room > Agents (SettingsTeam.png): who leads and who reviews, who takes tasks, and the room's agent files,
- * with Edit opening the agent's editor in Settings (KERNEL-397, KERNEL-641). A change goes to `[team]` in the shared settings.toml. The team a new room
+ * with Edit opening the agent's editor in Settings (KERNEL-397, KERNEL-641). It is the one place for agents (KERNEL-642): New agent, Add a
+ * starter agent, warnings on a file Kernel can't read, and Retired with Restore are here too. A change goes to `[team]` in the shared settings.toml. The team a new room
  * starts with is on General. The Open workspaces row, under the switches, saves the room's own cap to its personal file (KERNEL-493).
  */
 export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const { room, rs } = useRoomPage(roomId)
   const agents = useStore((x) => (roomId ? x.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
   const [busy, run] = useBusy()
+  const [retired, setRetired] = useState<AgentDef[]>(NO_AGENTS)
+  const [adding, setAdding] = useState(false)
+  const starterAnchor = useRef<HTMLSpanElement>(null)
   useEffect(() => { if (roomId) void loadRoom(roomId) }, [roomId])
+  // Retired agents sit in .claude/retired-agents (D-003). The list is read again when the team changes, so a retire shows here at once.
+  useEffect(() => {
+    if (roomId) void call('agents.list', { roomId, retired: true }).then(setRetired).catch(() => setRetired(NO_AGENTS))
+  }, [roomId, agents])
   if (!room || !roomId) return <NoRoom />
   const team = agents.filter((a) => !a.retired)
   const files = team.filter((a) => !a.builtIn)
@@ -41,6 +62,18 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       const list = await call('agents.seed', { roomId, template: { kind: s.team.defaultTemplate } })
       actions.agents.set(roomId, list)
     } catch (e) { actions.ui.toast({ title: 'Could not add the team', sub: cleanError(e) }) }
+  })
+  const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
+  const starters = STARTER_TEAMMATES.filter((m) => !team.some((a) => a.id === m.id))
+  const addStarter = (id: string) => run('starter', async () => {
+    try { await call('agents.addStarter', { roomId, id }) } catch (e) { actions.ui.toast({ title: 'Could not add the agent', sub: cleanError(e) }) }
+  })
+  const restore = (a: AgentDef) => run(a.id, async () => {
+    try {
+      const def = await call('agents.restore', { roomId, agentId: a.id })
+      actions.agents.set(roomId, [...team.filter((x) => x.id !== def.id), def])
+      setRetired((r) => r.filter((x) => x.id !== a.id))
+    } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: cleanError(e) }) }
   })
   const setTeam = (key: string, patch: TeamPatch) => run(key, async () => {
     try {
@@ -84,23 +117,46 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       {files.length === 0 && (
         <Section title="In this room">
           <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents`}>
-            <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
+            <span className="set-actions">
+              <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
+              <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
+            </span>
           </Row>
         </Section>
       )}
       {AGENT_GROUPS.map(({ key, title }) => {
         const group = team.filter((a) => agentGroup(a) === key)
         if (!group.length) return null
+        const repoActions = key === 'repo' && (
+          <span className="set-actions">
+            {!!files.length && !!starters.length && (
+              <span className="set-starters" ref={starterAnchor}>
+                <Button aria-haspopup="menu" aria-expanded={adding} busy={busy === 'starter'} busyLabel="Adding" disabled={busy !== null} onClick={() => setAdding((o) => !o)}>Add a starter agent<Icon name="chevron" size={10} stroke={1.9} /></Button>
+                {adding && <Menu label="Starter agents" anchorRef={starterAnchor} onClose={() => setAdding(false)} style={{ right: 0, top: 34, width: 220 }} items={starters.map((m) => ({ id: m.id, label: `${m.name} · ${m.role}`, onSelect: () => { setAdding(false); void addStarter(m.id) } }))} />}
+              </span>
+            )}
+            <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
+          </span>
+        )
         return (
-          <Section key={key} title={title}>
+          <Section key={key} title={title} action={repoActions || undefined}>
             {group.map((a) => (
-              <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={a.description ? <span className="set-clamp">{cleanDescription(a.description)}</span> : undefined}>
+              <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={rowDesc(a)}>
                 <Button aria-label={`${key === 'plugin' ? 'View' : 'Edit'} ${a.name}`} onClick={() => go({ name: 'settings', page: 'room', roomId, section: 'agents', agentId: a.id })}>{key === 'plugin' ? 'View' : 'Edit'}</Button>
               </Row>
             ))}
           </Section>
         )
       })}
+      {!!retired.length && (
+        <Section title="Retired" note="A retired agent’s file sits in .claude/retired-agents. Restore brings it back.">
+          {retired.map((a) => (
+            <Row key={a.id} label={agentLabel(a)} source={shortFile(a.file)}>
+              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
+            </Row>
+          ))}
+        </Section>
+      )}
       <Section title="Sync">
         <Row label="Agents folder"><span className="set-value">.claude/agents</span></Row>
       </Section>

@@ -17,7 +17,6 @@ export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
 export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
   | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
-  | { name: 'team'; roomId: string } | { name: 'agent'; roomId: string; agentId: string }
   | { name: 'workspace'; workspaceId: string }
   /** New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
   | { name: 'leadNew'; roomId: string }

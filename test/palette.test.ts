@@ -13,8 +13,8 @@ describe('command palette', () => {
     expect(fuzzyScore('xyz', 'Inbox')).toBe(0)
     expect(fuzzyScore('ibx', 'Inbox')).toBeGreaterThan(0)
     expect(fuzzyScore('hist', 'History')).toBeGreaterThan(fuzzyScore('hist', 'Settings: Hooks list'))
-    expect(rank([{ label: 'Settings: Git and worktrees' }, { label: 'Team' }, { label: 'History' }], 'tm').map((x) => x.label)).toEqual(['Team'])
-    expect(rank([{ label: 'Team', also: 'agents' }], 'agents')).toHaveLength(1)
+    expect(rank([{ label: 'Settings: Git and worktrees' }, { label: 'Agents' }, { label: 'History' }], 'ag').map((x) => x.label)).toEqual(['Agents'])
+    expect(rank([{ label: 'Agents', also: 'team' }], 'team')).toHaveLength(1)
   })
 
   it('suggests from where you are and lists every room', () => {

@@ -5,8 +5,8 @@ import { isReviewer } from '@shared/team'
 import { call } from '../../api'
 import { useStore } from '../../store'
 import { Icon, SegmentedControl } from '../../ui'
-import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from '../team/model'
-import '../team/team.css'
+import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
+import './agent.css'
 
 export interface AgentForm { description: string; model: string; effort: Effort | undefined; tools: string[] | undefined; skills: string[]; prompt: string }
 

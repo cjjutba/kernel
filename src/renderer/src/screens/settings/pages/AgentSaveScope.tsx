@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AgentDef, AgentScope } from '@shared/types'
 import { Button, Modal } from '../../../ui'
 import { formOf, slash, type AgentForm } from '../../agent/AgentEditor'
-import { shortFile } from '../../team/model'
+import { shortFile } from '../../agent/model'
 
 const WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five']
 
