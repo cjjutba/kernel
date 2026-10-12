@@ -9,6 +9,9 @@ import { head } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
+/** A duration as M:SS, the way the chat's setup line counts it (KERNEL-430). */
+export const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
+
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 export interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
@@ -21,12 +24,14 @@ export class Setup extends Feature {
   readonly setups = new Map<string, SetupHold>()
   /** How a workspace's last failed setup ended: its exit code, null when it was stopped, or `timeout`. Cleared when setup passes. */
   readonly setupFailures = new Map<string, ScriptEnd>()
+  /** Workspaces whose setup script just passed, so the brief that follows it gets "Setup finished in M:SS" above it (KERNEL-430). */
+  private readonly justPassed = new Set<string>()
 
   /**
    * Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its
    * prompt. A restored workspace's chat started long ago, so it takes no checkpoint (`checkpoint: false`, KERNEL-77).
    */
-  async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>, o: { checkpoint?: boolean } = {}) {
+  async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>, o: { checkpoint?: boolean; note?: string } = {}) {
     const repo = await loadRepoSettings(room.path)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The start of chat: reverting to it undoes everything the agent did. Taken before the workspace counts as ready, so
@@ -36,6 +41,10 @@ export class Setup extends Feature {
     const done = this.updateWs(ws.id, { status: 'ready' })
     if (done.status === 'archived') return done
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
+    // The line above the brief says how setup ended: how long it took, or that it was skipped (KERNEL-430).
+    const run = this.justPassed.delete(ws.id) ? done.setupRun : undefined
+    const note = o.note ?? (run?.endedAt ? `Setup finished in ${clock(run.endedAt - run.startedAt)}` : undefined)
+    if (note) this.note(ws.id, note)
     if (this.settings.scripts.runAfterSetup && repo.scripts.run && !(await this.k.trust.untrusted(room, repo))) this.startRun(done, room, repo)
     await start()
     return done
@@ -71,11 +80,10 @@ export class Setup extends Feature {
     const ws = this.mustWs(workspaceId)
     const room = this.mustRoom(ws.roomId)
     const repo = await loadRepoSettings(room.path)
-    const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
     // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
     if (await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (repo.scripts.setup) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
+      const code = await this.setupScript(ws, repo.scripts.setup)
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
@@ -83,10 +91,32 @@ export class Setup extends Feature {
         return now
       }
     } else this.setupFailures.delete(ws.id)
+    return this.afterSetup(workspaceId)
+  }
+
+  /**
+   * "Send anyway" on a failed setup: the workspace goes on without it, the way Run again goes on when setup passes, and what
+   * waited for setup goes out (KERNEL-430). The Lead hears it as setup passing.
+   */
+  async skipSetup(workspaceId: string): Promise<Workspace> {
+    if (this.settingUp.has(workspaceId) || this.mustWs(workspaceId).status !== 'failed') return this.mustWs(workspaceId)
+    this.settingUp.add(workspaceId)
+    try {
+      this.setupFailures.delete(workspaceId)
+      return await this.afterSetup(workspaceId, { note: 'Setup failed, sent anyway' })
+    } finally { this.settingUp.delete(workspaceId) }
+  }
+
+  /** Setup passed, or was skipped: the brief goes out, or keeps waiting for the PRs it waits for. */
+  private async afterSetup(workspaceId: string, o: { note?: string } = {}): Promise<Workspace> {
+    const ws = this.mustWs(workspaceId)
+    const room = this.mustRoom(ws.roomId)
+    const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
     const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.leadUpdates.setup(now, true); return now }
     // A brief that waits for a PR stays held: the workspace is ready and keeps waiting (KERNEL-259).
-    const wait = this.mustWs(ws.id).waitsFor
+    const wait = ws.waitsFor
     if (wait?.held && chat) {
+      if (o.note) this.note(ws.id, o.note)
       if (waitMet(wait, this.store.workspaces(ws.roomId))) {
         this.updateWs(ws.id, { status: 'ready' })
         await this.k.waits.releaseWait(ws.id)
@@ -97,7 +127,16 @@ export class Setup extends Feature {
       if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
       return held
     }
-    return passed(await this.startBrief(ws, room, chat))
+    return passed(await this.startBrief(ws, room, chat, { note: o.note }))
+  }
+
+  /** Runs the setup script, keeping when it started and how it ended on the workspace for the chat's setup line (KERNEL-430). */
+  private async setupScript(ws: Workspace, script: string): Promise<ScriptEnd> {
+    this.updateWs(ws.id, { setupRun: { startedAt: Date.now() } })
+    const end = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
+    const run = this.mustWs(ws.id).setupRun
+    if (run) this.updateWs(ws.id, { setupRun: { ...run, endedAt: Date.now(), end } })
+    return end
   }
 
   /**
@@ -106,14 +145,14 @@ export class Setup extends Feature {
    * shows a waiting workspace whose brief went out. Run again's tail and a released wait share it. A setup that fails
    * here leaves the workspace failed, with no wait, so Run again works as it always has.
    */
-  async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor } = {}): Promise<Workspace> {
+  async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor; note?: string } = {}): Promise<Workspace> {
     const repo = o.setup && this.settings.scripts.setupOnCreate ? await loadRepoSettings(room.path) : undefined
     const script = repo?.scripts.setup
     // The setup text changed while the brief waited and nobody trusted it yet: the brief keeps waiting, for trust now,
     // and trusting runs setup and sends it (KERNEL-209).
     if (script && await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (script) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
+      const code = await this.setupScript(ws, script)
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
         if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
@@ -129,7 +168,7 @@ export class Setup extends Feature {
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     // A chat that already had a turn, as a restored workspace's has, starts nothing new, so it takes no start checkpoint (KERNEL-77).
     const begun = this.store.items(chat.id).some((i) => i.kind === 'user')
-    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun })
+    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.releaseTabs(ws.id, chat.id) }, { checkpoint: !begun, note: o.note })
   }
 
   /**
@@ -206,13 +245,13 @@ export class Setup extends Feature {
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
-    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) })
+    const code = await this.setupScript(ws, script)
     return this.setupPassed(ws, code)
   }
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
   private setupPassed(ws: Workspace, code: ScriptEnd) {
-    if (code === 0) { this.setupFailures.delete(ws.id); this.sayLoaded(ws); return true }
+    if (code === 0) { this.setupFailures.delete(ws.id); this.justPassed.add(ws.id); this.sayLoaded(ws); return true }
     this.setupFailures.set(ws.id, code)
     const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
     bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line, stream: 'stderr' }] })
@@ -275,11 +314,13 @@ export class Setup extends Feature {
         if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
         // Setup run by hand writes `$KERNEL_ENV` again, and the agents get what it wrote once it passes (KERNEL-405).
-        if (kind === 'setup') { void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.setupEnv(ws), timeoutMs: scriptTimeout(this.settings) }).then((code) => { if (code === 0) this.sayLoaded(this.mustWs(workspaceId)) }); return { ok: true } }
+        if (kind === 'setup') { void this.setupScript(ws, script!).then((code) => { if (code === 0) this.sayLoaded(this.mustWs(workspaceId)) }); return { ok: true } }
         void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
         return { ok: true }
       },
-      'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
+      // Stopping setup ends it like a quit does: failed with no exit code, held for Run again or Send anyway (KERNEL-430).
+      'scripts.stop': async ({ workspaceId, kind, name }) => { if (kind === 'setup') stopScript(workspaceId, 'setup'); else if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
+      'scripts.skipSetup': async ({ workspaceId }) => { void this.skipSetup(workspaceId).catch(() => undefined); return { ok: true } },
       'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } }
     } satisfies Partial<Handlers>
   }

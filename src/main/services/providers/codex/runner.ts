@@ -6,8 +6,9 @@ import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL } from '../../plans'
-import { bashVerdict, NETWORK_OFF, usesNetwork } from '../../bashGuard'
+import { decide, rulesOf, saveAlwaysAllow, type Step } from '../../permissions'
 import { toolPolicy } from '../../agentTools'
+import { codexStatus } from '../../mcp'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { codexEnv, KERNEL_VERSION } from './client'
@@ -19,6 +20,7 @@ import type { CommandExecutionRequestApprovalResponse } from './protocol/v2/Comm
 import type { ConfigReadParams } from './protocol/v2/ConfigReadParams'
 import type { ConfigReadResponse } from './protocol/v2/ConfigReadResponse'
 import type { DynamicToolCallParams } from './protocol/v2/DynamicToolCallParams'
+import type { McpServerStatusUpdatedNotification } from './protocol/v2/McpServerStatusUpdatedNotification'
 import type { FileChangeRequestApprovalParams } from './protocol/v2/FileChangeRequestApprovalParams'
 import type { FileChangeRequestApprovalResponse } from './protocol/v2/FileChangeRequestApprovalResponse'
 import type { GetAccountRateLimitsResponse } from './protocol/v2/GetAccountRateLimitsResponse'
@@ -52,6 +54,9 @@ export interface CodexStart {
   /** Kernel's own tools for this agent, offered as dynamic tools. */
   tools: SdkMcpToolDefinition<any>[]
   personality: CodexPersonality
+  /** The MCP servers the room switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
+  disabled?: string[]
+  aliases?: Record<string, string>
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
@@ -138,6 +143,10 @@ export class CodexRunner implements Runner {
   /** File changes by item id, which their approval request names only by id. */
   private readonly changes = new Map<string, Extract<ThreadItem, { type: 'fileChange' }>>()
   private ended = false
+  /** Servers Codex reported a startup status for. A tool call tells the room how the others are doing (KERNEL-464). */
+  private readonly reported = new Set<string>()
+  /** What tool calls last said of each server Codex reported nothing for, so a run of calls tells the room once. */
+  private readonly called = new Map<string, boolean>()
 
   constructor(private readonly host: RunnerHost, private readonly o: CodexStart) {
     const chat = host.chat()
@@ -236,22 +245,43 @@ export class CodexRunner implements Runner {
   }
 
   /**
-   * The agent file's limits on Codex's MCP servers, as the thread's config (KERNEL-451). Codex says which servers it has
-   * for this folder. When it can't, the chat says the file doesn't limit them, rather than failing to start.
+   * The agent file's limits on Codex's MCP servers, and the servers the room switched off, as the thread's config
+   * (KERNEL-451, KERNEL-464). Codex says which servers it has for this folder. When it can't, the chat says what doesn't
+   * hold, rather than failing to start.
    */
   private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
     const agent = this.host.agent
-    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools })
-    if (!policy) return undefined
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases })
+    const off = this.o.disabled ?? []
+    if (!policy && !off.length) return undefined
     try {
       const r = await this.rpc!.request<ConfigReadResponse>('config/read', { cwd } satisfies ConfigReadParams, { timeoutMs: 30_000 })
       const servers = r?.config?.mcp_servers
-      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {})
+      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, off)
       return Object.keys(config).length ? config : undefined
     } catch {
-      this.host.item({ kind: 'note', id: `codex-mcp-${Date.now()}`, ts: Date.now(), text: `Kernel couldn't read Codex's MCP servers, so ${agent?.name ?? 'this agent'}'s file doesn't limit them in this chat.` })
+      const what = policy ? `${agent?.name ?? 'this agent'}'s file doesn't limit them` : 'the ones switched off in this room are on'
+      this.host.item({ kind: 'note', id: `codex-mcp-${Date.now()}`, ts: Date.now(), text: `Kernel couldn't read Codex's MCP servers, so ${what} in this chat.` })
       return undefined
     }
+  }
+
+  /** Codex says how a server's start went. The room keeps it (KERNEL-464). */
+  private mcpStarted(p: McpServerStatusUpdatedNotification) {
+    const status = codexStatus(p.status, p.failureReason)
+    if (!status || !p.name) return
+    this.reported.add(p.name)
+    this.host.mcpStatus([{ name: p.name, status, ...(p.error ? { error: p.error } : {}) }])
+  }
+
+  /**
+   * A tool call on a server Codex reported nothing for says whether the server works: it connected if the call went
+   * through, else it failed with the call's error. The room hears when that changes (KERNEL-464).
+   */
+  private mcpCalled(server: string, ok: boolean, error?: string) {
+    if (this.reported.has(server) || this.called.get(server) === ok) return
+    this.called.set(server, ok)
+    this.host.mcpStatus([{ name: server, status: ok ? 'connected' : 'failed', ...(!ok && error ? { error } : {}) }])
   }
 
   private async turn(parts: ChatPart[]) {
@@ -301,6 +331,7 @@ export class CodexRunner implements Runner {
         return
       }
       case 'account/rateLimits/updated': this.host.mergeLimits(codexLimits(params.rateLimits as RateLimitSnapshot)); return
+      case 'mcpServer/startupStatus/updated': this.mcpStarted(params as McpServerStatusUpdatedNotification); return
       case 'error': {
         const info = params.error?.codexErrorInfo
         if (info === 'unauthorized') this.host.failed('auth', { notify: true })
@@ -344,7 +375,9 @@ export class CodexRunner implements Runner {
       case 'plan': this.planText = item.text; return
       case 'commandExecution': return this.finish(item.id, item.status === 'completed', item.aggregatedOutput ?? '')
       case 'fileChange': return this.finish(item.id, item.status === 'completed', item.changes.map((c) => c.diff).join('\n'))
-      case 'mcpToolCall': return this.finish(item.id, item.status === 'completed', item.error ? item.error.message : (item.result?.content ?? []).map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n'))
+      case 'mcpToolCall':
+        if (item.status !== 'inProgress') this.mcpCalled(item.server, item.status === 'completed', item.error?.message)
+        return this.finish(item.id, item.status === 'completed', item.error ? item.error.message : (item.result?.content ?? []).map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n'))
       case 'dynamicToolCall':
         if (item.tool === `${CODEX_TOOL_PREFIX}request_plan_approval`) this.planAsked = true
         return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))
@@ -415,23 +448,18 @@ export class CodexRunner implements Runner {
    */
   private async approveCommand(p: CommandExecutionRequestApprovalParams): Promise<CommandExecutionRequestApprovalResponse> {
     await this.held()
-    const perms = this.host.settings().permissions
     const command = unwrapShell(p.command ?? '')
     const leaves = leavesSandbox(p)
+    const step: Step = { tool: 'Bash', command, network: !!p.networkApprovalContext, sandbox: leaves ? 'outside' : 'inside' }
+    const verdict = decide(step, rulesOf(this.host))
     // Codex's answer carries no reason, so a refusal shows in the chat, where the user sees why the step failed.
-    if (perms.network === false && (usesNetwork(command) || p.networkApprovalContext)) return this.declined(NETWORK_OFF)
-    const verdict = command ? bashVerdict(command, perms, this.host.roomAllow()) : undefined
-    if (verdict === 'deny') return this.declined(`Kernel blocks "${command}" in every room.`)
-    if (verdict === 'allow') return { decision: 'accept' }
-    if (verdict !== 'ask' && !leaves && perms.mode !== 'default') return { decision: 'accept' }
+    if (verdict?.behavior === 'deny') return this.declined(verdict.message)
+    if (verdict?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool('Bash', { command })
     const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
     const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), activity: d.title }, {})
-    if (result?.behavior === 'allow') {
-      if (result.always && command) this.host.allowInRoom(command.trim())
-      return { decision: 'accept' }
-    }
-    return { decision: 'decline' }
+    saveAlwaysAllow(this.host, step, result)
+    return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
 
   private declined(why: string): CommandExecutionRequestApprovalResponse {
@@ -442,11 +470,10 @@ export class CodexRunner implements Runner {
   /** File edits accept in Accept edits and Bypass in worktrees, and ask in Ask, as Claude's do. Writes outside the workspace always ask. */
   private async approveFiles(p: FileChangeRequestApprovalParams): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
-    const perms = this.host.settings().permissions
-    if (perms.mode !== 'default' && !p.grantRoot) return { decision: 'accept' }
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'
+    if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, {})
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
@@ -455,7 +482,7 @@ export class CodexRunner implements Runner {
   /** More permissions than the sandbox gives, such as the network or another folder. Always the user's call, and Network off says no. */
   private async approvePermissions(p: PermissionsRequestApprovalParams): Promise<PermissionsRequestApprovalResponse> {
     const none: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' }
-    if (this.host.settings().permissions.network === false && p.permissions.network) return none
+    if (decide({ tool: 'Permissions', network: !!p.permissions.network, sandbox: 'outside' }, rulesOf(this.host))?.behavior === 'deny') return none
     const title = p.permissions.network ? 'Allow network access' : 'Allow access outside the workspace'
     const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined, activity: title }, {})
     if (result?.behavior !== 'allow') return none

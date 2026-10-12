@@ -34,6 +34,18 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 - Send changes color in 0.16s. Nothing on a button loops.
 - With reduced motion, nothing moves and the glow holds at 90%.
 
+## Setup wait (KERNEL-430)
+
+A new chat whose setup is still running, failed or was stopped. Canvas: https://claude.ai/artifact/DQK7CYXcuiQqAtpeGtqYDE
+
+- The message you sent shows as a bubble where it will land, at lower contrast, with "Queued, sends after setup", Edit and Cancel under it. There's no skeleton, no note above the composer and no queue row.
+- The chat has one line for setup: spinner, "Running setup", the command, and the time since setup started. The log lives only in the Setup tab. The line adds "Show log" only while the right panel is hidden.
+- The composer stays usable and reads "Add a follow up". What you type queues behind the first message.
+- A failed or stopped setup is one card above the composer: what happened and when, then Run again (solid), Send anyway and Edit script. The setup banner doesn't draw it a second time.
+- While setup runs or has failed, the right panel opens on the Setup tab with the files pane folded to its header. After setup it goes back.
+- No status tags in the sidebar, on tabs or on the bubble.
+- Setup passing leaves one faint line, "Setup finished in M:SS". Send anyway leaves "Setup failed, sent anyway".
+
 ## Screens
 
 | PNG | Shows | App surface |
@@ -54,6 +66,14 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `LeadPrsMergeAllStopped` | Merge all stopped: where and why above the lists (KERNEL-411) | `pr/LeadPrs.tsx` |
 | `AskRowan` | Ask Rowan popover, empty | `components/footer/QuickAsk.tsx` |
 | `NewChat` | New chat empty state | `screens/workspace/Transcript.tsx` |
+| `SetupRunning` | New chat while setup runs: the queued bubble, the setup line, the Setup tab with Stop (KERNEL-430) | `screens/workspace/SetupWait.tsx`, `Panels.tsx` |
+| `SetupFollowUp` | A follow-up typed while setup runs joins the queued bubble (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupEditQueued` | Edit pulls the queued message back into the composer (KERNEL-430) | `composer/Composer.tsx` |
+| `SetupPanelHidden` | Setup running with the right panel hidden: the line adds Show log (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupFailed` | Setup failed: the card with Run again, Send anyway and Edit script (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupStopped` | Setup stopped from the Setup tab (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupSentAnyway` | Sent anyway after a failed setup (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupDone` | Setup passed and the message went out; the panel is back on the Run tab (KERNEL-430) | `screens/workspace/Transcript.tsx`, `Panels.tsx` |
 | `Composer` | Every composer state: normal, working, plan mode and plan waiting, each empty and typing | `screens/workspace/composer/` |
 | `PlanStates` | Plan mode and plan waiting, empty and typing | `composer/composer.css`, `cards/plan.tsx` |
 | `PlanMotion` (no PNG) | The plan mode motion on a loop | `composer/composer.css`, `new-workspace/newWorkspace.css` |
@@ -66,6 +86,12 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `PrCiFailHidden` | Checks failed with the panel hidden, in the red band's tone | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
 | `PrMergedHiddenLong` | Merged with the panel hidden and a long task title. The title cuts off with an ellipsis next to the capsule | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
 | `HeaderBranchTooltip` | The header with the title hovered. The tooltip shows the full branch and "Click to copy the branch" | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalReady` | A local merge, ready: the green band with Merge, "3 ahead of main · 0 behind" and the diff stat (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalBehind` | A local merge behind main: the grey band with Update branch and a note (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalConflict` | A local merge with conflicts: the red band with Resolve conflicts, and a note listing the files (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalMerging` | A local merge merging: Ready to merge with a busy Merging button (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalMerged` | A local merge merged: the violet band, "Squashed into main as 4e1b9c2" (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrLocalDirty` | A local merge refused because the main checkout has uncommitted changes: the red band with Try again, and a note with the fix (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
 
@@ -87,6 +113,19 @@ The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks
 - **Rows read like each other (KERNEL-411).** A Team update row shows the issue key from the workspace when the task has none, renders inline code in the reply as chips, says "Ready to merge" with the review as its own segment ("Theo approved" green, "Lumi reviewed an earlier commit" grey), and shows an open PR's state word ("Checks running") where Merge would be. The PRs tab shows the workspace title, never the raw `feat(scope): ... (KEY)` PR title. Both say a review in the same words.
 - **Merging and Merge all (KERNEL-411).** A merging row stays in Ready to merge until GitHub says it merged. The band reads "N ready to merge", "N open, none ready" (grey, chevron) or "No open PRs" (grey, no chevron). With two or more ready PRs, Merge all sits at the right of the Ready to merge heading. It merges them one at a time, top to bottom, and reads "Merging 1 of 2" while the rows read Merging and Next. It stops at the first PR that can't merge and says where and why above the lists ("Merged #331. Stopped at #330. It has merge conflicts.") until the next run.
 - **Settings.** `SettingsPRs` is drawn in `design/canvas/`. Merging comes before Instructions on Settings, Pull requests, so its switches show without scrolling, and it gains "Let the Lead merge when you ask", off, and "Review every pull request automatically", on. "Require Reviewer approval" now reads "Wait for the reviewer's approval to merge, when a review ran".
+
+## Local merge (KERNEL-441)
+
+A repo with no GitHub remote has no PR. Kernel merges the workspace into the base branch on the Mac, and the panel keeps the PR header's band, buttons and tones, so it reads like a PR on GitHub. The `PrLocal*` screens draw a Shop room, a local folder with no remote. Their sample content is not spec.
+
+- **Header.** The `#N | ↗` link pill becomes a plain `→ main` pill in the band's tone, with the base branch in mono. There is no number to show and nothing to open, so it is not a link. The state's word, the button and the panel toggle follow as they do for a PR. There is no Create PR step, because the branch is what merges.
+- **Merge line.** One line under the band, above the tabs, so every tab shows it: "3 ahead of main · 0 behind", with the numbers and `main` in mono. The room's merge method sits at the right in faint text: "Squash merge", "Merge commit" or "Rebase". A branch that is behind reads its count in ink at weight 500. Once merged the line reads "Squashed into main as 4e1b9c2", with the verb from the method: Squashed into, Merged into or Rebased onto. The diff stat stays where the Changes tab has it ("8 files changed +304 -15", Review all), because it is the same count.
+- **States.** Ready to merge is green with a solid Merge. Behind main is grey with a soft Update branch. Merge conflicts is red with a soft Resolve conflicts, the same word and tone as the PR state. Merging keeps the green band and the label "Ready to merge", and the button reads Merging with a spinner, dimmed in the band's tone, as for a PR. Merged is the violet band with Continue and Archive, as for a PR. Refused is red, reads "Can't merge" and has a soft Try again.
+- **Behind is grey, not red.** Nothing failed: main moved on and the branch needs to catch up. Red stays for what is broken.
+- **Notes.** Behind, Conflicts and Refused each add one card under the merge line: `surface` fill, a `line-2` hairline, 8px radius, a 13px title, a 12px muted body, and a list under a hairline where files matter. Behind says "main has 4 new commits" and what to do. Conflicts says "Merging into main would conflict in 2 files", names the action, and lists the files with `C` in `--del` and "both changed" at the right. The Changes list marks the same files `C`. Refused says what is wrong ("Your main checkout has uncommitted changes"), that nothing was merged, and the fix ("Commit or stash these files there, then try again"), then lists the dirty files from `git status` with their M or U letter. The folder is named in mono.
+- **Chat row.** The row that ends the transcript says the state in the same words as the PR rows: "Ready to merge into main. 3 ahead, no conflicts.", "main has 4 new commits. Update this branch before it merges.", "Merging into main would conflict in 2 files.", "Squashed into main as 4e1b9c2." and "Merge refused. ~/Projects/shop has uncommitted changes."
+- **Sidebar and tabs.** A local workspace's row uses the branch glyph in the band's tone (green ready, grey behind, red conflicts and refused, a spinner while merging) and the violet merged glyph once merged. It never shows the PR glyph. The tabs stay as they are, and Checks reads "No checks reported", as it does for a PR with none. With the panel hidden, the capsule holds the same pill, word and button, as `PrReadyHidden` draws for a PR.
+- **Room setup.** `RoomSetupGitHub` and `RoomSetupLocal` are drawn in `design/canvas/`. They add a "Code host" step after the first step (Clone, or Use your folder) and before the worktree folder. GitHub reads "GitHub, cjjutba/client-c", the owner and repo from the remote. Local reads "Local, no GitHub remote. Kernel merges branches on this Mac." It is a normal check row: a spinner while Kernel reads the remote, a check once it knows. A GitHub room keeps "Check push access" before Seat agents, as `RoomSetup` draws it. A Local room has no remote to push to, so it has no such row. `RoomSetup`, `RoomSetupTeam` and the other room setup screens are not redrawn and gain the Code host row when it is built.
 
 ## Not built
 

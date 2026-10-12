@@ -232,6 +232,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'scripts.replay': async () => ok,
+    'scripts.skipSetup': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
@@ -338,7 +339,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'env.set': async () => ok,
     'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
-    'mcp.list': async () => f.mcp ?? [],
+    'mcp.list': async ({ provider = 'claude' }) => (f.mcp ?? []).filter((m) => (m.provider ?? 'claude') === provider),
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
     'update.get': async () => update,

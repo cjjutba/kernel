@@ -485,7 +485,7 @@
       "radius": 12,
       "title": "Setting up a room with two warnings",
       "w": 1440,
-      "x": 16720,
+      "x": 19760,
       "y": 1300
     },
     "Rooms.dc.html": {
@@ -557,7 +557,7 @@
       "radius": 12,
       "title": "Room \u00b7 Files to copy \u00b7 production warning",
       "w": 1440,
-      "x": 33440,
+      "x": 34960,
       "y": 20800
     },
     "SettingsGit.dc.html": {
@@ -638,7 +638,7 @@
       "radius": 12,
       "title": "Room \u00b7 General \u00b7 measuring disk",
       "w": 1440,
-      "x": 31920,
+      "x": 33440,
       "y": 20800
     },
     "SettingsRoomGit.dc.html": {
@@ -656,7 +656,7 @@
       "radius": 12,
       "title": "Room \u00b7 Git \u00b7 push check failed",
       "w": 1440,
-      "x": 28880,
+      "x": 30400,
       "y": 20800
     },
     "SettingsRoomGitUnreachable.dc.html": {
@@ -665,7 +665,7 @@
       "radius": 12,
       "title": "Room \u00b7 Git \u00b7 remote unreachable",
       "w": 1440,
-      "x": 30400,
+      "x": 31920,
       "y": 20800
     },
     "SettingsRoomScripts.dc.html": {
@@ -737,7 +737,7 @@
       "radius": 12,
       "title": "Using Bedrock from your shell",
       "w": 1440,
-      "x": 15200,
+      "x": 18240,
       "y": 1300
     },
     "SetupClaudeMissing.dc.html": {
@@ -764,7 +764,7 @@
       "radius": 12,
       "title": "GitHub CLI login from the keyring",
       "w": 1440,
-      "x": 10640,
+      "x": 13680,
       "y": 1300
     },
     "SetupGhSignedOut.dc.html": {
@@ -782,7 +782,7 @@
       "radius": 12,
       "title": "GitHub CLI login from GH_TOKEN",
       "w": 1440,
-      "x": 12160,
+      "x": 15200,
       "y": 1300
     },
     "SetupPortBusy.dc.html": {
@@ -800,7 +800,7 @@
       "radius": 12,
       "title": "Reading your shell timed out",
       "w": 1440,
-      "x": 13680,
+      "x": 16720,
       "y": 1300
     },
     "SidebarRoomMenu.dc.html": {
@@ -1712,6 +1712,22 @@
       "x": 9120,
       "y": 1300
     },
+    "RoomSetupGitHub.dc.html": {
+      "h": 900,
+      "radius": 12,
+      "title": "Setting up a room on GitHub, code host shown",
+      "w": 1440,
+      "x": 21280,
+      "y": 1300
+    },
+    "RoomSetupLocal.dc.html": {
+      "h": 900,
+      "radius": 12,
+      "title": "Setting up a room with no GitHub remote, code host shown",
+      "w": 1440,
+      "x": 22800,
+      "y": 1300
+    },
     "SettingsPrivacy.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1784,67 +1800,94 @@
       "x": 13680,
       "y": 15600
     },
-    "IssuesGitHub.dc.html": {
+    "TeamWarnings.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Issues \u00b7 GitHub Issues",
+      "title": "Team \u00b7 servers an agent can't reach and files Kernel can't read",
       "w": 1440,
       "x": 0,
       "y": 27300
     },
-    "IssuesNoTracker.dc.html": {
+    "TeamPersonal.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Issues \u00b7 room with no tracker",
+      "title": "Team \u00b7 Personal agents and what Kernel allows on top of a file",
       "w": 1440,
       "x": 1520,
       "y": 27300
     },
-    "SettingsRoomTracker.dc.html": {
+    "AgentProfileServers.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Room \u00b7 General \u00b7 issue tracker picker",
+      "title": "Agent profile \u00b7 servers and what you allowed",
       "w": 1440,
       "x": 3040,
       "y": 27300
     },
-    "SettingsRoomTrackerNone.dc.html": {
+    "AgentProfileScope.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Room \u00b7 General \u00b7 no tracker",
+      "title": "Agent profile \u00b7 saving a change, for me or for the team",
       "w": 1440,
       "x": 4560,
       "y": 27300
     },
-    "NewWorkspaceFromGitHub.dc.html": {
+    "ConfirmRetireScope.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Start from \u00b7 GitHub issues",
+      "title": "Retire an agent \u00b7 for me or for the team",
       "w": 1440,
       "x": 6080,
       "y": 27300
     },
-    "NewWorkspaceFromNone.dc.html": {
+    "NewAgentDraftScope.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Start from \u00b7 room with no tracker",
+      "title": "New agent \u00b7 Review the file, with servers and who gets it",
       "w": 1440,
       "x": 7600,
       "y": 27300
     },
-    "ConfirmIssueTaken.dc.html": {
+    "WorkspaceToolsGate.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Someone is already on the issue",
+      "title": "Tools gate \u00b7 allow once, allow here or keep blocked",
       "w": 1440,
       "x": 9120,
+      "y": 27300
+    },
+    "WorkspaceHireServers.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Chat with Rowan \u00b7 hiring an agent, with servers and who gets it",
+      "w": 1440,
+      "x": 10640,
+      "y": 27300
+    },
+    "RoomSetupRoster.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a room with many agents \u00b7 pick the roster",
+      "w": 1440,
+      "x": 12160,
+      "y": 27300
+    },
+    "RoomSetupConflicts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a room \u00b7 repo rules that fight Kernel",
+      "w": 1440,
+      "x": 13680,
       "y": 27300
     },
     "SetupPermissions.dc.html": {
@@ -1918,6 +1961,69 @@
       "w": 1440,
       "x": 28880,
       "y": 20800
+    },
+    "IssuesGitHub.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 GitHub Issues",
+      "w": 1440,
+      "x": 0,
+      "y": 28600
+    },
+    "IssuesNoTracker.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 room with no tracker",
+      "w": 1440,
+      "x": 1520,
+      "y": 28600
+    },
+    "SettingsRoomTracker.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 issue tracker picker",
+      "w": 1440,
+      "x": 3040,
+      "y": 28600
+    },
+    "SettingsRoomTrackerNone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 no tracker",
+      "w": 1440,
+      "x": 4560,
+      "y": 28600
+    },
+    "NewWorkspaceFromGitHub.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Start from \u00b7 GitHub issues",
+      "w": 1440,
+      "x": 6080,
+      "y": 28600
+    },
+    "NewWorkspaceFromNone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Start from \u00b7 room with no tracker",
+      "w": 1440,
+      "x": 7600,
+      "y": 28600
+    },
+    "ConfirmIssueTaken.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Someone is already on the issue",
+      "w": 1440,
+      "x": 9120,
+      "y": 28600
     }
   },
   "createdOnFiles": {
@@ -2099,11 +2205,19 @@
     },
     "row21": {
       "kind": "title1",
-      "maxW": 10560,
-      "text": "22 \u00b7 Issue trackers",
+      "maxW": 8000,
+      "text": "22 \u00b7 Agent capabilities, servers and rules",
       "w": 600,
       "x": 0,
       "y": 27000
+    },
+    "row22": {
+      "kind": "title1",
+      "maxW": 10560,
+      "text": "23 \u00b7 Issue trackers",
+      "w": 600,
+      "x": 0,
+      "y": 28300
     }
   },
   "order": [
@@ -2128,6 +2242,8 @@
     "SetupBedrock.dc.html",
     "RoomSetup.dc.html",
     "RoomSetupTeam.dc.html",
+    "RoomSetupGitHub.dc.html",
+    "RoomSetupLocal.dc.html",
     "RoomSetupWarnings.dc.html",
     "SetupPermissions.dc.html",
     "SetupPermissionsNoAuto.dc.html",
@@ -2312,6 +2428,16 @@
     "GroupedCloseLastTabAfter.dc.html",
     "GroupedAskRowan.dc.html",
     "GroupedPalette.dc.html",
+    "TeamWarnings.dc.html",
+    "TeamPersonal.dc.html",
+    "AgentProfileServers.dc.html",
+    "AgentProfileScope.dc.html",
+    "ConfirmRetireScope.dc.html",
+    "NewAgentDraftScope.dc.html",
+    "WorkspaceToolsGate.dc.html",
+    "WorkspaceHireServers.dc.html",
+    "RoomSetupRoster.dc.html",
+    "RoomSetupConflicts.dc.html",
     "IssuesGitHub.dc.html",
     "IssuesNoTracker.dc.html",
     "SettingsRoomTracker.dc.html",
