@@ -116,8 +116,9 @@ export async function defaultBranch(repo: string, remote = 'origin'): Promise<st
  * Reads the refs as they are, without fetching.
  */
 export async function leadBase(repo: string, remote = 'origin'): Promise<string | undefined> {
-  if (!(await refExists(repo, 'HEAD'))) return undefined
-  const d = await defaultBranch(repo, remote)
+  // Both at once: New chat's Create waits for this (KERNEL-542). A folder with no commit can't name its branch either.
+  const [head, d] = await Promise.all([refExists(repo, 'HEAD'), defaultBranch(repo, remote).catch(() => undefined)])
+  if (!head || !d) return undefined
   if (await refExists(repo, `${remote}/${d}`)) return `${remote}/${d}`
   return await refExists(repo, d) ? d : undefined
 }
@@ -138,13 +139,20 @@ export function fetchOrigin(repo: string, remote = 'origin', o: { fresh?: boolea
   const key = `${repo}\n${remote}`
   const running = fetching.get(key)
   if (running && !o.fresh) return running
+  // One that passed in the last minute is reused, as New chat's fetch on open is by Create (KERNEL-542).
+  if (!running && !o.fresh && Date.now() - (fetchedOk.get(key) ?? -Infinity) < FETCH_REUSE_MS) return Promise.resolve({ ok: true })
   const next: Promise<Fetched> = (running ?? Promise.resolve()).catch(() => undefined).then(() => fetchNow(repo, remote))
+    .then((r) => { if (r.ok) fetchedOk.set(key, Date.now()); return r })
     .finally(() => { if (fetching.get(key) === next) fetching.delete(key) })
   fetching.set(key, next)
   return next
 }
 type Fetched = { ok: true } | { ok: false; error: string; lastFetch?: number }
 const fetching = new Map<string, Promise<Fetched>>()
+/** When each repo and remote's last fetch that passed finished. */
+const fetchedOk = new Map<string, number>()
+/** How long a fetch that passed is reused by a caller that isn't `fresh`. */
+export const FETCH_REUSE_MS = 60_000
 
 async function fetchNow(repo: string, remote: string): Promise<Fetched> {
   const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
@@ -226,12 +234,13 @@ async function refState(repo: string, ref: string): Promise<'exists' | 'missing'
 
 /**
  * Pick a branch name that does not exist yet by appending -2, -3... A name `<remote>/<name>` has, as of the last fetch, is
- * taken too, so Kernel never picks a branch someone else already pushed (KERNEL-479). Throws when git can't say whether a
- * name is taken.
+ * taken too, so Kernel never picks a branch someone else already pushed (KERNEL-479), and so is a name in `taken`, which a
+ * chat with Rowan holds before git makes it (KERNEL-542). Throws when git can't say whether a name is taken.
  */
-export async function freeBranch(repo: string, wanted: string, remote = 'origin'): Promise<string> {
+export async function freeBranch(repo: string, wanted: string, remote = 'origin', taken?: ReadonlySet<string>): Promise<string> {
   for (let i = 1; ; i++) {
     const name = i === 1 ? wanted : `${wanted}-${i}`
+    if (taken?.has(name)) continue
     const local = await branchState(repo, name)
     const state = local === 'missing' ? await refState(repo, `refs/remotes/${remote}/${name}`) : local
     if (state === 'missing') return name
@@ -266,15 +275,17 @@ export const worktreeFolder = (branch: string) => slugify(branch.replace(/\//g, 
 /**
  * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
  * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
- * otherwise get the same folder (KERNEL-267).
+ * otherwise get the same folder (KERNEL-267). A folder in `taken` is held by a chat with Rowan whose worktree isn't made
+ * yet (KERNEL-542).
  */
-export async function freeWorktreePath(repo: string, root: string, branch: string): Promise<string> {
+export async function freeWorktreePath(repo: string, root: string, branch: string, taken?: ReadonlySet<string>): Promise<string> {
   const stem = branch.replace(/\//g, '-')
   const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
   // git may list a worktree by its real path (/private/var/... for /var/... on macOS).
   const real = await realpath(root)
   for (let i = 1; ; i++) {
     const name = i === 1 ? worktreeFolder(branch) : `${slugify(stem, FOLDER_MAX - `-${i}`.length)}-${i}`
+    if (taken?.has(join(root, name))) continue
     if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
   }
 }

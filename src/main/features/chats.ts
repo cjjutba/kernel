@@ -277,6 +277,9 @@ export class Chats extends Feature {
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
+    // A chat with Rowan's folder isn't there until its worktree is made. The shell starts on the first keystroke or resize after (KERNEL-542).
+    const wsId = id.startsWith('shell:') ? id.slice('shell:'.length) : this.store.chat(id)?.workspaceId
+    if (wsId && this.store.workspace(wsId)?.worktreePending) return
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })
   }
 

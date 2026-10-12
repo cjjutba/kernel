@@ -5,6 +5,7 @@ import type { Handlers } from '../kernel'
 import { exec } from '../services/exec'
 import { terminalScript } from '../services/health'
 import { defaultApp, defaultEditor, findApps, launch, mustBeInside, OPEN_APPS, type FoundApp, type OpenAppsSystem } from '../services/openApps'
+import { insideRoots } from '../windowGuard'
 import { Feature } from './feature'
 
 /** What the app shell asks Kernel for: updates, Terminal.app, the log export (KERNEL-325) and Open in (KERNEL-427). */
@@ -47,6 +48,8 @@ export class App extends Feature {
    */
   private async openIn(path: string, id?: string) {
     mustBeInside(path, [...this.store.rooms(), ...this.store.workspaces()].map((x) => x.path))
+    // A chat with Rowan has no folder until its worktree is made (KERNEL-542).
+    if (this.store.workspaces().some((w) => w.worktreePending && insideRoots(path, [w.path]))) throw new Error("This chat's worktree isn't made yet.")
     const found = await (this.found ??= findApps(this.system, this.home))
     const saved = this.settings.general.openIn
     let to: FoundApp | undefined

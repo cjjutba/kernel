@@ -62,11 +62,17 @@ export class Setup extends Feature {
    */
   readonly fresh = new Set<string>()
 
-  /** "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. */
+  /**
+   * "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. A chat with Rowan whose
+   * worktree git wouldn't make, or a quit cut short, makes it first, then sets up as a new chat does (KERNEL-542).
+   */
   async retrySetup(workspaceId: string): Promise<Workspace> {
     if (this.settingUp.has(workspaceId)) return this.mustWs(workspaceId)
     this.settingUp.add(workspaceId)
-    try { return await this.rerunSetup(workspaceId) } finally { this.settingUp.delete(workspaceId) }
+    try {
+      if (this.mustWs(workspaceId).worktreePending) return await this.k.lead.buildChat(workspaceId)
+      return await this.rerunSetup(workspaceId)
+    } finally { this.settingUp.delete(workspaceId) }
   }
 
   private async rerunSetup(workspaceId: string): Promise<Workspace> {
@@ -92,7 +98,9 @@ export class Setup extends Feature {
    * waited for setup goes out (KERNEL-430). The Lead hears it as setup passing.
    */
   async skipSetup(workspaceId: string): Promise<Workspace> {
-    if (this.settingUp.has(workspaceId) || this.mustWs(workspaceId).status !== 'failed') return this.mustWs(workspaceId)
+    // With no worktree there is nowhere to send to, so only Run again goes on (KERNEL-542).
+    const ws = this.mustWs(workspaceId)
+    if (this.settingUp.has(workspaceId) || ws.status !== 'failed' || ws.worktreePending) return ws
     this.settingUp.add(workspaceId)
     try {
       this.setupFailures.delete(workspaceId)
@@ -272,7 +280,8 @@ export class Setup extends Feature {
   /**
    * A workspace still in setup when Kernel quit has no script running any more (KERNEL-128). It counts as failed, with a
    * note saying why, and its brief, and whatever the Lead sent after it, wait in the chat for Run again. So does one whose
-   * setup had just passed when Kernel quit, before its brief went out.
+   * setup had just passed when Kernel quit, before its brief went out. A chat with Rowan whose worktree wasn't made yet says
+   * that in `worktreePending` instead, and Run again makes it (KERNEL-542).
    */
   recoverSetups() {
     const saved = this.store.meta<Record<string, SetupHold>>('setups') ?? {}
@@ -286,6 +295,7 @@ export class Setup extends Feature {
       // A forked workspace has no brief, and its chat still waits for Run again (KERNEL-346).
       else if (chat) this.sessions.hold(chat.id)
       if (chat) for (const m of hold?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
+      if (ws.worktreePending) { this.updateWs(ws.id, { status: 'failed', worktreePending: { error: 'Kernel quit before it made the worktree.' } }); continue }
       this.updateWs(ws.id, { status: 'failed' })
       this.note(ws.id, 'Setup stopped when Kernel quit. Click Run again.')
     }
@@ -296,7 +306,14 @@ export class Setup extends Feature {
   handlers() {
     return {
       'scripts.run': async ({ workspaceId, kind, name }) => {
-        const ws = this.mustWs(workspaceId); const room = this.mustRoom(ws.roomId); const repo = await loadRepoSettings(room.path)
+        const ws = this.mustWs(workspaceId)
+        // A chat with Rowan has no folder to run in until its worktree is made. Run again on one that failed makes it (KERNEL-542).
+        if (ws.worktreePending) {
+          if (kind !== 'setup' || ws.status !== 'failed') throw new Error("This chat's worktree isn't made yet.")
+          void this.retrySetup(workspaceId).catch(() => undefined)
+          return { ok: true }
+        }
+        const room = this.mustRoom(ws.roomId); const repo = await loadRepoSettings(room.path)
         const script = kind === 'run' ? undefined : repo.scripts[kind]
         if (kind !== 'run' && !script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
         // Run again checks trust itself, and holds the workspace for it when the text changed.

@@ -734,7 +734,8 @@ describe('Ask Rowan (KERNEL-145)', () => {
     const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
     expect(brief.id).not.toBe(drafting.id)
     expect(brief.workspaceId).not.toBe(icons.workspaceId)
-    expect(sent.at(-1)).toMatchObject({ chatId: brief.id, text: 'Add PDF export' })
+    // It waits in the new chat's own queue until the chat's worktree exists (KERNEL-542).
+    expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
     await setUp(k, brief.id)
   })

@@ -443,15 +443,16 @@ describe('Linear in the kernel', () => {
     const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', roomId: room.id })
     const chat = k.store.chat(out.chatId)!
     expect(out.chatId).not.toBe(before.id)
-    // A chat of its own has a workspace of its own (KERNEL-405), and its brief goes at once (KERNEL-490).
+    // A chat of its own has a workspace of its own (KERNEL-405), and its brief waits only for the chat's worktree (KERNEL-490, KERNEL-542).
     expect(out.workspaceId).not.toBe(before.workspaceId)
     expect(chat.plan).toBe(true)
     // In a Lead chat of its own (KERNEL-337).
     expect(chat.threadId).toBeTruthy()
     expect(chat.threadId).not.toBe(before.threadId)
-    expect(sent).toHaveLength(1)
-    expect(sent[0].chatId).toBe(out.chatId)
-    const [chip, words] = sent[0].parts
+    expect(sent).toEqual([])
+    const waiting = k.sessions.queued(out.chatId)
+    expect(waiting).toHaveLength(1)
+    const [chip, words] = waiting[0].parts
     expect(chip).toEqual({ type: 'issue', name: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', source: 'linear' })
     expect(words.type === 'text' && words.text).toBe(`${detail.description}\n\nWhen you hand it off, pass KERNEL-83 as issue to create_workspace.`)
   })

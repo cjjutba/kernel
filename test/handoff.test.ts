@@ -55,6 +55,8 @@ async function realLead() {
   await k.start()
   const room = await k.addRoom(repo)
   const chat = await k.leadChat(room.id)
+  // The plan file goes in the chat's worktree, which Kernel makes after the chat starts (KERNEL-542).
+  await k.workspaces.worktreeMade(chat.workspaceId)
   const lead = (await k.agents(room.id)).find((a) => a.lead)!
   const deps = k.lead.leadToolDeps(room.id, lead, chat)
   const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!

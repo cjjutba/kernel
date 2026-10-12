@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { setUp, tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { PORT_BLOCK, type ActivityEvent } from '../src/shared/types'
+import { PORT_BLOCK, type ActivityEvent, type ChatPart } from '../src/shared/types'
 
 // A chat with Rowan's first message waits for setup, and goes out through the real send when setup passes (KERNEL-405), so no
 // Claude Code process may start here.
@@ -100,17 +100,14 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const leadless = await tempRepo({ 'README.md': '# solo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    // The first message goes at once, while setup runs (KERNEL-405).
+    // The first message goes once the chat's worktree exists, while setup runs (KERNEL-405, KERNEL-542).
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    // A real send writes the user's message into the chat, which is what makes the chat used.
-    const sent: { chatId: string; text: string }[] = []
-    k.sessions.send = async (chatId, parts) => {
-      sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join('') })
-      k.store.saveItem(chatId, { kind: 'user', id: `u${sent.length}`, ts: Date.now(), parts })
-      return { queued: false }
-    }
+    // What waits in a chat's queue, and what it sent, as text.
+    const text = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.text : '')).join('')
+    const waiting = (chatId: string) => k.sessions.queued(chatId).map((q) => text(q.parts))
+    const said = (chatId: string) => k.store.items(chatId).flatMap((i) => (i.kind === 'user' ? [text(i.parts)] : []))
     const pushed: string[] = []
     const onPush = (e: { type: string; chat?: { id: string } }) => { if (e.type === 'chat' && e.chat) pushed.push(e.chat.id) }
     bus.on('push', onPush)
@@ -129,7 +126,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(ws).toMatchObject({ agentId: 'rowan', mode: 'worktree', branch: 'rowan/add-pdf-export-to-invoices', lead: true, threadId: first.threadId })
     expect(chats(ws.id)).toHaveLength(1)
     expect(first).toMatchObject({ title: 'New tab', kind: 'chat', model: 'claude-opus-5-5', effort: 'medium', plan: true })
-    expect(sent).toEqual([{ chatId: first.id, text: 'Add PDF export to invoices' }])
+    expect(waiting(first.id)).toEqual(['Add PDF export to invoices'])
     expect(pushed).toContain(first.id)
 
     // A second call is a second chat, with its own workspace, branch and ports, and the request's model, effort and plan win.
@@ -140,7 +137,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(Math.abs(other.port - ws.port)).toBeGreaterThanOrEqual(PORT_BLOCK)
     expect(second.threadId).not.toBe(first.threadId)
     expect(k.store.chat(second.id)).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low', plan: false })
-    expect(sent[1]).toEqual({ chatId: second.id, text: 'Look at the flaky test' })
+    expect(waiting(second.id)).toEqual(['Look at the flaky test'])
 
     // A tab nobody used yet is left alone, since its composer may hold a draft. The brief starts a chat of its own (KERNEL-242).
     const blank = await k.handlers()['chats.create']({ workspaceId: ws.id })
@@ -150,8 +147,10 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(chats(ws.id).map((c) => c.id)).toEqual([first.id, blank.id])
     expect(k.store.chat(third.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh', plan: true })
     expect(k.store.chat(blank.id)).toEqual(blank)
-    expect(sent[2]).toEqual({ chatId: third.id, text: 'Plan the export' })
+    expect(waiting(third.id)).toEqual(['Plan the export'])
     for (const id of [ws.id, other.id, third.workspaceId]) await setUp(k, id)
+    expect([first, second, third].map((c) => said(c.id))).toEqual([['Add PDF export to invoices'], ['Look at the flaky test'], ['Plan the export']])
+    expect(said(blank.id)).toEqual([])
     bus.off('push', onPush)
     await k.stop()
   })
@@ -184,13 +183,13 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    k.sessions.send = async (chatId, parts) => { k.store.saveItem(chatId, { kind: 'user', id: 'u1', ts: Date.now(), parts }); return { queued: false } }
     const room = await k.addRoom(repo)
     expect(k.store.workspaces(room.id)).toEqual([])
 
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
-    // The brief goes at once, while setup runs (KERNEL-490).
-    expect(k.store.items(chat.id).map((i) => i.kind === 'user' && i.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
+    // The brief waits for the chat's worktree, then goes while setup runs (KERNEL-490, KERNEL-542).
+    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
+    await vi.waitFor(() => expect(k.store.items(chat.id).map((i) => i.kind === 'user' && i.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]]))
     // The modal then lands on the chat through lead.open, which must find the brief's tab rather than add a "Lead" one.
     const ws = (await k.handlers()['lead.open']({ roomId: room.id }))!
     expect(ws.id).toBe(chat.workspaceId)

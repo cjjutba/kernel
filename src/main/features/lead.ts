@@ -96,11 +96,13 @@ export class Lead extends Feature {
   newestChatWorkspace(roomId: string): Workspace | undefined { return this.chatWorkspaces(roomId).at(-1) }
 
   /**
-   * A new chat with Rowan in its own workspace (KERNEL-405): the chat, a worktree on its own branch from the latest
-   * `<remote>/<default>` after a fetch, or from `baseRef`, and its first tab. The first message goes at once while setup runs.
-   * With "Wait for setup" on, it waits in the tab's queue until files.copy and setup pass, but only for a setup script that runs
-   * on create: with none there is nothing to wait for (KERNEL-490). Returns at once with the tab, and setup runs on its own, like
-   * a fork's. A room with no commit keeps Rowan on the checkout with no setup, as before KERNEL-355.
+   * A new chat with Rowan in its own workspace (KERNEL-405): the chat, its first tab, and a workspace with its branch and folder
+   * picked. It returns then, before the network and git, and `buildChat` fetches, makes the worktree from the latest
+   * `<remote>/<default>` or from `baseRef`, and runs setup (KERNEL-542). The first message waits in the tab's queue until the
+   * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
+   * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
+   * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps Rowan on the
+   * checkout with no setup, as before KERNEL-355.
    */
   async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
@@ -109,9 +111,8 @@ export class Lead extends Feature {
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
-    try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id } }) }
+    try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
-    const { room, repo } = cut
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = cut.ws.mode === 'worktree' ? this.updateWs(cut.ws.id, { naming: 'branch' }) : cut.ws
     const chat = this.saveChat(cut.chat)
@@ -122,22 +123,52 @@ export class Lead extends Feature {
       if (parts.length) await this.sessions.send(chat.id, parts)
       return chat
     }
-    const wait = cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
-    if (wait) this.sessions.hold(chat.id, parts.length ? parts : undefined)
-    else if (parts.length) await this.sessions.send(chat.id, parts)
-    void this.k.workspaces.setUpWorkspace(ws, room, repo, chat).then((done) => {
-      if (this.stopped) return
-      // A message that went at once started Rowan before setup handed over its variables. Its sessions end once idle, and the
-      // next message resumes each with them, as after a folder move (KERNEL-490).
-      if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
-      this.leadUpdates.flush(roomId)
-    }, (e) => {
+    this.sessions.hold(chat.id, parts.length ? parts : undefined)
+    void this.buildChat(ws.id).catch((e) => {
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return
       console.warn(`[lead] setting up ${ws.name} failed`, e)
       if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
     })
     return chat
+  }
+
+  /**
+   * What a new chat with Rowan does after `lead.start` answers (KERNEL-542): the worktree first (`Workspaces.makeWorktree`),
+   * then its tabs, held until now, go, unless "Wait for setup" holds them through setup (KERNEL-490), then setup. A worktree git
+   * won't make leaves the workspace failed with the tabs still held, and Run again comes back here.
+   */
+  async buildChat(id: string): Promise<Workspace> {
+    const ws = await this.k.workspaces.makeWorktree(id)
+    // An archive waits for the worktree, then removes it, so nothing starts in it meanwhile.
+    const gone = () => this.stopped || this.k.archive.archivingNow(id)
+    if (gone() || ws.worktreePending || ws.status !== 'setup') return ws
+    const room = this.mustRoom(ws.roomId)
+    const repo = await loadRepoSettings(room.path)
+    const chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+    if (!chat || gone()) return this.mustWs(id)
+    const wait = cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
+    if (!wait) {
+      this.k.setup.releaseTabs(ws.id, chat.id)
+      // A Team update that started this chat goes now, not after setup.
+      this.leadUpdates.flush(ws.roomId)
+    }
+    const done = await this.k.workspaces.setUpWorkspace(ws, room, repo, chat)
+    if (this.stopped) return done
+    // A message that went before setup started Rowan before setup handed over its variables. Its sessions end once idle, and
+    // the next message resumes each with them, as after a folder move (KERNEL-490).
+    if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
+    this.leadUpdates.flush(ws.roomId)
+    return done
+  }
+
+  /** Fetches the room's remote without waiting, so the fetch Create needs is done or under way by then (KERNEL-542). */
+  prefetch(roomId: string) {
+    const room = this.store.room(roomId)
+    if (!room) return
+    void this.k.config.remoteFor(room.path).then(async (remote) => {
+      if ((await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0) await fetchOrigin(room.path, remote)
+    }).catch(() => undefined)
   }
 
   /** Syncs of each chat's worktree, by workspace, so two never run git in it at once. */
@@ -185,7 +216,7 @@ export class Lead extends Feature {
   private async moveNow(id: string) {
     const ws = this.k.stopped ? undefined : this.store.workspace(id)
     const room = ws && this.store.room(ws.roomId)
-    if (!ws || !room || ws.naming !== 'folder' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || this.folderBusy(id)) return
+    if (!ws || !room || ws.naming !== 'folder' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending || this.folderBusy(id)) return
     const root = roomWorktreeRoot(this.settings.worktreeRoot, room)
     if (join(root, worktreeFolder(ws.branch)) === ws.path) { this.updateWs(id, { naming: undefined }); return }
     const held: string[] = []
@@ -195,7 +226,7 @@ export class Lead extends Feature {
       // room's lock (KERNEL-231).
       await this.k.workspaces.withBranchLock(room.id, async () => {
         await mkdir(root, { recursive: true })
-        const to = await freeWorktreePath(room.path, root, ws.branch)
+        const to = await freeWorktreePath(room.path, root, ws.branch, this.k.workspaces.pendingNames(room.id).paths)
         // Read again after each wait: a turn may have started, or the chat been archived.
         const now = this.k.stopped ? undefined : this.store.workspace(id)
         if (!now || now.path !== ws.path || now.naming !== 'folder' || now.status !== 'ready' || this.folderBusy(id)) return
@@ -230,8 +261,8 @@ export class Lead extends Feature {
     const ws = this.store.workspace(id)
     const room = ws && this.store.room(ws.roomId)
     const lead = ws && this.agentsSync(ws.roomId).find((a) => a.lead)
-    // A chat still setting up, or one whose setup failed, isn't moved under its setup.
-    if (!ws || !room || room.archived || !lead || !ws.lead || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone) return
+    // A chat still setting up, or one whose setup failed, isn't moved under its setup. One with no worktree yet has nothing to move.
+    if (!ws || !room || room.archived || !lead || !ws.lead || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
     // Read again after each step that waits on git: a turn can start while git runs, and the files mustn't move under it.
     const held = () => this.k.stopped || this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
     if (held() || await folderGone(ws.path).catch(() => true)) return
@@ -413,8 +444,10 @@ export class Lead extends Feature {
    */
   nameChatBranch(id: string, title: string): Promise<void> {
     const next = (this.renaming.get(id) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      // git renames the branch once it has made it. A worktree it couldn't make keeps the name for a later title (KERNEL-542).
+      await this.k.workspaces.worktreeMade(id)
       const ws = this.store.workspace(id)
-      if (!ws || this.stopped || ws.naming !== 'branch' || ws.status === 'archived') return
+      if (!ws || this.stopped || ws.naming !== 'branch' || ws.status === 'archived' || ws.worktreePending) return
       if (ws.mode !== 'worktree' || ws.branch === 'HEAD' || ws.prNumber || ws.prState !== 'none') { this.updateWs(id, { naming: undefined }); return }
       const room = this.mustRoom(ws.roomId)
       const repo = await loadRepoSettings(room.path)
@@ -428,7 +461,7 @@ export class Lead extends Feature {
       if (pushed) { this.updateWs(id, { naming: undefined }); return }
       // Two chats with Rowan named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
       const to = wanted === ws.branch ? wanted : await this.k.workspaces.withBranchLock(room.id, async () => {
-        const free = await freeBranch(room.path, wanted, remote)
+        const free = await freeBranch(room.path, wanted, remote, this.k.workspaces.pendingNames(room.id).branches)
         if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
         await renameBranch(ws.path, free)
         return free
@@ -724,7 +757,8 @@ export class Lead extends Feature {
       const pr = w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? w.prNumber : undefined
       const base = { id: w.id, name: w.name, own: !!w.lead, running: this.k.archive.working(w.id), ...(pr ? { pr } : {}) }
       // A current-branch workspace removes no files, and neither does a worktree whose folder is already gone (KERNEL-109).
-      if (w.mode !== 'worktree' || w.folderGone || await folderGone(w.path).catch(() => false)) return { ...base, dirty: 0, unpushed: 0 }
+      // Nor does one whose worktree isn't made yet (KERNEL-542).
+      if (w.mode !== 'worktree' || w.folderGone || w.worktreePending || await folderGone(w.path).catch(() => false)) return { ...base, dirty: 0, unpushed: 0 }
       try {
         const git = await gitStatus(w.path, w.branch, w.baseRef, await this.k.config.remoteOfWs(w))
         return { ...base, dirty: git.dirty.files, unpushed: git.ahead }
@@ -805,6 +839,7 @@ export class Lead extends Feature {
       // Opening the room shows its newest chat with Rowan, and none when no chat is open: it starts none (KERNEL-365, KERNEL-405).
       'lead.open': async ({ roomId }) => { await this.leadOf(roomId); return this.newestChatWorkspace(roomId) ?? null },
       'lead.start': async ({ roomId, ...o }) => this.newLeadChat(roomId, o),
+      'lead.prefetch': async ({ roomId }) => { this.prefetch(roomId); return { ok: true } },
       'threads.list': async ({ roomId }) => this.store.threads(roomId),
       'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title),
       'threads.archivePreview': async ({ threadId }) => this.archivePreview(threadId),

@@ -67,6 +67,15 @@ export interface Workspace {
    * Unset once both are named, and on chats from before, which keep their branch and folder.
    */
   naming?: 'branch' | 'folder'
+  /**
+   * A new chat with Rowan whose worktree Kernel hasn't made yet (KERNEL-542). `lead.start` answers once the records exist, with
+   * `branch` and `path` picked, and Kernel fetches and makes the worktree after. Nothing reads `path` meanwhile. The branch,
+   * folder and `baseRef` can still change: a name someone took meanwhile gets a suffix, and the base is read again after the
+   * fetch. `error` is why making it failed, git's reason as git says it: the workspace is `failed`, the first message still
+   * waits in the tab's queue, and Run again (`scripts.run` with `setup`) makes the worktree, then runs setup. Unset once the
+   * worktree exists.
+   */
+  worktreePending?: { error?: string }
   /** The worktree's folder was deleted outside Kernel. Checked at launch and when the workspace is opened (KERNEL-291). */
   folderGone?: true
   /** On a review workspace: the workspace whose work it reviews. */
