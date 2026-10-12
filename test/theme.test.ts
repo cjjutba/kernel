@@ -46,8 +46,8 @@ const TIERS = ['ink', 'ink-2', 'ink-3', 'muted']
 const LADDER = [...TIERS, 'faint']
 const STATUS = ['add', 'del', 'mod', 'merged', 'working', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
-// Status colors keep their values (KERNEL-575), and dark del is 4.46:1 on hover. Nothing red shows there but a destructive menu item. Remove this when del moves.
-const BELOW_AA = new Set(['dark del on hover'])
+// Pairs allowed under AA. Empty since KERNEL-611 moved dark del up to pass on hover.
+const BELOW_AA = new Set<string>()
 const GAP = 1.35
 
 type Theme = Record<string, string>
@@ -85,8 +85,13 @@ describe('theme contrast', () => {
     })
     expect(fails).toEqual([])
   })
-  it('the dark neutrals are pure grey, with equal red, green and blue (KERNEL-431)', () => {
-    const lean = Object.entries(dark).filter(([k, v]) => [...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3', 'line-4', 'input-line'].includes(k) && !(v[1] === v[3] && v[3] === v[5] && v[2] === v[4] && v[4] === v[6]))
+  it('the dark neutrals are grey with a slight cool lean: red equals green, blue 0 to 3 above (KERNEL-611)', () => {
+    const rgb = (v: string) => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16))
+    const lean = Object.entries(dark).filter(([k, v]) => {
+      if (![...SURFACES, 'hover', 'aside', ...LADDER, 'line', 'line-2', 'line-3', 'line-4', 'input-line'].includes(k)) return false
+      const [r, g, b] = rgb(v)
+      return r !== g || b - r < 0 || b - r > 3
+    })
     expect(lean).toEqual([])
   })
   it('an input border reaches 3:1 on every surface it sits on, and line-2 stays a hairline', () => {

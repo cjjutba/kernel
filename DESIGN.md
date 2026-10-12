@@ -10,35 +10,35 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 
 | Token | Value | Use |
 |---|---|---|
-| canvas | #070707 | window background |
-| panel | #0f0f0f | main panel |
-| surface | #141414 | inputs, cards |
-| surface-2 | #181818 | menus, modals |
-| surface-3 | #1e1e1e | selected rows, hover fills |
-| hover | #242424 | menu item hover |
-| line | #1c1c1c | dividers |
-| line-2 | #262626 | hairlines on cards, tables and chips |
-| line-3 | #2e2e2e | buttons, menus |
-| input-line | #6a6a6a | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
-| ink | #f5f5f5 | emphasis only: titles, the current row, unread, the primary button |
-| ink-2 | #c8c8c8 | default text: rows, body, the transcript |
-| ink-3 | #aaaaaa | secondary text |
-| muted | #8e8e8e | labels, meta, placeholders |
-| faint | #727272 | icons, disabled, decoration. Never body text |
+| canvas | #09090a | window background and the sidebar |
+| panel | #121213 | main panel |
+| surface | #18181a | inputs, cards |
+| surface-2 | #1d1d1f | menus, modals |
+| surface-3 | #232325 | selected rows, hover fills |
+| hover | #2a2a2c | menu item hover |
+| line | #1f1f21 | dividers |
+| line-2 | #29292b | hairlines on cards, tables and chips |
+| line-3 | #333335 | buttons, menus |
+| input-line | #717174 | input borders, 3:1 on every surface an input sits on (KERNEL-575) |
+| ink | #f7f7f8 | emphasis only: titles, the current row, unread, the primary button |
+| ink-2 | #d6d6d7 | default text: rows, body, the transcript |
+| ink-3 | #b6b6b8 | secondary text |
+| muted | #919194 | labels, meta, placeholders, sidebar and Settings nav rows (KERNEL-611) |
+| faint | #757578 | icons, disabled, decoration. Never body text |
 | add | #4cb782 | diff additions, passing checks |
-| del | #eb5757 | diff deletions, errors, the context ring from 90% |
+| del | #f06363 | diff deletions, errors, the context ring from 90% |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
-| aside | #0b0b0b | the stage behind a shared preview. The workspace's right panel sits on panel, like the chat (KERNEL-526) |
+| aside | #0d0d0e | the stage behind a shared preview. The workspace's right panel sits on panel, like the chat (KERNEL-526) |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
 | pr-merged-* | band #2a2140, line #3c2f5c, soft #372b55, edge #64509c, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-The neutrals are pure grey, with equal red, green and blue, so no surface or text leans blue or violet (KERNEL-431). There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
+The neutrals are grey with a slight cool lean, sampled from Linear: red equals green and blue sits 0 to 3 points above (KERNEL-611, amending KERNEL-431). Nav rows in the sidebar and Settings sit at muted and brighten to ink-2 on hover, so the content area leads. There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
@@ -82,15 +82,15 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 | Role | Token | Dark on panel | Light on panel | Use |
 |---|---|---|---|---|
-| Emphasis | ink | 17.6:1 | 17.6:1 | titles, the current row, unread, the primary button |
-| Default | ink-2 | 11.5:1 | 11.7:1 | rows, body, the transcript |
-| Secondary | ink-3 | 8.3:1 | 8.2:1 | secondary text |
-| Meta | muted | 5.9:1 | 5.8:1 | labels, meta, placeholders |
-| Decoration | faint | 4.0:1 | 4.0:1 | icons, disabled, decoration. Never body text |
+| Emphasis | ink | 17.5:1 | 17.6:1 | titles, the current row, unread, the primary button |
+| Default | ink-2 | 12.9:1 | 11.7:1 | rows, body, the transcript |
+| Secondary | ink-3 | 9.3:1 | 8.2:1 | secondary text |
+| Meta | muted | 6.0:1 | 5.8:1 | labels, meta, placeholders |
+| Decoration | faint | 4.1:1 | 4.0:1 | icons, disabled, decoration. Never body text |
 
 - Each tier has at least 1.35x the contrast of the next, so emphasis, default and meta read as three steps and not one.
 - ink, ink-2, ink-3, muted and the status text colors reach 4.5:1 on every surface, hover and surface-3 included. Faint is not text and reaches 3:1.
-- Light text keeps the slight cool cast it had, which matches the light surfaces. Only the dark neutrals are pure grey (KERNEL-431).
+- Light text keeps the slight cool cast it had, which matches the light surfaces. The dark neutrals lean cool too, by at most 3 points of blue (KERNEL-611).
 - Token values win over the PNGs in `design/screens/` on text color: the PNGs still draw the old greys. The PNGs stay the spec for layout and copy.
 
 ## Type
