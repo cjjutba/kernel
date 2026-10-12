@@ -1,6 +1,6 @@
 import { access, mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import type { Approval } from '@shared/types'
+import { join, relative } from 'node:path'
+import type { Approval, ChatPart } from '@shared/types'
 import { excludeFromGit } from './settings'
 
 /**
@@ -55,6 +55,7 @@ export function revisedPlanFile(approvals: Approval[], chatId: string): string |
 /**
  * Images sent with a plan's change request (D-134). A denial carries text only, so each image is saved to
  * `.kernel/attachments/` in the workspace, out of git like the plans, and the message names its path for the agent to Read.
+ * A chat message's images go there too, so the agent opens each one as a step of its own (KERNEL-545).
  */
 export const ATTACHMENTS_DIR = '.kernel/attachments'
 
@@ -92,3 +93,32 @@ export async function saveAttachments(root: string, images: { name: string; data
 /** The change request with a line per saved image after what the user typed. */
 export const attachmentNote = (message: string | undefined, paths: string[]) =>
   [message?.trim(), paths.map((p) => `Attached image: ${p}. Read it before revising the plan.`).join('\n')].filter(Boolean).join('\n\n')
+
+type ImagePart = ChatPart & { type: 'image' }
+
+/** A chat image Kernel can save that has no file yet. */
+const unsaved = (p: ChatPart): p is ImagePart & { dataUrl: string } => p.type === 'image' && !p.path && !!p.dataUrl && IMAGE_DATA_URL.test(p.dataUrl)
+
+export const hasUnsavedImages = (parts: ChatPart[]) => parts.some(unsaved)
+
+/**
+ * A chat message with its images saved to `.kernel/attachments/`, each image's `path` relative to `root`, so the agent opens
+ * them as files (KERNEL-545). Images that already have a path keep it. When saving fails the parts come back as they were,
+ * and the images go inline as before.
+ */
+export async function withImageFiles(root: string, parts: ChatPart[]): Promise<ChatPart[]> {
+  const images = parts.filter(unsaved)
+  if (!images.length) return parts
+  const paths = await saveAttachments(root, images).catch(() => undefined)
+  if (!paths) return parts
+  const saved = new Map<ChatPart, string>(images.map((image, i) => [image, relative(root, paths[i])]))
+  return parts.map((p) => (p.type === 'image' && saved.has(p) ? { ...p, path: saved.get(p) } : p))
+}
+
+/** Where a saved image sat in a chat message: its number in the message, its path and its size. */
+export const imageMarker = (n: number, image: ImagePart & { path: string }) =>
+  `[Image ${n}: ${image.path}${image.width && image.height ? `, ${image.width}x${image.height}` : ''}]`
+
+/** The line after a message's last part when it has saved images. `tool` is how the agent's own tool for opening one reads. */
+export const imagesNote = (count: number, tool: string) =>
+  `${count === 1 ? 'Read the attached image' : `Read each of the ${count} attached images`} with ${tool} before answering.`

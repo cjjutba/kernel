@@ -6,7 +6,7 @@ import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort } from '@sh
 import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
-import { IMAGE_DATA_URL } from '../../plans'
+import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../../plans'
 import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
 import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
@@ -101,19 +101,31 @@ export function codexLimits(snap: RateLimitSnapshot | null | undefined, accountI
   return out
 }
 
-/** Composer parts as Codex's turn input. Pasted text is inlined and images go as data URLs, as they do for Claude. */
+/**
+ * Composer parts as Codex's turn input, in order. Pasted text is inlined. An image saved to the workspace is named where it
+ * sat, as it is for Claude, and a last line asks Codex to open each one with its view_image tool, which shows as a Read step
+ * (KERNEL-545). One without a file goes as a data URL in its place.
+ */
 export function toCodexInput(parts: ChatPart[]): UserInput[] {
-  const text: string[] = []
-  const images: UserInput[] = []
+  const input: UserInput[] = []
+  let text: string[] = []
+  let images = 0
+  const flush = (end?: string) => {
+    const t = [text.join(' '), end].filter(Boolean).join('\n\n')
+    if (t) input.push({ type: 'text', text: t, text_elements: [] })
+    text = []
+  }
   for (const p of parts) {
     if (p.type === 'text' && p.text.trim()) text.push(p.text)
     // Codex names a skill with `$`, where Claude Code takes a slash command.
     else if (p.type === 'skill') text.push(`$${p.name}`)
     else if (p.type === 'file') text.push(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'workspace') text.push(linkText(p))
-    else if (p.type === 'image' && p.dataUrl && IMAGE_DATA_URL.test(p.dataUrl)) images.push({ type: 'image', url: p.dataUrl })
+    else if (p.type === 'image' && p.path) text.push(imageMarker(++images, { ...p, path: p.path }))
+    else if (p.type === 'image' && p.dataUrl && IMAGE_DATA_URL.test(p.dataUrl)) { flush(); input.push({ type: 'image', url: p.dataUrl }) }
   }
-  return [...(text.length ? [{ type: 'text' as const, text: text.join(' '), text_elements: [] }] : []), ...images]
+  flush(images ? imagesNote(images, 'view_image') : undefined)
+  return input
 }
 
 /** The repo's shared git folder, which a worktree commits into, so the sandbox lets git write there. */
@@ -364,6 +376,8 @@ export class CodexRunner implements Runner {
     } else if (item.type === 'mcpToolCall') r = row(`mcp__${item.server}__${item.tool}`, (item.arguments ?? {}) as Record<string, unknown>, JSON.stringify(item.arguments ?? {}).slice(0, 120))
     else if (item.type === 'dynamicToolCall') r = row(`mcp__kernel__${item.tool.startsWith(CODEX_TOOL_PREFIX) ? item.tool.slice(CODEX_TOOL_PREFIX.length) : item.tool}`, (item.arguments ?? {}) as Record<string, unknown>, JSON.stringify(item.arguments ?? {}).slice(0, 120))
     else if ((item as { type: string }).type === 'webSearch') { const q = String((item as { query?: unknown }).query ?? ''); r = row('WebSearch', { query: q }, q) }
+    // view_image opening a file, as an attached image the message asked it to open (KERNEL-545).
+    else if (item.type === 'imageView') r = row('Read', { file_path: item.path }, item.path)
     if (!r) return
     this.rows.set(item.id, r)
     this.host.item(r)
@@ -391,6 +405,9 @@ export class CodexRunner implements Runner {
       case 'dynamicToolCall':
         if (item.tool === `${CODEX_TOOL_PREFIX}request_plan_approval`) this.planAsked = true
         return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))
+      case 'imageView':
+        if (!this.rows.has(item.id)) this.itemStarted(item)
+        return this.finish(item.id, true, '')
       default:
         if ((item as { type: string }).type === 'webSearch') this.finish(item.id, true, '')
     }

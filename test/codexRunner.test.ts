@@ -103,6 +103,9 @@ describe('a chat on Codex (KERNEL-406)', () => {
       { notify: 'item/started', params: { item: { type: 'dynamicToolCall', id: 'd1', namespace: null, tool: 'kernel_ping', arguments: { text: 'hi' }, status: 'inProgress' } } },
       { request: 'item/tool/call', params: { threadId: '$thread', turnId: '$turn', callId: 'd1', namespace: null, tool: 'kernel_ping', arguments: { text: 'hi' } } },
       { notify: 'item/completed', params: { item: { type: 'dynamicToolCall', id: 'd1', namespace: null, tool: 'kernel_ping', arguments: { text: 'hi' }, status: 'completed', contentItems: [{ type: 'inputText', text: 'pong hi' }], success: true } } },
+      // view_image, opening an attached image (KERNEL-545), with and without a started notification.
+      ...item({ type: 'imageView', id: 'v1', path: '.kernel/attachments/image.png' }),
+      { notify: 'item/completed', params: { item: { type: 'imageView', id: 'v2', path: '.kernel/attachments/image-2.png' } } },
       { notify: 'item/completed', params: { item: { type: 'agentMessage', id: 'a1', text: 'Added the column.', phase: 'final_answer' } } }
     ) }])
     await t.idle()
@@ -111,8 +114,11 @@ describe('a chat on Codex (KERNEL-406)', () => {
       ['Bash', 'Run pnpm test', 'done', '12 passed'],
       ['Edit', 'Edit src/db/schema.ts', 'done', '+pdf_url'],
       ['mcp__linear__get_issue', 'linear · get_issue', 'done', 'Issue'],
-      ['mcp__kernel__ping', 'kernel · ping', 'done', 'pong hi']
+      ['mcp__kernel__ping', 'kernel · ping', 'done', 'pong hi'],
+      ['Read', 'Read', 'done', ''],
+      ['Read', 'Read', 'done', '']
     ])
+    expect(t.of('tool').slice(-2).map((i) => i.detail)).toEqual(['.kernel/attachments/image.png', '.kernel/attachments/image-2.png'])
     expect(t.pings).toEqual(['hi'])
     expect(await t.answers('item/tool/call')).toEqual([{ contentItems: [{ type: 'inputText', text: 'pong hi' }], success: true }])
     expect(t.of('text').map((i) => i.text)).toEqual(['Added the column.'])
@@ -544,6 +550,24 @@ describe('Codex helpers (KERNEL-406)', () => {
   it('turns composer parts into Codex input', () => {
     expect(toCodexInput([{ type: 'skill', name: 'verify' }, { type: 'text', text: 'the checkout' }, { type: 'image', name: 'a.png', dataUrl: 'data:image/png;base64,AAAA' }]))
       .toEqual([{ type: 'text', text: '$verify the checkout', text_elements: [] }, { type: 'image', url: 'data:image/png;base64,AAAA' }])
+  })
+
+  it('names saved images where they sat and asks for view_image on each, and keeps an unsaved one in its place (KERNEL-545)', () => {
+    const shot = { type: 'image' as const, name: 'image.png', dataUrl: 'data:image/png;base64,AAAA' }
+    expect(toCodexInput([
+      { type: 'text', text: 'look at' }, { ...shot, path: '.kernel/attachments/image.png', width: 800, height: 600 },
+      { type: 'text', text: 'and compare with' }, { ...shot, path: '.kernel/attachments/image-2.png' }
+    ])).toEqual([{
+      type: 'text',
+      text: 'look at [Image 1: .kernel/attachments/image.png, 800x600] and compare with [Image 2: .kernel/attachments/image-2.png]\n\nRead each of the 2 attached images with view_image before answering.',
+      text_elements: []
+    }])
+    expect(toCodexInput([{ type: 'text', text: 'look at' }, shot, { type: 'text', text: 'and compare with' }, shot])).toEqual([
+      { type: 'text', text: 'look at', text_elements: [] },
+      { type: 'image', url: shot.dataUrl },
+      { type: 'text', text: 'and compare with', text_elements: [] },
+      { type: 'image', url: shot.dataUrl }
+    ])
   })
 
   it("offers Kernel's tools to Codex with their schema, and refuses arguments the schema doesn't take", async () => {

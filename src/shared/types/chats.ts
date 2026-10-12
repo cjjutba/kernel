@@ -161,11 +161,14 @@ export interface SharedAnchor {
 /** A comment on one version of a shared file. `chatId` is the chat it went to, `itemId` its message there, empty when the message was queued. */
 export interface SharedComment { id: string; sharedId: string; version: number; at: number; note: string; anchor: SharedAnchor; chatId: string; itemId: string }
 
-/** Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. */
+/**
+ * Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. An image's `path` is
+ * where Kernel saved it in the workspace for the agent to Read, relative to the workspace folder (KERNEL-545).
+ */
 export type ChatPart =
   | { type: 'text'; text: string }
   | { type: 'file'; name: string; path?: string; lines?: number; text?: string }
-  | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number }
+  | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
   | { type: 'issue'; name: string; title: string; url?: string; source: TrackerKind }

@@ -11,7 +11,7 @@ import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { mcpStatus, type McpReport } from '../mcp'
-import { IMAGE_DATA_URL } from '../plans'
+import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../plans'
 import { decide, hookVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
@@ -557,23 +557,30 @@ export async function claudeCommands(cwd: string): Promise<BuiltinCommand[]> {
   }
 }
 
-/** Turn composer parts into one SDK user message. Pasted text is inlined, images become image blocks. */
+/**
+ * Turn composer parts into one SDK user message. Pasted text is inlined. An image saved to the workspace is named where it sat,
+ * and a last line asks the agent to Read each one, so it opens them as steps of their own (KERNEL-545). One without a file
+ * goes inline as an image block.
+ */
 export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
   const content: any[] = []
   // A skill chip is a slash command, and Claude Code only reads one at the start of a text block, so the text after it joins it.
   let lead = ''
+  let images = 0
   const text = (t: string) => { content.push({ type: 'text', text: [lead, t].filter(Boolean).join(' ') }); lead = '' }
   for (const p of parts) {
     if (p.type === 'text' && p.text.trim()) text(p.text)
     else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
+    else if (p.type === 'image' && p.path) text(imageMarker(++images, { ...p, path: p.path }))
     else if (p.type === 'image' && p.dataUrl) {
       const m = IMAGE_DATA_URL.exec(p.dataUrl)
       if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } })
     }
   }
   if (lead) text('')
+  if (images) text(imagesNote(images, 'the Read tool'))
   return { type: 'user', message: { role: 'user', content: content.length ? content : [{ type: 'text', text: '' }] }, parent_tool_use_id: null } as SDKUserMessage
 }
 
