@@ -15,7 +15,7 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
     ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']], ['Open Lead chat', ['⌘', '⇧', 'L']]
   ] },
   { title: 'App', rows: [
-    ['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Toggle sidebar', ['⌘', 'B']], ['Toggle right panel', ['⌘', '⌥', 'B']], ['Focus mode', ['⌘', '\\']],
+    ['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Toggle sidebar', ['⌘', 'B']], ['Toggle right panel', ['⌘', '⌥', 'B']], ['Toggle bottom panel', ['⌘', 'J']], ['Focus mode', ['⌘', '\\']],
     ['Back', ['⌘', '[']], ['Forward', ['⌘', ']']]
   ] }
 ]

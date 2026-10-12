@@ -167,6 +167,12 @@ function terminalPresets(): Fixture {
 /** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
 const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
 
+/** A workspace whose run script hasn't run, so the Run tab shows its empty state with the Run button under the icon (KERNEL-512). */
+const idleRun = (f: Fixture): Fixture => ({ ...f, push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run') })
+
+/** The same fixture with the bottom pane folded to its tab bar, in Rowan's chats and in teammates' workspaces (KERNEL-513). */
+const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
+
 /** The invoice table's PR with two blockers from Theo on its latest commit, the only thing that holds the merge (KERNEL-501). */
 const withBlockers = (f: Fixture): Fixture => ({
   ...f,
@@ -284,7 +290,7 @@ function setupLog(end: 'running' | 'failed' | 'stopped'): PushEvent[] {
 }
 
 /** A new chat waiting for setup: `queue` waits for it, and `end` is how a failed setup ended (an exit code, or null when stopped). */
-function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
+function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[], o: { end?: number | null; panel?: boolean; right?: 'files'; collapsed?: boolean; composer?: { parts: import('@shared/types').ChatPart[]; draft: string } } = {}): Partial<Fixture> {
   const started = Date.now() - 42_000
   const setupRun = status === 'setup' ? { startedAt: started } : { startedAt: started - 26_000, endedAt: started + (o.end === null ? 5_000 : 42_000), end: o.end }
   return {
@@ -292,7 +298,7 @@ function setupWait(f: Fixture, status: 'setup' | 'failed', queue: QueuedMessage[
     items: { [ids.tableChat]: [] },
     queue: { [ids.tableChat]: queue },
     push: [...f.push, ...setupLog(status === 'setup' ? 'running' : o.end === null ? 'stopped' : 'failed'), ...(queue.length ? [{ type: 'chat.queue' as const, chatId: ids.tableChat, queue, why: 'setup' as const }] : [])],
-    ui: { ...open, rightPanel: o.panel ?? true, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
+    ui: { ...open, rightPanel: o.panel ?? true, ...(o.collapsed ? { bottomCollapsed: { lead: true, teammate: true } } : {}), workspace: { right: o.right ?? 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false, ...(o.composer ? { composer: o.composer } : {}) } }
   }
 }
 
@@ -623,6 +629,9 @@ const LEAD_PRS: OpenPr[] = [
   { id: 'ws-188', agentId: 'noor', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
   { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
+
+/** What Rowan says under the PRs tab: two PRs ready, one waiting on an approval and one running checks. */
+const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will."
 
 /** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
 const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
@@ -1297,7 +1306,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
-  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
+  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
+  // The right panel's two panes (KERNEL-513, design/redesign/): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Rowan's chat, which starts with it
+  // folded to its tab bar. A teammate's can fold too, and its handle lights like the sidebar's edge. A new chat waiting on setup opens the bottom on Setup even when it was folded.
+  PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
+  PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
+  PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
+  PanelResize: idleRun(headerScene('ready', [], { panel: true })),
+  PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
@@ -1494,7 +1510,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
   WorkspaceRunScripts: runScripts(),
-  // The Run tab before the script has run: the header's Run is the only button (KERNEL-423).
+  // The Run tab before the script has run: the empty state's Run is the only button, and the strip's steps aside (KERNEL-423, KERNEL-512).
   WorkspaceRunEmpty: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),

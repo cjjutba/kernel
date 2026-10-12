@@ -9,7 +9,7 @@ const entries = Object.entries(fixtures)
 const noCanvas = [
   'WorkspaceTabStates',
   'IssuesJira', // a room on Jira, whose issues Kernel can't list yet: the plain state in NoTracker's layout (KERNEL-503)
-  'WorkspaceRunEmpty', // the Run tab before the script has run, with Run in the header as its only button (KERNEL-423)
+  'WorkspaceRunEmpty', // the Run tab before the script has run, with the empty state's Run as its only button (KERNEL-423, KERNEL-512)
   'WorkspaceReplyMenu', // the "..." menu under a finished turn's reply, with Fork into new chat and Fork into new workspace (KERNEL-346)
   'WorkspaceTrustHeld', // the banner KERNEL-209's trust hold shows, with Review (KERNEL-218)
   'TrustScripts', // the dialog Review opens: the scripts and files.copy list to trust (KERNEL-218)

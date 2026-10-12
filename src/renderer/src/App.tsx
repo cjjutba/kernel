@@ -55,6 +55,7 @@ import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
+import { toggleBottomPanel } from './screens/workspace/bottomSplit'
 import { DevUi } from './ui/DevUi'
 
 /**
@@ -208,6 +209,8 @@ export function App() {
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
+      // ⌘J collapses or opens the right panel's bottom pane (KERNEL-513). Match the physical key, as ⌘B does.
+      if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
       // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
