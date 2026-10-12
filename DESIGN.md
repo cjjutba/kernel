@@ -123,6 +123,13 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Servers row (KERNEL-440): the hire card and the New agent review list the servers the new agent's file names, one pill each. A server that works shows its name. One that doesn't shows the amber triangle and the problem. A sentence under the row says what that means for Rowan's hand-offs.
 - Roster picker and rule conflicts (KERNEL-440): with more than about 12 agents, room setup asks who joins. The card has a search box, checkbox rows (name, role, tags, one description line, any warning) and "8 of 23 picked" with Clear and Pick the suggested 8. Kernel suggests the agents that can open pull requests. One written as a subagent with no pull request workflow starts unpicked as a Helper, with its warning. The list scrolls inside the card, so a half row shows at the bottom. The conflicts card lists each rule in CLAUDE.md or AGENTS.md that fights Kernel's workflow, with its file and line, next to what Kernel tells agents. Kernel never edits those files. Setup is taller than the window with these cards, so `RoomSetupRoster` and `RoomSetupConflicts` are drawn scrolled to the end.
 
+## No footer (KERNEL-527)
+
+- There is no strip under the main panel. The panel runs to 8px above the window's bottom edge on every screen.
+- The sidebar's bottom row holds the plan chip (or the Update ready pill once an update is ready), then Ask Rowan as a send icon, What's new and Settings. Ask Rowan's popover opens up from it.
+- Hooks down and GitHub paused show as a row just above the bottom row, only while they hold.
+- With the sidebar hidden, Show sidebar starts every screen header, followed by Ask Rowan and, once an update is ready, the pill. The popover opens down from the header. The chat's banners cover hooks and GitHub there.
+
 ## Busy buttons
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.

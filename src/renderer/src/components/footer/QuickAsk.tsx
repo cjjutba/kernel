@@ -111,7 +111,7 @@ export function AskRowanButton() {
   const anchor = useRef<HTMLSpanElement>(null)
   return (
     <span ref={anchor} className="qa-anchor">
-      <button type="button" className="ft-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => actions.ui.toggleMenu('quickAsk')}><Icon name="send" size={12} />Ask {name}</button>
+      <button type="button" className="icon-btn" aria-label={`Ask ${name}`} data-tip={`Ask ${name}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => actions.ui.toggleMenu('quickAsk')}><Icon name="send" size={15} /></button>
       {open && <QuickAsk onClose={actions.ui.closeMenu} anchorRef={anchor} />}
     </span>
   )

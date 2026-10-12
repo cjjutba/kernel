@@ -14,6 +14,9 @@ import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
 import { chatTrusts, chatWaits } from './chatWaits'
 import { PlanButton } from './PlanMenu'
+import { SidebarAlerts } from '../footer/Footer'
+import { AskRowanButton } from '../footer/QuickAsk'
+import { UpdatePill } from '../footer/UpdatePill'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
 import { liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
@@ -295,6 +298,8 @@ export function AppSidebar() {
   const hints = useCmdHeld()
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const plan = useStore((s) => s.account?.plan)
+  const update = useStore((s) => s.system.update?.status === 'ready')
+  const onFloor = useStore((s) => s.ui.route.name === 'floor')
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
@@ -336,10 +341,13 @@ export function AppSidebar() {
         })}
       </div>
       <div style={{ flex: 1 }} />
-      {/* The plan on the left, What's new and Settings on the right, as in Conductor. */}
+      <SidebarAlerts />
+      {/* The plan on the left, or the update pill once an update is ready; Ask Rowan, What's new and Settings on the right, as in
+          Conductor. There is no footer, so this row holds what it did (KERNEL-527). The floor's brief box already talks to Rowan. */}
       <div className="sb-foot">
-        {plan && <PlanButton plan={plan} />}
+        {update ? <UpdatePill /> : plan && <PlanButton plan={plan} />}
         <span className="grow" />
+        {!onFloor && <AskRowanButton />}
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
         <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => actions.ui.openSettings()} />
       </div>
