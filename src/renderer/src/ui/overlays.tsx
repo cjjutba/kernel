@@ -19,6 +19,10 @@ export interface MenuEntry {
   note?: string
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
+  /** A heading for the entries after it, up to the next one. It isn't an item: no focus, no selection. */
+  title?: boolean
+  /** Drawn in place of the label, note and shortcut, for an item that needs more than one line (an account and its usage). */
+  content?: ReactNode
   disabled?: boolean
   /** Red text and icon. For the one destructive entry, such as Remove room (SidebarRoomMenu.png). */
   danger?: boolean
@@ -51,20 +55,25 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
       {items.map((it) => {
         if (it.id === '-') return <div key={`sep-${items.indexOf(it)}`} role="separator" className="menu-sep" />
         const m = it as MenuEntry
+        if (m.title) return <div key={m.id} className="menu-title" aria-hidden="true">{m.label}</div>
         const sub = m.children?.length
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined} data-rich={m.content ? true : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >
-              {m.leading ?? (m.icon && <Icon name={m.icon} />)}
-              <span className="grow ellipsis">{m.label}</span>
-              {m.note && <span className="menu-note">{m.note}</span>}
-              {m.checked ? <Icon name="check" size={14} stroke={1.5} /> : m.note ? <span className="menu-check-slot" aria-hidden="true" /> : null}
-              {m.shortcut && <span className="menu-kbd">{m.shortcut}</span>}
-              {sub ? <Icon name="right" size={12} /> : null}
+              {m.content ?? (
+                <>
+                  {m.leading ?? (m.icon && <Icon name={m.icon} />)}
+                  <span className="grow ellipsis">{m.label}</span>
+                  {m.note && <span className="menu-note">{m.note}</span>}
+                  {m.checked ? <Icon name="check" size={14} stroke={1.5} /> : m.note ? <span className="menu-check-slot" aria-hidden="true" /> : null}
+                  {m.shortcut && <span className="menu-kbd">{m.shortcut}</span>}
+                  {sub ? <Icon name="right" size={12} /> : null}
+                </>
+              )}
             </button>
             {sub && open === m.id && (
               <div className="submenu"><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></div>
