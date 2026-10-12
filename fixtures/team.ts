@@ -655,21 +655,21 @@ export const teamFixtures: Record<string, Fixture> = {
   }),
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
-  Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
+  Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // No PNG: a new room with no agents offers the team templates.
-  TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'team', roomId: clientC.id } } })),
+  TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'settings', page: 'room', roomId: clientC.id, section: 'agents' } } })),
   // KERNEL-397: a repo's own agents, with Kernel's Rowan and Theo, a helper and its warning.
-  TeamOwnAgents: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
+  TeamOwnAgents: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   AgentProfile: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' } } })),
   AgentProfileBuiltIn: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kernel-lead' } } })),
-  NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
-  NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
-  NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
+  NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
+  NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
+  NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
   // KERNEL-438: someone else may be on the issue. New chat opens it when the issue it starts from has findings (KERNEL-500).
   ConfirmIssueTaken: scene((f) => ({
     ...teamScene(f),
-    ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   // The update pill stays in the footer, before Ask Rowan, while the sidebar is hidden (KERNEL-588).
@@ -760,6 +760,6 @@ export const teamFixtures: Record<string, Fixture> = {
   SidebarChatFolded: scene(sidebarChatFolded),
   SidebarChatGroups: scene(sidebarChatGroups),
   SidebarTrustHeld: scene(sidebarTrustHeld),
-  SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
-  ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
+  SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }),
+  ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }

@@ -182,7 +182,7 @@ describe('stillThere and nearest', () => {
     actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', status: 'archived' }))
     expect(nearest(at('lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
     setState((s) => ({ agents: { ...s.agents, r1: [] } }))
-    expect(nearest(at('lead'), getState())).toEqual({ name: 'team', roomId: 'r1' })
+    expect(nearest(at('lead'), getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
   })
   it("sends a chat whose workspace closed to the room's newest open chat (KERNEL-405)", () => {
     actions.workspaces.upsert(ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'rowan', createdAt: 5 }))
@@ -215,7 +215,7 @@ describe('stillThere and nearest', () => {
     expect(nearest(at('r2lead'), getState())).toEqual({ name: 'home' })
     actions.rooms.remove('r1')
     expect(nearest(at('other'), getState())).toEqual({ name: 'home' })
-    expect(nearest({ name: 'team', roomId: 'r1' }, getState())).toEqual({ name: 'home' })
+    expect(nearest({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, getState())).toEqual({ name: 'home' })
   })
   it('treats a Settings room page as gone with its room, and other pages as always there', () => {
     expect(stillThere({ name: 'settings', page: 'room', roomId: 'r1' }, getState())).toBe(true)
@@ -315,13 +315,13 @@ describe('restorePlace', () => {
     expect(restorePlace(saved(at('r2lead')), getState())?.route).toEqual({ name: 'home' })
     expect(restorePlace(saved({ name: 'team', roomId: 'r2' }), getState())?.route).toEqual({ name: 'home' })
   })
-  it('opens the room\'s Team page for an agent, task, floor or board route', () => {
-    for (const route of [{ name: 'agent', roomId: 'r1', agentId: 'kai' }, { name: 'task', roomId: 'r1', taskId: 't1' }, { name: 'floor', roomId: 'r1' }, { name: 'board', roomId: 'r1' }]) {
-      expect(restorePlace(saved(route), getState())?.route).toEqual({ name: 'team', roomId: 'r1' })
+  it('opens the room\'s Agents page in Settings for a team, agent, task, floor or board route', () => {
+    for (const route of [{ name: 'team', roomId: 'r1' }, { name: 'agent', roomId: 'r1', agentId: 'kai' }, { name: 'task', roomId: 'r1', taskId: 't1' }, { name: 'floor', roomId: 'r1' }, { name: 'board', roomId: 'r1' }]) {
+      expect(restorePlace(saved(route), getState())?.route).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
     }
   })
   it('opens the other screens as they were', () => {
-    for (const route of [{ name: 'inbox' }, { name: 'history' }, { name: 'rooms' }, { name: 'issues', issueId: 'KERNEL-9' }, { name: 'team', roomId: 'r1' }]) {
+    for (const route of [{ name: 'inbox' }, { name: 'history' }, { name: 'rooms' }, { name: 'issues', issueId: 'KERNEL-9' }, { name: 'leadNew', roomId: 'r1' }]) {
       expect(restorePlace(saved(route), getState())?.route).toEqual(route)
     }
   })

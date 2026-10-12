@@ -50,9 +50,9 @@ describe("the room's front door (KERNEL-596)", () => {
     expect(frontDoor('r1', getState())).toEqual(door)
   })
 
-  it('is Team when the room has no Lead, and reads a Lead from its workspaces before agents load', () => {
+  it('is the room's Agents page when the room has no Lead, and reads a Lead from its workspaces before agents load', () => {
     setState({ agents: { r1: [kai] } })
-    expect(frontDoor('r1', getState())).toEqual({ name: 'team', roomId: 'r1' })
+    expect(frontDoor('r1', getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
     setState({ agents: {} })
     expect(frontDoor('r1', getState())).toEqual(door)
   })
@@ -67,12 +67,12 @@ describe('where an archive takes you', () => {
 
   it('goes to the room of the archived workspace, not to the room you were last in', () => {
     setState((s) => ({ rooms: [...s.rooms, room('r2')], workspaces: [...s.workspaces, ws('far', { roomId: 'r2' })] }))
-    expect(archiveDestination(at('far'), getState(), stored('far'))).toEqual({ name: 'team', roomId: 'r2' })
+    expect(archiveDestination(at('far'), getState(), stored('far'))).toEqual({ name: 'settings', page: 'room', roomId: 'r2', section: 'agents' })
   })
 
   it('stays where you are for anything not on screen', () => {
     expect(archiveDestination(at('older'), getState(), stored('newer'))).toBeUndefined()
-    for (const route of [{ name: 'history' }, { name: 'home' }, { name: 'inbox' }, door, { name: 'team', roomId: 'r1' }, { name: 'settings', page: 'general' }] as Route[]) {
+    for (const route of [{ name: 'history' }, { name: 'home' }, { name: 'inbox' }, door, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }] as Route[]) {
       expect(archiveDestination(route, getState(), stored('newer', 'handed', 'plain'))).toBeUndefined()
     }
   })
@@ -129,7 +129,7 @@ describe('the route follows the archived status (KERNEL-596)', () => {
   })
 
   it('does not move for a different screen, or for another chat or workspace being archived', () => {
-    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'team', roomId: 'r1' }, { name: 'settings', page: 'general' }, at('older')] as Route[]) {
+    for (const route of [{ name: 'history' }, { name: 'inbox' }, { name: 'settings', page: 'room', roomId: 'r1', section: 'agents' }, { name: 'settings', page: 'general' }, at('older')] as Route[]) {
       setState((s) => ({ ui: { ...s.ui, route } }))
       routes = []
       deliver(archived('newer'))

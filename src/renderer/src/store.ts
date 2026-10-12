@@ -445,7 +445,11 @@ export const actions = {
       // The Settings pages replace each other, so the newest entry is where Settings was opened from, unless it is dead or Settings was opened by a restart.
       const newest = past[past.length - 1]
       if (newest && newest.route.name !== 'settings' && reachable(newest, leaving())) actions.ui.back()
-      else actions.ui.go(nearest((returnTo ?? { route: launch }).route, state), { history: 'replace' })
+      else {
+        // A launch that opened on a room's Agents page would send Back to app to the page it is leaving.
+        const there = nearest((returnTo ?? { route: launch }).route, state)
+        actions.ui.go(there.name === 'settings' ? { name: 'home' } : there, { history: 'replace' })
+      }
     },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
     closeModal: () => setUi({ modal: null }),
@@ -867,7 +871,7 @@ function applyPending(all: Record<string, PrPending> | null) {
  * so the two can't drift. Settings > General > Default home view picks it. Where I left off reopens the saved place and brings back the tabs
  * of its workspaces that are still live (a tab already open wins, so asking twice changes nothing). Without a saved place (a first launch,
  * unreadable JSON, fixture mode) it opens the last room's Lead chat, found the way the sidebar does (the `lead` workspace on the main
- * checkout), since agents load after this. A room nobody has briefed opens Team (D-104). Also the route Settings falls back to (`launch`).
+ * checkout), since agents load after this. A room nobody has briefed opens its Agents page in Settings (D-104, KERNEL-642). Also the route Settings falls back to (`launch`).
  */
 export function launchRoute(): Route {
   const openTo = state.settings?.general.openTo

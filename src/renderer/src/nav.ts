@@ -88,9 +88,12 @@ export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, 
   return workspaces.filter((w) => w.roomId === roomId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => touched(b) - touched(a) || b.createdAt - a.createdAt)
 }
 
+/** Settings, a room, Agents: the one place for a room's agents (KERNEL-642). */
+export const roomAgents = (roomId: string): Route => ({ name: 'settings', page: 'room', roomId, section: 'agents' })
+
 /**
- * A room's front door: its top open chat with Rowan in the sidebar, New chat with Rowan when none is open, or Team when the room has
- * no Lead (D-104, KERNEL-405, KERNEL-498). Before agents load, which is after the first route is chosen, a room with a workspace
+ * A room's front door: its top open chat with Rowan in the sidebar, New chat with Rowan when none is open, or the room's Agents page in
+ * Settings when the room has no Lead (D-104, KERNEL-405, KERNEL-498, KERNEL-642). Before agents load, which is after the first route is chosen, a room with a workspace
  * marked `lead` has one.
  */
 export function roomHome(roomId: string, s: State): Route {
@@ -100,13 +103,13 @@ export function roomHome(roomId: string, s: State): Route {
 }
 
 /**
- * A room's neutral home: New chat with Rowan, or Team when the room has no Lead (D-104, KERNEL-405). It never picks a chat, so it is the
+ * A room's neutral home: New chat with Rowan, or the room's Agents page in Settings when the room has no Lead (D-104, KERNEL-405, KERNEL-642). It never picks a chat, so it is the
  * same place whatever else is open in the room.
  */
 export function frontDoor(roomId: string, s: State): Route {
   const agents = s.agents[roomId]
   const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.roomId === roomId && !!w.lead)
-  return lead ? { name: 'leadNew', roomId } : { name: 'team', roomId }
+  return lead ? { name: 'leadNew', roomId } : roomAgents(roomId)
 }
 
 /**
@@ -120,7 +123,7 @@ export function archiveDestination(route: Route, s: State, archived: (workspaceI
   return roomId ? frontDoor(roomId, s) : undefined
 }
 
-/** The route if it is still there, else its room's Lead workspace, then the room's Team page, then Home. */
+/** The route if it is still there, else its room's Lead workspace, then the room's Agents page, then Home. */
 export function nearest(route: Route, s: State): Route {
   if (stillThere(route, s)) return route
   const roomId = roomOf(route, s)
@@ -158,8 +161,8 @@ function soundRoute(r: any): Route | undefined {
     case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
     case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId } : undefined
-    // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their room's Team page.
-    case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? { name: 'team', roomId: r.roomId } : undefined
+    // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their room's Agents page in Settings (KERNEL-642).
+    case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? roomAgents(r.roomId) : undefined
     default: return undefined // onboarding, devUi, settings and anything unknown are never reopened
   }
 }

@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { AgentDef, Approval, Workspace } from '@shared/types'
 import { isLeadWorkspace as isLead } from '@shared/leadWorkspace'
 import { call, cleanError } from './api'
+import { roomAgents } from './nav'
 import { actions, getState, go, useStore } from './store'
 
 /** The room's Lead: the agent marked `lead: true`. */
@@ -56,8 +57,8 @@ export async function openLead(roomId: string): Promise<Workspace | undefined> {
 }
 
 /**
- * Where a room opens: its newest chat with Rowan, New chat with Rowan when none is open, or Team
- * when the room has no Lead.
+ * Where a room opens: its newest chat with Rowan, New chat with Rowan when none is open, or the room's Agents page
+ * in Settings when the room has no Lead.
  */
 export async function openRoom(roomId: string): Promise<void> {
   try {
@@ -66,7 +67,7 @@ export async function openRoom(roomId: string): Promise<void> {
     actions.workspaces.upsert(ws)
     go({ name: 'workspace', workspaceId: ws.id })
   } catch {
-    go({ name: 'team', roomId })
+    go(roomAgents(roomId))
   }
 }
 

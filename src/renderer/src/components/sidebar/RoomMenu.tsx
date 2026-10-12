@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 're
 import { createPortal } from 'react-dom'
 import type { Room } from '@shared/types'
 import { call, cleanError } from '../../api'
+import { roomAgents } from '../../nav'
 import { actions, go } from '../../store'
 import { Menu, MENU_SEPARATOR } from '../../ui'
 
@@ -38,7 +39,7 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
         items={[
           { id: 'ws', label: 'New chat', icon: 'plus', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
           { id: 'from', label: 'New chat from...', icon: 'link', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
-          { id: 'team', label: 'Team', icon: 'team', onSelect: () => go({ name: 'team', roomId: room.id }) },
+          { id: 'agents', label: 'Agents', icon: 'team', onSelect: () => go(roomAgents(room.id)) },
           { id: 'pause', label: room.paused ? 'Resume room' : 'Pause room', icon: room.paused ? 'play' : 'pause', onSelect: () => void togglePause() },
           { id: 'settings', label: 'Room settings', icon: 'sliders', onSelect: () => go({ name: 'settings', page: 'room', roomId: room.id }) },
           { id: 'hide', label: 'Hide room', icon: 'eyeoff', onSelect: () => void hide() },
