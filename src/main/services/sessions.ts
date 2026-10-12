@@ -35,6 +35,8 @@ interface Live {
   running: boolean; interrupted: boolean
   /** Background tasks (shells, subagents, monitors) the process is running, from its latest background_tasks_changed. */
   tasks: Set<string>
+  /** Cards this process put up (`placeApproval`). A Stop or Send now, or the process ending, ends those still waiting (KERNEL-563). */
+  cards: Set<string>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
   /** An api_retry is counting down. The next reply or result clears the banner. Kept for a window that loads meanwhile (KERNEL-340). */
@@ -83,6 +85,11 @@ interface Turns {
    * Known limit: with parallel tool calls, another call in the same message that succeeds ends a PreToolUse block at once.
    */
   blocked?: string
+  /**
+   * Codex plans waiting on the user after their turn ended, which an idle stop leaves waiting. The user's next message ends
+   * them, and so do `stop()` and a crash. Kernel's messages leave them (KERNEL-563).
+   */
+  plans?: Set<string>
 }
 
 /** How many chats a usage limit cut off restart at once when it lifts. Each next one starts when one ends its turn (KERNEL-220). */
@@ -709,6 +716,8 @@ export class Sessions {
     chat = this.unsuggest(chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
     if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
+    // The user writing instead of answering ends a Codex plan still waiting after its turn (KERNEL-563).
+    if ([o, ...more].some((m) => !m.from)) this.expireCards(this.turns.get(chat.id)?.plans)
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
     // Read before the nudge is saved, which would be the last message.
     const by = o.from === 'kernel' && isNudge(parts) ? this.startedBy(chat.id) : o.from
@@ -971,6 +980,8 @@ export class Sessions {
     // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
     // an idle chat that gave up blocked has no turn left to end, so the floor hears it here (Archive, Close chat).
     const shown = this.turns.get(chatId)?.blocked && !live?.running
+    // A Codex plan waiting on the chat ends with it, as the process's cards do in `end` (KERNEL-563).
+    this.expireCards(this.turns.get(chatId)?.plans)
     this.turns.delete(chatId)
     if (live) this.end(chatId, live)
     if (this.queued(chatId).length) this.setQueue(chatId, [])
@@ -984,6 +995,15 @@ export class Sessions {
     this.stale.delete(chatId)
     live.runner.close()
     this.live.delete(chatId)
+    // Nobody can answer what the process asked once it is gone (KERNEL-563).
+    this.expireCards(live.cards)
+  }
+
+  /** End the cards among `ids` that still wait on the user, and forget them all. A quit leaves them to `expirePending` (KERNEL-563). */
+  private expireCards(ids: Set<string> | undefined) {
+    if (!ids?.size || this.closing) return
+    this.d.approvals.expireIds(ids)
+    ids.clear()
   }
 
   /**
@@ -1145,7 +1165,7 @@ export class Sessions {
     const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
     const account = this.d.accountFor?.(chatProvider(chat))
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey' } as Live
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey' } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
@@ -1254,6 +1274,10 @@ export class Sessions {
     const replaced = this.replaced(chatId, live)
     const midTurn = live.running
     if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
+    // Nobody can answer what the process asked, and a crash ends a Codex plan waiting on the chat too. A newer session's
+    // cards are its own (KERNEL-563).
+    this.expireCards(live.cards)
+    if (!replaced && ended !== null) this.expireCards(this.turns.get(chatId)?.plans)
     const chat = this.d.store.chat(chatId)
     if (chat && !replaced) this.setRunning(chat, ws, live, false)
     if (chat && !replaced) this.drainWaiting()
@@ -1330,6 +1354,8 @@ export class Sessions {
     void live.runner.context()
     const stopped = live.interrupted && !live.sendNext
     const interrupted = live.interrupted
+    // Stop and Send now end the cards the turn put up, on either provider. One answered first keeps its answer (KERNEL-563).
+    if (interrupted) this.expireCards(live.cards)
     // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
     if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
@@ -1359,18 +1385,24 @@ export class Sessions {
    * Put a runner's request in front of the user and wait: a tool to allow, a question, or a plan. The agent shows as
    * needing the user meanwhile. Order: Never allow, the room's rules, Always ask and Bypass were the runner's to apply first.
    */
-  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }, plan?: string): Promise<Decision | undefined> {
+  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number; afterTurn?: boolean }, plan?: string): Promise<Decision | undefined> {
+    // A turn that stopped before its card went up shows none: an abort that has already fired never fires again (KERNEL-563).
+    if (o.signal?.aborted) return undefined
     this.setStatus(ws, agent, 'needs', a.activity)
+    const asker = this.live.get(chatId)
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
     const { approval, decision } = this.d.approvals.request({
       kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
       toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions, ...(a.reason ? { reason: a.reason } : {})
     } as Parameters<Approvals['request']>[0], { signal: o.signal, timeoutMs: o.timeoutMs })
-    this.placeApproval(chatId, approval.id)
+    this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
     if (plan?.trim() && existsSync(ws.path)) {
       void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
+    this.turns.get(chatId)?.plans?.delete(approval.id)
+    // A card that ended with its process leaves the status that end set: idle, or offline after a crash (KERNEL-563).
+    if (!result && asker && this.live.get(chatId) !== asker) return undefined
     // A Codex plan waits for approval after its turn ended, so the agent goes back to idle rather than working.
     if (!this.showBlocked(ws, chatId)) this.setStatus(ws, agent, this.live.get(chatId)?.running === false ? 'idle' : 'working')
     return result ?? undefined
@@ -1381,7 +1413,9 @@ export class Sessions {
    * plan. Approval takes the chat out of plan mode and starts a Lead's hand-off (`planApproved`).
    */
   private async requestPlan(chatId: string, ws: Workspace, agent: AgentDef | undefined, plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown; activity?: string }): Promise<Decision | undefined> {
-    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan, activity: o.activity ?? 'Plan' }, o, plan)
+    // A Codex plan comes after its turn ended (`CodexRunner.planned`), so it stays with the chat rather than a turn (KERNEL-563).
+    const afterTurn = chatProvider(this.mustChat(chatId)) === 'codex'
+    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan, activity: o.activity ?? 'Plan' }, { signal: o.signal, afterTurn }, plan)
     if (result?.behavior === 'allow') await this.planApproved(chatId)
     return result
   }
@@ -1511,9 +1545,15 @@ export class Sessions {
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
 
-  /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
-  placeApproval(chatId: string, approvalId: string) {
+  /**
+   * Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. The chat's
+   * process keeps its id, so the card ends with the turn or the process that asked. A Codex plan that waits after its turn
+   * (`afterTurn`) is kept on the chat instead (KERNEL-563).
+   */
+  placeApproval(chatId: string, approvalId: string, o: { afterTurn?: boolean } = {}) {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
+    if (o.afterTurn) (this.turnsOf(chatId).plans ??= new Set()).add(approvalId)
+    else this.live.get(chatId)?.cards.add(approvalId)
   }
 
   /** Where a shared file's card sits in the chat that shared it, one per version (KERNEL-302). */

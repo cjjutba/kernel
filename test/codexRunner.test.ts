@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tool } from '@anthropic-ai/claude-agent-sdk'
+import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, Chat, ChatItem, RateLimit, Tracker, TrackerIssue, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -17,6 +17,7 @@ import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } fr
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { GET_ISSUE, issueText, issueTools } from '../src/main/services/issueMcp'
+import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { fakeCodex, item, script } from './helpers/fakeCodex'
 import { tempRepo } from './helpers'
 
@@ -33,7 +34,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp'] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -47,7 +48,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const settings = { permissions: { mode: o.mode ?? 'acceptEdits', network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: o.neverAllow ?? ['git push origin main'], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: fake.bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
   const pings: unknown[] = []
   const reached = { count: 0 }
-  const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } })]
+  const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } }), ...(o.tools ?? [])]
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
@@ -519,6 +520,150 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
     expect(instructions).toContain('kernel_request_plan_approval')
     expect(instructions).not.toContain('mcp__kernel__')
+  })
+})
+
+describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
+  const requests = {
+    Bash: { request: 'item/commandExecution/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'c1', startedAtMs: 1, environmentId: 'local', command: 'pnpm db:reset' } },
+    file: { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp' } },
+    permission: { request: 'item/permissions/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'p1', permissions: { network: { enabled: true } } } },
+    question: { request: 'item/tool/requestUserInput', params: { threadId: '$thread', turnId: '$turn', itemId: 'q1', isBlocking: true, questions: [{ id: 'q', header: 'Store', question: 'Which store?', isOther: false, isSecret: false, options: [{ label: 'S3', description: '' }] }] } }
+  }
+  const reply = { notify: 'item/completed', params: { item: { type: 'agentMessage', id: 'a1', text: 'Went on.', phase: 'final_answer' } } }
+  const planTurn = script({ notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Add the column' } } })
+  /** Ends the fake app-server as a crash would. */
+  const crash = async (t: Awaited<ReturnType<typeof setup>>) => process.kill((await t.fake.messages()).filter((m) => 'started' in m).at(-1).pid, 'SIGKILL')
+
+  it.each(Object.entries(requests))('ends a waiting %s card as expired on Stop, and the turn stops', async (_kind, request) => {
+    const t = track(await setup({ mode: 'default' }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(request, reply) }])
+    const card = await t.pending()
+    await t.sessions.interrupt('chat')
+    await t.idle()
+    expect(t.store.approval(card.id)?.status).toBe('expired')
+    expect(t.store.approvals({ pendingOnly: true })).toEqual([])
+    // Codex cleared the request when the turn stopped, so the turn ended without going on.
+    expect((await t.fake.messages()).filter((m) => 'cleared' in m)).toHaveLength(1)
+    expect(t.of('text')).toEqual([])
+    expect(t.of('interrupted')).toHaveLength(1)
+  })
+
+  it('keeps the answer of a card answered before the Stop', async () => {
+    const t = track(await setup({ mode: 'default' }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(requests.Bash, requests.question) }])
+    const run = await t.pending()
+    t.approvals.decide(run.id, { behavior: 'allow' })
+    const question = await until(() => t.store.approvals({ pendingOnly: true }).find((a) => a.id !== run.id))
+    await t.sessions.interrupt('chat')
+    await t.idle()
+    expect([run, question].map((a) => t.store.approval(a.id)?.status)).toEqual(['allowed', 'expired'])
+  })
+
+  it('ends the card on Send now as on Stop, and sends the queued message next', async () => {
+    const t = track(await setup({ mode: 'default' }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(requests.Bash, reply) }])
+    const card = await t.pending()
+    await t.sessions.send('chat', [{ type: 'text', text: 'Use the staging database' }])
+    await t.sessions.sendNow('chat', t.sessions.queued('chat')[0].id)
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    expect(t.store.approval(card.id)?.status).toBe('expired')
+    expect((await t.sent('turn/start'))[1].params.input[0].text).toBe('Use the staging database')
+    expect(t.sessions.queued('chat')).toEqual([])
+  })
+
+  it('ends a waiting card when the chat closes, or when the process crashes', async () => {
+    const closed = track(await setup({ mode: 'default' }))
+    await closed.sessions.send('chat', [{ type: 'text', text: script(requests.question) }])
+    const asked = await closed.pending()
+    closed.sessions.stop('chat')
+    expect(closed.store.approval(asked.id)?.status).toBe('expired')
+
+    const crashed = track(await setup({ mode: 'default' }))
+    await crashed.sessions.send('chat', [{ type: 'text', text: script(requests.Bash) }])
+    const run = await crashed.pending()
+    await crash(crashed)
+    await until(() => crashed.store.approval(run.id)?.status === 'expired')
+    await crashed.idle()
+  })
+
+  it.each([
+    ['ask_user', { question: 'Raise the workspace limit to 8?' }],
+    ['request_plan_approval', { title: 'T-1 Export invoices', plan: '1. Export them as PDF', steps: ['Export invoices · Noor'] }],
+    ['hire_agent', { id: 'scribe', description: 'Writes the docs', prompt: 'You write the docs.' }]
+  ] as const)("ends Rowan's %s card on Stop through the tool call's signal (KERNEL-496)", async (name, args) => {
+    const signals: (AbortSignal | undefined)[] = []
+    const ref: { t?: Awaited<ReturnType<typeof setup>> } = {}
+    // Kernel's own Lead tools, whose card waits on the call's signal as the Lead's askUser does.
+    const deps: Partial<KernelToolDeps> = {
+      roomId: 'room', lead: rowan, chatId: 'chat', agents: async () => [], workspaces: () => [], planMode: () => true,
+      askUser: async (o, signal) => {
+        signals.push(signal)
+        if (signal?.aborted) return null
+        const { approval, decision } = ref.t!.approvals.request({ kind: o.kind, source: 'sdk', roomId: 'room', workspaceId: 'ws', chatId: 'chat', agentId: 'rowan', title: o.title }, { signal })
+        ref.t!.sessions.placeApproval('chat', approval.id)
+        return decision
+      }
+    }
+    const lead = kernelTools(deps as KernelToolDeps)
+    const t = (ref.t = track(await setup({ agent: rowan, tools: lead })))
+    await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/tool/call', params: { threadId: '$thread', turnId: '$turn', callId: 'd1', namespace: null, tool: `kernel_${name}`, arguments: args } }, reply) }])
+    const card = await t.pending()
+    await t.sessions.interrupt('chat')
+    await t.idle()
+    expect(signals).toHaveLength(1)
+    expect(signals[0]?.aborted).toBe(true)
+    expect(t.store.approval(card.id)?.status).toBe('expired')
+  })
+
+  it("ends a waiting plan at the user's next message, and not at a Kernel update", async () => {
+    const t = track(await setup({ chat: { plan: true } }))
+    await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
+    const card = await t.pending()
+    await t.idle()
+    expect(t.sessions.post('chat', [{ type: 'text', text: 'Kai opened PR #12.' }])).toBe(true)
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    expect(t.store.approval(card.id)?.status).toBe('pending')
+
+    await t.sessions.send('chat', [{ type: 'text', text: 'Backfill it in batches instead' }])
+    expect(t.store.approval(card.id)?.status).toBe('expired')
+    await t.idle()
+    await new Promise((r) => setTimeout(r, 100))
+    // The message is the next plan-mode turn. The plan sends neither an approval nor changes.
+    expect((await t.sent('turn/start')).map((m) => m.params.input[0].text).slice(1)).toEqual(['Kai opened PR #12.', 'Backfill it in batches instead'])
+    expect(t.store.chat('chat')?.plan).toBe(true)
+  })
+
+  it('keeps a waiting plan when Kernel ends the idle process, so approving it still sends the agent on', async () => {
+    const t = track(await setup({ chat: { plan: true } }))
+    await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
+    const card = await t.pending()
+    await t.idle()
+    // As the idle stop does, or a change to the agent's file.
+    t.sessions.restartIdle(['ws'])
+    expect(t.store.approval(card.id)?.status).toBe('pending')
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    expect((await t.sent('turn/start'))[1].params.input[0].text).toBe(PLAN_APPROVED)
+    await t.idle()
+  })
+
+  it('ends a waiting plan when the chat closes, or when the process crashes', async () => {
+    const closed = track(await setup({ chat: { plan: true } }))
+    await closed.sessions.send('chat', [{ type: 'text', text: planTurn }])
+    const plan = await closed.pending()
+    await closed.idle()
+    closed.sessions.stop('chat')
+    expect(closed.store.approval(plan.id)?.status).toBe('expired')
+
+    const crashed = track(await setup({ chat: { plan: true } }))
+    await crashed.sessions.send('chat', [{ type: 'text', text: planTurn }])
+    const other = await crashed.pending()
+    await crashed.idle()
+    await crash(crashed)
+    await until(() => crashed.store.approval(other.id)?.status === 'expired')
   })
 })
 

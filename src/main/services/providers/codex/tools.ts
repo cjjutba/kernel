@@ -21,16 +21,17 @@ export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[]
 
 /**
  * Runs the tool Codex called and turns its result into Codex's answer. Arguments the schema refuses, an unknown tool and a
- * handler that throws all come back as a failed call with the reason, as the MCP server answers Claude.
+ * handler that throws all come back as a failed call with the reason, as the MCP server answers Claude. `extra` reaches the
+ * handler as the MCP server's does: its `signal` aborts when the turn stops, which ends a card the tool put up (KERNEL-563).
  */
-export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string, args: unknown): Promise<DynamicToolCallResponse> {
+export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string, args: unknown, extra: { signal?: AbortSignal } = {}): Promise<DynamicToolCallResponse> {
   const fail = (text: string): DynamicToolCallResponse => ({ contentItems: [{ type: 'inputText', text }], success: false })
   const tool = tools.find((t) => `${CODEX_TOOL_PREFIX}${t.name}` === name || t.name === name)
   if (!tool) return fail(`Kernel has no tool called ${name}.`)
   const parsed = z.object(tool.inputSchema).safeParse(args ?? {})
   if (!parsed.success) return fail(`The arguments for ${tool.name} are wrong: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`)
   try {
-    const result = await tool.handler(parsed.data, {})
+    const result = await tool.handler(parsed.data, extra)
     // A result can name another tool, as request_plan_approval's "hand it off now" does.
     const items: DynamicToolCallResponse['contentItems'] = (result.content ?? []).flatMap((c: any): DynamicToolCallResponse['contentItems'] => c.type === 'text' ? [{ type: 'inputText', text: codexNames(String(c.text)) }]
       : c.type === 'image' ? [{ type: 'inputImage', imageUrl: `data:${c.mimeType};base64,${c.data}` }]

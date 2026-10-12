@@ -155,6 +155,16 @@ export class CodexRunner implements Runner {
   private planText?: string
   /** The turn already asked for approval with Kernel's request_plan_approval, so its plan item asks nothing more. */
   private planAsked = false
+  /**
+   * Aborts when the running turn stops (Stop, Send now), ends or loses its process. Every card the turn put up waits on
+   * it, Kernel's tools' too, so a stopped turn's card ends as expired (KERNEL-563).
+   */
+  private turnStop = new AbortController()
+  /**
+   * What a plan from `planned` waits on, since it outlives its turn: it aborts when the process goes away on its own.
+   * Kernel closing an idle process leaves it, as the next message resumes the thread and approving the plan sends one.
+   */
+  private readonly planStop = new AbortController()
   /** Tool rows by Codex item id, so each one's end updates its start. */
   private readonly rows = new Map<string, ChatItem & { kind: 'tool' }>()
   /** File changes by item id, which their approval request names only by id. */
@@ -190,6 +200,8 @@ export class CodexRunner implements Runner {
     const threadId = this.threadId
     const turnId = this.turnId
     if (!this.rpc || !threadId || !turnId) return
+    // The turn's cards end first. Codex 0.153.4 doesn't hold the interrupt for an open request: it clears the request.
+    this.turnStop.abort()
     await this.rpc.request('turn/interrupt', { threadId, turnId }, { timeoutMs: 10_000 }).catch(() => undefined)
   }
 
@@ -219,6 +231,7 @@ export class CodexRunner implements Runner {
   close() {
     if (this.isClosed) return
     this.isClosed = true
+    this.turnStop.abort()
     this.rpc?.close()
     this.child?.stdin?.end()
     if (this.child && this.child.exitCode === null) this.child.kill('SIGTERM')
@@ -307,6 +320,7 @@ export class CodexRunner implements Runner {
   }
 
   private async turn(parts: ChatPart[]) {
+    this.turnStop = new AbortController()
     const threadId = await this.ready!
     if (this.isClosed) return
     // The thread is up: the chat resumes it by this id from now on, and the turn shows as working.
@@ -334,6 +348,9 @@ export class CodexRunner implements Runner {
     if (this.ended) return
     this.ended = true
     this.rpc?.close()
+    // Nothing the process asked can be answered now. A plan waiting after its turn ends too, unless Kernel closed the process.
+    this.turnStop.abort()
+    if (!this.isClosed) this.planStop.abort()
     if (this.isClosed) { this.host.ended(null); return }
     const tail = this.proc.stderr.trim().slice(-500)
     const reason = error ?? (code !== null ? `exit code ${code}` : signal ? `signal ${signal}` : '')
@@ -427,6 +444,8 @@ export class CodexRunner implements Runner {
   private async turnCompleted(turn: Turn) {
     if (turn.id && this.turnId && turn.id !== this.turnId) return
     this.turnId = undefined
+    // Codex clears a request still open when a turn ends, so a card the turn left ends with it.
+    this.turnStop.abort()
     const ok = turn.status === 'completed'
     // A finished turn means OpenAI's API answered, so the network works (KERNEL-231).
     if (ok) this.host.reached()
@@ -446,7 +465,7 @@ export class CodexRunner implements Runner {
   }
 
   private async planned(plan: string) {
-    const result = await this.host.requestPlan(plan, { activity: 'Plan ready' })
+    const result = await this.host.requestPlan(plan, { signal: this.planStop.signal, activity: 'Plan ready' })
     if (!result || this.isClosed && !this.host.chat()) return
     if (result.behavior === 'allow') { this.host.followUp(this.host.handoffAfterPlan() ?? PLAN_APPROVED); return }
     const text = result.behavior === 'answer' ? result.text : result.message
@@ -454,12 +473,14 @@ export class CodexRunner implements Runner {
   }
 
   private async requested(method: string, params: any): Promise<unknown> {
+    // The turn that asked. Its stop ends the card, even when the request waits out a pause first.
+    const signal = this.turnStop.signal
     switch (method) {
-      case 'item/commandExecution/requestApproval': return this.approveCommand(params as CommandExecutionRequestApprovalParams)
-      case 'item/fileChange/requestApproval': return this.approveFiles(params as FileChangeRequestApprovalParams)
-      case 'item/permissions/requestApproval': return this.approvePermissions(params as PermissionsRequestApprovalParams)
-      case 'item/tool/requestUserInput': return this.question(params as ToolRequestUserInputParams)
-      case 'item/tool/call': { const p = params as DynamicToolCallParams; return callTool(this.o.tools, p.tool, p.arguments) }
+      case 'item/commandExecution/requestApproval': return this.approveCommand(params as CommandExecutionRequestApprovalParams, signal)
+      case 'item/fileChange/requestApproval': return this.approveFiles(params as FileChangeRequestApprovalParams, signal)
+      case 'item/permissions/requestApproval': return this.approvePermissions(params as PermissionsRequestApprovalParams, signal)
+      case 'item/tool/requestUserInput': return this.question(params as ToolRequestUserInputParams, signal)
+      case 'item/tool/call': { const p = params as DynamicToolCallParams; return callTool(this.o.tools, p.tool, p.arguments, { signal }) }
       case 'execCommandApproval': case 'applyPatchApproval': return { decision: 'denied' }
       default: throw new RpcError(`Kernel can't answer ${method}.`, -32601)
     }
@@ -474,7 +495,7 @@ export class CodexRunner implements Runner {
    * Only typing into a running terminal follows the mode: Manual asks, the others accept. Bypass permissions declines what
    * Never allow, network off and protected branches refuse and accepts the rest, outside the sandbox too (KERNEL-447).
    */
-  private async approveCommand(p: CommandExecutionRequestApprovalParams): Promise<CommandExecutionRequestApprovalResponse> {
+  private async approveCommand(p: CommandExecutionRequestApprovalParams, signal: AbortSignal): Promise<CommandExecutionRequestApprovalResponse> {
     await this.held()
     const command = unwrapShell(p.command ?? '')
     const leaves = leavesSandbox(p)
@@ -486,7 +507,7 @@ export class CodexRunner implements Runner {
     const d = describeTool('Bash', { command })
     const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
     const reason = verdict?.behavior === 'ask' ? ALWAYS_ASK : leaves ? `${OUTSIDE_SANDBOX}.` : undefined
-    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), ...(reason ? { reason } : {}), activity: d.title }, {})
+    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), ...(reason ? { reason } : {}), activity: d.title }, { signal })
     saveAlwaysAllow(this.host, step, result)
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
@@ -501,7 +522,7 @@ export class CodexRunner implements Runner {
    * File edits accept in Accept edits, Auto and Bypass permissions, and ask in Manual, as Claude's do. Writes outside the
    * workspace ask, except in Bypass permissions (KERNEL-447).
    */
-  private async approveFiles(p: FileChangeRequestApprovalParams): Promise<FileChangeRequestApprovalResponse> {
+  private async approveFiles(p: FileChangeRequestApprovalParams, signal: AbortSignal): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
@@ -510,7 +531,7 @@ export class CodexRunner implements Runner {
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
-    const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, {})
+    const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, { signal })
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
 
@@ -518,22 +539,22 @@ export class CodexRunner implements Runner {
    * More permissions than the sandbox gives, such as the network or another folder. The user's call, except in Bypass
    * permissions, which grants them (KERNEL-447). Network off says no in every mode.
    */
-  private async approvePermissions(p: PermissionsRequestApprovalParams): Promise<PermissionsRequestApprovalResponse> {
+  private async approvePermissions(p: PermissionsRequestApprovalParams, signal: AbortSignal): Promise<PermissionsRequestApprovalResponse> {
     const none: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' }
     const granted: PermissionsRequestApprovalResponse = { permissions: { ...(p.permissions.network ? { network: p.permissions.network } : {}), ...(p.permissions.fileSystem ? { fileSystem: p.permissions.fileSystem } : {}) }, scope: 'turn' }
     const verdict = decide({ tool: 'Permissions', network: !!p.permissions.network, sandbox: 'outside' }, rulesOf(this.host))
     if (verdict?.behavior === 'deny') return none
     if (verdict?.behavior === 'allow') return granted
     const title = p.permissions.network ? 'Allow network access' : 'Allow access outside the workspace'
-    const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined, activity: title }, {})
+    const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined, activity: title }, { signal })
     return result?.behavior === 'allow' ? granted : none
   }
 
   /** Codex's questions, as a Kernel question card like AskUserQuestion's. Answers go back by question id. */
-  private async question(p: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse> {
+  private async question(p: ToolRequestUserInputParams, signal: AbortSignal): Promise<ToolRequestUserInputResponse> {
     const questions = p.questions.map((q) => ({ question: q.question, ...(q.header ? { header: q.header } : {}), options: (q.options ?? []).map((o) => askedOption(o.label, o.description)) }))
     const first = questions[0]
-    const result: Decision | undefined = await this.host.ask({ kind: 'question', toolName: 'AskUserQuestion', input: { questions }, title: first?.question ?? 'Question', options: first?.options.map((o) => o.label) ?? [], questions, activity: first?.question ?? 'Question' }, {})
+    const result: Decision | undefined = await this.host.ask({ kind: 'question', toolName: 'AskUserQuestion', input: { questions }, title: first?.question ?? 'Question', options: first?.options.map((o) => o.label) ?? [], questions, activity: first?.question ?? 'Question' }, { signal })
     const answers: ToolRequestUserInputResponse['answers'] = {}
     if (result?.behavior === 'answer') {
       const given = result.answers ?? {}
