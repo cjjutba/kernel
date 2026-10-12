@@ -42,6 +42,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
+    // Nothing merges by itself until the user turns this on (KERNEL-556).
+    autoMerge: { on: false, maxLines: 400, alwaysReview: [] },
     // Create PR sends this fitted to the repo's PR template, contributing guide and commitlint (KERNEL-468).
     createInstructions: createPrText(),
     resolveInstructions: '# Resolve conflicts\n1. Rebase on the base branch.\n2. Keep both sides where they do not overlap.\n3. Re-run tests and typecheck.\n4. Push and summarize what you changed.',
