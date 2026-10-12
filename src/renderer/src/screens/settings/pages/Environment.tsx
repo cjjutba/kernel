@@ -166,7 +166,7 @@ function EnvFileForm({ paths, onSave, onClose }: { paths: string[]; onSave: (add
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" size="lg" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" size="lg" data-dismiss>Cancel</Button>
         <Button variant="primary" size="lg" type="submit" form={`${id}-form`} busy={busy === 'save'} busyLabel="Adding">Add</Button>
       </>}
     >

@@ -185,6 +185,7 @@ A button that waits on the main process shows it is working until the call retur
   - Overlap. Archiving again while a fold runs starts that row's fold at once. The destination row's fill fade that starts over another one jumps the earlier one to its end.
   - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears and the selected fill changes. The screen swaps at once either way.
 - Only opacity and transform loop, and nothing on a button loops.
+- Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
 - Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 
 ## Accessibility

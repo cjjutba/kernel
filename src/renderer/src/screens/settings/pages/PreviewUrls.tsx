@@ -78,7 +78,7 @@ function PreviewUrlForm({ urls, index, onSave, onClose }: { urls: Urls; index: n
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" data-dismiss>Cancel</Button>
         <Button variant="primary" type="submit" form="preview-url-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
       </>}
     >

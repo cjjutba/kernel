@@ -311,9 +311,17 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .menu-item:hover { background: var(--hover); }
 
 /* modal: one shell for every dialog */
-.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(2px); }
+.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(2px); animation: scrim-in 160ms ease-out; }
+.scrim[data-closing] { animation: scrim-out 120ms linear forwards; pointer-events: none; }
 /* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
-.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); }
+.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); animation: modal-in 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+.modal[data-closing] { animation: modal-out 120ms cubic-bezier(0.4, 0, 1, 1) forwards; pointer-events: none; }
+/* The separate translate and scale properties leave the centering transform alone. */
+@keyframes scrim-in { from { opacity: 0; } }
+@keyframes scrim-out { to { opacity: 0; } }
+@keyframes modal-in { from { opacity: 0; translate: 0 8px; scale: 0.98; } }
+@keyframes modal-out { to { opacity: 0; translate: 0 4px; } }
+@media (prefers-reduced-motion: reduce) { .scrim, .modal { animation: none; } }
 .modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
 .modal-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 500; color: var(--ink); }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }

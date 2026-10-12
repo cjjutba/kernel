@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
 import { isWebUrl } from '@shared/previewUrl'
 import { call } from '../api'
 import { Icon, type IconName } from '../icons'
@@ -121,12 +121,28 @@ export function Popover({ open, onClose, children, label, align = 'left', side =
 
 /**
  * The one modal shell. Blur scrim over the whole window (z-index 40), dialog above it (50), 14px radius, 1px border.
- * Escape and a press on the scrim call `onClose`. Focus moves in on open and back to the trigger on close.
+ * Escape and a press on the scrim play a short exit, then call `onClose` once. Mark a custom footer's Cancel `data-dismiss`
+ * (and leave its `onClick` off) to get the same exit. A close that follows an action calls its own handler and leaves at once.
+ * Focus moves in on open and back to the trigger on close.
  */
 export function Modal({ title, onClose, children, footer, width, top, bare, role = 'dialog', labelledBy, describedBy }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number; top?: number; bare?: boolean; role?: 'dialog' | 'alertdialog'; labelledBy?: string; describedBy?: string }) {
   const id = useId()
   const ref = useRef<HTMLDivElement>(null)
-  useLayer({ onEscape: onClose })
+  const [closing, setClosing] = useState(false)
+  const latest = useRef(onClose)
+  latest.current = onClose
+  const closingRef = useRef(false)
+  const dismiss = useCallback(() => {
+    if (closingRef.current) return
+    closingRef.current = true
+    // Reduced motion runs no exit, so no animationend would come.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) latest.current()
+    else setClosing(true)
+  }, [])
+  useLayer({ onEscape: dismiss })
+  useEffect(() => {
+    if (closing) ref.current?.setAttribute('inert', '')
+  }, [closing])
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-close])')
@@ -146,12 +162,16 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
   const place = { width, ...(top !== undefined && { '--modal-y': top }) } as CSSProperties
   return (
     <>
-      <div className="scrim" onMouseDown={onClose} />
-      <div ref={ref} role={role} aria-modal="true" aria-labelledby={labelledBy ?? id} aria-describedby={describedBy} tabIndex={-1} className="modal" style={place} onKeyDown={trap}>
+      <div className="scrim" data-closing={closing || undefined} onMouseDown={dismiss} />
+      <div
+        ref={ref} role={role} aria-modal="true" aria-labelledby={labelledBy ?? id} aria-describedby={describedBy} tabIndex={-1} className="modal" data-closing={closing || undefined} style={place} onKeyDown={trap}
+        onClick={(e) => { if ((e.target as Element).closest('[data-dismiss]')) dismiss() }}
+        onAnimationEnd={(e) => { if (closing && e.target === e.currentTarget && e.animationName === 'modal-out') latest.current() }}
+      >
         {!bare && (
           <div className="modal-head">
             <h2 id={id}>{title}</h2>
-            <button type="button" data-close className="icon-btn" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
+            <button type="button" data-close className="icon-btn" aria-label="Close" onClick={dismiss}><Icon name="close" /></button>
           </div>
         )}
         {bare && !labelledBy && <h2 id={id} className="sr-only">{title}</h2>}
@@ -168,7 +188,7 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
   return (
     <Modal
       title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
+      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" data-dismiss>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>
