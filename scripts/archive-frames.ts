@@ -107,7 +107,7 @@ export type World = {
   /** The room's chat rows with Rowan as the sidebar lists them, top to bottom. */
   titles: string[]
   threads: { id: string; title: string; roomId: string; stops: boolean; tabs: number }[]
-  workspaces: { id: string; name: string; roomId: string; lead?: boolean; threadId?: string; status: string; prNumber?: number; confirm: boolean }[]
+  workspaces: { id: string; name: string; title?: string; roomId: string; lead?: boolean; threadId?: string; status: string; prNumber?: number; confirm: boolean }[]
   /** The fixture's own workspace and thread records, which the simulated main pushes back archived. */
   records: { workspaces: { id: string; threadId?: string; lead?: boolean; status: string }[]; threads: { id: string }[] }
 }
@@ -128,7 +128,7 @@ async function inventory(page: Page): Promise<World> {
     const workspaces = await Promise.all(all.filter((w: any) => w.status !== 'archived').map(async (w: any) => {
       const git = w.lead || w.mode !== 'worktree' ? null : await kernel.invoke('workspaces.gitStatus', { workspaceId: w.id }).catch(() => undefined)
       const confirm = git === null ? false : !git || git.ahead > 0 || git.dirty.files > 0
-      return { id: w.id, name: w.name, roomId: w.roomId, lead: w.lead, threadId: w.threadId, status: w.status, prNumber: w.prNumber, confirm }
+      return { id: w.id, name: w.name, title: w.title, roomId: w.roomId, lead: w.lead, threadId: w.threadId, status: w.status, prNumber: w.prNumber, confirm }
     }))
     return { titles, threads: rows, workspaces, records: { workspaces: all, threads } }
   })
@@ -154,6 +154,12 @@ const landing = (w: World, title: string) => {
   const dest = at < 0 ? undefined : w.titles[at - 1] ?? w.titles[at + 1]
   if (!dest) throw new Error(`"${title}" has no chat above or below it in the sidebar (rows: ${w.titles.join(', ')}).`)
   return dest
+}
+
+/** What the sidebar calls a workspace: its task title where it shows one (KERNEL-587), else its name. Read off the Archive buttons, so this runs on code from either side of that change. */
+async function rowName(page: Page, ws: World['workspaces'][number]) {
+  for (const name of [ws.title?.trim(), ws.name]) if (name && (await page.locator(`button[aria-label="Archive ${quote(name)}"]`).count()) > 0) return name
+  throw new Error(`The sidebar has no row for workspace "${ws.title || ws.name}".`)
 }
 
 const open = async (page: Page, title: string) => {
@@ -223,13 +229,14 @@ export const paths: PathDef[] = [
       if (!pick) throw new Error('No chat that needs the confirm has a workspace it handed off.')
       const { chat, ws } = pick
       const dest = landing(w, chat.title)
+      const name = await rowName(page, ws)
       return {
-        note: `workspace "${ws.name}"${ws.prNumber ? ` (PR #${ws.prNumber})` : ''} of "${chat.title}" -> "${dest}"`,
-        expect: { old: { label: ws.name, tabs: true }, dest: { label: dest, tabs: true } },
+        note: `workspace "${name}"${ws.prNumber ? ` (PR #${ws.prNumber})` : ''} of "${chat.title}" -> "${dest}"`,
+        expect: { old: { label: name, tabs: true }, dest: { label: dest, tabs: true } },
         prepare: async () => {
           await warm(page, dest)
-          await workspaceRow(page, ws.name).locator('button.nav-item').click()
-          await showing(page, ws.name)
+          await workspaceRow(page, name).locator('button.nav-item').click()
+          await showing(page, name)
           await chatRow(page, chat.title).hover()
           await archiveButton(page, chat.title).click()
           await dialog(page).waitFor()
@@ -245,18 +252,19 @@ export const paths: PathDef[] = [
       const live = w.workspaces.filter((x) => !x.lead && rooms.has(x.roomId))
       const ws = live.find((x) => !x.confirm && !x.threadId) ?? live.find((x) => !x.confirm) ?? live[0]
       if (!ws) throw new Error('No plain workspace row in this fixture.')
+      const name = await rowName(page, ws)
       return {
-        note: `workspace "${ws.name}" -> History${ws.confirm ? ' (through its confirm)' : ''}`,
-        expect: { old: { label: ws.name, tabs: true }, dest: { label: 'History', tabs: false } },
+        note: `workspace "${name}" -> History${ws.confirm ? ' (through its confirm)' : ''}`,
+        expect: { old: { label: name, tabs: true }, dest: { label: 'History', tabs: false } },
         prepare: async () => {
-          await workspaceRow(page, ws.name).locator('button.nav-item').click()
-          await showing(page, ws.name)
-          await workspaceRow(page, ws.name).hover()
-          if (ws.confirm) { await archiveButton(page, ws.name).click(); await dialog(page).waitFor() }
+          await workspaceRow(page, name).locator('button.nav-item').click()
+          await showing(page, name)
+          await workspaceRow(page, name).hover()
+          if (ws.confirm) { await archiveButton(page, name).click(); await dialog(page).waitFor() }
         },
         trigger: () => ws.confirm
           ? dialog(page).getByRole('button', { name: /^(Push and archive|Archive)$/ }).click()
-          : workspaceRow(page, ws.name).locator(`button[aria-label="Archive ${quote(ws.name)}"]`).click()
+          : workspaceRow(page, name).locator(`button[aria-label="Archive ${quote(name)}"]`).click()
       }
     }
   }
