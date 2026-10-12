@@ -563,9 +563,9 @@ export const teamFixtures: Record<string, Fixture> = {
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   // KERNEL-406: an added Claude account and Codex signed in, so the menu names each provider's active account.
   AccountMenu: scene((f) => ({ ...homeScene(f), accounts: [
-    { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-    { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, active: false, signedIn: true, usageFromTurns: true },
-    { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }
+    { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
+    { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true },
+    { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
   ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
   // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).

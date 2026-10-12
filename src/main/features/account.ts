@@ -73,8 +73,9 @@ export class Account extends Feature {
    */
   signedOut(provider: Provider = 'claude') {
     if (provider === 'codex') return this.codexSignedOut()
-    // An added account's token was refused. It reads as signed out until Run login gets a new one, or the next check would lift the hold at once.
-    this.k.providers.tokenRefused()
+    // An added account's token or API key was refused. It reads as signed out until a new one replaces it, or the next check
+    // would lift the hold at once.
+    this.k.providers.credentialRefused('claude')
     this.sessions.holdAll('auth', { provider: 'claude' })
     bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
     if (this.authTimer) return
@@ -82,8 +83,9 @@ export class Account extends Feature {
     this.authTimer.unref?.()
   }
 
-  /** Codex signed out: its chats wait, and Settings, Providers and the account menu say so. */
+  /** Codex signed out: its chats wait, and Settings, Providers and the account menu say so. A refused API key stays refused (KERNEL-523). */
   private codexSignedOut() {
+    this.k.providers.credentialRefused('codex')
     this.sessions.holdAll(CODEX_AUTH, { provider: 'codex' })
     void this.k.providers.pushAccounts()
     if (this.codexAuthTimer) return
@@ -107,8 +109,9 @@ export class Account extends Feature {
     const { subscriptionType, ...account } = this.k.providers.claudeTokenAccount() ?? await this.k.accountReader()
     if (!account.signedIn) return account
     this.account = account
-    // The defaults follow the plan, so a new plan, or the first read of it, changes what the user never set (KERNEL-225).
-    this.k.config.setPlan(planOf(subscriptionType))
+    // The defaults follow the plan, so a new plan, or the first read of it, changes what the user never set (KERNEL-225). An
+    // API key account has no plan, so the last plan's defaults stay, as after a sign-out (KERNEL-523).
+    if (this.k.providers.auth('claude') !== 'apiKey') this.k.config.setPlan(planOf(subscriptionType))
     if (this.sessions.heldFor().includes('auth')) {
       clearInterval(this.authTimer); this.authTimer = undefined
       this.sessions.releaseAll('auth')

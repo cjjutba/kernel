@@ -75,10 +75,10 @@ const codexModels: ProviderModel[] = [
   { provider: 'codex', id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' }
 ]
 const claudeAccounts: AccountProfile[] = [
-  { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-  { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, active: false, signedIn: true, usageFromTurns: true }
+  { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
+  { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true }
 ]
-const codexAccounts: AccountProfile[] = [{ id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }]
+const codexAccounts: AccountProfile[] = [{ id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }]
 const providerStatus: Fixture['providerStatus'] = {
   claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'Claude account', plan: 'Claude Max', email: 'cj@example.com', configFile: '/Users/you/.claude/settings.json' },
   codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: true, loginMethod: 'ChatGPT', plan: 'ChatGPT Plus', email: 'cj@example.com', configFile: '/Users/you/.codex/config.toml' }
@@ -275,7 +275,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-406: both providers' accounts and status, with Claude's own login active and a second Claude account added.
   SettingsProviders: providersPage('claude'),
   SettingsProvidersCodex: providersPage('codex'),
-  SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
+  SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, auth: 'subscription', active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),

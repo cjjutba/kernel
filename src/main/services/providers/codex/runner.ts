@@ -12,7 +12,7 @@ import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
-import { codexEnv, KERNEL_VERSION } from './client'
+import { appServerArgs, codexEnv, KERNEL_VERSION, loginWithKey } from './client'
 import { initializeParams, Rpc, RpcError } from './rpc'
 import { callTool, CODEX_TOOL_PREFIX, mcpOverrides, toolOutput, toolSpecs } from './tools'
 import type { JsonValue } from './protocol/serde_json/JsonValue'
@@ -48,6 +48,8 @@ export interface CodexStart {
   bin: string
   /** CODEX_HOME of the active Codex account. Undefined is Codex's own `~/.codex`. */
   home?: string
+  /** An API key account's key, which the process logs in with and keeps in memory only (KERNEL-523). */
+  apiKey?: string
   /** The workspace's variables. */
   env: Record<string, string>
   /** The agent's prompt with Kernel's rules and the tools' instructions, as the thread's developer instructions. */
@@ -219,7 +221,7 @@ export class CodexRunner implements Runner {
 
   private async boot(): Promise<string> {
     const ws = this.host.workspace
-    const child = this.host.spawn(this.o.bin, ['app-server'], { cwd: ws.path, env: codexEnv(this.o.env, this.o.home) }, this.proc)
+    const child = this.host.spawn(this.o.bin, appServerArgs(this.o.apiKey), { cwd: ws.path, env: codexEnv(this.o.env, this.o.home) }, this.proc)
     this.child = child
     child.stdin?.on('error', () => undefined)
     this.rpc = new Rpc(child.stdin!, child.stdout!, { notify: (m, p) => this.notified(m, p), request: (m, p) => this.requested(m, p) })
@@ -227,6 +229,7 @@ export class CodexRunner implements Runner {
     child.once('error', (e) => this.exited(null, null, e.message))
     await this.rpc.request('initialize', initializeParams(KERNEL_VERSION), { timeoutMs: 60_000 })
     this.rpc.notify('initialized', {})
+    await loginWithKey(this.rpc, this.o.apiKey, 60_000)
     this.gitDir = await gitCommonDir(ws.path).catch(() => undefined)
     const config = await this.mcpConfig(ws.path)
     // The same in every mode (KERNEL-447). Under `untrusted` Kernel sees every command Codex doesn't trust on its own, so Never

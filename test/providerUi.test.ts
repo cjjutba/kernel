@@ -12,9 +12,9 @@ const now = 1_000_000_000_000
 const later = now / 1000 + 3600
 const input = (o: Partial<BannerInput>): BannerInput => ({ ws, chat: claudeChat, agentName: 'Kai', running: false, usage: [], account: { signedIn: true }, online: true, hooks: null, now, ...o })
 const accounts: AccountProfile[] = [
-  { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-  { id: 'work', provider: 'claude', label: 'Work', email: 'cj@acme.dev', plan: 'Claude Team', cli: false, active: false, signedIn: true },
-  { id: 'cli', provider: 'codex', label: 'cj@example.com', cli: true, active: true, signedIn: true }
+  { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
+  { id: 'work', provider: 'claude', label: 'Work', email: 'cj@acme.dev', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true },
+  { id: 'cli', provider: 'codex', label: 'cj@example.com', cli: true, auth: 'subscription', active: true, signedIn: true }
 ]
 const claudeLimit: RateLimit = { type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: later }
 
@@ -38,6 +38,13 @@ describe('the limit banner with two providers (KERNEL-406)', () => {
     const codex = bannerFor(input({ chat: codexChat, usage: [{ ...claudeLimit, provider: 'codex' }], accounts, codexInUse: true }))
     expect(codex).toMatchObject({ title: "You've hit your Codex 5-hour limit", actions: [{ id: 'queue' }] })
     expect(codex?.sub).toContain('Agents on Claude Code keep working.')
+  })
+
+  it('offers a signed-in API key account, which has no windows, and not one that is signed out (KERNEL-523)', () => {
+    const key: AccountProfile = { id: 'key', provider: 'claude', label: 'Billing', cli: false, auth: 'apiKey', active: false, signedIn: true }
+    const withKey = [accounts[0], key, accounts[2]]
+    expect(bannerFor(input({ usage: [claudeLimit], accounts: withKey, codexInUse: true }))?.switchAccount).toEqual({ provider: 'claude', accountId: 'key', label: 'Billing' })
+    expect(bannerFor(input({ usage: [claudeLimit], accounts: [accounts[0], { ...key, signedIn: false }], codexInUse: true }))?.switchAccount).toBeUndefined()
   })
 
   it("counts only the active account's windows", () => {
@@ -64,7 +71,7 @@ describe('Settings, Providers text (KERNEL-406)', () => {
   })
 
   it("gives a token account's meters as of its last turn, with when that was", () => {
-    const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', plan: 'Claude Pro', cli: false, active: true, signedIn: true, usageFromTurns: true }
+    const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', plan: 'Claude Pro', cli: false, auth: 'subscription', active: true, signedIn: true, usageFromTurns: true }
     const at = new Date(2026, 9, 11, 14, 10).getTime()
     const usage: RateLimit[] = [
       { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'side', readAt: at },
