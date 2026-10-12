@@ -79,9 +79,9 @@ describe('restore and Ask Rowan', () => {
     await expect(k.restoreWorkspace(ws.id)).rejects.toThrow(/no longer exists/)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
 
-    // With no chat open, Ask Rowan starts one, and the question waits for its setup (KERNEL-405). The next joins it.
+    // With no chat open, Ask Rowan starts one, with setup (KERNEL-405), and the question goes at once (KERNEL-490). The next joins it.
     const { chatId } = await k.handlers()['lead.ask']({ roomId: room.id, text: 'Who is blocked?' })
-    expect(k.sessions.queued(chatId).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Who is blocked?'])
+    expect(sent.at(-1)).toBe('Who is blocked?')
     expect(k.store.chat(chatId)?.workspaceId).toBe((await k.leadChat(room.id)).workspaceId)
     const again = await k.handlers()['lead.ask']({ roomId: room.id, text: 'And now?' })
     expect(k.store.chat(again.chatId)?.workspaceId).toBe(k.store.chat(chatId)?.workspaceId)

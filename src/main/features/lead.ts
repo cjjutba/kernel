@@ -97,9 +97,10 @@ export class Lead extends Feature {
 
   /**
    * A new chat with Rowan in its own workspace (KERNEL-405): the chat, a worktree on its own branch from the latest
-   * `<remote>/<default>` after a fetch, or from `baseRef`, and its first tab. The first message waits in the tab's queue until
-   * files.copy and setup pass, unless "Wait for setup" is off. Returns at once with the tab, and setup runs on its own, like a
-   * fork's. A room with no commit keeps Rowan on the checkout with no setup, as before KERNEL-355.
+   * `<remote>/<default>` after a fetch, or from `baseRef`, and its first tab. The first message goes at once while setup runs.
+   * With "Wait for setup" on, it waits in the tab's queue until files.copy and setup pass, but only for a setup script that runs
+   * on create: with none there is nothing to wait for (KERNEL-490). Returns at once with the tab, and setup runs on its own, like
+   * a fork's. A room with no commit keeps Rowan on the checkout with no setup, as before KERNEL-355.
    */
   async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
@@ -121,9 +122,16 @@ export class Lead extends Feature {
       if (parts.length) await this.sessions.send(chat.id, parts)
       return chat
     }
-    if (cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup')) this.sessions.hold(chat.id, parts.length ? parts : undefined)
+    const wait = cleanupSwitch(repo, this.settings.workspace, 'leadWaitForSetup') && !!repo.scripts.setup?.trim() && this.settings.scripts.setupOnCreate
+    if (wait) this.sessions.hold(chat.id, parts.length ? parts : undefined)
     else if (parts.length) await this.sessions.send(chat.id, parts)
-    void this.k.workspaces.setUpWorkspace(ws, room, repo, chat).then(() => { if (!this.stopped) this.leadUpdates.flush(roomId) }, (e) => {
+    void this.k.workspaces.setUpWorkspace(ws, room, repo, chat).then((done) => {
+      if (this.stopped) return
+      // A message that went at once started Rowan before setup handed over its variables. Its sessions end once idle, and the
+      // next message resumes each with them, as after a folder move (KERNEL-490).
+      if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
+      this.leadUpdates.flush(roomId)
+    }, (e) => {
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return
       console.warn(`[lead] setting up ${ws.name} failed`, e)

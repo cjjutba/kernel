@@ -443,12 +443,8 @@ describe('Linear in the kernel', () => {
     const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', roomId: room.id })
     const chat = k.store.chat(out.chatId)!
     expect(out.chatId).not.toBe(before.id)
-    // A chat of its own has a workspace of its own (KERNEL-405), and its brief waits for setup.
+    // A chat of its own has a workspace of its own (KERNEL-405), and its brief goes at once (KERNEL-490).
     expect(out.workspaceId).not.toBe(before.workspaceId)
-    expect(k.sessions.queued(out.chatId)).toHaveLength(1)
-    const queued = k.sessions.queued(out.chatId).map((q) => ({ chatId: out.chatId, parts: q.parts }))
-    expect(sent).toEqual([])
-    sent.push(...queued)
     expect(chat.plan).toBe(true)
     // In a Lead chat of its own (KERNEL-337).
     expect(chat.threadId).toBeTruthy()

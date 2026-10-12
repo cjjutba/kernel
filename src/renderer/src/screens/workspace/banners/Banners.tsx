@@ -21,7 +21,7 @@ const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
 }
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
-export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean): BannerView | null {
+export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean, skipsSetup = false): BannerView | null {
   const usage = useStore((s) => s.usage)
   const account = useStore((s) => s.account)
   const accounts = useStore((s) => s.accounts)
@@ -47,7 +47,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, skipsSetup, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**

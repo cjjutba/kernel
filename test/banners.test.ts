@@ -143,6 +143,15 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Kai waits until setup passes.')
   })
 
+  it("keeps a chat with Rowan that doesn't wait for setup open after setup fails, and says Rowan keeps answering (KERNEL-490)", () => {
+    const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
+    const rowan = { agentName: 'Rowan', skipsSetup: true }
+    expect(bannerFor(input({ ...rowan, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
+      id: 'setup', sub: 'pnpm install exited with code 1. Rowan keeps answering without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+    })
+    expect(bannerFor(input({ ...rowan, ws: { ...ws, status: 'trust' } }))).toMatchObject({ id: 'trust', sub: 'Setup has not run yet. Rowan keeps answering without it.', blocks: false })
+  })
+
   it('shows the hook server going down last', () => {
     expect(bannerFor(input({ hooks: { port: 7420, listening: false, installed: true, events: [] } }))).toMatchObject({ id: 'hooks', actions: [{ id: 'checkHooks' }, { id: 'reconnect' }] })
   })

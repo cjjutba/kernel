@@ -177,7 +177,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     await k.stop()
   })
 
-  it('lead.start in a room with no Lead workspace leaves exactly one Lead tab, holding the brief (KERNEL-242)', async () => {
+  it('lead.start in a room with no Lead workspace leaves exactly one Lead tab, with the brief (KERNEL-242)', async () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -189,8 +189,8 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(k.store.workspaces(room.id)).toEqual([])
 
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
-    // The brief waits in the chat's queue until setup passes (KERNEL-405).
-    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
+    // The brief goes at once, while setup runs (KERNEL-490).
+    expect(k.store.items(chat.id).map((i) => i.kind === 'user' && i.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
     // The modal then lands on the chat through lead.open, which must find the brief's tab rather than add a "Lead" one.
     const ws = (await k.handlers()['lead.open']({ roomId: room.id }))!
     expect(ws.id).toBe(chat.workspaceId)

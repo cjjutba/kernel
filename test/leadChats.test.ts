@@ -679,11 +679,11 @@ describe('Ask Rowan (KERNEL-145)', () => {
     expect(chatId).not.toBe(drafting.id)
     expect(sent.map((s) => s.chatId)).toEqual([chatId])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
-    // The New chat modal leaves it too, and starts a chat of its own whose brief waits for setup (KERNEL-242, KERNEL-405).
+    // The New chat modal leaves it too, and starts a chat of its own with the brief (KERNEL-242, KERNEL-405, KERNEL-490).
     const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
     expect(brief.id).not.toBe(drafting.id)
     expect(brief.workspaceId).not.toBe(icons.workspaceId)
-    expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Add PDF export' }]])
+    expect(sent.at(-1)).toMatchObject({ chatId: brief.id, text: 'Add PDF export' })
     expect(k.store.chat(drafting.id)).toEqual(drafting)
     await setUp(k, brief.id)
   })
@@ -960,7 +960,7 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     expect(k.store.threads(room.id)).toHaveLength(threads)
   })
 
-  it('delivers an update with no open chat into one new chat, once its setup passed, and never restores the archived one', async () => {
+  it('delivers an update with no open chat into one new chat, and never restores the archived one', async () => {
     const s = await setup()
     const { k, first, call, byTitle, tab } = s
     const sibling = await tab(first.threadId)
@@ -976,7 +976,8 @@ describe('a room with no open Lead chat (KERNEL-365, KERNEL-405)', () => {
     const tabs = open()
     expect(tabs).toHaveLength(1)
     expect(tabs[0].threadId).not.toBe(first.threadId)
-    expect(k.store.workspace(tabs[0].workspaceId)?.status).toBe('ready')
+    // The room has no setup script, so nothing waits for its setup (KERNEL-490).
+    expect((await setUp(k, tabs[0].id)).status).toBe('ready')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(k.store.workspace(first.workspaceId)?.status).toBe('archived')
     expect(posts.map((p) => p.chatId)).toEqual([tabs[0].id])

@@ -15,17 +15,22 @@ import { setUp, tempRepo, trustRoom } from './helpers'
 
 // KERNEL-405: setup hands variables to the workspace through $KERNEL_ENV, like GitHub Actions' $GITHUB_ENV.
 
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any }[] }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
   query: ({ options }: { options: unknown }) => {
-    sdk.calls.push({ options })
+    // A turn runs until the test feeds it a result.
+    const items: unknown[] = []
+    const waiters: ((r: IteratorResult<unknown>) => void)[] = []
+    sdk.calls.push({ options, feed: (m) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) } })
     return {
-      [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
+      [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {}, getContextUsage: async () => ({ percentage: 0 })
     }
   }
 }))
+
+const result = { type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1000, session_id: 's' }
 
 const SETUP = [
   'echo A=1 >> "$KERNEL_ENV"',
@@ -56,20 +61,29 @@ async function roomWith(setup: string) {
 
 describe('$KERNEL_ENV (KERNEL-405)', () => {
   it("hands setup's variables to Rowan's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
-    const { k, room, dataDir } = await roomWith(SETUP)
+    const { k, room, dataDir } = await roomWith(`sleep 1 && ${SETUP}`)
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
     onTestFinished(() => { bus.off('push', on) })
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
+    // Rowan's sessions, not the one-turn call that names the chat.
+    const inWs = () => sdk.calls.filter((c) => c.options.cwd === k.store.workspace(chat.workspaceId)!.path && c.options.mcpServers)
+    // Rowan's first message goes at once, before setup hands anything over (KERNEL-490).
+    await vi.waitFor(() => expect(inWs()).toHaveLength(1))
+    expect(inWs()[0].options.env).not.toHaveProperty('A')
     const ws = await setUp(k, chat.id)
     // The setup log names what it handed over, and never a value.
     expect(lines).toContain("Setup set A, ANTHROPIC_BASE_URL, B for this workspace's agents, run scripts and terminals. Skipped 1BAD, KERNEL_PORT: they aren't names Kernel passes on.")
     expect(lines.filter((l) => !l.startsWith('$ ')).join('\n')).not.toContain('two words')
+    // Once setup passed, the session ends when its turn does, and the next message starts Rowan with setup's variables.
+    inWs()[0].feed(result)
+    await vi.waitFor(() => expect(k.sessions['live'].has(chat.id)).toBe(false))
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Go on' }])
+    await vi.waitFor(() => expect(inWs()).toHaveLength(2))
     // Rowan's session, in its Bash.
-    await vi.waitFor(() => expect(sdk.calls.filter((c) => c.options.cwd === ws.path)).toHaveLength(1))
-    const env = sdk.calls.find((c) => c.options.cwd === ws.path)!.options.env as Record<string, string>
+    const env = inWs()[1].options.env as Record<string, string>
     expect(env).toMatchObject({ A: '1', B: 'two words', KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_NAME: ws.name, KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: 'main' })
     expect(env).not.toHaveProperty('1BAD')
     expect(env.ANTHROPIC_BASE_URL).not.toBe('http://proxy.invalid')
