@@ -247,11 +247,15 @@ export type TeamEventKind =
   | 'wait.started' | 'wait.released' | 'wait.broken'
   | 'shared'
 
-/** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
+/**
+ * One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead.
+ * `held`: a review holds the ready PR back, so the event reads grey instead of green (KERNEL-635).
+ */
 export interface TeamUpdateEvent {
   kind: TeamEventKind
   text: string
   actionable: boolean
+  held?: boolean
 }
 
 /**
