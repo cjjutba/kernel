@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { query, type SandboxSettings } from '@anthropic-ai/claude-agent-sdk'
+import { dirname, join } from 'node:path'
+import { query, type Options, type SandboxSettings } from '@anthropic-ai/claude-agent-sdk'
 import { exec, git, run } from '../src/main/services/exec'
 import { linkNodeModules } from '../src/main/services/scripts'
 import { sessionEnv } from '../src/main/services/providers/claude'
@@ -20,6 +20,8 @@ import type { SandboxPolicy } from '../src/main/services/providers/codex/protoco
 // KERNEL_LIVE_OUT=<file> saves each probe's exit code and stderr as JSON. The fixture is a new folder in your home folder, not
 // $TMPDIR or /tmp, which both sandboxes may let a command write, and is deleted afterwards. It changes no settings.
 // EXPECTED holds the draft answers in docs/decisions/KERNEL-436.md. A mismatch means the draft is wrong there, not Kernel.
+// The screenshot check (KERNEL-541) runs this repo's own `pnpm shots` and render.mjs in a throwaway worktree of it, so run it
+// from a Kernel checkout with node_modules installed and Google Chrome in /Applications.
 
 type Verdict = 'allowed' | 'denied' | 'not run'
 type Verdicts = Record<string, Verdict>
@@ -42,6 +44,19 @@ interface Fixture {
 interface Probe { id: string; run: string; effect?: () => boolean | Promise<boolean> }
 
 const HAIKU = 'claude-haiku-4-5-20251001'
+
+/**
+ * A Haiku turn in Bypass with only the Bash tool, sandboxed as given, and nothing from the user's own setup: no settings, no MCP
+ * servers and no claude.ai connectors. Those come from the account, not a settings source, and hundreds of their tool schemas
+ * overflow Haiku's prompt ("Prompt is too long"). Strict MCP config keeps them out, and the env var stops the CLI fetching them.
+ */
+function haikuInBypass(cwd: string, sandbox: SandboxSettings, maxTurns: number): Options {
+  return {
+    cwd, model: HAIKU, permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
+    settingSources: [], strictMcpConfig: true, persistSession: false, tools: ['Bash'], maxTurns, sandbox,
+    env: { ...sessionEnv(process.env, {}), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }, pathToClaudeCodeExecutable: bundledClaude()
+  }
+}
 const GITHUB = ['github.com', '*.github.com', '*.githubusercontent.com']
 const REGISTRIES = ['registry.npmjs.org', 'registry.yarnpkg.com', 'repo.yarnpkg.com']
 
@@ -208,11 +223,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
         let result: unknown
         const q = query({
           prompt: 'Run exactly `bash .spike/probe.sh` with the Bash tool, once. Some of its checks are meant to fail. Run nothing else, then reply with one word: done.',
-          options: {
-            cwd: f.wt, model: HAIKU, permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
-            settingSources: [], persistSession: false, tools: ['Bash'], maxTurns: 4, sandbox,
-            env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: bundledClaude()
-          }
+          options: haikuInBypass(f.wt, sandbox, 4)
         })
         for await (const m of q) {
           if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') calls.push(b.input)
@@ -234,5 +245,58 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
       }
     }
     expect(got).toEqual(want)
+  })
+
+  // KERNEL-541: Electron and Chromium die in the sandbox, so Kernel runs the screenshot commands outside it. Each is its own
+  // Bash call, as an agent runs it. The last chains one with a write outside the worktree, which the sandbox still refuses.
+  it('Claude in Bypass runs the screenshot commands, and nothing chained to them, outside the sandbox', { timeout: 1_500_000 }, async () => {
+    const here = process.cwd()
+    const root = dirname(await realpath((await git(here, 'rev-parse', '--path-format=absolute', '--git-common-dir')).trim()))
+    const dir = await realpath(await mkdtemp(join(homedir(), '.kernel-sandbox-shots-')))
+    const wt = join(dir, 'wt')
+    const outside = join(dir, 'outside')
+    await mkdir(outside)
+    await git(here, 'worktree', 'add', '-q', '--detach', wt, 'HEAD')
+    await linkNodeModules(root, wt)
+    const design = join(wt, 'design', 'screens', 'Settings.png')
+    const before = (await stat(design)).mtimeMs
+    const commands = [
+      'pnpm shots Settings',
+      'pnpm shots:compare Settings',
+      'node design/canvas/source/render.mjs Settings',
+      `node design/canvas/source/render.mjs; echo x > ${JSON.stringify(join(outside, 'chained'))}`
+    ]
+    const sandbox = bypassSandbox(wt, { root })
+    const calls: { command?: string }[] = []
+    const outputs: string[] = []
+    let result: unknown
+    try {
+      const q = query({
+        prompt: `Run each of these commands with the Bash tool, exactly as written, one call each, in this order, with timeout 600000. Some may fail. Run nothing else, then reply with one word: done.\n\n${commands.map((c) => `\`${c}\``).join('\n')}`,
+        options: haikuInBypass(wt, sandbox, 8)
+      })
+      for await (const m of q) {
+        if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') calls.push(b.input as { command?: string })
+        if (m.type === 'user' && Array.isArray(m.message.content)) {
+          for (const b of m.message.content) if (b.type === 'tool_result') outputs.push(JSON.stringify(b.content).slice(-600))
+        }
+        if (m.type === 'result') result = { subtype: m.subtype, denials: m.permission_denials }
+      }
+      const wrote = {
+        shot: existsSync(join(wt, 'shots', 'Settings.png')),
+        compare: existsSync(join(wt, 'shots', 'compare', 'Settings.png')),
+        render: (await stat(design)).mtimeMs > before,
+        chained: existsSync(join(outside, 'chained'))
+      }
+      evidence['claude.shots'] = { sandbox, calls, outputs, result, wrote }
+      console.log(`[live] claude shots ${JSON.stringify(wrote)}, calls ${JSON.stringify(calls)}`)
+      expect(calls.map((c) => c.command)).toEqual(commands)
+      expect(wrote).toEqual({ shot: true, compare: true, render: true, chained: false })
+    } finally {
+      await save()
+      await git(here, 'worktree', 'remove', '--force', wt).catch(() => undefined)
+      await rm(dir, { recursive: true, force: true })
+      await git(here, 'worktree', 'prune').catch(() => undefined)
+    }
   })
 })

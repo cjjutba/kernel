@@ -15,12 +15,19 @@ export const REGISTRY_DOMAINS = ['registry.npmjs.org', 'registry.yarnpkg.com', '
 export const CACHE_DIRS = ['.npm', 'Library/pnpm/store', 'Library/Caches/pnpm', 'Library/Caches/Yarn', '.yarn/berry', '.bun/install/cache', '.cache/node/corepack']
 
 /**
+ * The screenshot commands, which run outside the sandbox (KERNEL-541). They start Electron or Chromium, which register a Mach
+ * service at startup, and the sandbox refuses every registration. Each matches the command and its arguments, alone: Claude
+ * Code sandboxes a command that chains one with anything else. `pnpm shots:compare` only joins two PNGs, so it stays in.
+ */
+export const SCREENSHOT_COMMANDS = ['pnpm shots:*', 'node design/canvas/source/render.mjs:*']
+
+/**
  * The sandbox for a Claude process that may run in Bypass permissions, working in `cwd` (KERNEL-458). Commands may write the
  * folder, the repo's git folder (minus its hooks and config), the main checkout's node_modules when Kernel linked it in,
  * Kernel's temp folder and the package manager caches. They reach GitHub and the npm registries and nothing else, and may
- * listen on localhost. A command can't ask to leave the sandbox, and Claude Code runs the commands without it, rather than
- * refusing to start, where the sandbox can't run. `root` is the room's checkout, whose git folder this opens and whose
- * node_modules `linkNodeModules` links in. Without it neither is writable.
+ * listen on localhost. A command can't ask to leave the sandbox, and only the screenshot commands run outside it. Claude Code
+ * runs the commands without it, rather than refusing to start, where the sandbox can't run. `root` is the room's checkout,
+ * whose git folder this opens and whose node_modules `linkNodeModules` links in. Without it neither is writable.
  */
 export function bypassSandbox(cwd: string, o: { root?: string; home?: string; tmp?: string } = {}): SandboxSettings {
   const gitDir = o.root ? gitFolder(o.root) : undefined
@@ -39,7 +46,8 @@ export function bypassSandbox(cwd: string, o: { root?: string; home?: string; tm
     },
     network: { allowedDomains: [...GITHUB_DOMAINS, ...REGISTRY_DOMAINS], strictAllowlist: true, allowLocalBinding: true },
     // gh checks certificates through com.apple.trustd.agent, which the sandbox opens only with this (KERNEL-436).
-    enableWeakerNetworkIsolation: true
+    enableWeakerNetworkIsolation: true,
+    excludedCommands: [...SCREENSHOT_COMMANDS]
   }
 }
 
