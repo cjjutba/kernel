@@ -657,7 +657,7 @@ describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
     await k.stop()
   })
 
-  it('follows the room\'s [tracker] kind, and reads Jira as none until Kernel can read it', async () => {
+  it('follows the room\'s [tracker] kind, Jira included (KERNEL-474)', async () => {
     vi.stubEnv('LINEAR_API_KEY', 'lin_key')
     const { k, repo, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
     await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
@@ -668,7 +668,7 @@ describe("a room's tracker for the Issues screen (KERNEL-471)", () => {
     await saveRepoSettings(repo, { tracker: { kind: 'none' } })
     expect(await tracker()).toEqual({ kind: 'none' })
     await saveRepoSettings(repo, { tracker: { kind: 'jira' } })
-    expect(await tracker()).toEqual({ kind: 'none' })
+    expect(await tracker()).toEqual({ kind: 'jira' })
     await k.stop()
   })
 })
