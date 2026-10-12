@@ -17,6 +17,11 @@ export interface KernelOptions {
    * signed-in provider offers (KERNEL-550). The app passes true. Tests leave it out, so reading a team starts neither CLI.
    */
   checkPins?: boolean
+  /**
+   * An account just added gets its MCP servers checked, with a notice when some need a sign-in there (KERNEL-626). The app
+   * passes true. Tests leave it out, so adding an account starts no check they didn't ask for.
+   */
+  checkMcpOnAdd?: boolean
   /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
   probeNetwork?: () => Promise<boolean>
   /**

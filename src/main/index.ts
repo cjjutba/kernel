@@ -336,6 +336,7 @@ app.whenReady().then(async () => {
       refreshPath,
       claudeAgents,
       checkPins: true,
+      checkMcpOnAdd: true,
       // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
       cipher: safeStorage.isEncryptionAvailable()
         ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }

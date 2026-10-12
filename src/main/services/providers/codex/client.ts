@@ -4,6 +4,8 @@ import { initializeParams, Rpc, type RpcHandlers } from './rpc'
 import type { GetAccountResponse } from './protocol/v2/GetAccountResponse'
 import type { GetAccountRateLimitsResponse } from './protocol/v2/GetAccountRateLimitsResponse'
 import type { LoginAccountParams } from './protocol/v2/LoginAccountParams'
+import type { McpAuthStatus } from './protocol/v2/McpAuthStatus'
+import type { McpServerConnectionStatus } from './protocol/v2/McpServerConnectionStatus'
 import type { ModelListResponse } from './protocol/v2/ModelListResponse'
 
 // Short `codex app-server` sessions for reads outside a chat: the account, the rate limits, the model list (KERNEL-406).
@@ -96,6 +98,26 @@ export async function readCodexModels(bin: string, home: string | undefined, api
     } while (cursor)
     return out.filter((m) => !m.hidden)
   }, { apiKey })
+}
+
+/** What Kernel reads of one server in `mcpServerStatus/list`: its tools by name, not what they take. */
+export interface CodexMcpServer { name: string; authStatus: McpAuthStatus; runtimeStatus: McpServerConnectionStatus | null; tools: Record<string, unknown> }
+
+/**
+ * A Codex home's MCP servers from `mcpServerStatus/list`, with their tools and sign-in only (KERNEL-626). Codex starts each
+ * server to list its tools, so a slow one can take a while: `timeoutMs` is a minute by default.
+ */
+export async function readCodexMcp(bin: string, home: string | undefined, timeoutMs = 60_000): Promise<CodexMcpServer[]> {
+  return withCodex(bin, home, async (rpc) => {
+    const out: CodexMcpServer[] = []
+    let cursor: string | null = null
+    do {
+      const page: { data: CodexMcpServer[]; nextCursor: string | null } = await rpc.request('mcpServerStatus/list', { detail: 'toolsAndAuthOnly', ...(cursor ? { cursor } : {}) }, { timeoutMs })
+      out.push(...page.data)
+      cursor = page.nextCursor
+    } while (cursor)
+    return out
+  }, { timeoutMs })
 }
 
 /** "ChatGPT Plus" for the plan Codex reports. */

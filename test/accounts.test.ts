@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AccountAddStep, AccountProfile, Chat, McpSignInStep, RateLimit, Workspace } from '@shared/types'
+import type { AccountAddStep, AccountProfile, Chat, McpAccount, McpNeeded, McpSignInAll, McpSignInStep, RateLimit, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { limitProvider } from '@shared/providers'
 import { bus } from '../src/main/bus'
@@ -19,7 +19,7 @@ import { tempRepo } from './helpers'
 
 // Claude Code's usage call, answered by the account each short session runs on: its CLAUDE_CONFIG_DIR, '' for the CLI's own
 // login (KERNEL-567). `usage` holds each account's 5-hour use in percent. `mcp` holds the MCP servers each account lists
-// (KERNEL-616). No Claude Code process starts.
+// (KERNEL-616), `*` for any added login not named. No Claude Code process starts.
 const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, mcp: {} as Record<string, { name: string; status: string; scope?: string }[]>, probes: [] as { dir: string; token?: string }[], hold: undefined as Promise<void> | undefined }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
@@ -30,7 +30,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
       interrupt: async () => {},
-      mcpServerStatus: async () => sdk.mcp[dir] ?? [],
+      mcpServerStatus: async () => sdk.mcp[dir] ?? (dir ? sdk.mcp['*'] : undefined) ?? [],
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
         await sdk.hold
         const used = sdk.usage[dir]
@@ -1052,6 +1052,142 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     // A reading of the seat's own windows shows room, and Kernel moves there.
     merge({ status: 'allowed', utilization: 0.1, accountId: seat.id })
     await until(() => k.providers.active('claude') === seat.id)
+    await k.stop()
+  })
+})
+
+describe("Every account's MCP servers, Sign in to all, and the notice after adding an account (KERNEL-626)", () => {
+  const keys = ['FAKE_EMAIL', 'FAKE_MCP_FAIL', 'FAKE_LOGIN_WAIT', 'FAKE_CODEX_MCP_STATUS', 'FAKE_CODEX_LOGIN_EMAIL'] as const
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  afterEach(() => { for (const key of keys) { if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key] } })
+
+  /** A Kernel whose Claude is a fake CLI with its own login, with the pushes this issue adds. */
+  async function setUp(o: Partial<KernelOptions> = {}) {
+    const t = await kernel(o)
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    const runs: McpSignInAll[] = []
+    const needed: McpNeeded[] = []
+    const views: McpAccount[][] = []
+    bus.on('push', (e: PushEvent) => {
+      if (e.type === 'account.mcpSignInAll') runs.push(e.run)
+      if (e.type === 'account.mcpNeeded') needed.push(e.needed)
+      if (e.type === 'mcp.accounts') views.push(e.accounts)
+    })
+    const h = t.k.handlers()
+    const logins = async () => (await claude.calls()).filter((c) => c.args.startsWith('mcp login')).map((c) => c.args.slice('mcp login '.length))
+    return { ...t, claude, h, runs, needed, views, logins }
+  }
+
+  const states = (a: McpAccount | undefined) => a?.servers.map((s) => [s.name, s.state, ...(s.connector ? ['connector'] : []), ...(s.error ? [s.error] : [])])
+
+  it("gives every account's server states for both providers in one call, checks each account once, and again on refresh", async () => {
+    const { k, h, root, views } = await setUp()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    process.env.FAKE_CODEX_LOGIN_EMAIL = 'side@example.com'
+    const work = await h['accounts.add']({ provider: 'codex' })
+    const workHome = k.providers.codexHome(work.id)!
+    sdk.mcp = {
+      '': [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }, { name: 'claude.ai Gmail', status: 'connected', scope: 'claudeai' }, { name: 'claude.ai Google Drive', status: 'needs-auth', scope: 'claudeai' }],
+      [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'failed', scope: 'user', error: 'spawn neon ENOENT' } as { name: string; status: string; scope: string }]
+    }
+    await writeFile(join(root, 'config.toml'), '[mcp_servers.vapi]\ncommand = "vapi"\nenabled = false\n')
+    const codexServer = (name: string, authStatus: string, tools: string[] = []) => ({ name, authStatus, runtimeStatus: null, tools: Object.fromEntries(tools.map((t) => [t, {}])) })
+    process.env.FAKE_CODEX_MCP_STATUS = JSON.stringify({
+      '': [codexServer('github', 'bearerToken', ['search']), codexServer('vercel', 'notLoggedIn'), codexServer('vapi', 'unsupported')],
+      [workHome]: [codexServer('github', 'bearerToken', ['search']), codexServer('vercel', 'notLoggedIn'), codexServer('figma', 'unsupported')]
+    })
+    sdk.probes = []
+    const all = await h['mcp.accounts'](undefined)
+    expect(all.map((a) => [a.provider, a.accountId])).toEqual([['claude', 'cli'], ['claude', side.id], ['codex', 'cli'], ['codex', work.id]])
+    const on = (list: McpAccount[], provider: string, id: string) => list.find((a) => a.provider === provider && a.accountId === id)
+    expect(states(on(all, 'claude', 'cli'))).toEqual([['claude.ai Gmail', 'ready', 'connector'], ['claude.ai Google Drive', 'needs-sign-in', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
+    // The connectors are the CLI login's own, so the added login doesn't have them.
+    expect(states(on(all, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-installed', 'connector'], ['claude.ai Google Drive', 'not-installed', 'connector'], ['linear', 'needs-sign-in'], ['neon', 'failed', 'spawn neon ENOENT']])
+    // Codex leaves out a server config.toml switches off.
+    expect(states(on(all, 'codex', 'cli'))).toEqual([['figma', 'not-installed'], ['github', 'ready'], ['vercel', 'needs-sign-in']])
+    expect(states(on(all, 'codex', work.id))).toEqual([['figma', 'failed', 'Codex could not list its tools.'], ['github', 'ready'], ['vercel', 'needs-sign-in']])
+    expect(all.every((a) => typeof a.checkedAt === 'number' && !a.error)).toBe(true)
+    expect(views.at(-1)).toEqual(all)
+    // The Claude check also fills the account's row, as accounts.checkMcp does.
+    expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }])
+    expect(sdk.probes.map((p) => p.dir).sort()).toEqual(['', folder])
+    // Opening the page again checks nothing.
+    sdk.probes = []
+    const spy = vi.spyOn(k.providers, 'mcpServersOn')
+    expect(await h['mcp.accounts']({})).toEqual(all)
+    expect(spy).not.toHaveBeenCalled()
+    // Refresh checks again, here one account.
+    sdk.mcp[folder] = [{ name: 'linear', status: 'connected', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }]
+    const again = await h['mcp.accounts']({ refresh: true, accountId: side.id })
+    expect(spy.mock.calls).toEqual([['claude', side.id]])
+    expect(states(on(again, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-installed', 'connector'], ['claude.ai Google Drive', 'not-installed', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
+    spy.mockRestore()
+    await k.stop()
+  })
+
+  it("signs in to every server an account needs one after another, moves on from one that fails, and reports it at the end", async () => {
+    const { k, h, runs, logins } = await setUp()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }, { name: 'claude.ai Google Drive', status: 'needs-auth', scope: 'claudeai' }, { name: 'neon', status: 'connected', scope: 'user' }] }
+    process.env.FAKE_MCP_FAIL = 'figma'
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((m) => vi.spyOn(console, m))
+    // Nothing checked the account yet, so Sign in to all checks it first.
+    const run = await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    expect(run).toEqual({ accountId: side.id, servers: ['claude.ai Google Drive', 'figma', 'linear'], done: ['claude.ai Google Drive', 'linear'], failed: [{ server: 'figma', error: 'Claude Code said: Couldn\'t complete authentication for "figma": access denied' }], finished: true })
+    expect(await logins()).toEqual(['claude.ai Google Drive', 'figma', 'linear'])
+    // Each push says which server is next.
+    expect(runs.map((r) => r.current ?? (r.finished ? 'finished' : 'queued'))).toEqual(['queued', 'claude.ai Google Drive', 'figma', 'linear', 'finished'])
+    // linear is ready now. figma still needs one, and the connector stays listed until the next check, as on its row.
+    const view = (await h['mcp.accounts'](undefined)).find((a) => a.accountId === side.id)
+    expect(states(view)).toEqual([['claude.ai Google Drive', 'needs-sign-in', 'connector'], ['figma', 'needs-sign-in'], ['linear', 'ready'], ['neon', 'ready']])
+    for (const spy of logs) {
+      for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/token|access_token|refresh/i)
+      spy.mockRestore()
+    }
+    await k.stop()
+  })
+
+  it('stops Sign in to all on Cancel, so no server after the current one starts', async () => {
+    const { k, h, runs, logins } = await setUp()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
+    await h['mcp.accounts'](undefined)
+    process.env.FAKE_LOGIN_WAIT = '1'
+    const running = h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
+    await until(() => runs.some((r) => r.current === 'figma'))
+    await expect(h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).rejects.toThrow('Sign in to all is already running.')
+    await h['accounts.cancelAdd']({ provider: 'claude' })
+    expect(await running).toEqual({ accountId: side.id, servers: ['figma', 'linear'], done: [], failed: [], finished: true, canceled: true })
+    expect(await logins()).toEqual(['figma'])
+    // It can run again once it ended.
+    delete process.env.FAKE_LOGIN_WAIT
+    expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
+    await k.stop()
+  })
+
+  it('says once when servers need a sign-in on a Claude account just added, and nothing when none do', async () => {
+    const { k, h, needed, views } = await setUp({ checkMcpOnAdd: true })
+    sdk.mcp = { '*': [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }, { name: 'neon', status: 'connected', scope: 'user' }] }
+    const side = await h['accounts.add']({ provider: 'claude' })
+    await until(() => needed.length)
+    expect(needed).toEqual([{ provider: 'claude', accountId: side.id, servers: ['figma', 'linear'], title: '2 MCP servers need a sign-in on side@example.com' }])
+    expect(views.at(-1)?.find((a) => a.accountId === side.id)?.checkedAt).toBeTypeOf('number')
+    // Only once per account.
+    await k.mcp.accountAdded('claude', side.id)
+    // An account where every server is ready gets no notice, and neither does a Codex account, which shares its sign-ins.
+    sdk.mcp = { '*': [{ name: 'neon', status: 'connected', scope: 'user' }] }
+    process.env.FAKE_EMAIL = 'personal@example.com'
+    const personal = await h['accounts.add']({ provider: 'claude' })
+    await until(() => views.some((v) => v.some((a) => a.accountId === personal.id && a.checkedAt)))
+    process.env.FAKE_CODEX_LOGIN_EMAIL = 'side@example.com'
+    await h['accounts.add']({ provider: 'codex' })
+    await new Promise((r) => setTimeout(r, 200))
+    expect(needed).toHaveLength(1)
     await k.stop()
   })
 })

@@ -1,0 +1,16 @@
+**Codex already shares its MCP servers and their sign-ins with every Codex account, so Kernel has no Codex `mcpSignIn` and no notice after adding a Codex account.** Checked on CJ's Mac on 2026-10-13 with Codex 0.153.4.
+
+- The servers live in `config.toml`. An account's home links everything in `~/.codex` but `auth.json` (KERNEL-406), so every account reads the same file.
+- With `mcp_oauth_credentials_store = "auto"`, the default, Codex keeps an OAuth sign-in in the macOS Keychain under the service `Codex MCP Credentials`. The item's account is `<server>|<hash>`, where the hash is the first 16 hex characters of the SHA-256 of `{"type":"http","url":<server url>,"headers":{}}`. CJ's `linear`, `vercel`, `supabase` and `mobbin` items match that hash of their URLs. Nothing in the key depends on `CODEX_HOME`, so one sign-in covers every home on the Mac.
+- The file fallback, `.credentials.json` in `CODEX_HOME`, only applies when the Keychain can't be used or the user sets `mcp_oauth_credentials_store = "file"`. An account's home links that file when `~/.codex` had it at the time of linking. One made later in an account's home is that home's own. Kernel doesn't handle that case. If it shows up, linking `.credentials.json` like the other shared files is the fix.
+- So a Codex server needs a sign-in on every Codex account or on none. `mcp.accounts` still reports each Codex account in the same shape, read from `mcpServerStatus/list` in the account's home, so a home whose links broke shows up as different.
+
+**A Codex server's state comes from `mcpServerStatus/list` with `detail: "toolsAndAuthOnly"`.** `authStatus: "notLoggedIn"` needs a sign-in. A server that listed tools is ready. Outside a thread `runtimeStatus` is null, so a server that listed no tools counts as failed with "Codex could not list its tools." Codex lists the servers `config.toml` switches off (`enabled = false`) too, and Kernel leaves those out.
+
+**`not-installed` counts claude.ai connectors too.** Each Claude account sets its connectors up on claude.ai, so a connector on one account and missing on another is a gap someone may want to fix. A user-added server rarely shows as not installed, since KERNEL-618 syncs those across logins.
+
+**`mcp.accounts` checks an account once and keeps the answer, like `accounts.checkMcp`.** Opening the page checks only accounts it has no answer for. `refresh` checks again. A Claude server that needed a sign-in reads as ready once it is off the account's `mcpSignIns`, where `accounts.mcpSignIn` and the shared sign-ins take it off, so a sign-in shows without a new check. A claude.ai connector stays as it was until the next check, as on the account's row (KERNEL-616).
+
+**Sign in to all reuses `accounts.mcpSignIn` and `accounts.cancelAdd`.** One sign-in runs at a time, as before. Cancel stops the sign-in that is running and the queue, and the canceled server counts as neither done nor failed. A server whose sign-in arrived from another login while the queue ran counts as done without a sign-in.
+
+**The after-add check runs only in the app (`checkMcpOnAdd`).** Tests that add accounts would otherwise start a check they didn't ask for, the same reason `checkPins` exists. KERNEL-626.

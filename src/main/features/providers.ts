@@ -2,15 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpAccountServer, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
 import { limitProvider } from '@shared/providers'
 import { switchChoices } from '@shared/usage'
 import { joinLabels } from '@shared/waits'
-import { NotImplemented } from '@shared/ipc'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
 import { exec } from '../services/exec'
+import { claudeAccountServers, codexAccountServers, codexServers } from '../services/mcp'
 import { blockingLimit } from '../services/health'
 import { LIMIT_NAME, type LimitPatch } from '../services/providers/limits'
 import type { UsageRead } from '../services/sessions'
@@ -20,7 +20,7 @@ import { claudeExecutable, resolveBinary } from '../services/providers/binary'
 import { claudeStatus, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
 import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
-import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
+import { codexPlan, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
 import { codexLimits } from '../services/providers/codex/runner'
 import type { Rpc } from '../services/providers/codex/rpc'
 import type { AccountLoginCompletedNotification } from '../services/providers/codex/protocol/v2/AccountLoginCompletedNotification'
@@ -619,6 +619,8 @@ export class Providers extends Feature {
     const profile = provider === 'claude' ? await this.addClaude(id) : await this.addCodex(id)
     this.step({ provider, step: 'done', account: profile })
     void this.pushAccounts()
+    // Its MCP servers, and a notice when some need a sign-in there (KERNEL-626).
+    void this.k.mcp.accountAdded(provider, profile.id).catch(() => undefined)
     // Its windows, so its row has them before it runs a turn.
     void this.readUsage({ provider }).catch(() => undefined)
     return profile
@@ -777,7 +779,11 @@ export class Providers extends Feature {
   }
 
   /** Closes the Add account sheet: the sign-in stops and nothing is added. */
-  cancelAdd(provider: Provider) { this.adding.get(provider)?.cancel() }
+  cancelAdd(provider: Provider) {
+    // Sign in to all stops before the sign-in it is running, so it doesn't go on to the next server (KERNEL-626).
+    if (provider === 'claude') this.k.mcp.cancelSignInAll()
+    this.adding.get(provider)?.cancel()
+  }
 
   /**
    * Use: the provider runs on this account from its next turn. A running turn finishes on the account it started on, and
@@ -1061,12 +1067,32 @@ export class Providers extends Feature {
    * connector, or a server no login has signed in to.
    */
   async checkMcp(accountId: string): Promise<AccountProfile[]> {
-    const home = this.mcpHome(accountId)
-    this.shareMcp({ force: true })
-    const list = await probeClaudeMcp(this.home, { env: this.mcpEnv(accountId, home), executable: claudeExecutable(this.settings.providers?.claude) })
-    this.mcpSignIns.set(accountId, list.filter((s) => s.status === 'needs-auth').map((s) => ({ server: s.name, connector: isConnector(s.name) || (s.source ?? s.scope) === 'claudeai' })))
+    await this.mcpServersOn('claude', accountId)
     return this.pushList()
   }
+
+  /**
+   * Every MCP server on an account with its state there, `cli` for the CLI's own login (`mcp.accounts`, KERNEL-626). Claude
+   * checks as `checkMcp` does, and the servers needing a sign-in land on the account's `mcpSignIns` too. Codex lists the
+   * servers in the account's home, which shares `config.toml` and the sign-ins with every Codex account (KERNEL-626.md).
+   */
+  async mcpServersOn(provider: Provider, accountId: string): Promise<McpAccountServer[]> {
+    if (provider === 'claude') {
+      const home = this.mcpHome(accountId)
+      this.shareMcp({ force: true })
+      const list = await probeClaudeMcp(this.home, { env: this.mcpEnv(accountId, home), executable: claudeExecutable(this.settings.providers?.claude) })
+      this.mcpSignIns.set(accountId, list.filter((s) => s.status === 'needs-auth').map((s) => ({ server: s.name, connector: isConnector(s.name) || (s.source ?? s.scope) === 'claudeai' })))
+      return claudeAccountServers(list)
+    }
+    const id = accountId === CLI_ACCOUNT ? undefined : accountId
+    if (id && !this.stored('codex', id)) throw new Error('That account is no longer in Kernel.')
+    const home = id ? this.codexHome(id) : undefined
+    const off = (await codexServers(home ?? this.codexRoot())).filter((s) => !s.on).map((s) => s.name)
+    return codexAccountServers(await readCodexMcp(this.mustBinary('codex'), home), off)
+  }
+
+  /** The MCP servers that need a sign-in on a Claude login as Kernel knows now, after any sign-in since its check (KERNEL-626). */
+  mcpSignInsOn(accountId: string): McpSignIn[] | undefined { return this.mcpSignIns.get(accountId) }
 
   /**
    * Signs one MCP server in on a Claude login (`accounts.mcpSignIn`): `claude mcp login` in its folder, which opens the
@@ -1094,6 +1120,7 @@ export class Providers extends Feature {
       if (list) this.mcpSignIns.set(accountId, list.filter((s) => s.server !== name))
       this.shareMcp({ force: true })
     }
+    void this.k.mcp.pushAccounts()
     return this.pushList()
   }
 
@@ -1279,7 +1306,6 @@ export class Providers extends Feature {
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
       'accounts.checkMcp': async ({ accountId }) => this.checkMcp(accountId),
       'accounts.mcpSignIn': async ({ accountId, server }) => this.mcpSignIn(accountId, server),
-      'accounts.mcpSignInAll': async () => { throw new NotImplemented('accounts.mcpSignInAll', 'KERNEL-626') },
       'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }
