@@ -17,25 +17,7 @@
       "radius": 12,
       "title": "Agent profile and editor",
       "w": 1440,
-      "x": 6080,
-      "y": 5200
-    },
-    "Board.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Board",
-      "w": 1440,
-      "x": 0,
-      "y": 5200
-    },
-    "BoardEmpty.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Board \u00b7 no tasks yet",
-      "w": 1440,
-      "x": 3040,
+      "x": 1520,
       "y": 5200
     },
     "CheckHooks.dc.html": {
@@ -108,7 +90,7 @@
       "title": "Archive with unpushed commits",
       "w": 1440,
       "x": 0,
-      "y": 18200
+      "y": 14300
     },
     "ConfirmDiscard.dc.html": {
       "h": 900,
@@ -117,7 +99,7 @@
       "title": "Discard changes",
       "w": 1440,
       "x": 1520,
-      "y": 18200
+      "y": 14300
     },
     "ConfirmRemoveRoom.dc.html": {
       "h": 900,
@@ -126,7 +108,7 @@
       "title": "Remove a room",
       "w": 1440,
       "x": 3040,
-      "y": 18200
+      "y": 14300
     },
     "ConfirmRetire.dc.html": {
       "h": 900,
@@ -135,7 +117,7 @@
       "title": "Retire an agent",
       "w": 1440,
       "x": 4560,
-      "y": 18200
+      "y": 14300
     },
     "ConnectRepo.dc.html": {
       "h": 900,
@@ -145,159 +127,6 @@
       "w": 1440,
       "x": 4560,
       "y": 0
-    },
-    "FloorBlocked.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Agent blocked by a hook",
-      "w": 1440,
-      "x": 3040,
-      "y": 9100
-    },
-    "FloorEmpty.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Room with no agents",
-      "w": 1440,
-      "x": 6080,
-      "y": 9100
-    },
-    "FloorFull.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "More agents than desks",
-      "w": 1440,
-      "x": 7600,
-      "y": 9100
-    },
-    "FloorHandoff.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 5 \u00b7 Rowan hands out tasks",
-      "w": 1440,
-      "x": 6080,
-      "y": 6500
-    },
-    "FloorHired.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "A new agent joins",
-      "w": 1440,
-      "x": 4560,
-      "y": 7800
-    },
-    "FloorLimit.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Room paused by a limit",
-      "w": 1440,
-      "x": 1520,
-      "y": 9100
-    },
-    "FloorNeeds.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 7 \u00b7 Noor needs you",
-      "w": 1440,
-      "x": 9120,
-      "y": 6500
-    },
-    "FloorOffline.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Agent session crashed",
-      "w": 1440,
-      "x": 4560,
-      "y": 9100
-    },
-    "FloorOverlap.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Two agents in the same file",
-      "w": 1440,
-      "x": 3040,
-      "y": 7800
-    },
-    "FloorPaused.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Room paused by you",
-      "w": 1440,
-      "x": 0,
-      "y": 9100
-    },
-    "FloorPlan.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 4 \u00b7 Plan ready for you",
-      "w": 1440,
-      "x": 4560,
-      "y": 6500
-    },
-    "FloorPlanning.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 3 \u00b7 Rowan plans at the task wall",
-      "w": 1440,
-      "x": 3040,
-      "y": 6500
-    },
-    "FloorQuestion.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Rowan asks before planning",
-      "w": 1440,
-      "x": 0,
-      "y": 7800
-    },
-    "FloorReview.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 8 \u00b7 Ready to merge",
-      "w": 1440,
-      "x": 10640,
-      "y": 6500
-    },
-    "FloorSent.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 2 \u00b7 Brief sent",
-      "w": 1440,
-      "x": 1520,
-      "y": 6500
-    },
-    "FloorTalk.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Rowan is chatting with you",
-      "w": 1440,
-      "x": 1520,
-      "y": 7800
-    },
-    "FloorWorking.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 6 \u00b7 Team working",
-      "w": 1440,
-      "x": 7600,
-      "y": 6500
     },
     "History.dc.html": {
       "h": 900,
@@ -333,7 +162,7 @@
       "title": "Home \u00b7 light",
       "w": 1440,
       "x": 0,
-      "y": 22100
+      "y": 18200
     },
     "Inbox.dc.html": {
       "h": 900,
@@ -362,22 +191,13 @@
       "x": 1520,
       "y": 0
     },
-    "Main.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Floor 1 \u00b7 Ready for a brief",
-      "w": 1440,
-      "x": 0,
-      "y": 6500
-    },
     "NewAgent.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
       "title": "New agent \u00b7 Describe",
       "w": 1440,
-      "x": 7600,
+      "x": 3040,
       "y": 5200
     },
     "NewAgentDone.dc.html": {
@@ -386,7 +206,7 @@
       "radius": 12,
       "title": "New agent \u00b7 Joined",
       "w": 1440,
-      "x": 10640,
+      "x": 6080,
       "y": 5200
     },
     "NewAgentDraft.dc.html": {
@@ -395,7 +215,7 @@
       "radius": 12,
       "title": "New agent \u00b7 Review the file",
       "w": 1440,
-      "x": 9120,
+      "x": 4560,
       "y": 5200
     },
     "NewRoom.dc.html": {
@@ -414,7 +234,7 @@
       "title": "New workspace",
       "w": 1440,
       "x": 0,
-      "y": 10400
+      "y": 6500
     },
     "NewWorkspaceBranch.dc.html": {
       "h": 900,
@@ -423,7 +243,7 @@
       "title": "Target branch and where it runs",
       "w": 1440,
       "x": 1520,
-      "y": 10400
+      "y": 6500
     },
     "NewWorkspaceFrom.dc.html": {
       "h": 900,
@@ -432,7 +252,7 @@
       "title": "Start from a PR, branch or issue",
       "w": 1440,
       "x": 3040,
-      "y": 10400
+      "y": 6500
     },
     "NewWorkspaceModel.dc.html": {
       "h": 900,
@@ -441,7 +261,7 @@
       "title": "Model and effort",
       "w": 1440,
       "x": 4560,
-      "y": 10400
+      "y": 6500
     },
     "NewWorkspacePlus.dc.html": {
       "h": 900,
@@ -450,7 +270,7 @@
       "title": "Plan mode and attachments",
       "w": 1440,
       "x": 6080,
-      "y": 10400
+      "y": 6500
     },
     "OpenFolder.dc.html": {
       "h": 900,
@@ -504,7 +324,7 @@
       "title": "General",
       "w": 1440,
       "x": 0,
-      "y": 19500
+      "y": 15600
     },
     "SettingsAbout.dc.html": {
       "h": 900,
@@ -513,7 +333,7 @@
       "title": "About",
       "w": 1440,
       "x": 10640,
-      "y": 20800
+      "y": 16900
     },
     "SettingsAccount.dc.html": {
       "h": 900,
@@ -522,7 +342,7 @@
       "title": "Account and usage",
       "w": 1440,
       "x": 4560,
-      "y": 19500
+      "y": 15600
     },
     "SettingsAppearance.dc.html": {
       "h": 900,
@@ -531,7 +351,7 @@
       "title": "Appearance",
       "w": 1440,
       "x": 1520,
-      "y": 19500
+      "y": 15600
     },
     "SettingsFiles.dc.html": {
       "h": 900,
@@ -540,7 +360,7 @@
       "title": "Room \u00b7 Files to copy",
       "w": 1440,
       "x": 4560,
-      "y": 20800
+      "y": 16900
     },
     "SettingsFilesProduction.dc.html": {
       "h": 900,
@@ -549,7 +369,7 @@
       "title": "Room \u00b7 Files to copy \u00b7 production warning",
       "w": 1440,
       "x": 34960,
-      "y": 20800
+      "y": 16900
     },
     "SettingsGit.dc.html": {
       "h": 900,
@@ -558,7 +378,7 @@
       "title": "Git and worktrees",
       "w": 1440,
       "x": 0,
-      "y": 20800
+      "y": 16900
     },
     "SettingsHooks.dc.html": {
       "h": 900,
@@ -567,7 +387,7 @@
       "title": "Hooks",
       "w": 1440,
       "x": 6080,
-      "y": 20800
+      "y": 16900
     },
     "SettingsIntegrations.dc.html": {
       "h": 900,
@@ -576,7 +396,7 @@
       "title": "Integrations",
       "w": 1440,
       "x": 7600,
-      "y": 20800
+      "y": 16900
     },
     "SettingsModels.dc.html": {
       "h": 900,
@@ -585,7 +405,7 @@
       "title": "Models and effort",
       "w": 1440,
       "x": 7600,
-      "y": 19500
+      "y": 15600
     },
     "SettingsNotifications.dc.html": {
       "h": 900,
@@ -594,7 +414,7 @@
       "title": "Notifications",
       "w": 1440,
       "x": 3040,
-      "y": 19500
+      "y": 15600
     },
     "SettingsPRs.dc.html": {
       "h": 900,
@@ -603,7 +423,7 @@
       "title": "Pull requests",
       "w": 1440,
       "x": 3040,
-      "y": 20800
+      "y": 16900
     },
     "SettingsPermissions.dc.html": {
       "h": 900,
@@ -612,7 +432,7 @@
       "title": "Permissions",
       "w": 1440,
       "x": 10640,
-      "y": 19500
+      "y": 15600
     },
     "SettingsRoom.dc.html": {
       "h": 900,
@@ -621,7 +441,7 @@
       "title": "Room \u00b7 General",
       "w": 1440,
       "x": 12160,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomDiskMeasuring.dc.html": {
       "h": 900,
@@ -630,7 +450,7 @@
       "title": "Room \u00b7 General \u00b7 measuring disk",
       "w": 1440,
       "x": 33440,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomGit.dc.html": {
       "h": 900,
@@ -639,7 +459,7 @@
       "title": "Room \u00b7 Git",
       "w": 1440,
       "x": 13680,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomGitPushFailed.dc.html": {
       "h": 900,
@@ -648,7 +468,7 @@
       "title": "Room \u00b7 Git \u00b7 push check failed",
       "w": 1440,
       "x": 30400,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomGitUnreachable.dc.html": {
       "h": 900,
@@ -657,7 +477,7 @@
       "title": "Room \u00b7 Git \u00b7 remote unreachable",
       "w": 1440,
       "x": 31920,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomScripts.dc.html": {
       "h": 900,
@@ -666,7 +486,7 @@
       "title": "Room \u00b7 Scripts",
       "w": 1440,
       "x": 15200,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomInstructions.dc.html": {
       "h": 900,
@@ -675,7 +495,7 @@
       "title": "Room \u00b7 Instructions",
       "w": 1440,
       "x": 16720,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomPermissions.dc.html": {
       "h": 900,
@@ -684,7 +504,7 @@
       "title": "Room \u00b7 Permissions",
       "w": 1440,
       "x": 18240,
-      "y": 20800
+      "y": 16900
     },
     "SettingsScripts.dc.html": {
       "h": 900,
@@ -693,7 +513,7 @@
       "title": "Scripts",
       "w": 1440,
       "x": 1520,
-      "y": 20800
+      "y": 16900
     },
     "SettingsShortcuts.dc.html": {
       "h": 900,
@@ -702,7 +522,7 @@
       "title": "Shortcuts",
       "w": 1440,
       "x": 6080,
-      "y": 19500
+      "y": 15600
     },
     "SettingsSkills.dc.html": {
       "h": 900,
@@ -711,7 +531,7 @@
       "title": "Room \u00b7 Skills and MCP",
       "w": 1440,
       "x": 12160,
-      "y": 19500
+      "y": 15600
     },
     "SettingsTeam.dc.html": {
       "h": 900,
@@ -720,7 +540,7 @@
       "title": "Room \u00b7 Agents",
       "w": 1440,
       "x": 9120,
-      "y": 19500
+      "y": 15600
     },
     "SetupBedrock.dc.html": {
       "h": 900,
@@ -812,22 +632,13 @@
       "x": 0,
       "y": 3900
     },
-    "TaskDetail.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Task detail",
-      "w": 1440,
-      "x": 1520,
-      "y": 5200
-    },
     "Team.dc.html": {
       "h": 900,
       "is_interactive": true,
       "radius": 12,
       "title": "Team",
       "w": 1440,
-      "x": 4560,
+      "x": 0,
       "y": 5200
     },
     "Welcome.dc.html": {
@@ -855,7 +666,7 @@
       "title": "Workspace",
       "w": 1440,
       "x": 0,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceActions.dc.html": {
       "h": 900,
@@ -864,7 +675,7 @@
       "title": "Message actions",
       "w": 1440,
       "x": 4560,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceCIFailed.dc.html": {
       "h": 900,
@@ -873,7 +684,7 @@
       "title": "Checks failed",
       "w": 1440,
       "x": 3040,
-      "y": 14300
+      "y": 10400
     },
     "WorkspaceChangesRequested.dc.html": {
       "h": 900,
@@ -882,7 +693,7 @@
       "title": "Changes requested",
       "w": 1440,
       "x": 4560,
-      "y": 14300
+      "y": 10400
     },
     "WorkspaceCheckpoints.dc.html": {
       "h": 900,
@@ -891,7 +702,7 @@
       "title": "Checkpoints and revert",
       "w": 1440,
       "x": 4560,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceContext.dc.html": {
       "h": 900,
@@ -900,7 +711,7 @@
       "title": "Context almost full",
       "w": 1440,
       "x": 4560,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceDraftPR.dc.html": {
       "h": 900,
@@ -909,7 +720,7 @@
       "title": "Draft PR",
       "w": 1440,
       "x": 1520,
-      "y": 14300
+      "y": 10400
     },
     "WorkspaceError.dc.html": {
       "h": 900,
@@ -918,7 +729,7 @@
       "title": "Tests failed",
       "w": 1440,
       "x": 7600,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceFile.dc.html": {
       "h": 900,
@@ -927,7 +738,7 @@
       "title": "File preview",
       "w": 1440,
       "x": 6080,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceFocus.dc.html": {
       "h": 900,
@@ -936,7 +747,7 @@
       "title": "Sidebar and panels collapsed",
       "w": 1440,
       "x": 12160,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceHire.dc.html": {
       "h": 900,
@@ -945,7 +756,7 @@
       "title": "Chat with Rowan \u00b7 hiring an agent",
       "w": 1440,
       "x": 10640,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceHooksDown.dc.html": {
       "h": 900,
@@ -954,7 +765,7 @@
       "title": "Hooks disconnected",
       "w": 1440,
       "x": 12160,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceGitHubPaused.dc.html": {
       "h": 900,
@@ -963,7 +774,7 @@
       "title": "GitHub paused",
       "w": 1440,
       "x": 13680,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceHunks.dc.html": {
       "h": 900,
@@ -972,7 +783,7 @@
       "title": "Your changes and the agent\u2019s in one file",
       "w": 1440,
       "x": 7600,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceInterrupted.dc.html": {
       "h": 900,
@@ -981,7 +792,7 @@
       "title": "Interrupted by you",
       "w": 1440,
       "x": 6080,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceLead.dc.html": {
       "h": 900,
@@ -990,7 +801,7 @@
       "title": "Chat with Rowan \u00b7 planning",
       "w": 1440,
       "x": 9120,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceLight.dc.html": {
       "h": 900,
@@ -999,7 +810,7 @@
       "title": "Workspace \u00b7 light",
       "w": 1440,
       "x": 1520,
-      "y": 22100
+      "y": 18200
     },
     "WorkspaceLoading.dc.html": {
       "h": 900,
@@ -1008,7 +819,7 @@
       "title": "Opening a workspace",
       "w": 1440,
       "x": 1520,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceMention.dc.html": {
       "h": 900,
@@ -1017,7 +828,7 @@
       "title": "@ file mentions",
       "w": 1440,
       "x": 1520,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceMerged.dc.html": {
       "h": 900,
@@ -1026,7 +837,7 @@
       "title": "Merged",
       "w": 1440,
       "x": 6080,
-      "y": 14300
+      "y": 10400
     },
     "WorkspaceModelLimit.dc.html": {
       "h": 900,
@@ -1035,7 +846,7 @@
       "title": "Fable 5.1 limit reached",
       "w": 1440,
       "x": 3040,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceNewChat.dc.html": {
       "h": 900,
@@ -1044,7 +855,7 @@
       "title": "New chat tab \u00b7 \u2318T",
       "w": 1440,
       "x": 7600,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceOffline.dc.html": {
       "h": 900,
@@ -1053,7 +864,7 @@
       "title": "Offline",
       "w": 1440,
       "x": 7600,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceOverloaded.dc.html": {
       "h": 900,
@@ -1062,7 +873,7 @@
       "title": "Claude overloaded, retrying",
       "w": 1440,
       "x": 6080,
-      "y": 16900
+      "y": 13000
     },
     "WorkspacePRClosed.dc.html": {
       "h": 900,
@@ -1071,7 +882,7 @@
       "title": "Closed without merging",
       "w": 1440,
       "x": 7600,
-      "y": 14300
+      "y": 10400
     },
     "WorkspacePRMenu.dc.html": {
       "h": 900,
@@ -1080,7 +891,7 @@
       "title": "Create PR menu",
       "w": 1440,
       "x": 0,
-      "y": 14300
+      "y": 10400
     },
     "WorkspacePaste.dc.html": {
       "h": 900,
@@ -1089,7 +900,7 @@
       "title": "Pasted text and images",
       "w": 1440,
       "x": 0,
-      "y": 13000
+      "y": 9100
     },
     "WorkspacePerm.dc.html": {
       "h": 900,
@@ -1098,7 +909,7 @@
       "title": "Permission request",
       "w": 1440,
       "x": 3040,
-      "y": 15600
+      "y": 11700
     },
     "WorkspacePlan.dc.html": {
       "h": 900,
@@ -1107,7 +918,7 @@
       "title": "Plan mode",
       "w": 1440,
       "x": 1520,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQuestion.dc.html": {
       "h": 900,
@@ -1116,7 +927,7 @@
       "title": "Agent asks a question",
       "w": 1440,
       "x": 4560,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQuestionAnswers.dc.html": {
       "h": 900,
@@ -1125,7 +936,7 @@
       "title": "Several questions answered",
       "w": 1440,
       "x": 10640,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQuestionSteps.dc.html": {
       "h": 900,
@@ -1134,7 +945,7 @@
       "title": "Agent asks several questions, one at a time",
       "w": 1440,
       "x": 9120,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQuestionOther.dc.html": {
       "h": 900,
@@ -1143,7 +954,7 @@
       "title": "A typed answer inside the question row",
       "w": 1440,
       "x": 12160,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQuestionLong.dc.html": {
       "h": 900,
@@ -1152,7 +963,7 @@
       "title": "Long options read as label plus description",
       "w": 1440,
       "x": 13680,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceQueued.dc.html": {
       "h": 900,
@@ -1161,7 +972,7 @@
       "title": "Queued messages",
       "w": 1440,
       "x": 6080,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceRunning.dc.html": {
       "h": 900,
@@ -1170,7 +981,7 @@
       "title": "Working",
       "w": 1440,
       "x": 0,
-      "y": 15600
+      "y": 11700
     },
     "WorkspaceSessionLimit.dc.html": {
       "h": 900,
@@ -1179,7 +990,7 @@
       "title": "5-hour limit reached",
       "w": 1440,
       "x": 0,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceSetupFailed.dc.html": {
       "h": 900,
@@ -1188,7 +999,7 @@
       "title": "Setup script failed",
       "w": 1440,
       "x": 10640,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceSignedOut.dc.html": {
       "h": 900,
@@ -1197,7 +1008,7 @@
       "title": "Signed out of Claude Code",
       "w": 1440,
       "x": 9120,
-      "y": 16900
+      "y": 13000
     },
     "WorkspaceSlash.dc.html": {
       "h": 900,
@@ -1206,7 +1017,7 @@
       "title": "/ skills",
       "w": 1440,
       "x": 3040,
-      "y": 13000
+      "y": 9100
     },
     "WorkspaceTabMenu.dc.html": {
       "h": 900,
@@ -1215,7 +1026,7 @@
       "title": "Tab menu and rename",
       "w": 1440,
       "x": 9120,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceTerminal.dc.html": {
       "h": 900,
@@ -1224,7 +1035,7 @@
       "title": "Big terminal tab \u00b7 \u2318\u21e7T",
       "w": 1440,
       "x": 10640,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceToast.dc.html": {
       "h": 900,
@@ -1233,7 +1044,7 @@
       "title": "Toasts",
       "w": 1440,
       "x": 9120,
-      "y": 14300
+      "y": 10400
     },
     "WorkspaceToolCalls.dc.html": {
       "h": 900,
@@ -1242,7 +1053,7 @@
       "title": "Tool calls expanded",
       "w": 1440,
       "x": 3040,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceWeeklyLimit.dc.html": {
       "h": 900,
@@ -1251,7 +1062,7 @@
       "title": "Weekly limit reached",
       "w": 1440,
       "x": 1520,
-      "y": 16900
+      "y": 13000
     },
     "UpdateReady.dc.html": {
       "x": 6080,
@@ -1323,7 +1134,7 @@
       "title": "Workspace \u00b7 issue key in the header",
       "w": 1440,
       "x": 10640,
-      "y": 14300
+      "y": 10400
     },
     "SettingsEnvironment.dc.html": {
       "h": 900,
@@ -1332,7 +1143,7 @@
       "title": "Environment",
       "w": 1440,
       "x": 19760,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomEnvironment.dc.html": {
       "h": 900,
@@ -1341,7 +1152,7 @@
       "title": "Room \u00b7 Environment",
       "w": 1440,
       "x": 21280,
-      "y": 20800
+      "y": 16900
     },
     "SettingsEnvironmentAdd.dc.html": {
       "h": 900,
@@ -1350,7 +1161,7 @@
       "title": "Room \u00b7 Environment \u00b7 add variable",
       "w": 1440,
       "x": 22800,
-      "y": 20800
+      "y": 16900
     },
     "SettingsBigTerminal.dc.html": {
       "h": 900,
@@ -1359,7 +1170,7 @@
       "title": "Big terminal",
       "w": 1440,
       "x": 24320,
-      "y": 20800
+      "y": 16900
     },
     "SettingsRoomIcon.dc.html": {
       "h": 900,
@@ -1368,7 +1179,7 @@
       "title": "Room \u00b7 General \u00b7 icon picker",
       "w": 1440,
       "x": 25840,
-      "y": 20800
+      "y": 16900
     },
     "WorkspaceRunScripts.dc.html": {
       "h": 900,
@@ -1377,7 +1188,7 @@
       "title": "Run tab \u00b7 pick a run script",
       "w": 1440,
       "x": 13680,
-      "y": 11700
+      "y": 7800
     },
     "WorkspacePreview.dc.html": {
       "h": 900,
@@ -1386,7 +1197,7 @@
       "title": "Checks \u00b7 Open preview",
       "w": 1440,
       "x": 15200,
-      "y": 11700
+      "y": 7800
     },
     "WorkspaceTerminalPresets.dc.html": {
       "h": 900,
@@ -1395,7 +1206,7 @@
       "title": "New tab menu \u00b7 terminal presets",
       "w": 1440,
       "x": 16720,
-      "y": 11700
+      "y": 7800
     },
     "HomeRoomIcon.dc.html": {
       "h": 900,
@@ -1431,7 +1242,7 @@
       "title": "Shared file card in a teammate\u2019s chat",
       "w": 1440,
       "x": 0,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedHtml.dc.html": {
       "h": 900,
@@ -1440,7 +1251,7 @@
       "title": "Shared HTML page in a tab",
       "w": 1440,
       "x": 1520,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedPhone.dc.html": {
       "h": 900,
@@ -1449,7 +1260,7 @@
       "title": "Shared HTML page at phone width",
       "w": 1440,
       "x": 3040,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedImage.dc.html": {
       "h": 900,
@@ -1458,7 +1269,7 @@
       "title": "Shared image in a tab",
       "w": 1440,
       "x": 4560,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedMarkdown.dc.html": {
       "h": 900,
@@ -1467,7 +1278,7 @@
       "title": "Shared Markdown in a tab",
       "w": 1440,
       "x": 6080,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedPdf.dc.html": {
       "h": 900,
@@ -1476,7 +1287,7 @@
       "title": "Shared PDF in a tab",
       "w": 1440,
       "x": 7600,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedVersions.dc.html": {
       "h": 900,
@@ -1485,7 +1296,7 @@
       "title": "Shared file, version picker open",
       "w": 1440,
       "x": 9120,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedCrashed.dc.html": {
       "h": 900,
@@ -1494,7 +1305,7 @@
       "title": "Shared page stopped responding",
       "w": 1440,
       "x": 10640,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedPanel.dc.html": {
       "h": 900,
@@ -1503,7 +1314,7 @@
       "title": "Right panel, Shared tab",
       "w": 1440,
       "x": 12160,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedPanelEmpty.dc.html": {
       "h": 900,
@@ -1512,7 +1323,7 @@
       "title": "Right panel, nothing shared",
       "w": 1440,
       "x": 13680,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedComment.dc.html": {
       "h": 900,
@@ -1521,7 +1332,7 @@
       "title": "Shared HTML page in comment mode",
       "w": 1440,
       "x": 15200,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedCommentImage.dc.html": {
       "h": 900,
@@ -1530,7 +1341,7 @@
       "title": "Shared image in comment mode",
       "w": 1440,
       "x": 16720,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedCommentSent.dc.html": {
       "h": 900,
@@ -1539,7 +1350,7 @@
       "title": "Comment sent to the sharing agent",
       "w": 1440,
       "x": 18240,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedCommentArchived.dc.html": {
       "h": 900,
@@ -1548,7 +1359,7 @@
       "title": "Comment popover, sharing workspace archived",
       "w": 1440,
       "x": 19760,
-      "y": 23400
+      "y": 19500
     },
     "WorkspaceSharedCommentOlder.dc.html": {
       "h": 900,
@@ -1557,7 +1368,7 @@
       "title": "Comment popover on an older version",
       "w": 1440,
       "x": 21280,
-      "y": 23400
+      "y": 19500
     },
     "GroupedNewChat.dc.html": {
       "h": 900,
@@ -1566,7 +1377,7 @@
       "title": "Grouped chats \u00b7 new chat with \u2318N",
       "w": 1440,
       "x": 0,
-      "y": 24700
+      "y": 20800
     },
     "GroupedTabs.dc.html": {
       "h": 900,
@@ -1575,7 +1386,7 @@
       "title": "Grouped chats \u00b7 tabs of this chat",
       "w": 1440,
       "x": 1520,
-      "y": 24700
+      "y": 20800
     },
     "GroupedSwitchChat.dc.html": {
       "h": 900,
@@ -1584,7 +1395,7 @@
       "title": "Grouped chats \u00b7 switch chat, file tab stays",
       "w": 1440,
       "x": 3040,
-      "y": 24700
+      "y": 20800
     },
     "GroupedNewTabMenu.dc.html": {
       "h": 900,
@@ -1593,7 +1404,7 @@
       "title": "Grouped chats \u00b7 new tab menu",
       "w": 1440,
       "x": 4560,
-      "y": 24700
+      "y": 20800
     },
     "GroupedSharedWork.dc.html": {
       "h": 900,
@@ -1602,7 +1413,7 @@
       "title": "Grouped chats \u00b7 tabs share the work",
       "w": 1440,
       "x": 6080,
-      "y": 24700
+      "y": 20800
     },
     "GroupedContextFull.dc.html": {
       "h": 900,
@@ -1611,7 +1422,7 @@
       "title": "Grouped chats \u00b7 context almost full",
       "w": 1440,
       "x": 7600,
-      "y": 24700
+      "y": 20800
     },
     "GroupedContextFullAfter.dc.html": {
       "h": 900,
@@ -1620,7 +1431,7 @@
       "title": "Grouped chats \u00b7 new tab after context full",
       "w": 1440,
       "x": 9120,
-      "y": 24700
+      "y": 20800
     },
     "GroupedUpdateRouted.dc.html": {
       "h": 900,
@@ -1629,7 +1440,7 @@
       "title": "Grouped chats \u00b7 team update in another tab",
       "w": 1440,
       "x": 10640,
-      "y": 24700
+      "y": 20800
     },
     "GroupedRowStatus.dc.html": {
       "h": 900,
@@ -1638,7 +1449,7 @@
       "title": "Grouped chats \u00b7 row status and hover card",
       "w": 1440,
       "x": 12160,
-      "y": 24700
+      "y": 20800
     },
     "GroupedCloseLastTab.dc.html": {
       "h": 900,
@@ -1647,7 +1458,7 @@
       "title": "Grouped chats \u00b7 close the last tab",
       "w": 1440,
       "x": 13680,
-      "y": 24700
+      "y": 20800
     },
     "GroupedCloseLastTabAfter.dc.html": {
       "h": 900,
@@ -1656,7 +1467,7 @@
       "title": "Grouped chats \u00b7 after closing the chat",
       "w": 1440,
       "x": 15200,
-      "y": 24700
+      "y": 20800
     },
     "GroupedAskRowan.dc.html": {
       "h": 900,
@@ -1665,7 +1476,7 @@
       "title": "Grouped chats \u00b7 Ask Rowan opens a tab",
       "w": 1440,
       "x": 16720,
-      "y": 24700
+      "y": 20800
     },
     "GroupedPalette.dc.html": {
       "h": 900,
@@ -1674,7 +1485,7 @@
       "title": "Grouped chats \u00b7 search with chats and tabs",
       "w": 1440,
       "x": 18240,
-      "y": 24700
+      "y": 20800
     },
     "TeamOwnAgents.dc.html": {
       "h": 900,
@@ -1682,7 +1493,7 @@
       "radius": 12,
       "title": "Team \u00b7 a repo's own agents",
       "w": 1440,
-      "x": 12160,
+      "x": 7600,
       "y": 5200
     },
     "AgentProfileBuiltIn.dc.html": {
@@ -1691,7 +1502,7 @@
       "radius": 12,
       "title": "Agent profile \u00b7 built in",
       "w": 1440,
-      "x": 13680,
+      "x": 9120,
       "y": 5200
     },
     "RoomSetupTeam.dc.html": {
@@ -1726,7 +1537,7 @@
       "title": "Privacy",
       "w": 1440,
       "x": 27360,
-      "y": 20800
+      "y": 16900
     },
     "TelemetryAsk.dc.html": {
       "h": 900,
@@ -1735,7 +1546,7 @@
       "title": "Share usage data?",
       "w": 1440,
       "x": 6080,
-      "y": 18200
+      "y": 14300
     },
     "SettingsProviders.dc.html": {
       "h": 900,
@@ -1744,7 +1555,7 @@
       "title": "Providers, Claude Code tab",
       "w": 1440,
       "x": 0,
-      "y": 26000
+      "y": 22100
     },
     "SettingsProvidersCodex.dc.html": {
       "h": 900,
@@ -1753,7 +1564,7 @@
       "title": "Providers, Codex tab, signed in",
       "w": 1440,
       "x": 1520,
-      "y": 26000
+      "y": 22100
     },
     "SettingsProvidersCodexSignedOut.dc.html": {
       "h": 900,
@@ -1762,7 +1573,7 @@
       "title": "Providers, Codex tab, signed out",
       "w": 1440,
       "x": 3040,
-      "y": 26000
+      "y": 22100
     },
     "WorkspaceModelPicker.dc.html": {
       "h": 900,
@@ -1771,7 +1582,7 @@
       "title": "Model picker grouped by provider",
       "w": 1440,
       "x": 4560,
-      "y": 26000
+      "y": 22100
     },
     "WorkspaceProviderLimit.dc.html": {
       "h": 900,
@@ -1780,7 +1591,7 @@
       "title": "Claude Code limit, Switch to another account",
       "w": 1440,
       "x": 6080,
-      "y": 26000
+      "y": 22100
     },
     "SettingsProvidersApiKey.dc.html": {
       "h": 900,
@@ -1789,7 +1600,7 @@
       "title": "Providers, Claude Code tab, API key account",
       "w": 1440,
       "x": 7600,
-      "y": 26000
+      "y": 22100
     },
     "SettingsProvidersCodexApiKey.dc.html": {
       "h": 900,
@@ -1798,7 +1609,7 @@
       "title": "Providers, Codex tab, API key account",
       "w": 1440,
       "x": 9120,
-      "y": 26000
+      "y": 22100
     },
     "SettingsAddAccountApiKey.dc.html": {
       "h": 900,
@@ -1807,7 +1618,7 @@
       "title": "Add account, API key",
       "w": 1440,
       "x": 10640,
-      "y": 26000
+      "y": 22100
     },
     "WorkspaceProviderLimitApiKey.dc.html": {
       "h": 900,
@@ -1816,7 +1627,7 @@
       "title": "Claude Code limit, Switch to an API key account",
       "w": 1440,
       "x": 12160,
-      "y": 26000
+      "y": 22100
     },
     "SettingsAccountApiKey.dc.html": {
       "h": 900,
@@ -1825,7 +1636,7 @@
       "title": "Account and usage, API key in use",
       "w": 1440,
       "x": 13680,
-      "y": 26000
+      "y": 22100
     },
     "SettingsProvidersApiKeyActive.dc.html": {
       "h": 900,
@@ -1834,7 +1645,7 @@
       "title": "Providers, Claude Code tab, API key account active",
       "w": 1440,
       "x": 15200,
-      "y": 26000
+      "y": 22100
     },
     "WorkspaceQuestionLong.dc.html": {
       "h": 900,
@@ -1843,7 +1654,7 @@
       "title": "Question with long options",
       "w": 1440,
       "x": 13680,
-      "y": 15600
+      "y": 11700
     },
     "TeamWarnings.dc.html": {
       "h": 900,
@@ -1852,7 +1663,7 @@
       "title": "Team \u00b7 servers an agent can't reach and files Kernel can't read",
       "w": 1440,
       "x": 0,
-      "y": 27300
+      "y": 23400
     },
     "TeamPersonal.dc.html": {
       "h": 900,
@@ -1861,7 +1672,7 @@
       "title": "Team \u00b7 Personal agents and what Kernel allows on top of a file",
       "w": 1440,
       "x": 1520,
-      "y": 27300
+      "y": 23400
     },
     "AgentProfileServers.dc.html": {
       "h": 900,
@@ -1870,7 +1681,7 @@
       "title": "Agent profile \u00b7 servers and what you allowed",
       "w": 1440,
       "x": 3040,
-      "y": 27300
+      "y": 23400
     },
     "AgentProfileScope.dc.html": {
       "h": 900,
@@ -1879,7 +1690,7 @@
       "title": "Agent profile \u00b7 saving a change, for me or for the team",
       "w": 1440,
       "x": 4560,
-      "y": 27300
+      "y": 23400
     },
     "ConfirmRetireScope.dc.html": {
       "h": 900,
@@ -1888,7 +1699,7 @@
       "title": "Retire an agent \u00b7 for me or for the team",
       "w": 1440,
       "x": 6080,
-      "y": 27300
+      "y": 23400
     },
     "NewAgentDraftScope.dc.html": {
       "h": 900,
@@ -1897,7 +1708,7 @@
       "title": "New agent \u00b7 Review the file, with servers and who gets it",
       "w": 1440,
       "x": 7600,
-      "y": 27300
+      "y": 23400
     },
     "WorkspaceToolsGate.dc.html": {
       "h": 900,
@@ -1906,7 +1717,7 @@
       "title": "Tools gate \u00b7 allow once, allow here or keep blocked",
       "w": 1440,
       "x": 9120,
-      "y": 27300
+      "y": 23400
     },
     "WorkspaceHireServers.dc.html": {
       "h": 900,
@@ -1915,7 +1726,7 @@
       "title": "Chat with Rowan \u00b7 hiring an agent, with servers and who gets it",
       "w": 1440,
       "x": 10640,
-      "y": 27300
+      "y": 23400
     },
     "RoomSetupRoster.dc.html": {
       "h": 900,
@@ -1924,7 +1735,7 @@
       "title": "Setting up a room with many agents \u00b7 pick the roster",
       "w": 1440,
       "x": 12160,
-      "y": 27300
+      "y": 23400
     },
     "RoomSetupConflicts.dc.html": {
       "h": 900,
@@ -1933,7 +1744,7 @@
       "title": "Setting up a room \u00b7 repo rules that fight Kernel",
       "w": 1440,
       "x": 13680,
-      "y": 27300
+      "y": 23400
     },
     "SetupPermissions.dc.html": {
       "h": 900,
@@ -1960,7 +1771,7 @@
       "title": "Permission mode label in the composer",
       "w": 1440,
       "x": 12160,
-      "y": 13000
+      "y": 9100
     },
     "ComposerModeMenu.dc.html": {
       "h": 900,
@@ -1969,7 +1780,7 @@
       "title": "Permission mode menus",
       "w": 1440,
       "x": 13680,
-      "y": 13000
+      "y": 9100
     },
     "WorkspacePermReason.dc.html": {
       "h": 900,
@@ -1978,7 +1789,7 @@
       "title": "Permission request with its reason",
       "w": 1440,
       "x": 15200,
-      "y": 15600
+      "y": 11700
     },
     "WorkspacePermReasonCodex.dc.html": {
       "h": 900,
@@ -1987,7 +1798,7 @@
       "title": "Permission request, outside Codex’s sandbox",
       "w": 1440,
       "x": 16720,
-      "y": 15600
+      "y": 11700
     },
     "ConfirmBypass.dc.html": {
       "h": 900,
@@ -1996,7 +1807,7 @@
       "title": "Turn on Bypass permissions",
       "w": 1440,
       "x": 7600,
-      "y": 18200
+      "y": 14300
     },
     "SettingsRoomPermissionsMode.dc.html": {
       "h": 900,
@@ -2005,7 +1816,7 @@
       "title": "Room · Permissions · mode menu",
       "w": 1440,
       "x": 28880,
-      "y": 20800
+      "y": 16900
     },
     "IssuesGitHub.dc.html": {
       "h": 900,
@@ -2014,7 +1825,7 @@
       "title": "Issues \u00b7 GitHub Issues",
       "w": 1440,
       "x": 0,
-      "y": 28600
+      "y": 24700
     },
     "IssuesNoTracker.dc.html": {
       "h": 900,
@@ -2023,7 +1834,7 @@
       "title": "Issues \u00b7 room with no tracker",
       "w": 1440,
       "x": 1520,
-      "y": 28600
+      "y": 24700
     },
     "SettingsRoomTracker.dc.html": {
       "h": 900,
@@ -2032,7 +1843,7 @@
       "title": "Room \u00b7 General \u00b7 issue tracker picker",
       "w": 1440,
       "x": 3040,
-      "y": 28600
+      "y": 24700
     },
     "SettingsRoomTrackerNone.dc.html": {
       "h": 900,
@@ -2041,7 +1852,7 @@
       "title": "Room \u00b7 General \u00b7 no tracker",
       "w": 1440,
       "x": 4560,
-      "y": 28600
+      "y": 24700
     },
     "SettingsRoomReviews.dc.html": {
       "h": 900,
@@ -2050,7 +1861,7 @@
       "title": "Room \u00b7 Reviews",
       "w": 1440,
       "x": 0,
-      "y": 29900
+      "y": 26000
     },
     "NewWorkspaceFromGitHub.dc.html": {
       "h": 900,
@@ -2059,7 +1870,7 @@
       "title": "Start from \u00b7 GitHub issues",
       "w": 1440,
       "x": 6080,
-      "y": 28600
+      "y": 24700
     },
     "NewWorkspaceFromNone.dc.html": {
       "h": 900,
@@ -2068,7 +1879,7 @@
       "title": "Start from \u00b7 room with no tracker",
       "w": 1440,
       "x": 7600,
-      "y": 28600
+      "y": 24700
     },
     "ConfirmIssueTaken.dc.html": {
       "h": 900,
@@ -2077,7 +1888,7 @@
       "title": "Someone is already on the issue",
       "w": 1440,
       "x": 9120,
-      "y": 28600
+      "y": 24700
     },
     "SettingsAddAccount.dc.html": {
       "h": 900,
@@ -2086,7 +1897,7 @@
       "title": "Add account, Claude Code, subscription",
       "w": 1440,
       "x": 0,
-      "y": 29900
+      "y": 26000
     },
     "SettingsAddAccountBrowser.dc.html": {
       "h": 900,
@@ -2095,7 +1906,7 @@
       "title": "Add account, Claude Code, finish signing in",
       "w": 1440,
       "x": 1520,
-      "y": 29900
+      "y": 26000
     },
     "SettingsAddAccountCodex.dc.html": {
       "h": 900,
@@ -2104,7 +1915,7 @@
       "title": "Add account, Codex, subscription",
       "w": 1440,
       "x": 3040,
-      "y": 29900
+      "y": 26000
     },
     "SettingsAddAccountCodexBrowser.dc.html": {
       "h": 900,
@@ -2113,7 +1924,7 @@
       "title": "Add account, Codex, finish signing in",
       "w": 1440,
       "x": 4560,
-      "y": 29900
+      "y": 26000
     },
     "SettingsProvidersRename.dc.html": {
       "h": 900,
@@ -2122,7 +1933,7 @@
       "title": "Providers, Claude Code tab, renaming an account",
       "w": 1440,
       "x": 6080,
-      "y": 29900
+      "y": 26000
     },
     "SettingsProvidersLegacy.dc.html": {
       "h": 900,
@@ -2131,7 +1942,7 @@
       "title": "Providers, Claude Code tab, sign in again",
       "w": 1440,
       "x": 7600,
-      "y": 29900
+      "y": 26000
     },
     "WorkspaceProviderNearLimit.dc.html": {
       "h": 900,
@@ -2140,7 +1951,7 @@
       "title": "Claude Code near its limit, Switch to another account",
       "w": 1440,
       "x": 9120,
-      "y": 29900
+      "y": 26000
     },
     "WorkspaceAccountNote.dc.html": {
       "h": 900,
@@ -2149,7 +1960,7 @@
       "title": "Chat note, Now on Personal",
       "w": 1440,
       "x": 10640,
-      "y": 29900
+      "y": 26000
     },
     "WorkspaceAccountNoteLimit.dc.html": {
       "h": 900,
@@ -2158,7 +1969,7 @@
       "title": "Chat note, Now on Personal after a limit",
       "w": 1440,
       "x": 12160,
-      "y": 29900
+      "y": 26000
     },
     "SearchSwitchAccount.dc.html": {
       "h": 900,
@@ -2167,7 +1978,7 @@
       "title": "Search \u00b7 \u2318K, Switch account",
       "w": 1440,
       "x": 13680,
-      "y": 29900
+      "y": 26000
     }
   },
   "createdOnFiles": {
@@ -2198,82 +2009,82 @@
     "row10": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "11 \u00b7 Workspace \u00b7 composer",
+      "text": "8 \u00b7 Workspace \u00b7 composer",
       "w": 600,
       "x": 0,
-      "y": 12700
+      "y": 8800
     },
     "row11": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "12 \u00b7 Pull requests",
+      "text": "9 \u00b7 Pull requests",
       "w": 600,
       "x": 0,
-      "y": 14000
+      "y": 10100
     },
     "row12": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "13 \u00b7 Agent responses",
+      "text": "10 \u00b7 Agent responses",
       "w": 600,
       "x": 0,
-      "y": 15300
+      "y": 11400
     },
     "row13": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "14 \u00b7 Limits and failures",
+      "text": "11 \u00b7 Limits and failures",
       "w": 600,
       "x": 0,
-      "y": 16600
+      "y": 12700
     },
     "row14": {
       "kind": "title1",
       "maxW": 6000,
-      "text": "15 \u00b7 Confirmations",
+      "text": "12 \u00b7 Confirmations",
       "w": 600,
       "x": 0,
-      "y": 17900
+      "y": 14000
     },
     "row15": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "16 \u00b7 Settings \u00b7 personal and agents",
+      "text": "13 \u00b7 Settings \u00b7 personal and agents",
       "w": 600,
       "x": 0,
-      "y": 19200
+      "y": 15300
     },
     "row16": {
       "kind": "title1",
       "maxW": 27280,
-      "text": "17 \u00b7 Settings \u00b7 workspaces, system and rooms",
+      "text": "14 \u00b7 Settings \u00b7 workspaces, system and rooms",
       "w": 600,
       "x": 0,
-      "y": 20500
+      "y": 16600
     },
     "row17": {
       "kind": "title1",
       "maxW": 2960,
-      "text": "18 \u00b7 Light theme",
+      "text": "15 \u00b7 Light theme",
       "w": 600,
       "x": 0,
-      "y": 21800
+      "y": 17900
     },
     "row18": {
       "kind": "title1",
       "maxW": 22720,
-      "text": "19 \u00b7 Shared files",
+      "text": "16 \u00b7 Shared files",
       "w": 600,
       "x": 0,
-      "y": 23100
+      "y": 19200
     },
     "row19": {
       "kind": "title1",
       "maxW": 19680,
-      "text": "20 \u00b7 Grouped chats",
+      "text": "17 \u00b7 Grouped chats",
       "w": 600,
       "x": 0,
-      "y": 24400
+      "y": 20500
     },
     "row2": {
       "kind": "title1",
@@ -2294,82 +2105,58 @@
     "row4": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "5 \u00b7 Room \u00b7 team (the Board is hidden, D-104)",
+      "text": "5 \u00b7 Room \u00b7 team",
       "w": 600,
       "x": 0,
       "y": 4900
     },
-    "row5": {
+    "row8": {
       "kind": "title1",
-      "maxW": 8000,
-      "text": "6 \u00b7 Floor \u00b7 briefing Rowan, step by step (hidden, D-104)",
+      "maxW": 7520,
+      "text": "6 \u00b7 New workspace",
       "w": 600,
       "x": 0,
       "y": 6200
     },
-    "row6": {
+    "row9": {
       "kind": "title1",
-      "maxW": 6000,
-      "text": "7 \u00b7 Floor \u00b7 other moments (hidden, D-104)",
+      "maxW": 8000,
+      "text": "7 \u00b7 Workspace \u00b7 chat, tabs and layout",
       "w": 600,
       "x": 0,
       "y": 7500
     },
-    "row7": {
-      "kind": "title1",
-      "maxW": 8000,
-      "text": "8 \u00b7 Floor \u00b7 when things stop (hidden, D-104)",
-      "w": 600,
-      "x": 0,
-      "y": 8800
-    },
-    "row8": {
-      "kind": "title1",
-      "maxW": 7520,
-      "text": "9 \u00b7 New workspace",
-      "w": 600,
-      "x": 0,
-      "y": 10100
-    },
-    "row9": {
-      "kind": "title1",
-      "maxW": 8000,
-      "text": "10 \u00b7 Workspace \u00b7 chat, tabs and layout",
-      "w": 600,
-      "x": 0,
-      "y": 11400
-    },
     "row20": {
       "kind": "title1",
       "maxW": 16640,
-      "text": "21 \u00b7 Claude Code and Codex",
+      "text": "18 \u00b7 Claude Code and Codex",
       "w": 600,
       "x": 0,
-      "y": 25700
+      "y": 21800
     },
     "row21": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "22 \u00b7 Agent capabilities, servers and rules",
+      "text": "19 \u00b7 Agent capabilities, servers and rules",
       "w": 600,
       "x": 0,
-      "y": 27000
+      "y": 23100
     },
     "row22": {
       "kind": "title1",
       "maxW": 10560,
-      "text": "23 \u00b7 Issue trackers",
+      "text": "20 \u00b7 Issue trackers",
       "w": 600,
       "x": 0,
-      "y": 28300
+      "y": 24400
     },
     "row23": {
       "kind": "title1",
       "maxW": 15120,
-      "text": "24 \u00b7 Seamless accounts",
+      "text": "21 \u00b7 Seamless accounts",
       "w": 600,
       "x": 0,
-      "y": 29600
+      "y": 25700
     }
   },
   "order": [
@@ -2421,9 +2208,6 @@
     "UpdateReady.dc.html",
     "HomeRoomIcon.dc.html",
     "SidebarChatFolded.dc.html",
-    "Board.dc.html",
-    "TaskDetail.dc.html",
-    "BoardEmpty.dc.html",
     "Team.dc.html",
     "TeamOwnAgents.dc.html",
     "AgentProfile.dc.html",
@@ -2431,24 +2215,6 @@
     "NewAgent.dc.html",
     "NewAgentDraft.dc.html",
     "NewAgentDone.dc.html",
-    "Main.dc.html",
-    "FloorSent.dc.html",
-    "FloorPlanning.dc.html",
-    "FloorPlan.dc.html",
-    "FloorHandoff.dc.html",
-    "FloorWorking.dc.html",
-    "FloorNeeds.dc.html",
-    "FloorReview.dc.html",
-    "FloorQuestion.dc.html",
-    "FloorTalk.dc.html",
-    "FloorOverlap.dc.html",
-    "FloorHired.dc.html",
-    "FloorPaused.dc.html",
-    "FloorLimit.dc.html",
-    "FloorBlocked.dc.html",
-    "FloorOffline.dc.html",
-    "FloorEmpty.dc.html",
-    "FloorFull.dc.html",
     "NewWorkspace.dc.html",
     "NewWorkspaceBranch.dc.html",
     "NewWorkspaceFrom.dc.html",
