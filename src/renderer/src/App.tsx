@@ -28,6 +28,7 @@ import { Issues } from './screens/issues/Issues'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
+import { Permissions } from './screens/onboarding/Permissions'
 import { Welcome } from './screens/onboarding/Welcome'
 import { ConfirmRemoveRoom } from './screens/rooms/ConfirmRemoveRoom'
 import { TrustScripts } from './screens/rooms/TrustScripts'
@@ -87,6 +88,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'onboarding':
       if (route.step === 'welcome') return <Welcome />
       if (route.step === 'room') return <RoomSetup roomId={route.roomId} />
+      if (route.step === 'permissions') return <Permissions />
       return <Checks />
     case 'home': return <Home />
     case 'inbox': return <Inbox />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Decision, PermissionMode } from '@shared/types'
-import type { AppSettings } from '../src/main/services/settings'
+import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
 import { ALWAYS_ASK, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
 function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; roomTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
@@ -91,6 +91,15 @@ describe('effectiveMode (KERNEL-447)', () => {
 
   it('runs Auto as Accept edits where the chat cannot run it', () => {
     expect(effectiveMode(chat({ mode: 'auto' }), worktree, undefined, settings('default'), { auto: false, bypass: true })).toBe('acceptEdits')
+  })
+
+  it('runs a new install, on the Auto default, in Auto where it is available and in Accept edits where it is not (KERNEL-457)', () => {
+    const fresh = DEFAULT_SETTINGS('/home/cj')
+    expect(fresh.permissions.mode).toBe('auto')
+    expect(effectiveMode(chat(), worktree, undefined, fresh, all)).toBe('auto')
+    // The Codex Lead, an account that can't run Auto, and policy that turns it off all arrive as auto: false.
+    expect(effectiveMode(chat(), worktree, undefined, fresh, { auto: false, bypass: true })).toBe('acceptEdits')
+    expect(effectiveMode(chat(), worktree, undefined, fresh, { auto: false, bypass: false })).toBe('acceptEdits')
   })
 
   it('runs Bypass permissions as Accept edits where policy turns it off, and on a current-branch workspace with Only in worktrees on', () => {

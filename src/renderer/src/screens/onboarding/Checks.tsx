@@ -3,7 +3,6 @@ import type { PreflightCheck } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, launchRoute, useStore } from '../../store'
 import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
-import { FirstRoom } from './FirstRoom'
 import './onboarding.css'
 
 /** The port the "use next port" fix will move to, read from the check's own sentence ("Kernel can listen on 7421"). */
@@ -52,7 +51,6 @@ export function Checks() {
   // `recheck:<id>` or `fix:<id>` names the button that spins. The check on open has no button.
   const [busy, track] = useBusy()
   const [error, setError] = useState<string | null>(null)
-  const [ready, setReady] = useState(false)
 
   const run = (key: string, fn: () => Promise<PreflightCheck[]>) => track(key, async () => {
     setError(null)
@@ -60,8 +58,6 @@ export function Checks() {
   })
   const recheck = (key = 'open') => run(key, () => call('preflight.run', undefined))
   useEffect(() => { void recheck() }, [])
-
-  if (ready) return <FirstRoom />
 
   // Only a blocking failure keeps Continue off. A non-blocking one is a warning with its fix beside it (KERNEL-213).
   const failing = checks?.filter((c) => !c.ok).length ?? 0
@@ -71,7 +67,8 @@ export function Checks() {
     const hooks = await call('hooks.status', undefined).catch(() => null)
     if (hooks && !hooks.installed) { actions.ui.openModal({ name: 'checkHooks' }); return }
     // The place the app opens at launch, so Continue after a failed check doesn't land on Home over the place you left.
-    if (rooms.length) go(launchRoute(), { history: 'replace' }); else setReady(true)
+    // A first run, with no room yet, picks its permission mode before the first room (KERNEL-457).
+    if (rooms.length) go(launchRoute(), { history: 'replace' }); else go({ name: 'onboarding', step: 'permissions' })
   }
 
   return (
