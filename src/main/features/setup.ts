@@ -1,7 +1,7 @@
 import type { Chat, ChatPart, Room, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
-import { copyLocalFiles, replayScripts, runScript, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
+import { copyLocalFiles, replayScripts, resizeScript, runScript, scriptNote, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { readSetupEnv, resetSetupEnv, setupEnvPath } from '../services/env'
 import { waitMet } from '../services/waits'
@@ -202,7 +202,7 @@ export class Setup extends Feature {
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
   async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
     const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy, repo.files.exclude)
-    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' }] })
+    for (const f of refused) scriptNote(ws.id, 'setup', `Did not copy ${f}: files.copy can only copy files inside the repo.`)
   }
 
   /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
@@ -255,7 +255,7 @@ export class Setup extends Feature {
     if (code === 0) { this.setupFailures.delete(ws.id); this.sayLoaded(ws); return true }
     this.setupFailures.set(ws.id, code)
     const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
-    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line, stream: 'stderr' }] })
+    scriptNote(ws.id, 'setup', line)
     return false
   }
 
@@ -266,7 +266,7 @@ export class Setup extends Feature {
     if (!names.length && !dropped.length) return
     const got = names.length ? `Setup set ${names.join(', ')} for this workspace's agents, run scripts and terminals.` : ''
     const skipped = dropped.length ? `Skipped ${dropped.join(', ')}: ${dropped.length === 1 ? "it isn't a name" : "they aren't names"} Kernel passes on.` : ''
-    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: [got, skipped].filter(Boolean).join(' '), stream: 'stdout' }] })
+    scriptNote(ws.id, 'setup', [got, skipped].filter(Boolean).join(' '), 'stdout')
   }
 
   setSetup(id: string, hold: SetupHold | undefined) {
@@ -331,7 +331,8 @@ export class Setup extends Feature {
       // Stopping setup ends it like a quit does: failed with no exit code, held for Run again or Send anyway (KERNEL-430).
       'scripts.stop': async ({ workspaceId, kind, name }) => { if (kind === 'setup') stopScript(workspaceId, 'setup'); else if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
       'scripts.skipSetup': async ({ workspaceId }) => { void this.skipSetup(workspaceId).catch(() => undefined); return { ok: true } },
-      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } }
+      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } },
+      'scripts.resize': async ({ workspaceId, kind, name, cols, rows }) => { resizeScript(workspaceId, kind, name, cols, rows); return { ok: true } }
     } satisfies Partial<Handlers>
   }
 }

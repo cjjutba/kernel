@@ -5,8 +5,15 @@ import type { ScriptKind, ScriptLine } from './types'
  * window that reloads or reopens gets it back (KERNEL-340). Both trim with these, so the two copies match.
  */
 export const SCRIPT_LINES = 400
-/** Characters of output kept for each terminal. */
+/** Characters of output kept for each terminal, and for each script's terminal output (KERNEL-655). */
 export const TERMINAL_KEEP = 200_000
+
+/** The size a script's terminal starts at, before a view resizes it (KERNEL-655). */
+export const SCRIPT_COLS = 120
+export const SCRIPT_ROWS = 30
+
+/** `kept` with a script's or terminal's new output added, trimmed to its last `TERMINAL_KEEP` characters. */
+export const keepData = (kept: string | undefined, data: string) => ((kept ?? '') + data).slice(-TERMINAL_KEEP)
 
 /** A run script's name, `run` for the default one. Setup and archive have none. */
 export const runName = (kind: ScriptKind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)

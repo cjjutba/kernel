@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PushEvent } from '@shared/ipc'
+import { TERMINAL_KEEP } from '@shared/scriptLog'
 
 // KERNEL-340: a window that loads while agents, scripts and terminals work gets their state back from main. Pushes only
 // report changes, so without it every working agent looked stopped after a reload.
@@ -76,14 +77,27 @@ describe('scripts after a reload', () => {
   const line = (name: string, text: string) => ({ kind: 'run' as const, name, line: text, stream: 'stdout' as const })
 
   it("takes main's copy for that workspace only, so a running dev server shows as running with its URL", () => {
-    setState({ scripts: { w1: [line('run', 'partial')], w2: [line('run', 'other')] }, scriptExit: { w1: { run: 0 }, w2: { run: 1 } }, scriptUrl: { w2: { run: 'http://localhost:4310' } } })
-    apply({ type: 'script.state', workspaceId: 'w1', lines: [line('run', '$ pnpm dev'), line('run', 'partial')], exit: {}, url: { run: 'http://localhost:4300' } })
+    setState({ scripts: { w1: [line('run', 'partial')], w2: [line('run', 'other')] }, scriptExit: { w1: { run: 0 }, w2: { run: 1 } }, scriptUrl: { w2: { run: 'http://localhost:4310' } }, scriptData: { w1: { run: 'partial' }, w2: { run: 'other' } }, scriptReplays: {} })
+    apply({ type: 'script.state', workspaceId: 'w1', lines: [line('run', '$ pnpm dev'), line('run', 'partial')], exit: {}, url: { run: 'http://localhost:4300' }, data: { run: '$ pnpm dev\r\n\x1b[32mpartial' } })
     expect(getState().scripts.w1.map((l) => l.line)).toEqual(['$ pnpm dev', 'partial'])
     expect(getState().scriptUrl.w1).toEqual({ run: 'http://localhost:4300' })
     expect(runningRuns(getState(), 'w1')).toEqual(['run'])
     expect(getState().scripts.w2.map((l) => l.line)).toEqual(['other'])
     expect(getState().scriptExit.w2).toEqual({ run: 1 })
     expect(getState().scriptUrl.w2).toEqual({ run: 'http://localhost:4310' })
+    // The terminal output too, and a view of w1 knows to draw it again from the top (KERNEL-655).
+    expect(getState().scriptData).toEqual({ w1: { run: '$ pnpm dev\r\n\x1b[32mpartial' }, w2: { run: 'other' } })
+    expect(getState().scriptReplays).toEqual({ w1: 1 })
+  })
+
+  it('adds script.data to its own script and trims it the way main does (KERNEL-655)', () => {
+    setState({ scriptData: { w1: { setup: 'x'.repeat(TERMINAL_KEEP) } } })
+    apply({ type: 'script.data', workspaceId: 'w1', kind: 'setup', data: '\x1b[1mdone' })
+    apply({ type: 'script.data', workspaceId: 'w1', kind: 'run', name: 'web', data: 'web' })
+    const data = getState().scriptData.w1
+    expect(data.setup).toHaveLength(TERMINAL_KEEP)
+    expect(data.setup.endsWith('x\x1b[1mdone')).toBe(true)
+    expect(data['run:web']).toBe('web')
   })
 
   it('asks main once per workspace, since every line after that reaches the window as it is printed', async () => {

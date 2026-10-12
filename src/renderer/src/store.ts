@@ -5,7 +5,7 @@ import type { AccountAddStep, AccountProfile, Provider,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
-import { keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
+import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
@@ -43,6 +43,10 @@ export interface State {
   scriptExit: Record<string, Record<string, number | null | undefined>>
   /** By workspace id, then run script name. The first local URL the script printed, while it runs (`script.url`, KERNEL-246). */
   scriptUrl: Record<string, Record<string, string>>
+  /** By workspace id, then `scriptKey`. Each script's terminal output as it printed it, its last `TERMINAL_KEEP` characters (KERNEL-655). */
+  scriptData: Record<string, Record<string, string>>
+  /** By workspace id. How many times main's copy replaced `scriptData`, so an open script view knows to draw it again from the top (KERNEL-655). */
+  scriptReplays: Record<string, number>
   /** By workspace id. */
   checkpoints: Record<string, Checkpoint[]>
   // chats
@@ -205,7 +209,7 @@ const folded = new Set<keyof typeof HIDDEN>()
 let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, globalAgents: null,
-  workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
+  workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
@@ -560,17 +564,25 @@ export const actions = {
         chats: omit(s.chats, ids),
         items: omit(s.items, chatIds),
         scripts: omit(s.scripts, ids),
+        scriptData: omit(s.scriptData, ids),
         ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
       }
     }),
     /** One script's lines from a `script.output` batch, added in one update (KERNEL-216). */
     appendScript: (workspaceId: string, kind: ScriptKind, name: string | undefined, lines: Pick<ScriptLine, 'line' | 'stream'>[]) =>
       setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: keepLines(s.scripts[workspaceId] ?? [], kind, name, lines) } })),
+    /** One script's terminal output from a `script.data` batch, trimmed the way main trims it (KERNEL-655). */
+    appendScriptData: (workspaceId: string, kind: ScriptKind, name: string | undefined, data: string) => setState((s) => {
+      const k = scriptKey(kind, name)
+      return { scriptData: { ...s.scriptData, [workspaceId]: { ...s.scriptData[workspaceId], [k]: keepData(s.scriptData[workspaceId]?.[k], data) } } }
+    }),
     /** Main's copy of the workspace's scripts, in place of the window's: a window that just loaded missed what came before (KERNEL-340). */
-    setScripts: (workspaceId: string, lines: ScriptLine[], exit: Record<string, number | null>, url: Record<string, string>) => setState((s) => ({
+    setScripts: (workspaceId: string, lines: ScriptLine[], exit: Record<string, number | null>, url: Record<string, string>, data: Record<string, string>) => setState((s) => ({
       scripts: { ...s.scripts, [workspaceId]: lines },
       scriptExit: { ...s.scriptExit, [workspaceId]: exit },
-      scriptUrl: { ...s.scriptUrl, [workspaceId]: url }
+      scriptUrl: { ...s.scriptUrl, [workspaceId]: url },
+      scriptData: { ...s.scriptData, [workspaceId]: Object.fromEntries(Object.entries(data).map(([k, d]) => [k, d.slice(-TERMINAL_KEEP)])) },
+      scriptReplays: { ...s.scriptReplays, [workspaceId]: (s.scriptReplays[workspaceId] ?? 0) + 1 }
     })),
     scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
     /** The URL a run script printed, or null when the push says the run started again or exited. */
@@ -745,9 +757,10 @@ export function apply(e: PushEvent) {
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
+    case 'script.data': return actions.workspaces.appendScriptData(e.workspaceId, e.kind, e.name, e.data)
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
-    case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url)
+    case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url, e.data)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
