@@ -99,6 +99,13 @@ export interface KernelApi {
   'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
   /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
   'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
+  /**
+   * Settings, Agents with no room: the agents that join every room, the user's own in ~/.claude/agents then plugin agents, each
+   * with `origin` set and flagged like a room flags a file Kernel can't read (KERNEL-640).
+   */
+  'agents.listGlobal': { req: Record<string, never>; res: AgentDef[] }
+  /** Rewrites a personal agent's file in ~/.claude/agents, and every open room picks the change up. Refuses a plugin agent (KERNEL-640). */
+  'agents.saveGlobal': { req: { agentId: string; patch: AgentEdit }; res: AgentDef }
 
   // workspaces (KERNEL-10, 11, 16, 21, 28)
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
@@ -593,6 +600,8 @@ export type PushEvent =
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
+  /** The agents that join every room, as `agents.listGlobal` returns them, after ~/.claude/agents or the plugin list changed (KERNEL-640). */
+  | { type: 'globalAgents'; agents: AgentDef[] }
   /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
   | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
