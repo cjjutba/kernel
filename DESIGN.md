@@ -30,7 +30,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
-| needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
+| needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
 | aside | #0b0b0b | the stage behind a shared preview. The workspace's right panel sits on panel, like the chat (KERNEL-526) |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
@@ -38,7 +38,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-The neutrals are pure grey, with equal red, green and blue, so no surface or text leans blue or violet (KERNEL-431). There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
+The neutrals are pure grey, with equal red, green and blue, so no surface or text leans blue or violet (KERNEL-431). There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
@@ -66,7 +66,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | mod | #895503 | a modified file's name and letter (KERNEL-399) |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #1a56b0 | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
-| needs | #7a4f00 | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
+| needs | #7a4f00 | waiting on you: the waiting icon on sidebar rows and chat tabs, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #bd2b2b | destructive confirm buttons |
 | aside | #f7f7f8 | the stage behind a shared preview |
 | plan | #1f5fbf (on-plan #ffffff) | plan mode |

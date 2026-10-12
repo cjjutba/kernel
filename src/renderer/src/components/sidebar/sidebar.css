@@ -44,8 +44,8 @@
 /* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap,
    and its 32px stays off so a hovered row's ⌘N lines up with the rest. */
 .nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }
-/* The Inbox count: what waits on you, in amber (KERNEL-274). */
-.nav-count { flex-shrink: 0; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--needs); }
+/* The Inbox count sits in muted like the ⌘K and ⌘N hints beside it (KERNEL-607). */
+.nav-count { flex-shrink: 0; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
