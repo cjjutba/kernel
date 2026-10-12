@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
-import { baseMessage, listFiles } from '../src/main/features/baseWatch'
+import { baseMessage, catchUpMessage, listFiles } from '../src/main/features/baseWatch'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { git, run } from '../src/main/services/exec'
 import { behindCount, FETCH_REUSE_MS, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
@@ -374,7 +374,7 @@ describe('what starts a check', () => {
     const s = await setUp()
     const check = vi.spyOn(s.k.baseWatch, 'check').mockResolvedValue(undefined)
     await s.k.createWorkspace(s.room.id, { prompt: 'More', agentId: 'kai', title: 'More' })
-    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false })
+    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, fetched: true })
     check.mockClear()
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
     // Past the minute a fetch that passed is reused for (KERNEL-542).
@@ -383,5 +383,70 @@ describe('what starts a check', () => {
     vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
     await s.k.createWorkspace(s.room.id, { prompt: 'Again', agentId: 'kai', title: 'Again' })
     expect(check).not.toHaveBeenCalled()
+  })
+})
+
+describe('catching up a workspace that started when the fetch failed (KERNEL-653)', () => {
+  /** A Kai workspace made while origin was unreachable, with origin back afterwards. */
+  async function staleWorkspace(s: Awaited<ReturnType<typeof setUp>>) {
+    await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
+    const ws = await s.k.createWorkspace(s.room.id, { prompt: 'Stale', agentId: 'kai', title: 'Stale' })
+    expect(ws.fetchFailed).toMatch(/^Fetching origin failed/)
+    await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', s.bare])
+    return { ws, chat: s.k.store.chats(ws.id)[0] }
+  }
+  const chatNotes = (s: Awaited<ReturnType<typeof setUp>>, chatId: string) => s.k.store.items(chatId).flatMap((i) => i.kind === 'note' ? [i.text] : [])
+
+  it('fast-forwards one with no work of its own once a fetch passes, clears fetchFailed and says so in the chat', async () => {
+    const s = await setUp()
+    const { ws, chat } = await staleWorkspace(s)
+    await landOnMain(s.repo, { 'README.md': '# moved\n' })
+    await s.check({ fetch: true })
+    expect(await sha(ws.path, 'HEAD')).toBe(await sha(s.repo, 'origin/main'))
+    expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeUndefined()
+    expect(chatNotes(s, chat.id)).toContain('Fetched origin, so this workspace now starts from the latest origin/main.')
+    expect(s.posts).toEqual([])
+  })
+
+  it('sends one rebase message to one with commits of its own, and leaves its branch alone', async () => {
+    const s = await setUp()
+    const { ws, chat } = await staleWorkspace(s)
+    await commit(ws.path, { 'src/b.ts': 'alpha\nbeta kai\ngamma\n' }, 'kai')
+    const head = await sha(ws.path, 'HEAD')
+    await landOnMain(s.repo, { 'README.md': '# moved\n' })
+    await s.check({ fetch: true })
+    expect(s.posts).toEqual([{ chatId: chat.id, text: catchUpMessage('origin/main', 1) }])
+    expect(await sha(ws.path, 'HEAD')).toBe(head)
+    expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeUndefined()
+    await s.check({ fetch: true })
+    expect(s.posts).toHaveLength(1)
+  })
+
+  it('never moves a busy one mid-turn, and catches it up at its turn end with a fetch of its own', async () => {
+    const s = await setUp()
+    const { ws, chat } = await staleWorkspace(s)
+    const before = await sha(ws.path, 'HEAD')
+    await landOnMain(s.repo, { 'README.md': '# moved\n' })
+    const running = vi.spyOn(s.k.sessions, 'isRunning').mockImplementation((id) => id === chat.id)
+    await s.check({ fetch: true })
+    expect(await sha(ws.path, 'HEAD')).toBe(before)
+    expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeDefined()
+    // Its turn ends: that alone tries the fetch again, a real event rather than a timer.
+    running.mockReturnValue(false)
+    const check = vi.spyOn(s.k.baseWatch, 'check')
+    sessionDeps(s.k).onTurnDone!(s.k.store.workspace(ws.id)!, chat, { ok: true, interrupted: false, by: 'user' })
+    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: ws.id })
+    await check.mock.results[0].value
+    expect(await sha(ws.path, 'HEAD')).toBe(await sha(s.repo, 'origin/main'))
+    expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeUndefined()
+  })
+
+  it('keeps fetchFailed while the fetch at the turn end still fails', async () => {
+    const s = await setUp()
+    const { ws, chat } = await staleWorkspace(s)
+    await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
+    await s.check({ only: ws.id })
+    expect(s.k.store.workspace(ws.id)!.fetchFailed).toBeDefined()
+    expect(chatNotes(s, chat.id).filter((n) => n.startsWith('Fetched'))).toEqual([])
   })
 })
