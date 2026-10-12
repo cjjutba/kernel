@@ -91,7 +91,7 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
 }
 
 /**
- * The icon in front of the Lead in the sidebar: what waits on you first, like `workspaceGlyph`, then the Lead's floor status,
+ * The icon in front of the Lead in the sidebar: what waits on you first, like `workspaceGlyph`, then the Lead's status,
  * the same one the Lead's hover card shows, so the row and the card never disagree. Rowan's team plan arrives through
  * `askUser`, which never sets the status to `needs`, so a waiting plan has to win over the status. Idle keeps the chat icon,
  * since the row opens the Lead's chat.

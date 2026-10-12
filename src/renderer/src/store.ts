@@ -30,8 +30,6 @@ export interface State {
   agents: Record<string, AgentDef[]>
   /** By room id, then agent id. */
   status: Record<string, Record<string, AgentStatus>>
-  /** By agent id. The latest "what I'm doing" line for the floor tag and bubble. */
-  saying: Record<string, string>
   // workspaces
   workspaces: Workspace[]
   /** By workspace id. Lines carry the run script's `name`, and each script keeps its own last 400. */
@@ -199,7 +197,7 @@ const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
-  agents: {}, status: {}, saying: {},
+  agents: {}, status: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
@@ -249,7 +247,7 @@ function newer(all: State['lastActivity'], roomId: string, times: Record<string,
   const later = Object.entries(times).filter(([id, ts]) => ts > (room[id] ?? -Infinity))
   return later.length ? { ...all, [roomId]: { ...room, ...Object.fromEntries(later) } } : all
 }
-/** Settings > General > Last room: the room whose floor, board, team or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
+/** Settings > General > Last room: the room whose team page, chat or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
 const LAST_ROOM = 'kernel.lastRoom'
 function rememberRoom(route: Route) {
   const id = 'roomId' in route && route.roomId ? route.roomId : route.name === 'workspace' ? state.workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined
@@ -527,9 +525,8 @@ export const actions = {
   },
   agents: {
     set: (roomId: string, list: AgentDef[]) => setState((s) => ({ agents: { ...s.agents, [roomId]: list } })),
-    setStatus: (roomId: string, agentId: string, status: AgentStatus, activity?: string) => setState((s) => ({
-      status: { ...s.status, [roomId]: { ...(s.status[roomId] ?? {}), [agentId]: status } },
-      saying: activity ? { ...s.saying, [agentId]: activity } : s.saying
+    setStatus: (roomId: string, agentId: string, status: AgentStatus) => setState((s) => ({
+      status: { ...s.status, [roomId]: { ...(s.status[roomId] ?? {}), [agentId]: status } }
     }))
   },
   workspaces: {
@@ -710,7 +707,7 @@ export function apply(e: PushEvent) {
     case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
     case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.roomId, e.agents)
-    case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
+    case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)

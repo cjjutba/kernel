@@ -17,7 +17,7 @@ const tabs: [InboxTab, string][] = [['all', 'All'], ['needs', 'Needs you'], ['up
 
 const isTool = (a?: Approval) => !!a && a.kind === 'tool' && a.toolName !== 'ExitPlanMode'
 
-/** Answer from the detail pane. The same channel the floor and the workspace use; the returned approval updates every list. */
+/** Answer from the detail pane. The same channel the workspace uses; the returned approval updates every list. */
 const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision })))
 
 function Letter({ item, agents }: { item: InboxItem; agents: ReturnType<typeof agentOf> }) {
@@ -26,7 +26,7 @@ function Letter({ item, agents }: { item: InboxItem; agents: ReturnType<typeof a
 
 const NO_AGENTS: AgentDef[] = []
 
-/** Agents changing the same file in different worktrees, which the floor used to show (D-104). The Lead sorts it out. */
+/** Agents changing the same file in different worktrees. The Lead sorts it out. */
 export function SortOverlap({ overlap: o }: { overlap: Overlap }) {
   const lead = useStore((s) => s.agents[o.roomId]?.find((a) => a.lead))
   const [busy, run] = useBusy()

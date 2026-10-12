@@ -14,7 +14,7 @@ import './cards.css'
 
 const EMPTY: AgentDef[] = []
 
-/** One decision path for every surface: the Inbox and the floor call the same channel, and the push event updates this card. */
+/** One decision path for every surface: the Inbox and the chat call the same channel, and the push event updates this card. */
 const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', () => call('approvals.decide', { id: a.id, decision }))
 
 function Result({ a }: { a: Approval }) {

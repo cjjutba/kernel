@@ -656,7 +656,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
-  // No PNG: a new room with no agents offers the team templates the empty floor had (D-104).
+  // No PNG: a new room with no agents offers the team templates.
   TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'team', roomId: clientC.id } } })),
   // KERNEL-397: a repo's own agents, with Kernel's Rowan and Theo, a helper and its warning.
   TeamOwnAgents: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
@@ -679,7 +679,7 @@ export const teamFixtures: Record<string, Fixture> = {
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
   // No PNG: Settings, Appearance, Density set to Compact, which tightens the inbox rows too (KERNEL-538).
   InboxCompact: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, density: 'compact' } }, ui: { route: { name: 'inbox' } } })),
-  // No PNG: two agents in the same file, which the floor showed until D-104. The newest row, so the detail pane opens on it.
+  // No PNG: two agents in the same file. The newest row, so the detail pane opens on it.
   InboxOverlap: scene((f) => ({
     ...homeScene(f),
     overlaps: [{
