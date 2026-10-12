@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -235,7 +235,9 @@ export interface KernelApi {
   /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
-  'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
+  'scripts.stop': { req: { workspaceId: string; kind: 'run' | 'setup'; name?: string }; res: Ok }
+  /** Send anyway: a failed setup is skipped and the messages waiting for it go out (KERNEL-430). */
+  'scripts.skipSetup': { req: { workspaceId: string }; res: Ok }
   /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
   'scripts.replay': { req: { workspaceId: string }; res: Ok }
 
@@ -286,13 +288,24 @@ export interface KernelApi {
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  /**
+   * The files to copy that look like production, one hint per file, without the ones the room chose Keep copying for. Names
+   * only, never values (KERNEL-449).
+   */
+  'files.production': { req: { roomId: string }; res: ProductionHint[] }
+  /** Keep copying: the room stops warning about these files until another variable in them looks like production (KERNEL-449). */
+  'files.keepCopying': { req: { roomId: string; hints: ProductionHint[] }; res: Room }
   // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
   // main through `env.reveal`.
   'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
   /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
   'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
   'env.reveal': { req: { roomId?: string; name: string }; res: string }
-  'mcp.list': { req: { roomId?: string }; res: McpServer[] }
+  /**
+   * The room's MCP servers for one provider, Claude's when `provider` is unset, with the last status Kernel heard. `probe`
+   * waits for a fresh check of Claude's servers. Without it, the first list for a room starts one (KERNEL-464).
+   */
+  'mcp.list': { req: { roomId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
   'integrations.connect': { req: { id: Integration['id']; token?: string }; res: Integration }
@@ -364,8 +377,6 @@ export interface KernelApi {
   'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
-  /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
-  'system.trafficLights': { req: { at: 'sidebar' | 'header' }; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
   'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
 
@@ -438,6 +449,8 @@ export type PushEvent =
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
+  /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
+  | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */

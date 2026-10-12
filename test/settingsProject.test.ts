@@ -6,8 +6,9 @@ import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
-import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
+import { discoverMcp } from '../src/main/services/mcp'
+import { aliasesInRoom, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -46,6 +47,55 @@ describe('repo settings files', () => {
     expect(await discoverMcp(repo, repo, next.disabled!.mcp)).toEqual([
       { name: 'Figma', source: 'project', enabled: false }, { name: 'Linear', source: 'project', enabled: true }
     ])
+  })
+
+  // KERNEL-464: every place Claude Code and Codex read MCP servers from, read only.
+  it("finds the user's servers for this repo in ~/.claude.json and Codex's in its config.toml, and writes neither", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    // Claude Code keys a project by its folder with links resolved, which /var is on a Mac.
+    const claude = JSON.stringify({
+      mcpServers: { github: { command: 'gh-mcp' }, linear: { url: 'https://user' } },
+      projects: { [await realpath(repo)]: { mcpServers: { linear: { url: 'https://local' }, sentry: { command: 'sentry-mcp' } } }, '/elsewhere': { mcpServers: { secret: {} } } }
+    })
+    await writeFile(join(home, '.claude.json'), claude)
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { linear: {}, figma: {} } }))
+    await mkdir(join(home, '.codex'))
+    const codex = ['model = "gpt-6"', '[mcp_servers.linear]', 'command = "linear-mcp"', '[mcp_servers.notion]', 'url = "https://notion"', 'enabled = false', '[profiles.fast]', 'model = "x"', ''].join('\n')
+    await writeFile(join(home, '.codex', 'config.toml'), codex)
+    // The room's own entry wins over the repo's, which wins over the user's list, as in Claude Code.
+    expect(await discoverMcp(repo, home, ['figma', 'notion'])).toEqual([
+      { name: 'linear', source: 'local', enabled: true }, { name: 'sentry', source: 'local', enabled: true },
+      { name: 'figma', source: 'project', enabled: false }, { name: 'github', source: 'user', enabled: true },
+      { name: 'linear', source: 'user', provider: 'codex', enabled: true }, { name: 'notion', source: 'user', provider: 'codex', enabled: false, status: 'disabled' }
+    ])
+    // An account's own Codex home is read instead.
+    const account = await mkdtemp(join(tmpdir(), 'kernel-codex-'))
+    await writeFile(join(account, 'config.toml'), '[mcp_servers.jira]\ncommand = "jira-mcp"\n')
+    expect((await discoverMcp(repo, home, [], { codexHome: account })).filter((s) => s.provider)).toEqual([{ name: 'jira', source: 'user', provider: 'codex', enabled: true }])
+    expect([await readFile(join(home, '.claude.json'), 'utf8'), await readFile(join(home, '.codex', 'config.toml'), 'utf8')]).toEqual([claude, codex])
+  })
+
+  it('finds nothing in a config file that is missing or broken (KERNEL-464)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), '{ "mcpServers": ')
+    await mkdir(join(home, '.codex'))
+    await writeFile(join(home, '.codex', 'config.toml'), '[mcp_servers.linear\n')
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: ['not', 'a', 'table'] }))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), JSON.stringify({ projects: { [repo]: { mcpServers: { local: {} } } } }))
+    expect(await discoverMcp(repo, home, [])).toEqual([{ name: 'local', source: 'local', enabled: true }])
+  })
+
+  it('reads the room\'s MCP aliases at once, from both files, alias by alias (KERNEL-464)', async () => {
+    const repo = await tempRepo()
+    expect(aliasesInRoom(repo)).toEqual({})
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } } }, true)
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'linear-mine' } } })
+    expect(aliasesInRoom(repo)).toEqual({ linear: 'linear-mine', figma: 'Figma' })
+    expect(aliasesInRoom(repo)).toEqual((await loadRepoSettings(repo)).mcp?.aliases)
   })
 
   it('reads what the room switched off at once, from both files, so a toggle reaches the next session (KERNEL-226)', async () => {

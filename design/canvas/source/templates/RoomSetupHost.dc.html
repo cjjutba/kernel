@@ -52,7 +52,8 @@ class Component extends DCLogic {
         title: 'Setting up Client C',
         first: ['Clone cjjutba/client-c', '~/Projects/client-c', '4s'],
         host: ['Code host', 'GitHub, cjjutba/client-c'],
-        worktree: '~/kernel/worktrees/client-c'
+        worktree: '~/kernel/worktrees/client-c',
+        push: ['Check push access', 'cjjutba can push to cjjutba/client-c', '']
       },
       local: {
         title: 'Setting up Shop',
@@ -68,9 +69,11 @@ class Component extends DCLogic {
       ['Create the worktree folder', h.worktree, ''],
       ['Install dependencies', 'pnpm install', ''],
       ['Copy local files', '.env.local, .env.test', ''],
-      ['Install hooks', '10 events to localhost:7420', ''],
-      ['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']
+      ['Install hooks', '10 events to localhost:7420', '']
     ];
+    // The push check only makes sense for a GitHub room. A Local room has no remote to push to, so it has no row.
+    if (h.push) steps.push(h.push);
+    steps.push(['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']);
     var rows = steps.map(function (x, i) {
       var st = i < 3 ? 'ok' : (i === 3 ? 'run' : 'wait');
       return { title: x[0], detail: x[1], meta: st === 'run' ? 'running' : x[2], ok: st === 'ok', run: st === 'run', wait: st === 'wait', titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8', border: i === 0 ? '0' : '1px solid #1a1b1e' };

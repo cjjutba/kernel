@@ -1,17 +1,18 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
-import { describeTool, needsUser } from '../approvals'
+import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
+import { mcpStatus, type McpReport } from '../mcp'
 import { IMAGE_DATA_URL } from '../plans'
-import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from '../bashGuard'
+import { decide, guardVerdict, NETWORK_OFF, rulesOf, saveAlwaysAllow, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Proc, Runner, RunnerHost } from './types'
@@ -54,6 +55,8 @@ export interface ClaudeStart {
   env: Record<string, string>
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
+  /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
+  aliases?: Record<string, string>
 }
 
 /** One chat's Claude Code process through the Agent SDK (KERNEL-406 moved it out of Sessions as it was). */
@@ -78,8 +81,8 @@ export class ClaudeRunner implements Runner {
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
-    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
-    const tools = toolPolicy(agent?.tools)
+    // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     const options: Options = {
       cwd: ws.path,
@@ -99,7 +102,7 @@ export class ClaudeRunner implements Runner {
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
         ctx, commands: this.commands, tools,
-        verdict: (command) => bashVerdict(command, host.settings().permissions, host.roomAllow()),
+        verdict: (command) => guardVerdict(command, rulesOf(host)),
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
@@ -182,8 +185,9 @@ export class ClaudeRunner implements Runner {
         // The CLI sends init at the start of every turn, including queued follow-ups after an interrupt.
         if (msg.subtype === 'init') {
           this.resume = undefined
-          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init.
-          host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: (msg.mcp_servers ?? []).map((s) => s.name) })
+          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init. Each
+          // init's statuses keep the room's fresh (KERNEL-464).
+          host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: mcpReports(msg.mcp_servers ?? []) })
         }
         if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) host.blocked(msg.hook_event, msg.stderr || msg.output || msg.stdout)
         // The SDK's level signal for background work, which replaces the whole set. Ambient tasks are housekeeping, not work.
@@ -274,22 +278,17 @@ export class ClaudeRunner implements Runner {
   }
 
   /**
-   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
-   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then the user decides.
+   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask. Kernel's rules
+   * decide first (`decide`), and what they leave open goes to the user.
    */
   private canUseTool(): CanUseTool {
     const host = this.host
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
-      const ws = host.workspace
-      const p = host.settings().permissions
-      if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
-      if (p.network === false && (toolName === 'WebFetch' || toolName === 'WebSearch')) return { behavior: 'deny', message: NETWORK_OFF }
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      if (command && p.network === false && usesNetwork(command)) return { behavior: 'deny', message: NETWORK_OFF }
-      const verdict = command ? bashVerdict(command, p, host.roomAllow()) : undefined
-      if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
-      if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassPermissions' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      const step = { tool: toolName, command }
+      const verdict = decide(step, rulesOf(host))
+      if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
+      if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
@@ -300,7 +299,7 @@ export class ClaudeRunner implements Runner {
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title }, { signal })
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      if (result.behavior === 'allow' && result.always && command) host.allowInRoom(roomRule(command, suggestions, suppressAlwaysAllowRule))
+      saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
       // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
@@ -346,6 +345,44 @@ export async function probeClaudeUsage(cwd: string, merge: (p: LimitPatch[]) => 
     const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
     await readUsage(q, merge)
   } catch { /* keep rate_limit_event data */ } finally {
+    input.close()
+    abort.abort()
+  }
+}
+
+/** A session's or a probe's MCP servers as reports. A status Kernel doesn't know is left out. */
+export function mcpReports(list: { name: string; status: string; source?: string; scope?: string; error?: string }[]): McpReport[] {
+  return list.flatMap((s) => {
+    const status = mcpStatus(s.status)
+    const source = s.source ?? s.scope
+    return status ? [{ name: s.name, status, ...(source ? { source } : {}), ...(s.error ? { error: s.error } : {}) }] : []
+  })
+}
+
+/**
+ * Claude Code's MCP servers for a folder, each with its status, as a session there would load them (KERNEL-464). Claude
+ * Code starts with the user's settings and no prompt, so it sends no message, and with every hook off, so nothing the
+ * user's settings run at SessionStart fires and Kernel's own hooks never see an outside session. The room's switched-off
+ * servers (`denied`) never start. Servers connect on their own time, and claude.ai's connectors join a few seconds in, so
+ * the list counts once two reads in a row agree and none is pending, or after `ms` as it stands.
+ */
+export async function probeClaudeMcp(cwd: string, o: { env: Record<string, string>; executable?: string; denied?: string[]; ms?: number; every?: number }): Promise<McpServerStatus[]> {
+  const input = new InputQueue<SDKUserMessage>()
+  const abort = new AbortController()
+  const denied = [...new Set(o.denied ?? [])].map((serverName) => ({ serverName }))
+  try {
+    const settings = { disableAllHooks: true, ...(denied.length ? { deniedMcpServers: denied } : {}) }
+    const q = query({ prompt: input, options: { cwd, settingSources: ['user', 'project', 'local'], settings, persistSession: false, abortController: abort, env: o.env, pathToClaudeCodeExecutable: o.executable } })
+    const until = Date.now() + (o.ms ?? 30_000)
+    let last: string | undefined
+    for (;;) {
+      const list = await withTimeout(q.mcpServerStatus(), 15_000)
+      const shape = JSON.stringify(list.map((s) => [s.name, s.status]))
+      if ((shape === last && !list.some((s) => s.status === 'pending')) || Date.now() >= until) return list
+      last = shape
+      await new Promise((resolve) => setTimeout(resolve, o.every ?? 1500))
+    }
+  } finally {
     input.close()
     abort.abort()
   }
@@ -443,7 +480,7 @@ function toolDetail(name: string, input: any): string {
 function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
-  verdict: (command: string) => BashVerdict
+  verdict: (command: string) => Verdict
   held: () => Promise<void> | undefined
   networkAllowed?: () => boolean
   handoff?: LeadHandoff
@@ -460,9 +497,10 @@ function kernelHooks(o: {
     const { tool_use_id, tool_input } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
+    // A room's Always allow rule gives no opinion here. canUseTool allows the command if Claude Code asks about it.
     const v = verdict(command)
-    if (v === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${command}" in every room.` } }
-    if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
+    if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
+    if (v?.behavior === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: v.reason } }
     return {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
@@ -488,7 +526,10 @@ function kernelHooks(o: {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
+      const why = tools.disallows(tool)
+        ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`
+        : `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.`
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
     }
     hooks.PreToolUse!.push({ hooks: [gate] })
   }

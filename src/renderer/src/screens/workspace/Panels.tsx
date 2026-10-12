@@ -206,10 +206,15 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   const right = (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
   // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
   const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
+  // While setup runs or has failed there is nothing to show here yet, so the files fold to their tabs and the log below takes the height.
+  // Picking a tab or Show files opens them again (KERNEL-430).
+  const [opened, setOpened] = useState<string>()
+  const folded = setupFolds(ws) && opened !== ws.id
+  const pick = (id: string) => { setOpened(ws.id); actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right }) }
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className={folded ? 'col' : 'col grow'} style={{ minHeight: 0 }}>
       <div className="panel-tabs" data-lead={isLead || undefined}>
-        <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })} tabs={[
+        <Tabs label="Workspace panel" value={folded ? '' : right} onChange={pick} tabs={[
           // No count with nothing ready, as LeadPrsEmpty and LeadPrsNoneReady draw it (KERNEL-411).
           ...(isLead ? [{ id: 'prs', label: ready ? <>PRs {count(ready)}</> : 'PRs' }] : []),
           { id: 'files', label: 'All files' },
@@ -217,17 +222,21 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
           { id: 'checks', label: 'Checks' },
           ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
         ]} />
+        {folded && <><span className="grow" /><IconButton icon="chevron" size={12} label="Show files" onClick={() => setOpened(ws.id)} /></>}
       </div>
-      {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
+      {folded ? null : <>{right === 'prs' && <LeadPrs roomId={ws.roomId} />}
       {right === 'files' && <FilesTree ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
       {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
       {right === 'checks' && <Checks ws={ws} changes={changes} />}
-      {right === 'shared' && <SharedPanel ws={ws} />}
+      {right === 'shared' && <SharedPanel ws={ws} />}</>}
     </div>
   )
 }
 
 // ---------- Setup, Run, Terminal
+
+/** Setup is still running, or failed and holds the chat: the Setup tab is what matters, so the files fold (KERNEL-430). */
+const setupFolds = (ws: Workspace) => ws.status === 'setup' || ws.status === 'failed'
 
 /** Setup is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
 function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: string) {
@@ -262,11 +271,12 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const noSetup = !!rs && !rs.scripts.setup
   const noRun = !!rs && names.length === 0
-  const [busy, doing] = useBusy<'setup' | 'run' | 'stop'>()
+  const [busy, doing] = useBusy<'setup' | 'run' | 'stop' | 'stopSetup'>()
   const start = (kind: 'setup' | 'run') => doing(kind, async () => {
     actions.workspaces.clearScriptExit(ws.id, kind, kind === 'run' ? selected : undefined)
     await attempt(`Could not start ${kind === 'run' ? selected : kind}`, () => call('scripts.run', { workspaceId: ws.id, kind, ...(kind === 'run' && { name: selected }) }))
   })
+  const stopSetup = () => doing('stopSetup', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
   const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
   // The log follows new output while the reader is at its end. Scrolling up to read stops it, and a tab or workspace change starts it again.
   const log = useRef<HTMLDivElement>(null)
@@ -303,11 +313,13 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     )
   return (
-    <div className="bottom-panel">
+    <div className="bottom-panel" data-tall={setupFolds(ws) || undefined}>
       <div className="bottom-tabs">
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
-        {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
+        {bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
+        {bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Run and Stop are the one action for the script picked on the Run tab, so its empty state has no button of its own. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
         {bottom !== 'setup' && (selectedRunning
           ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{bottom === 'run' ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>

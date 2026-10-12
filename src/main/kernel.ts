@@ -45,6 +45,7 @@ import { Waits } from './features/waits'
 import { Chats } from './features/chats'
 import { Lead } from './features/lead'
 import { Tools } from './features/tools'
+import { Mcp } from './features/mcp'
 import { Sharing } from './features/sharing'
 import { Prs } from './features/prs'
 import { CodeHosts } from './features/codeHost'
@@ -119,6 +120,7 @@ export class Kernel {
   readonly chats = new Chats(this)
   readonly lead = new Lead(this)
   readonly tools = new Tools(this)
+  readonly mcp = new Mcp(this)
   readonly sharing = new Sharing(this)
   readonly prs = new Prs(this)
   readonly codeHost = new CodeHosts(this)
@@ -286,7 +288,8 @@ export class Kernel {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
-      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers())
+      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
+      this.mcp.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)
