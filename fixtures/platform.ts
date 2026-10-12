@@ -10,6 +10,7 @@ import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './
 // Check copy matches src/main/services/preflight.ts.
 
 const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
+const permissionStep = { route: { name: 'onboarding', step: 'permissions' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -382,6 +383,9 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
+  // KERNEL-457: the step after the checks. The Lead runs on Claude Code in the first and on Codex in the second, where the fixture's availability answer turns Auto off (src/main/fixtures.ts).
+  SetupPermissions: scene(() => ({ ...empty, ui: permissionStep })),
+  SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has room.
@@ -409,17 +413,6 @@ export const platformFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  // KERNEL-224: 160k tokens in a 1M window is 16% of it, long enough to cost more with every turn. No PNG.
-  WorkspaceContextHigh: scene((f) => ({
-    chats: withChat(f, {
-      context: 16,
-      contextUsage: { used: 160_000, max: 1_000_000, rows: [
-        { name: 'System prompt', tokens: 3_200, kind: 'used' }, { name: 'System tools', tokens: 11_800, kind: 'used' }, { name: 'MCP tools', tokens: 6_400, kind: 'used' },
-        { name: 'Memory files', tokens: 2_600, kind: 'used' }, { name: 'Messages', tokens: 136_000, kind: 'used' }, { name: 'Free space', tokens: 800_000, kind: 'free' }, { name: 'Autocompact buffer', tokens: 40_000, kind: 'buffer' }
-      ] }
-    }),
-    ui: open
-  })),
   // The retry is between attempts, so the turn shows as the canvas draws it: no Stop button.
   WorkspaceOverloaded: scene((f) => ({
     items: { [ids.tableChat]: [...tableItems, { kind: 'user', id: 'u-shorten', ts: at(10, 40), parts: [{ type: 'text', text: 'Shorten the empty state copy.' }] }] },
