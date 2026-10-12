@@ -7,6 +7,13 @@ import { fixtureHandlers } from '../src/main/fixtures'
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
+  'SettingsSkillsAccounts', // Skills and MCP with each server's state on every account (KERNEL-627)
+  'SettingsSkillsSigningIn', // Sign in to all on Personal, Gmail, the second of three, with Cancel (KERNEL-627)
+  'SettingsSkillsSignInFailed', // Sign in to all ended with Google Drive not signed in (KERNEL-627)
+  'SettingsSkillsAccountFocus', // Skills and MCP opened on Personal by the notice (KERNEL-627)
+  'SettingsProvidersMcpSigningIn', // Providers, Personal's Needs sign-in line while Sign in to all runs (KERNEL-627)
+  'SettingsProvidersMcpSignInFailed', // Providers, Personal's line after Sign in to all failed on one server (KERNEL-627)
+  'SettingsMcpNeededNotice', // the notice after adding an account that needs MCP sign-ins (KERNEL-627)
   'WorkspaceTabStates',
   'WorkspaceSharedImageZoom', // the shared image zoomed to 200%, with the zoom control beside Comment (KERNEL-598)
   'RoomSetupTeamNoReviewer', // Room setup's team in a repo whose `[team] reviewer = "none"` turned review off: the picker says No reviewer (KERNEL-590)

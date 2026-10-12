@@ -7,18 +7,13 @@ import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
+import { SignInLine, joinNames, useSignInAll } from './mcpAccounts'
 
 // Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406, and the API key accounts of
 // KERNEL-524). Kernel already calls teammates agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
 
 const SYSTEM: Record<Provider, string> = { claude: 'Use system Claude', codex: 'Use system Codex' }
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
-
-/** "Google Drive" for the connector Claude Code lists as "claude.ai Google Drive". */
-const serverName = (server: string) => server.replace(/^claude\.ai\s+/i, '')
-
-/** "Google Drive and Gmail", "Linear, Google Drive and Gmail". */
-const joinNames = (names: string[]) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`)
 
 /** The labels of the provider's other accounts in the same claude.ai organization (`AccountProfile.sameOrg` holds their ids). */
 const sameOrg = (a: AccountProfile, accounts: AccountProfile[]) => accounts.filter((x) => a.sameOrg?.includes(x.id)).map((x) => x.label)
@@ -56,6 +51,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const activeKey = accounts.find((a) => a.active && a.auth === 'apiKey')
   const sheetOpen = adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
+  const all = useSignInAll()
   useFreshUsage(true)
   // Claude Code lists each login's MCP servers that need a sign-in when the tab opens, once per login. Main keeps the answer on the account's row.
   useEffect(() => {
@@ -85,11 +81,6 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     if (target && !target.cli) return setRenewing(target)
     return act(a ? `signin:${a.id}` : 'signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider, ...(a ? { accountId: a.id } : {}) })); actions.accounts.set(await call('accounts.list', undefined)) })
   }
-  // One Sign in for the account's servers, one after another. Each opens the browser and finishes when Claude Code does. A claude.ai connector is finished on claude.ai, so the check afterwards can still list it.
-  const signInMcp = (a: AccountProfile) => act(`mcp:${a.id}`, `Could not sign in on ${a.label}`, async () => {
-    for (const m of a.mcpSignIns ?? []) actions.accounts.set(await call('accounts.mcpSignIn', { provider: 'claude', accountId: a.id, server: m.server }))
-    actions.accounts.set(await call('accounts.checkMcp', { provider: 'claude', accountId: a.id }))
-  })
   const stopRenaming = () => { if (renaming) renamed.current = renaming.id; setRenaming(null) }
   const saveName = (a: AccountProfile, value: string) => {
     if (value.trim() === a.label) return stopRenaming()
@@ -138,15 +129,11 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   )
                   : <span className="set-label">{a.label}</span>}
                 {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
-                {a.signedIn && !a.keychainWait && !!a.mcpSignIns?.length && (
-                  <span className="set-warn">
-                    <Icon name="warning" size={12} />
-                    Needs sign-in: {a.mcpSignIns.map((m) => serverName(m.server)).join(', ')}
-                    <button
-                      type="button" className="set-link" aria-label={`Sign in to ${joinNames(a.mcpSignIns.map((m) => serverName(m.server)))} on ${a.label}`}
-                      aria-busy={busy === `mcp:${a.id}` || undefined} disabled={busy !== null || sheetOpen} onClick={() => void signInMcp(a)}
-                    >{busy === `mcp:${a.id}` ? <><span className="spin" aria-hidden="true" />Signing in</> : 'Sign in'}</button>
-                  </span>
+                {a.signedIn && !a.keychainWait && (!!a.mcpSignIns?.length || !!all.runs[a.id]) && (
+                  <SignInLine
+                    label={a.label} servers={(a.mcpSignIns ?? []).map((m) => m.server)} run={all.runs[a.id]} running={all.active === a.id} canceling={all.canceling}
+                    disabled={busy !== null || sheetOpen || all.active !== null} onStart={() => void all.start(a.id, a.label)} onCancel={() => void all.cancel()}
+                  />
                 )}
                 {a.keychainWait && (
                   <>

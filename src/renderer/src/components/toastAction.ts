@@ -9,6 +9,7 @@ import { actions } from '../store'
  */
 export function runToastAction(action: NonNullable<Toast['action']>) {
   if (action.href) void call('system.openExternal', { url: action.href })
+  if (action.route) actions.ui.go(action.route)
   if (action.tab) {
     actions.ui.openTab(action.tab.workspaceId, action.tab.id)
     actions.ui.go({ name: 'workspace', workspaceId: action.tab.workspaceId })
