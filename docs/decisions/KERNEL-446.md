@@ -6,4 +6,4 @@ It asks through `host.ask`, the same path canUseTool takes, and not through `App
 
 It saves no Always allow rule. A caller whose card offers Always allow saves the rule itself, as canUseTool does with `saveAlwaysAllow`.
 
-No hook calls it yet. Ask, Accept edits and Bypass in worktrees all run Claude Code in `default` or `acceptEdits`, where the guard's hook `ask` already reaches canUseTool. A3 and D5 are its first callers. KERNEL-446.
+No hook calls it yet. Every mode still runs Claude Code in `default` or `acceptEdits`, where the guard's hook `ask` already reaches canUseTool: Manual, Accept edits, and Auto and Bypass permissions until A3 runs them as Claude Code's own `auto` and `bypassPermissions`. A3 and D5 are its first callers. KERNEL-446.

@@ -1,16 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { buildEnv, envFileReadable, EnvStore, MAX_ENV_FILE, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
-import { isClaudeVar } from '../src/shared/kernelVars'
+import { buildEnv, envFileReadable, EnvStore, kernelVars, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
+import { isClaudeVar, workspaceSlug } from '../src/shared/kernelVars'
 import { sessionEnv } from '../src/main/services/sessions'
 import { loadRepoSettings, scriptsToTrust } from '../src/main/services/settings'
+import { run } from '../src/main/services/exec'
 
 /** Stands in for safeStorage, which doesn't work under ELECTRON_RUN_AS_NODE. Its output never holds the text it was given. */
 const fakeCipher: Cipher = {
@@ -423,3 +424,159 @@ describe('Kernel env', () => {
     await k.stop()
   })
 })
+
+describe('Kernel variables in values (KERNEL-449)', () => {
+  it("fills in ${KERNEL_*} in what the user wrote, with Kernel's own names only and no shell expansion", () => {
+    const kernel = { KERNEL_PORT: '4100', KERNEL_WORKSPACE_ID: 'ws-1', KERNEL_WORKSPACE_SLUG: 'fix_login_ab12cd' }
+    const env = buildEnv({
+      base: { MAC: '${KERNEL_PORT}' },
+      app: { WEB: 'http://localhost:${KERNEL_PORT}/' },
+      files: [{ DATABASE_URL: 'postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}', BARE: '$KERNEL_PORT', OTHER: '${HOME}', NOPE: '${KERNEL_NOPE}', SETUP_ONLY: '${KERNEL_ENV}', CMD: '$(whoami) `id`' }],
+      room: { BOTH: '${KERNEL_WORKSPACE_ID}-${KERNEL_PORT}' },
+      setup: { FROM_SETUP: 'db_${KERNEL_WORKSPACE_SLUG}' },
+      kernel
+    })
+    expect(env).toMatchObject({
+      MAC: '${KERNEL_PORT}', WEB: 'http://localhost:4100/', DATABASE_URL: 'postgres://localhost:5432/app_fix_login_ab12cd', BARE: '$KERNEL_PORT',
+      OTHER: '${HOME}', NOPE: '${KERNEL_NOPE}', SETUP_ONLY: '${KERNEL_ENV}', CMD: '$(whoami) `id`', BOTH: 'ws-1-4100', FROM_SETUP: 'db_fix_login_ab12cd'
+    })
+  })
+
+  it("puts Kernel's defaults under every layer, so the Mac's environment or the user's variable wins", () => {
+    const defaults = { COMPOSE_PROJECT_NAME: 'fix_login_ab12cd' }
+    expect(buildEnv({ base: {}, defaults, kernel: {} }).COMPOSE_PROJECT_NAME).toBe('fix_login_ab12cd')
+    expect(buildEnv({ base: { COMPOSE_PROJECT_NAME: 'mac' }, defaults, kernel: {} }).COMPOSE_PROJECT_NAME).toBe('mac')
+    expect(buildEnv({ base: {}, defaults, files: [{ COMPOSE_PROJECT_NAME: 'file' }], kernel: {} }).COMPOSE_PROJECT_NAME).toBe('file')
+    expect(buildEnv({ base: {}, defaults, setup: { COMPOSE_PROJECT_NAME: 'setup' }, kernel: {} }).COMPOSE_PROJECT_NAME).toBe('setup')
+  })
+
+  it('names a database or a Compose project after the workspace id, so a rename or a folder move keeps it', () => {
+    const ws = { id: '3F2A91C4-1111-2222-3333-444455556666', name: 'in-setup-script', path: '/wt/rowan-in-setup-script', port: 4100, branch: 'rowan/in-setup-script', baseRef: 'origin/main' }
+    const slug = kernelVars(ws, undefined).KERNEL_WORKSPACE_SLUG
+    expect(slug).toBe('kernel_3f2a91c41111')
+    expect(kernelVars({ ...ws, name: 'setup-script-tab', path: '/wt/rowan-setup-script-tab', branch: 'rowan/setup-script-tab' }, undefined).KERNEL_WORKSPACE_SLUG).toBe(slug)
+    expect(workspaceSlug({ id: 'ws-1' })).toBe('kernel_ws1')
+    expect(workspaceSlug({ id: '--' })).toBe('kernel_workspace')
+    for (const id of ['3F2A91C4-1111-2222-3333-444455556666', 'ws-1', 'Ünïcode', '9']) expect(workspaceSlug({ id })).toMatch(/^kernel_[a-z0-9]{1,12}$/)
+  })
+})
+
+describe('Production values (KERNEL-449)', () => {
+  it('flags live payment keys, databases on another host and production environment names', () => {
+    const cases: [string, string, string | undefined][] = [
+      ['STRIPE_SECRET_KEY', 'sk_live_51abc', 'live-key'],
+      ['STRIPE_RESTRICTED', 'rk_live_51abc', 'live-key'],
+      ['STRIPE_SECRET_KEY', 'sk_test_51abc', undefined],
+      ['STRIPE_PUBLISHABLE_KEY', 'pk_live_51abc', undefined],
+      ['DATABASE_URL', 'postgres://app:pw@db.prod.example.com:5432/app', 'remote-database'],
+      ['DATABASE_URL', 'postgresql://app@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require', 'remote-database'],
+      ['MONGO_URI', 'mongodb://a.example.com:27017,localhost:27017/app', 'remote-database'],
+      ['DB', 'jdbc:mysql://10.0.0.5:3306/app', undefined],
+      ['DATABASE_URL', 'postgres://app:pa/ss@db.prod.example.com:5432/app', 'remote-database'],
+      ['DATABASE_URL', 'postgres://app:p?w#d@db.prod.example.com/app', 'remote-database'],
+      ['DATABASE_URL', 'postgres://localhost:5432/app?user=me@corp', undefined],
+      ['DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/app', undefined],
+      ['DATABASE_URL', 'postgres://127.0.0.1/app', undefined],
+      ['DATABASE_URL', 'postgres://[::1]:5432/app', undefined],
+      ['DATABASE_URL', 'postgres://db:5432/app', undefined],
+      ['DATABASE_URL', 'postgres:///app?host=/tmp', undefined],
+      ['REDIS_URL', 'rediss://default:pw@cache.upstash.io:6379', 'remote-database'],
+      ['DATABASE_URL', 'file:./dev.db', undefined],
+      ['API_URL', 'https://api.example.com', undefined],
+      ['NODE_ENV', 'production', 'production'],
+      ['RAILS_ENV', ' Prod ', 'production'],
+      ['PLAID_ENV', 'live', 'production'],
+      ['ENVIRONMENT', 'production', 'production'],
+      ['NODE_ENV', 'development', undefined],
+      ['MODE', 'production', undefined]
+    ]
+    for (const [name, value, why] of cases) expect(productionWhy(name, value), `${name}=${value}`).toBe(why)
+  })
+
+  it('lists a file\'s hits by name, strongest first, and never a value', () => {
+    const text = 'NODE_ENV=production\nDATABASE_URL=postgres://u:hunter2@db.example.com/app\nSTRIPE_SECRET_KEY=sk_live_secret123\nPORT=3000\n'
+    const hints = productionHints('.env.production', text)
+    expect(hints).toEqual([
+      { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' },
+      { path: '.env.production', name: 'DATABASE_URL', why: 'remote-database' },
+      { path: '.env.production', name: 'NODE_ENV', why: 'production' }
+    ])
+    expect(JSON.stringify(hints)).not.toMatch(/hunter2|secret123|db\.example/)
+  })
+})
+
+describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
+  async function room(files: Record<string, string>) {
+    const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', ...files })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, cipher: fakeCipher })
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const r = await k.addRoom(repo)
+    await trustRoom(k, r.id)
+    return { k, repo, room: r, h: k.handlers() }
+  }
+
+  it("gives each worktree its own Compose project and database, from the user's own .env.kernel", async () => {
+    const { k, repo, room: r, h } = await room({ '.gitignore': '.env.kernel\n' })
+    await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}\nWEB=http://localhost:${KERNEL_PORT}\n')
+    const a = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
+    const b = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'Two' })
+    const envA = k.env.envFor(a)
+    const envB = k.env.envFor(b)
+    expect(envA.KERNEL_WORKSPACE_SLUG).toBe(workspaceSlug(a))
+    expect(envA).toMatchObject({ COMPOSE_PROJECT_NAME: envA.KERNEL_WORKSPACE_SLUG, DATABASE_URL: `postgres://localhost:5432/app_${envA.KERNEL_WORKSPACE_SLUG}`, WEB: `http://localhost:${a.port}` })
+    expect(envB.DATABASE_URL).toBe(`postgres://localhost:5432/app_${envB.KERNEL_WORKSPACE_SLUG}`)
+    expect(envB.COMPOSE_PROJECT_NAME).not.toBe(envA.COMPOSE_PROJECT_NAME)
+    // Scripts get the same, and the Environment page lists the file it read.
+    expect(k.env.envFor(a, { script: true }).DATABASE_URL).toBe(envA.DATABASE_URL)
+    expect((await h['env.get']({ roomId: r.id })).files).toEqual([{ path: '.env.kernel', missing: false }])
+
+    // A rename and a folder move, as a chat with Rowan makes after setup, keep the names setup made the database with.
+    const moved = k.store.saveWorkspace({ ...a, name: 'renamed', branch: 'rowan/renamed', path: join(dirname(a.path), 'rowan-renamed') })
+    expect(k.env.envFor(moved)).toMatchObject({ KERNEL_WORKSPACE_SLUG: envA.KERNEL_WORKSPACE_SLUG, COMPOSE_PROJECT_NAME: envA.COMPOSE_PROJECT_NAME, DATABASE_URL: envA.DATABASE_URL })
+
+    // An edit counts for the next process, and the user's own Compose project name wins over Kernel's.
+    await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/other\nCOMPOSE_PROJECT_NAME=mine\n')
+    expect(k.env.envFor(a)).toMatchObject({ DATABASE_URL: 'postgres://localhost:5432/other', COMPOSE_PROJECT_NAME: 'mine' })
+
+    // A current-branch workspace is the room's own checkout and keeps the project the user's terminal gets there.
+    await rm(join(repo, '.env.kernel'))
+    const here = k.store.saveWorkspace({ ...a, id: 'here', mode: 'current', path: repo, branch: 'main' })
+    expect(k.env.envFor(here).COMPOSE_PROJECT_NAME).toBe(process.env.COMPOSE_PROJECT_NAME)
+    expect(k.env.envFor(a).DATABASE_URL).toBe(process.env.DATABASE_URL)
+    expect((await h['env.get']({ roomId: r.id })).files).toEqual([])
+    await k.stop()
+  })
+
+  it('leaves a .env.kernel the repo commits alone until [env] files lists it and the room is trusted', async () => {
+    const { k, repo, room: r, h } = await room({ '.env.kernel': 'FROM_REPO=1\nBASH_ENV=./evil.sh\n' })
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
+    expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
+    expect(k.env.envFor(ws).BASH_ENV).toBe(process.env.BASH_ENV)
+    expect((await h['env.get']({ roomId: r.id })).files).toEqual([])
+
+    await mkdir(join(repo, '.kernel'), { recursive: true })
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[env]\nfiles = [".env.kernel"]\n')
+    const trust = await h['rooms.scriptTrust']({ roomId: r.id })
+    expect(trust?.envFiles).toEqual(['.env.kernel'])
+    expect(k.env.envFor(ws).FROM_REPO).toBeUndefined()
+    await h['rooms.trust']({ roomId: r.id, hash: trust!.hash })
+    expect(k.env.envFor(ws).FROM_REPO).toBe('1')
+    await k.stop()
+  })
+
+  it("stops reading .env.kernel once the user's commit tracks it", async () => {
+    const { k, repo, room: r } = await room({})
+    await writeFile(join(repo, '.env.kernel'), 'MINE=1\n')
+    const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'go', agentId: 'kai', title: 'One' })
+    expect(k.env.envFor(ws).MINE).toBe('1')
+    await run('git', ['-C', repo, 'add', '.env.kernel'])
+    await writeFile(join(repo, '.env.kernel'), 'MINE=2\n')
+    expect(k.env.envFor(ws).MINE).toBeUndefined()
+    await k.stop()
+  })
+})
+
