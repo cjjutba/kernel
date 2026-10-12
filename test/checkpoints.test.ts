@@ -1,10 +1,10 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, rename, writeFile, rm, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { setUp, tempRepo } from './helpers'
-import { exec, git } from '../src/main/services/exec'
-import { createWorktree, snapshotBaseline } from '../src/main/services/worktrees'
+import { exec, git, run } from '../src/main/services/exec'
+import { createWorktree, fastForward, snapshotBaseline } from '../src/main/services/worktrees'
 import { listCheckpoints, revertTo, snapshot, snapshotWithFiles } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
 import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
@@ -176,6 +176,192 @@ describe('checkpoints', () => {
     expect(await read(path, 'a.ts')).toBe('1\n')
     expect((await git(path, 'status', '--porcelain')).trim()).toBe('')
     await expect(revertTo(ws, '99')).rejects.toThrow('That checkpoint no longer exists.')
+  })
+})
+
+describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
+  /**
+   * A room cloned from a bare remote, with a worktree on its own branch from origin/main. `land` pushes a commit to main from
+   * another clone, as a merged PR does; `fetch` is Kernel's fetch in the room.
+   */
+  async function remoteRoom(files: Record<string, string>) {
+    const repo = await tempRepo(files)
+    const bare = await mkdtemp(join(tmpdir(), 'kernel-bare-'))
+    await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
+    await git(repo, 'remote', 'add', 'origin', bare)
+    await git(repo, 'push', '-q', '-u', 'origin', 'main')
+    const other = await mkdtemp(join(tmpdir(), 'kernel-other-'))
+    await run('git', ['clone', '-q', bare, other])
+    await git(other, 'config', 'user.email', 'o@t.dev')
+    await git(other, 'config', 'user.name', 'Other')
+    async function land(change: Record<string, string | null>) {
+      for (const [f, c] of Object.entries(change)) {
+        if (c === null) await rm(join(other, f))
+        else { await mkdir(dirname(join(other, f)), { recursive: true }); await writeFile(join(other, f), c) }
+      }
+      await git(other, 'add', '-A')
+      await git(other, 'commit', '-q', '-m', 'Merged PR')
+      await git(other, 'push', '-q', 'origin', 'main')
+    }
+    const fetch = () => git(repo, 'fetch', '-q', 'origin')
+    const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-${Date.now()}`), branch: 'rowan/x', baseRef: 'origin/main' })
+    const ws = (id: string) => ({ id, name: 'x', path, baseRef: 'origin/main' })
+    return { repo, path, land, fetch, ws }
+  }
+  const message = (dir: string, ref: string) => git(dir, 'show', '-s', '--format=%B', ref)
+
+  it('saves no files for a turn that edited nothing after Kernel fast-forwarded the worktree onto main', async () => {
+    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n', 'gone.ts': 'g\n' })
+    const lead = ws('ws-ff')
+    await snapshotWithFiles(lead, { chatId: 'c', title: 'Check the queue', start: true })
+    await land({ 'a.ts': 'a\nmain\n', 'new.ts': 'n\n', 'gone.ts': null })
+    await land({ 'a.ts': 'a\nmain\nmore\n' })
+    await fetch()
+    expect(await fastForward(path, 'origin/main')).toBe(true)
+
+    const { checkpoint, files } = await snapshotWithFiles(lead, { chatId: 'c', title: 'Run the checks' })
+
+    expect(files).toEqual([])
+    expect(checkpoint.stat).toEqual({ files: 0, added: 0, removed: 0 })
+    expect((await listCheckpoints(lead))[0].stat).toEqual(checkpoint.stat)
+    // It records the base it is at now, so the next turn counts from there.
+    expect(await message(path, checkpoint.ref)).toContain(`Kernel-Base: ${(await git(path, 'rev-parse', 'origin/main')).trim()}`)
+  })
+
+  it('lists only the files the agent touched in the first turn after a wait is released, and revert still restores them', async () => {
+    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n', 'api.ts': 'v1\n' })
+    const w = ws('ws-wait')
+    // The start checkpoint is saved while the brief waits for the PR.
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Build on the API', start: true })
+    await land({ 'api.ts': 'v2\n', 'types.ts': 't\n' })
+    await fetch()
+    expect(await fastForward(path, 'origin/main')).toBe(true)
+    await writeFile(join(path, 'a.ts'), 'a\nagent\n')
+    await writeFile(join(path, 'ui.ts'), 'ui\n')
+
+    const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Build on the API' })
+
+    expect(files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 0 }, { path: 'ui.ts', status: 'A', added: 1, removed: 0 }])
+    expect((await listCheckpoints(w))[0].stat).toEqual({ files: 2, added: 2, removed: 0 })
+    await writeFile(join(path, 'a.ts'), 'later\n')
+    await revertTo(w, checkpoint.id)
+    expect(await read(path, 'a.ts')).toBe('a\nagent\n')
+    expect(await read(path, 'api.ts')).toBe('v2\n')
+  })
+
+  it.each([
+    ['pull', [['pull', '-q', '--no-rebase', 'origin', 'main']]],
+    ['rebase', [['fetch', '-q', 'origin'], ['rebase', '-q', 'origin/main']]],
+    ['merge', [['fetch', '-q', 'origin'], ['merge', '-q', '--no-edit', 'origin/main']]]
+  ])('lists only a.ts when the agent runs git %s from main and edits a.ts', async (how, steps) => {
+    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
+    const w = ws(`ws-${how}`)
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    // A commit of the agent's own from an earlier turn, so main can't simply fast-forward under it.
+    await writeFile(join(path, 'own.ts'), 'own\n')
+    await git(path, 'add', 'own.ts')
+    await git(path, 'commit', '-q', '-m', 'Own')
+    expect((await snapshotWithFiles(w, { chatId: 'c', title: 'Own' })).files.map((f) => f.path)).toEqual(['own.ts'])
+    await land({ 'm.ts': 'm2\n', 'n.ts': 'n\n', 'gone.ts': null })
+
+    for (const step of steps) await git(path, ...step)
+    await writeFile(join(path, 'a.ts'), 'a\nagent\n')
+    const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Catch up and edit' })
+
+    expect(files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 0 }])
+    expect(checkpoint.stat).toEqual({ files: 1, added: 1, removed: 0 })
+  })
+
+  it('lists an unpushed commit from the turn, and not again once it is pushed', async () => {
+    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
+    const w = ws('ws-push')
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    // In one turn main moves, the agent pulls it, then commits a fix.
+    await land({ 'm.ts': 'm2\n' })
+    await git(path, 'pull', '-q', '--rebase', 'origin', 'main')
+    await writeFile(join(path, 'a.ts'), 'a\nfix\n')
+    await git(path, 'commit', '-q', '-am', 'Fix')
+    expect((await snapshotWithFiles(w, { chatId: 'c', title: 'Fix it' })).files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 0 }])
+
+    // The next turn pushes it, to its branch and to main, which moves the base onto the agent's commit.
+    await git(path, 'push', '-q', 'origin', 'HEAD:rowan/x')
+    await git(path, 'push', '-q', 'origin', 'HEAD:main')
+    const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Push it' })
+
+    expect(files).toEqual([])
+    expect(checkpoint.stat).toEqual({ files: 0, added: 0, removed: 0 })
+  })
+
+  it('lists a file main and the agent both changed, counted against the new base', async () => {
+    const lines = Array.from({ length: 10 }, (_, i) => `${i + 1}\n`)
+    const { path, land, ws } = await remoteRoom({ 'a.ts': lines.join('') })
+    const w = ws('ws-both')
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    await land({ 'a.ts': ['one\n', ...lines.slice(1)].join('') })
+    await writeFile(join(path, 'a.ts'), [...lines.slice(0, 9), 'ten\n'].join(''))
+    await git(path, 'commit', '-q', '-am', 'Ten')
+    await git(path, 'pull', '-q', '--rebase', 'origin', 'main')
+    expect(await read(path, 'a.ts')).toBe(['one\n', ...lines.slice(1, 9), 'ten\n'].join(''))
+
+    const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Ten' })
+
+    // Against the last checkpoint it would be +2 -2, main's line with the agent's.
+    expect(files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 1 }])
+    expect(checkpoint.stat).toEqual({ files: 1, added: 1, removed: 1 })
+  })
+
+  it.each(['main', 'origin/gone'])('lists every change, as before, with base %s: no remote, or a base ref that is gone', async (baseRef) => {
+    const repo = await tempRepo({ 'a.ts': 'a\n' })
+    const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-local-${Date.now()}`), branch: 'feat/x', baseRef: 'main' })
+    const w = { id: 'ws-local', name: 'x', path, baseRef }
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    // A merge into the local main, then the worktree catches up with it.
+    await writeFile(join(repo, 'merged.ts'), 'm\n')
+    await git(repo, 'add', 'merged.ts')
+    await git(repo, 'commit', '-q', '-m', 'Merged')
+    expect(await fastForward(path, 'main')).toBe(true)
+
+    const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Catch up' })
+
+    expect(files).toEqual([{ path: 'merged.ts', status: 'A', added: 1, removed: 0 }])
+    expect(await message(path, checkpoint.ref)).not.toContain('Kernel-Base')
+  })
+
+  it("lists the commits a chat on the main checkout makes to the base branch itself, and leaves out the ones it pulls", async () => {
+    const { repo, land } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n' })
+    // A current-branch chat: its base is the local main it works on, which tracks origin/main.
+    const w = { id: 'ws-current', name: 'lead', path: repo, baseRef: 'main' }
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    await land({ 'm.ts': 'm2\n' })
+    await git(repo, 'pull', '-q', '--ff-only')
+    await writeFile(join(repo, 'a.ts'), 'a\nlead\n')
+    await git(repo, 'commit', '-q', '-am', 'Lead fix')
+
+    expect((await snapshotWithFiles(w, { chatId: 'c', title: 'Fix' })).files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 0 }])
+  })
+
+  it('works out the base of a checkpoint saved before bases were recorded from its history', async () => {
+    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    // Saved by a Kernel that recorded no base.
+    const old = await snapshotWithFiles({ id: 'ws-old', name: 'x', path }, { chatId: 'c', title: 'Go', start: true })
+    expect(await message(path, old.checkpoint.ref)).not.toContain('Kernel-Base')
+    await land({ 'a.ts': 'a\nmain\n', 'n.ts': 'n\n' })
+    await fetch()
+    expect(await fastForward(path, 'origin/main')).toBe(true)
+
+    expect((await snapshotWithFiles(ws('ws-old'), { chatId: 'c', title: 'Check' })).files).toEqual([])
+  })
+
+  it('lists what a reset back from the base undid, since nothing arrived from it', async () => {
+    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const lead = ws('ws-reset')
+    await land({ 'a.ts': 'a\nmain\n' })
+    await fetch()
+    expect(await fastForward(path, 'origin/main')).toBe(true)
+    await snapshotWithFiles(lead, { chatId: 'c', title: 'Go', start: true })
+    await git(path, 'reset', '-q', '--hard', 'HEAD~1')
+
+    expect((await snapshotWithFiles(lead, { chatId: 'c', title: 'Reset' })).files).toEqual([{ path: 'a.ts', status: 'M', added: 0, removed: 1 }])
   })
 })
 
