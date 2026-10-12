@@ -234,6 +234,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'scripts.replay': async () => ok,
+    'scripts.skipSetup': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
@@ -309,10 +310,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return roomSettings(roomId)
     },
     'files.preview': async ({ roomId, patterns }) => {
-      const entries = patterns ?? roomSettings(roomId).files.copy
-      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+      const { copy, exclude = [] } = roomSettings(roomId).files
+      const named = (list: string[], path: string) => list.some((e) => (isPattern(e) ? matchesGlob(path, e) : path === e))
+      return (f.localFiles?.[roomId] ?? []).filter((file) => named(patterns ?? copy, file.path) && !named(exclude, file.path))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    'files.production': async ({ roomId }) => f.production?.[roomId] ?? [],
+    'files.keepCopying': async ({ roomId, hints }) => ({ ...room(roomId), keepCopying: hints.map((h) => `${h.path}:${h.name}`) }),
     'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
       .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
@@ -342,7 +346,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'env.set': async () => ok,
     'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
-    'mcp.list': async () => f.mcp ?? [],
+    'mcp.list': async ({ provider = 'claude' }) => (f.mcp ?? []).filter((m) => (m.provider ?? 'claude') === provider),
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
     'update.get': async () => update,

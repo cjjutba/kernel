@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FileToCopy, Room } from '@shared/types'
-import { call } from '../../../api'
+import type { FileToCopy, ProductionHint, Room } from '@shared/types'
+import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
-import { Button, Toggle, useBusy } from '../../../ui'
+import { actions } from '../../../store'
+import { Button, Icon, Toggle, useBusy } from '../../../ui'
 import { isOverride, LinesField, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
@@ -29,6 +30,52 @@ function usePreview(roomId: string) {
   return { files, failed, reload }
 }
 
+/** The files to copy that look like production, from `files.production`. Empty until the first answer, and on a failed read. */
+function useProduction(roomId: string) {
+  const [hints, setHints] = useState<ProductionHint[]>([])
+  const latest = useRef(0)
+  const reload = useCallback(async () => {
+    const mine = ++latest.current
+    const next = await call('files.production', { roomId }).catch(() => [])
+    if (mine === latest.current) setHints(next)
+  }, [roomId])
+  useEffect(() => { setHints([]); void reload() }, [reload])
+  return { hints, reload }
+}
+
+const WHY: Record<ProductionHint['why'], string> = {
+  'live-key': ' is a live key',
+  'remote-database': ' points to a remote database',
+  production: ' is set to production'
+}
+
+/**
+ * SettingsFilesProduction.png: each file that looks like production and the variable that gave it away, never its value
+ * (KERNEL-449). Don't copy these files adds them to the room's exclusions. Keep copying remembers them for the room.
+ */
+function ProductionBanner({ hints, onSkip, onKeep }: { hints: ProductionHint[]; onSkip: () => Promise<void>; onKeep: () => Promise<void> }) {
+  const [busy, run] = useBusy<'skip' | 'keep'>()
+  const title = `${hints.length} ${hints.length === 1 ? 'file looks' : 'files look'} like production`
+  return (
+    <div className="card set-banner" role="group" aria-label={title}>
+      <Icon name="warning" size={16} />
+      <div className="set-banner-body">
+        <div className="set-banner-text">
+          <span className="set-banner-title">{title}</span>
+          <span className="set-banner-detail">Agents run commands in every worktree, so a migration or seed script there could reach a live database.</span>
+        </div>
+        <ul className="set-banner-files">
+          {hints.map((h) => <li key={h.path}><span className="set-banner-file">{h.path}</span><span><code>{h.name}</code>{WHY[h.why]}</span></li>)}
+        </ul>
+        <div className="set-banner-acts">
+          <Button busy={busy === 'skip'} busyLabel="Saving" disabled={busy !== null} onClick={() => void run('skip', onSkip)}>Don’t copy these files</Button>
+          <Button variant="ghost" busy={busy === 'keep'} busyLabel="Saving" disabled={busy !== null} onClick={() => void run('keep', onKeep)}>Keep copying</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Preview({ room, copy, files, failed, reload }: { room: Room; copy: string[]; files: FileToCopy[] | null; failed: boolean; reload: () => Promise<void> }) {
   const [busy, run] = useBusy()
   const from = <span className="set-value">{home(room.path)}</span>
@@ -50,13 +97,22 @@ export function Files({ roomId }: { roomId?: string }) {
 }
 
 function FilesPage({ roomId, room, rs }: { roomId: string; room: Room; rs: ReturnType<typeof useRoomPage>['rs'] }) {
-  const { files, failed, reload } = usePreview(roomId)
+  const preview = usePreview(roomId)
+  const { files, failed } = preview
+  const production = useProduction(roomId)
+  const reload = useCallback(async () => { await Promise.all([preview.reload(), production.reload()]) }, [preview.reload, production.reload]) // eslint-disable-line react-hooks/exhaustive-deps
   const copy = rs?.files.copy ?? []
   /** Saves go to the personal file. The preview reads the saved list, so it reloads once the save has landed. */
-  const save = async (patch: { copy: string[] | null }) => { await patchRoomSettings(roomId, { files: patch }); void reload() }
+  const save = async (patch: { copy?: string[] | null; exclude?: string[] }) => { await patchRoomSettings(roomId, { files: patch }); void reload() }
   const reset = (key: 'copy' | 'symlinkNodeModules') => (isOverride(rs, `files.${key}`) ? () => void (key === 'copy' ? save({ copy: null }) : patchRoomSettings(roomId, { files: { [key]: null } })) : undefined)
+  const skip = () => save({ exclude: [...new Set([...(rs?.files.exclude ?? []), ...production.hints.map((h) => h.path)])] })
+  const keep = async () => {
+    try { await call('files.keepCopying', { roomId, hints: production.hints }) } catch (e) { actions.ui.toast({ title: 'Could not save the choice', sub: cleanError(e) }) }
+    await production.reload()
+  }
   return (
     <RoomPage room={room} rs={rs} title="Files to copy" intro={`Gitignored files that ${room.name} copies into every new worktree.`}>
+      {production.hints.length > 0 && <ProductionBanner hints={production.hints} onSkip={skip} onKeep={keep} />}
       <Section title="Gitignored files">
         <Row label="Copy into every new worktree" source={sourceLine(rs, 'files.copy')} onReset={reset('copy')} full={
           <>

@@ -150,9 +150,9 @@ export class Hooks extends Feature {
   }
 
   private async preflight() {
-    await this.o.refreshPath?.()
+    const shell = (await this.o.refreshPath?.()) ?? undefined
     const codex = Object.values(this.settings.models.roles).some((r) => r.provider === 'codex') ? { bin: this.k.providers.binary('codex').path } : undefined
-    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex })
+    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex, shell })
   }
 
   private get hookToken() { return hookToken(this.o.dataDir) }

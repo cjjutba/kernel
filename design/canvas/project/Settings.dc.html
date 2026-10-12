@@ -109,17 +109,25 @@ details.dd>summary::-webkit-details-marker{display:none}
 <div style="display: flex; align-items: center; gap: 16px"><h2 style="flex: 1; min-width: 0; margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2><sc-if value="{{ sec.hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 28px; margin: -3px 0; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: {{ sec.actBg }}; color: {{ sec.actColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><sc-if value="{{ sec.busy }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>{{ sec.action }}</button></sc-if></div>
 <div style="border-radius: 10px; border: 1px solid #1f2024; background: #141516">
 <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
-<div style="display: flex; flex-wrap: {{ r.wrap }}; align-items: center; column-gap: 24px; row-gap: 10px; min-height: {{ r.minH }}; box-sizing: border-box; padding: {{ r.pad }}; border-top: {{ r.border }}">
-<sc-if value="{{ r.isPreset }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" style="width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid {{ r.ringBorder }}; background: {{ r.ringBg }}; color: #08090a; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer">{{ r.mark }}</button></sc-if>
+<div style="display: flex; flex-wrap: {{ r.wrap }}; align-items: {{ r.align }}; column-gap: 24px; row-gap: 10px; min-height: {{ r.minH }}; box-sizing: border-box; padding: {{ r.pad }}; border-top: {{ r.border }}">
+<sc-if value="{{ r.isPreset }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" style="width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; margin-top: {{ r.ringTop }}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid {{ r.ringBorder }}; opacity: {{ r.ringOpacity }}; background: {{ r.ringBg }}; color: #08090a; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer">{{ r.mark }}</button></sc-if>
 <div style="flex: 1 1 {{ r.basis }}; min-width: 0; display: flex; flex-direction: column; gap: 2px">
 <sc-if value="{{ r.isRule }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.labelAct }}" aria-expanded="{{ r.expanded }}" style="{{ r.labelStyle }}">{{ r.label }}</button></sc-if>
 <sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}<sc-if value="{{ r.hasTail }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 400; color: #d0d6e0"> {{ r.tail }}</span></sc-if></span></sc-if>
 <sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
+<sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.note }}</span></sc-if>
+<sc-if value="{{ r.hasAvail }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #b7bcc4"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1"></path></svg>{{ r.avail }}</span></sc-if>
 <sc-if value="{{ r.hasMono }}" hint-placeholder-val="{{ false }}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #b7bcc4; {{ r.monoStyle }}">{{ r.mono }}</span></sc-if>
 </div>
 <sc-if value="{{ r.hasReset }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.reset }}" aria-label="Reset {{ r.label }}" style="height: 30px; margin-right: -10px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reset</button></sc-if>
 <sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ r.act }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-if>
+<sc-if value="{{ r.isModeSel }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0">
+<button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" aria-label="Permission mode" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
+<sc-if value="{{ r.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Permission mode" style="position: absolute; top: 36px; right: 0; z-index: 60; width: 236px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
+<sc-for list="{{ r.menuItems }}" as="m" hint-placeholder-count="6"><sc-if value="{{ m.rule }}" hint-placeholder-val="{{ false }}"><div role="separator" style="height: 1px; margin: 6px 4px; background: #26272b"></div></sc-if><sc-if value="{{ m.isItem }}" hint-placeholder-val="{{ true }}"><button type="button" role="menuitemradio" aria-checked="{{ m.checked }}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{ m.label }}</span><sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if></button></sc-if></sc-for>
+</div></sc-if>
+</div></sc-if>
 <sc-if value="{{ r.isMulti }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; gap: 8px"><sc-for list="{{ r.sels }}" as="sl" hint-placeholder-count="3"><button type="button" aria-label="{{ sl.aria }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ sl.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-for></div></sc-if>
 <sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}"><button type="button" role="switch" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" onClick="{{ r.act }}" style="width: 32px; height: 20px; position: relative; flex-shrink: 0; padding: 0; border: 0; border-radius: 999px; background: {{ r.swBg }}; cursor: pointer"><span aria-hidden="true" style="position: absolute; top: 2px; left: {{ r.knob }}; width: 16px; height: 16px; border-radius: 50%; background: {{ r.knobBg }}"></span></button></sc-if>
 <sc-if value="{{ r.isSegment }}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="{{ r.label }}" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
@@ -145,6 +153,16 @@ details.dd>summary::-webkit-details-marker{display:none}
 <span aria-hidden="true" style="width: 16px; height: 16px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; border-radius: 4px; border: 1px solid #2a2b30; font-size: 9px; font-weight: 600; color: #d0d6e0">{{ m.letter }}<sc-if value="{{ m.isAvatar }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg></sc-if><sc-if value="{{ m.isImage }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5h11v9h-11ZM2.5 11l3.5-3.5 3 3 1.5-1.5 3 3"></path></svg></sc-if></span>
 <span style="flex: 1">{{ m.label }}</span>
 <sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if>
+</button></sc-for>
+</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ r.isTracker }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0">
+<button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" aria-label="Issue tracker: {{ r.value }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
+<sc-if value="{{ r.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Issue tracker" style="position: absolute; top: 36px; right: -19px; z-index: 60; width: 259px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
+<sc-for list="{{ r.menuItems }}" as="m" hint-placeholder-count="3"><button type="button" role="menuitemradio" aria-checked="{{ m.checked }}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<span style="flex: 1">{{ m.label }}</span>
+<sc-if value="{{ m.detected }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #8a8f98">Detected</span></sc-if>
+<span aria-hidden="true" style="width: 14px; height: 14px; display: inline-flex"><sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if></span>
 </button></sc-for>
 </div></sc-if>
 </div></sc-if>
@@ -231,14 +249,16 @@ class Component extends DCLogic {
 
   // The final nav. Environment and Big terminal rows have their pages since KERNEL-255.
   // Room pages sit indented under their room row and only the room row has the letter. The current room is expanded, the other collapsed.
-  nav() {
+  nav(room) {
     var pages = [['r-general', 'General'], ['r-git', 'Git'], ['r-scripts', 'Scripts'], ['r-files', 'Files to copy'], ['r-env', 'Environment'], ['r-instructions', 'Instructions'], ['r-permissions', 'Permissions'], ['r-agents', 'Agents'], ['r-skills', 'Skills and MCP']];
     return [
       { title: 'Personal', items: [['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Shortcuts']] },
       { title: 'Agents', items: [['models', 'Models and effort'], ['providers', 'Providers'], ['permissions', 'Permissions'], ['env', 'Environment']] },
       { title: 'Workspaces', items: [['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests']] },
       { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']] },
-      { title: 'Rooms', items: [['r-general', 'Client A', 'A', 'open']].concat(pages.map(function (p) { return [p[0], p[1], '', 'page']; }), [['room-b', 'Client B', 'B', 'shut']]) }
+      { title: 'Rooms', items: [['a', 'Client A', 'A'], ['b', 'Client B', 'B'], ['p', 'Portfolio', 'P']].reduce(function (items, r) {
+        return r[0] === (room || 'a') ? items.concat([['r-general', r[1], r[2], 'open']], pages.map(function (p) { return [p[0], p[1], '', 'page']; })) : items.concat([['room-' + r[0], r[1], r[2], 'shut']]);
+      }, []) }
     ];
   }
 
@@ -260,6 +280,10 @@ class Component extends DCLogic {
     // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
     var from = function (row) { row.source = 'From settings.toml'; return row; };
     var over = function (row) { row.source = 'Overriding settings.toml'; row.reset = true; return row; };
+    // KERNEL-435. A mode is a radio row with up to two lines of what it does, and a line when an agent's provider can't run it.
+    var mode = function (label, def, desc, extra) { return Object.assign({ id: 'mode-' + label, type: 'mode', label: label, def: !!def, desc: desc }, extra || {}); };
+    var modesel = function (label, desc, opts, sel, open) { return { id: 'pm-room', label: label, type: 'modesel', desc: desc, opts: opts, sel: sel, open: !!open }; };
+    var MODES = ['Use app default', 'Manual', 'Accept edits', 'Auto', 'Bypass permissions'];
     var rule = function (text, open) { return { label: text, type: 'rule', open: !!open, id: 'rule-' + text }; };
     var instr = function (id, label, desc, lines, open, overridden) { var r = { id: id, label: label, type: 'instr', desc: desc, lines: lines, open: open }; if (overridden) { over(r); r.desc = ''; } return r; };
     // KERNEL-255. Masked values are a fixed run of dots, never the length of the value. Lists of things (variables, env files, presets,
@@ -271,7 +295,9 @@ class Component extends DCLogic {
     var preset = function (label, desc, command, on, custom) { return { label: label, type: 'preset', desc: desc, value: command, on: !!on, custom: !!custom }; };
     var entry = function (label, mono) { return { label: label, type: 'entry', mono: mono }; };
     var preview = function (count, from, files) { return { label: count + ' files will be copied from', tail: from, type: 'preview', value: 'Refresh', files: files }; };
-    var iconrow = function (kind, open) { return { id: 'icon', label: 'Icon', desc: 'Shown next to the room in the sidebar and on its chats', type: 'icon', kind: kind, open: !!open }; };
+    var iconrow = function (kind, open, letter) { return { id: 'icon', label: 'Icon', desc: 'Shown next to the room in the sidebar and on its chats', type: 'icon', kind: kind, open: !!open, letter: letter }; };
+    // KERNEL-438. The room's issue tracker: the value is what Kernel uses, detected is which menu item detection found. The Linear team row follows only for Linear.
+    var tracker = function (value, detected, desc, open) { return { id: 'tracker', label: 'Issue tracker', desc: desc, type: 'tracker', value: value, detected: detected, open: !!open }; };
     var KERNEL_DESC = 'Set by Kernel in every chat, script and big terminal tab. You can\u2019t override them.';
     var kernelRows = function (id) { return [kdisc(id, KERNEL_DESC, id === 'rk'), kern('KERNEL_PORT', 'The first of this workspace\u2019s 10 ports', id), kern('KERNEL_WORKSPACE_ID', 'This workspace\u2019s id', id), kern('KERNEL_WORKSPACE', 'This workspace\u2019s folder', id), kern('KERNEL_ROOT_PATH', 'The room\u2019s repository folder', id), kern('PORT', 'The same as KERNEL_PORT', id)]; };
     var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
@@ -296,9 +322,20 @@ class Component extends DCLogic {
     };
     // KERNEL-437. A copied .env that looks like production: the files and why, never the values. Don't copy adds them to the room's exclusions, Keep copying remembers the choice.
     var prodBanner = { banner: { title: '2 files look like production', detail: 'Agents run commands in every worktree, so a migration or seed script there could reach a live database.', primary: 'Don\u2019t copy these files', secondary: 'Keep copying', files: [['.env', [['DATABASE_URL'], ' points to a remote database']], ['.env.production', [['STRIPE_SECRET_KEY'], ' is a live key']]] }, rows: [] };
-    var generalSections = function (kind, open, measuring) {
+    var ROOMS = {
+      a: { letter: 'A', repo: 'cjjutba/client-a', path: '~/Projects/client-a', team: 'Lead, Frontend, Backend, QA, Reviewer' },
+      b: { letter: 'B', repo: 'cjjutba/client-b', path: '~/Projects/client-b', team: 'Lead, Backend, Reviewer' },
+      p: { letter: 'P', repo: '~/Projects/portfolio', path: '~/Projects/portfolio', team: 'Lead, Frontend' }
+    };
+    var TRACKERS = {
+      linear: function (open) { return [tracker('Linear', 0, 'Detected from your Linear connection', open), sel('r-linear', 'Linear team', ['KERNEL', 'None'], 'Issues from this team open in this room')]; },
+      github: function (open) { return [tracker('GitHub Issues', 1, 'Detected from the github.com remote', open)]; },
+      none: function (open) { return [tracker('None', 2, 'None detected. Choose one to list issues for this room.', open)]; }
+    };
+    var generalSections = function (kind, open, measuring, room, trk, trkOpen) {
+      var R = ROOMS[room || 'a'];
       return [
-        { title: 'Room', rows: [iconrow(kind, open), val('Repository', 'cjjutba/client-a'), val('Local path', '~/Projects/client-a'), val('Team', 'Lead, Frontend, Backend, QA, Reviewer'), sel('r-linear', 'Linear team', ['KERNEL', 'None'], 'Issues from this team open in this room')] },
+        { title: 'Room', rows: [iconrow(kind, open, R.letter), val('Repository', R.repo), val('Local path', R.path), val('Team', R.team)].concat(TRACKERS[trk || 'linear'](trkOpen)) },
         diskSection(!!measuring),
         { title: 'Danger zone', rows: [btn('Archive room', 'Archive', 'Stops every agent and archives all workspaces. You can restore it later.')] }
       ];
@@ -340,7 +377,7 @@ class Component extends DCLogic {
       ] },
       shortcuts: { title: 'Shortcuts', sections: [
         { title: 'Workspaces', rows: [kbd('New workspace', ['⌘', '⇧', 'N']), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T']), kbd('Create PR', ['⌘', '⇧', 'P']), kbd('Open diff', ['⌘', '⇧', 'D']), kbd('Run dev script', ['⌘', 'R'])] },
-        { title: 'Agents', rows: [kbd('Approve request', ['⌘', '↵']), kbd('Deny request', ['⌘', '⌫']), kbd('Toggle plan mode', ['⇧', 'Tab']), kbd('Focus composer', ['⌘', 'L'])] },
+        { title: 'Agents', rows: [kbd('Approve request', ['⌘', '↵']), kbd('Deny request', ['⌘', '⌫']), kbd('Cycle permission mode', ['⇧', 'Tab']), kbd('Focus composer', ['⌘', 'L'])] },
         { title: 'App', rows: [kbd('Command palette', ['⌘', 'K']), kbd('Settings', ['⌘', ','])] }
       ] },
       models: { title: 'Models and effort', sections: [
@@ -372,9 +409,16 @@ class Component extends DCLogic {
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
       ] },
-      permissions: { title: 'Permissions', sections: [
-        { title: 'Mode', rows: [seg('pmode', 'Permission mode', ['Ask', 'Accept edits', 'Bypass in worktrees'], 1, 'Bypass only applies inside isolated worktrees, never on your current branch'), tog('net', 'Allow network access', true)] },
-        { title: 'Commands', rows: [code('Always ask before', ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset']), code('Never allow', ['git push origin main', 'curl * | sh']), val('Protected branches', 'main, dev')] }
+      permissions: { title: 'Permissions', intro: 'The mode new chats start in. A room can set its own, and Shift+Tab in the composer changes one chat.', sections: [
+        { title: 'Mode', rows: [
+          mode('Manual', false, 'Asks before every edit and command.'),
+          mode('Accept edits', false, 'Edits files without asking. Commands still ask unless a rule allows them.'),
+          mode('Auto', true, 'A classifier approves routine work and asks you about anything else. Commands on your Always ask list still come to you.', { avail: 'Auto isn\u2019t available for Codex agents yet. They use Accept edits instead.' }),
+          mode('Bypass permissions', false, 'Skips every prompt, including your Always ask list.', { note: 'It still stops for Never allow, pushes to protected branches, network off, an agent\u2019s tools line, questions and plan approval.' }),
+          Object.assign(tog('pmwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), { sub: true })
+        ] },
+        { title: 'Network', rows: [tog('net', 'Allow network access', true, 'When off, agents can\u2019t reach the network in any mode, Bypass permissions included')] },
+        { title: 'Commands', rows: [code('Always ask before', ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], 'You decide these in every mode except Bypass permissions'), code('Never allow', ['git push origin main', 'curl * | sh'], 'Blocked in every mode, Bypass permissions included'), val('Protected branches', 'main, dev', 'Pushes to these are blocked in every mode'), sel('ptimeout', 'Approval timeout', ['5 min', '2 min', '10 min', '30 min'], 'After this, the request falls back to the normal prompt in Claude Code')] }
       ] },
       git: { title: 'Git and worktrees', intro: 'Defaults for every room. Each room can override them on its own Git page.', sections: [
         { title: 'New workspaces', rows: [seg('wmode', 'Default workspace type', ['New worktree', 'Current branch'], 0, 'A worktree is an isolated copy on its own branch'), sel('from', 'Branch new workspaces from', ['origin/main', 'origin/dev']), sel('remote', 'Remote origin', ['origin', 'upstream'], 'Where to push, pull and open PRs'), val('Branch name pattern', 'feat/{slug}', 'Renamed from your task once the workspace starts'), val('Worktree location', '~/kernel/worktrees')] },
@@ -424,6 +468,8 @@ class Component extends DCLogic {
       ] },
       'r-general': roomPage('General', 'How Client A is set up in Kernel.', generalSections('letter', false)),
       'r-icon': roomPage('General', 'How Client A is set up in Kernel.', generalSections('avatar', true)),
+      'r-tracker': roomPage('General', 'How Client B is set up in Kernel.', generalSections('letter', false, false, 'b', 'github', true)),
+      'r-tracker-none': roomPage('General', 'How Portfolio is set up in Kernel.', generalSections('letter', false, false, 'p', 'none')),
       'r-env': roomPage('Environment', 'Variables for Client A. Changes apply to chats and scripts started afterwards.', [
         { title: 'Variables', action: 'Add variable', rows: [vr('rv1', 'DATABASE_URL'), vr('rv2', 'STRIPE_SECRET_KEY')] },
         { title: 'Env files', action: 'Add env file', note: 'Read in this order each time a chat or script starts. A later file wins, and a missing file is skipped.', rows: [envfile('.env'), envfile('src/backend/.env', true)] },
@@ -459,14 +505,18 @@ class Component extends DCLogic {
           instr('ri-review', 'Address review', 'Sent when you press Address review', [], false, false)
         ] }
       ]),
-      'r-permissions': roomPage('Permissions', 'Commands agents can run in Client A without asking.', [
-        { title: 'Always allowed in this room', rows: [
+      'r-permissions': roomPage('Permissions', 'How agents ask in Client A, and what they can already do without asking.', [
+        { title: 'Mode', rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, false)] },
+        { title: 'Commands always allowed', rows: [
           rule('pnpm test'),
           rule('pnpm typecheck'),
           rule('gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName'),
-          rule('node design/canvas/source/render.mjs Settings SettingsAppearance SettingsNotifications SettingsAccount SettingsShortcuts SettingsModels SettingsPermissions SettingsGit SettingsScripts SettingsPRs', true),
-          rule('for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | grep -v "pixelHeight: 900" | sort | uniq -c | sort -rn | head -40 | tee /tmp/settings-sizes.txt'),
           rule('git log --oneline origin/main..HEAD')
+        ] },
+        { title: 'Tools always allowed', note: 'Choosing Always allow in this room on a tool\u2019s approval saves it here. It covers MCP tools and web fetches.', rows: [
+          rule('mcp__linear__get_issue'),
+          rule('mcp__github__create_pull_request'),
+          rule('WebFetch(domain:docs.stripe.com)')
         ] }
       ]),
       'r-agents': roomPage('Agents', 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.', [
@@ -486,6 +536,11 @@ class Component extends DCLogic {
     // KERNEL-437: the room's Disk row on a first look, before the background measurement has an answer, and Files to copy with the production warning above its list.
     all['r-general-measuring'] = Object.assign(roomPage('General', 'How Client A is set up in Kernel.', generalSections('letter', false, true)), { nav: 'r-general' });
     all['r-files-production'] = Object.assign({}, all['r-files'], { nav: 'r-files', sections: [prodBanner].concat(all['r-files'].sections) });
+    all['r-tracker'].nav = 'r-general'; all['r-tracker'].room = 'b';
+    all['r-tracker-none'].nav = 'r-general'; all['r-tracker-none'].room = 'p';
+    // KERNEL-435: the room's mode menu: Use app default, then the four modes.
+    all['r-permissions-mode'] = Object.assign({}, all['r-permissions'], { nav: 'r-permissions' });
+    all['r-permissions-mode'].sections = all['r-permissions'].sections.map(function (sec, i) { return i !== 0 ? sec : Object.assign({}, sec, { rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, true)] }); });
     return all;
   }
 
@@ -497,7 +552,7 @@ class Component extends DCLogic {
     var q = (s.q || '').toLowerCase();
     var pageMap = this.pages();
     var inRoom = s.page.indexOf('r-') === 0;
-    var groups = this.nav().map(function (g) {
+    var groups = this.nav((pageMap[s.page] || {}).room).map(function (g) {
       var items = g.items.filter(function (it) { return !q || it[1].toLowerCase().indexOf(q) >= 0; }).map(function (it) {
         var isRoom = !!it[2], isPage = it[3] === 'page';
         var on = (pageMap[s.page].nav || s.page) === it[0] && !isRoom;
@@ -535,10 +590,11 @@ class Component extends DCLogic {
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
           hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
-          isIcon: false, isPreview: false, files: r.files || [], isMulti: false, sels: [],
+          isIcon: false, isTracker: false, isPreview: false, files: r.files || [], isMulti: false, sels: [],
           hasStat: !!r.stat, stat: r.stat ? r.stat[0] : '', statOk: !!r.stat && r.stat[1] === 'ok', statFail: !!r.stat && r.stat[1] === 'fail', statBusy: !!r.stat && r.stat[1] === 'busy',
           statColor: r.stat ? { ok: '#d0d6e0', fail: '#f7f8f8', busy: '#b7bcc4', none: '#8a8f98' }[r.stat[1]] : '#d0d6e0',
-          hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || ''
+          hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || '',
+          align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || ''
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
@@ -563,16 +619,37 @@ class Component extends DCLogic {
           o.isCommand = !!r.value; o.wrap = 'nowrap'; o.basis = '120px';
           if (r.custom) { o.hasActions = true; o.actions = [{ label: 'Edit' }, { label: 'Remove' }]; }
         }
+        if (r.type === 'mode') {
+          // KERNEL-435: one of the four modes. Its ring lines up with its title, and a mode an agent's provider can't run is dimmed.
+          var pick = v === undefined ? r.def : v;
+          o.isPreset = true; o.checked = pick ? 'true' : 'false'; o.mark = pick ? '\u2713' : '';
+          o.ringBg = pick ? '#f7f8f8' : 'transparent'; o.ringBorder = pick ? '#f7f8f8' : '#4a4c52';
+          o.align = 'flex-start'; o.ringTop = '1px'; o.ringOpacity = r.dim ? '0.45' : '1'; o.wrap = 'nowrap'; o.basis = '120px'; o.minH = '0'; o.pad = '14px 18px';
+          o.hasTag = !!r.tag; o.tag = r.tag || ''; if (r.dim) o.labelStyle = LABEL + '; color: #8a8f98';
+        }
+        if (r.sub) { o.pad = '12px 18px 12px 48px'; }
+        if (r.type === 'modesel') {
+          o.isModeSel = true; o.value = r.opts[r.sel]; o.menuShown = !!r.open; o.menuOpen = r.open ? 'true' : 'false'; o.selBorder = r.open ? '#3a3c42' : '#23252a';
+          o.menuItems = r.opts.map(function (lab, j) { var on = j === r.sel; return { isItem: true, rule: false, label: lab, on: on, checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent' }; });
+          o.menuItems.splice(1, 0, { isItem: false, rule: true });
+        }
         if (r.type === 'role') { o.isMulti = true; o.sels = r.sels.map(function (x) { return { value: x[0], aria: x[1] }; }); o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'account' || r.type === 'path') { o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'preview') { o.isPreview = true; o.isButton = true; o.wrap = 'wrap'; }
         if (r.type === 'icon') {
           var avatar = r.kind === 'avatar';
-          o.isIcon = true; o.value = avatar ? 'GitHub avatar' : 'Letter'; o.tileAvatar = avatar; o.tileLetter = avatar ? '' : 'A';
+          o.isIcon = true; o.value = avatar ? 'GitHub avatar' : 'Letter'; o.tileAvatar = avatar; o.tileLetter = avatar ? '' : (r.letter || 'A');
           o.menuShown = !!r.open; o.menuOpen = r.open ? 'true' : 'false'; o.selBorder = r.open ? '#3a3c42' : '#23252a';
           o.menuItems = [['Letter', 'letter'], ['GitHub avatar', 'avatar'], ['Choose image', 'image']].map(function (m) {
             var on = m[1] === r.kind;
-            return { label: m[0], letter: m[1] === 'letter' ? 'A' : '', isAvatar: m[1] === 'avatar', isImage: m[1] === 'image', on: on, checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent' };
+            return { label: m[0], letter: m[1] === 'letter' ? (r.letter || 'A') : '', isAvatar: m[1] === 'avatar', isImage: m[1] === 'image', on: on, checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent' };
+          });
+        }
+        if (r.type === 'tracker') {
+          o.isTracker = true; o.menuShown = !!r.open; o.menuOpen = r.open ? 'true' : 'false'; o.selBorder = r.open ? '#3a3c42' : '#23252a';
+          o.menuItems = ['Linear', 'GitHub Issues', 'None'].map(function (label, j) {
+            var on = label === r.value;
+            return { label: label, on: on, detected: j === r.detected, checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent' };
           });
         }
         if (r.type === 'select') {

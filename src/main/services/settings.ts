@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
-  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
+  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
@@ -412,7 +412,7 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
     // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
     scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
-    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
+    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy', 'exclude'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
@@ -483,7 +483,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
-    files: { copy: files.copy ?? [...DEFAULT_COPY], symlinkNodeModules: files.symlinkNodeModules },
+    files: { copy: files.copy ?? [...DEFAULT_COPY], exclude: files.exclude ?? [], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),
@@ -723,6 +723,15 @@ export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled
   const read = (name: string) => readTomlSync(repoFile(repo, name))
   const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
   return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
+}
+
+/**
+ * The room's `[mcp.aliases]`, merged alias by alias as `loadRepoSettings` merges them, the personal file winning. Read as a
+ * session starts, like `disabledInRoom`, so a confirmed alias reaches the next session (KERNEL-464).
+ */
+export function aliasesInRoom(repo: string): Record<string, string> {
+  const read = (name: string) => (roomValues(readTomlSync(repoFile(repo, name))).mcp as { aliases?: Record<string, string> }).aliases
+  return { ...read('settings.toml'), ...read('settings.local.toml') }
 }
 
 /**

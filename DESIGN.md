@@ -10,19 +10,19 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 
 | Token | Value | Use |
 |---|---|---|
-| canvas | #08090a | window background |
-| panel | #0f1011 | main panel |
-| surface | #141516 | inputs, cards |
-| surface-2 | #18191b | menus, modals |
-| surface-3 | #1c1d21 | selected rows, hover fills |
-| hover | #232428 | menu item hover |
-| line | #1a1b1e | dividers |
-| line-2 | #23252a | input borders |
-| line-3 | #2a2b30 | buttons, menus |
-| ink | #f7f8f8 | primary text |
-| ink-2 | #d0d6e0 | secondary text |
-| muted | #8a8f98 | labels, meta |
-| faint | #62666d | tertiary |
+| canvas | #070707 | window background |
+| panel | #0f0f0f | main panel |
+| surface | #141414 | inputs, cards |
+| surface-2 | #181818 | menus, modals |
+| surface-3 | #1e1e1e | selected rows, hover fills |
+| hover | #242424 | menu item hover |
+| line | #1c1c1c | dividers |
+| line-2 | #262626 | input borders |
+| line-3 | #2e2e2e | buttons, menus |
+| ink | #f5f5f5 | primary text |
+| ink-2 | #e0e0e0 | secondary text |
+| muted | #9c9c9c | labels, meta |
+| faint | #7a7a7a | tertiary |
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
@@ -30,13 +30,13 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
-| aside | #0c0d0e | the workspace's right panel, one step below panel |
+| aside | #0b0b0b | the workspace's right panel, one step below panel |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
 | pr-merged-* | band #2a2140, line #3c2f5c, soft #372b55, edge #64509c, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
+The neutrals are pure grey, with equal red, green and blue, so no surface or text leans blue or violet (KERNEL-431). There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
@@ -101,9 +101,26 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Danger: red only on the final confirm button, never on the trigger.
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - PR header (KERNEL-274): the top of the right panel is a band in the PR's tone: grey (neutral states), green (open, ready, merging), red (checks failed, changes requested, conflicts, resolving), violet (merged). It holds the `#N | ↗` link pill, the state's icon and label, and the actions. Soft buttons use the band's soft fill and edge. Merge PR and a merged PR's Archive take its solid; a closed PR's Archive is soft. Create PR stays ink on the neutral band. The label always shows the state, never a spinner. With the right panel hidden, the header sits in the chat with no band, in neutral colors except merged. `design/redesign/Pr*.png` draws every state.
-- Composer (KERNEL-322): one composer everywhere, drawn in `design/redesign/Composer.png`. The box sits recessed on `input-bg`, the agent's name and role sit in a pill with no divider, and send and stop are circles.
+- Local merge (KERNEL-441): a repo with no GitHub remote has no PR, and the same band reads its merge. A plain `→ main` pill takes the link pill's place, and a merge line under the band says "3 ahead of main · 0 behind" and the merge method. Ready is green with Merge, behind main is grey with Update branch, conflicts and a refused merge are red, merging is the busy button and merged is violet. Behind, conflicts and refused each add one note card under the merge line, with the files listed where they matter. `design/redesign/PrLocal*.png` draws every state, and Room setup's Code host row is in `design/screens/RoomSetupGitHub.png` and `RoomSetupLocal.png`.
+- Composer (KERNEL-322): one composer everywhere, drawn in `design/redesign/Composer.png`. The box sits recessed on `input-bg`, the agent's name and role sit in a pill with no divider, and send and stop are circles. The permission mode label follows the model picker (KERNEL-435, `design/screens/ComposerModes.png`). The composers drawn on other screens predate it and don't show it.
+- Permission modes (KERNEL-435): Manual, Accept edits, Auto and Bypass permissions, always in that order. Plan joins them in the composer only. Settings, Permissions and the onboarding step list them as radio rows in one card, like Big terminal's presets: a filled ring with a check marks the pick, the title is 13.5px, and what the mode does sits below it in muted text. Bypass permissions says what it skips (every prompt, Always ask included) and what still stops it. In Settings an Only in worktrees switch row sits under it, indented to the titles.
+  - A mode an agent's provider can't run keeps its row, dimmed, with an info line under it: "Auto isn't available for Codex agents yet." The chat uses Accept edits instead.
+  - The onboarding step shows Bypass with a bordered caution block, never a red one.
+  - A room's mode is a select with "Use app default" above the four modes. Its saved tools sit in a list under its commands, in the same hairline rows with a bordered Remove.
+  - In the composer the mode is a label after the model picker: muted text with a 14px icon, `plan` blue for Plan, and ink in a hairline pill for Bypass, the one mode that skips prompts. It opens the mode menu, and so does Permission mode in the + menu.
+  - Shift+Tab cycles Manual, Accept edits, Plan, Auto, Bypass and skips a mode the chat's agent can't run.
+  - The first switch into Bypass opens `ConfirmBypass` once, with its confirm in danger red.
+  - An approval card says why it asked on one line under the command, with an info icon and `ink-3` text.
+  - The PNGs: `SettingsPermissions`, `SettingsRoomPermissions`, `SettingsRoomPermissionsMode`, `ComposerModes`, `ComposerModeMenu`, `SetupPermissions`, `SetupPermissionsNoAuto`, `WorkspacePermReason`, `WorkspacePermReasonCodex`, `ConfirmBypass`.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor.
+- Issue trackers (KERNEL-438): a room has one tracker, Linear, GitHub Issues or None, picked from a menu on Settings, a room, General. A fourth item such as Jira is one more menu item. Issues lists one room's tracker: the room is a menu after the page title and the source sits at the right. GitHub's rows are Linear's with `#number`, label pills and an assignee avatar, under one group named Open. A room with no tracker says so and offers Choose a tracker, never a Connect Linear page. The notice that someone else is on an issue is a confirm that names what was found, with Start anyway in the primary style and not danger (`design/screens/ConfirmIssueTaken.png`).
 - Plan mode (KERNEL-274): the composer gets a `plan` border and a soft glow rising from its bottom edge, and the caret and a ready send button turn `plan`. No hatch, no stripes, no label. A waiting plan keeps the blue and puts Copy and Approve in a blue strip on top; send stays ink there so Approve is the one blue button. The glow moves slowly (see Motion).
+- Agent capabilities (KERNEL-440): a line under an agent on Team, in the room-setup team card and in the profile says what Kernel noticed. A server the agent's file lists but the agent can't reach gets an amber warning and one step: "Linear isn't signed in. Sign in", "There's no Figma server in this room. Add server", "Neon didn't connect after 3 tries. Try again", "Playwright is switched off in this room. Turn on". A warning is one line that never wraps, and several stack. A file Kernel can't read is not an agent, so it goes in a "Can't read" section under the table with a red x-circle (the icon only, never a red background), the path, the parse error in mono and Open file. A warning's action is its own button, so a Team row is a list item with a stretched link, not one big button. The profile lists the same servers in a Servers box: the name, where it comes from (In its file, or an allowance), how it is doing (Connected in muted, a problem in ink with the amber triangle) and the one step. `TeamWarnings`, `AgentProfileServers`.
+- Personal and allowed (KERNEL-440): an agent from `~/.claude/agents` has a Personal pill after its role, like Built in and Helper. Its File column shows the path and its profile says "All rooms". What Kernel adds on top of an agent's file is muted, with a plus-circle: "Linear allowed in this room by you" and Remove, on Team and in the profile's Servers box. Team says under the table that the files stay as they are. `TeamPersonal`.
+- Tools gate card (KERNEL-440): the permission request's card with "Lumi wants to use Linear", one line on why it asks, the tool and its arguments in the code block, then Keep blocked, Allow Linear for Lumi in this room and Allow once (ink). A muted note under the buttons says Keep blocked sends Lumi on without Linear, and that only you can change the agent file. After a choice the card becomes one note, as the permission request does: "Allowed once.", "Allowed Linear for Lumi in Client A." or "Kept Linear blocked." `WorkspaceToolsGate`.
+- For me or for the team (KERNEL-440): hire, edit and retire ask with the same two radio rows under a muted question, Just for me and For the team, each saying what it does in a line or two. It starts on Just for me, because For the team opens a pull request. The confirm button names the result: Create agent, Save for me, Retire Kai, or Open pull request once the team is picked. A Personal agent has no team row, because its file isn't in the repo. `WorkspaceHireServers`, `NewAgentDraftScope`, `AgentProfileScope`, `ConfirmRetireScope`.
+- Servers row (KERNEL-440): the hire card and the New agent review list the servers the new agent's file names, one pill each. A server that works shows its name. One that doesn't shows the amber triangle and the problem. A sentence under the row says what that means for Rowan's hand-offs.
+- Roster picker and rule conflicts (KERNEL-440): with more than about 12 agents, room setup asks who joins. The card has a search box, checkbox rows (name, role, tags, one description line, any warning) and "8 of 23 picked" with Clear and Pick the suggested 8. Kernel suggests the agents that can open pull requests. One written as a subagent with no pull request workflow starts unpicked as a Helper, with its warning. The list scrolls inside the card, so a half row shows at the bottom. The conflicts card lists each rule in CLAUDE.md or AGENTS.md that fights Kernel's workflow, with its file and line, next to what Kernel tells agents. Kernel never edits those files. Setup is taller than the window with these cards, so `RoomSetupRoster` and `RoomSetupConflicts` are drawn scrolled to the end.
 
 ## Busy buttons
 

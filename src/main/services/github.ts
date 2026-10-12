@@ -414,18 +414,21 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-/** Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. */
-export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string }
+/**
+ * Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. `source` is
+ * gh's `tokenSource`: "keyring", "GH_TOKEN", "GITHUB_TOKEN" or the path of gh's config file (KERNEL-448).
+ */
+export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string; source?: string }
 
 /** Reads `gh auth status --json hosts` for github.com's active account. Null when it isn't that JSON. */
 export function parseGhAuth(json: string): GhAuth | null {
-  let hosts: Record<string, { state?: string; error?: string; active?: boolean; login?: string }[]> | undefined
+  let hosts: Record<string, { state?: string; error?: string; active?: boolean; login?: string; tokenSource?: string }[]> | undefined
   try { hosts = (JSON.parse(json) as { hosts?: typeof hosts }).hosts } catch { return null }
   if (!hosts) return null
   const active = hosts['github.com']?.find((a) => a.active)
   if (!active) return { state: 'signed-out' }
   const login = active.login || undefined
-  if (active.state === 'success') return { state: 'ok', login }
+  if (active.state === 'success') return { state: 'ok', login, ...(active.tokenSource ? { source: active.tokenSource } : {}) }
   // GitHub rejecting the token is a 401. Any other error (no network, a timeout, an outage) leaves the sign-in standing.
   if (active.state === 'error' && /\b401\b|Bad credentials/.test(active.error ?? '')) return { state: 'signed-out', login }
   return { state: 'offline', login }

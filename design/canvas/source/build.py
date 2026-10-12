@@ -125,6 +125,8 @@ for n,st in [
     ('IssuesEmpty','empty'),
     ('IssuesConnect','connect'),
     ('IssuesError','error'),
+    ('IssuesGitHub','github'),
+    ('IssuesNoTracker','notracker'),
 ]: emit(n, is_.replace('%%STATE%%',st), 'issues')
 tr=rd('_Try.dc.html')
 for n,mode,title in [
@@ -150,6 +152,8 @@ WS=[
     ('WorkspaceRunning','running'),
     ('WorkspacePlan','plan'),
     ('WorkspacePerm','perm'),
+    ('WorkspacePermReason','permreason'),
+    ('WorkspacePermReasonCodex','permreasoncodex'),
     ('WorkspaceQuestion','question'),
     ('WorkspaceQuestionSteps','questionsteps'),
     ('WorkspaceQuestionLong','questionlong'),
@@ -223,6 +227,8 @@ for n,m in [
     ('NewWorkspace','none'),
     ('NewWorkspaceBranch','branch'),
     ('NewWorkspaceFrom','from'),
+    ('NewWorkspaceFromGitHub','from-github'),
+    ('NewWorkspaceFromNone','from-none'),
     ('NewWorkspaceModel','model'),
     ('NewWorkspacePlus','plus'),
 ]:
@@ -240,7 +246,9 @@ for n,k in [
     ('ConfirmDiscard','discard'),
     ('ConfirmRetire','retire'),
     ('TelemetryAsk','telemetry'),
-]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
+    ('ConfirmIssueTaken','taken'),
+    ('ConfirmBypass','bypass'),
+]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard','bypass') else None)
 su=rd('Setup.dc.html')
 for n,k in [
     ('SetupClaudeMissing','missing'),
@@ -254,7 +262,15 @@ for n,k in [
     ('SetupBedrock','bedrock'),
     ('RoomSetup','room'),
     ('RoomSetupWarnings','roomwarn'),
+    ('SetupPermissions','perm'),
+    ('SetupPermissionsNoAuto','permnoauto'),
 ]: emit(n, su.replace('%%CASE%%',k), None)
+# KERNEL-441: Room setup says which code host the repo has: GitHub (owner/repo), or Local when it has no GitHub remote.
+rh=rd('RoomSetupHost.dc.html')
+for n,k in [
+    ('RoomSetupGitHub','github'),
+    ('RoomSetupLocal','local'),
+]: emit(n, rh.replace('%%HOST%%',k), None)
 se=rd('Settings.dc.html')
 # KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
 # KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
@@ -290,11 +306,14 @@ for n,pg in [
     ('SettingsRoomScripts','r-scripts'),
     ('SettingsRoomInstructions','r-instructions'),
     ('SettingsRoomPermissions','r-permissions'),
+    ('SettingsRoomPermissionsMode','r-permissions-mode'),
     ('SettingsEnvironment','env'),
     ('SettingsRoomEnvironment','r-env'),
     ('SettingsEnvironmentAdd','r-env-add'),
     ('SettingsBigTerminal','bigterm'),
     ('SettingsRoomIcon','r-icon'),
+    ('SettingsRoomTracker','r-tracker'),
+    ('SettingsRoomTrackerNone','r-tracker-none'),
 ]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 # KERNEL-336: grouped chats. A chat is a sidebar row and its tabs are conversations inside it. KERNEL-338 builds the first eleven screens, KERNEL-339 the last two.
@@ -560,6 +579,14 @@ var __seed = Component.prototype.seed;
 Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
 '''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
 emit('WorkspaceQuestionLong', t, 'lead')
+# KERNEL-440 (D13): the team and agent surfaces D14, D15 and D16 build. capabilities.py draws them.
+import sys
+sys.path.insert(0,HERE)
+import capabilities
+capabilities.build(emit=emit, rd=rd, ws=ws, gsub=gsub, g_patch=g_patch)
+# KERNEL-435: permission modes. The composer's mode label and the menus that change it are drawn on boards, like the redesign's Composer.
+# Every composer on these boards is the KERNEL-322 composer with the label after the model picker.
+for n in ['ComposerModes','ComposerModeMenu']: emit(n, rd(n+'.dc.html'), None)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
 p=P+'InboxEmpty.dc.html'; t=open(p).read()
