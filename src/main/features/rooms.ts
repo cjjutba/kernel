@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { mkdir } from 'node:fs/promises'
 import type { KernelApi } from '@shared/ipc'
-import type { AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
+import type { AgentOrigin, AgentStatus, NewRoomRequest, Room, RoomSetupStep } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -14,6 +14,9 @@ import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
 import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
+
+/** Where Room setup says a room's agents came from, when it asks for a roster (RoomSetupRoster.png). */
+const AGENT_PLACES: Record<AgentOrigin, string> = { project: '.claude/agents', personal: '~/.claude/agents', plugin: 'Claude Code plugins' }
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
 export class Rooms extends Feature {
@@ -144,12 +147,17 @@ export class Rooms extends Feature {
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: list })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
-      const roster = brought ? await this.k.team.rosterOf(room.id) : undefined
-      if (roster?.needed) return { detail: `${roster.agents} agents found in .claude/agents`, brought, roster }
+      // Personal and plugin agents join every room, so they count toward a roster even when the repo brought none.
+      const roster = await this.k.team.rosterOf(room.id)
+      if (roster.needed) {
+        const where = [...new Set(list.filter((a) => !a.builtIn).map((a) => AGENT_PLACES[a.origin ?? 'project']))]
+        const places = where.length > 1 ? `${where.slice(0, -1).join(', ')} and ${where[where.length - 1]}` : where[0]
+        return { detail: `${roster.agents} agents found in ${places}`, ...(brought ? { brought } : {}), roster }
+      }
       const own = list.filter((a) => !a.builtIn).map((a) => a.name)
       const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
-      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought, roster } : {}) }
+      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
   }
 

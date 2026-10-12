@@ -74,11 +74,13 @@ describe('[team] roster', () => {
     [`.claude/agents/${id}.md`, `---\nname: ${id}\ndescription: Engineer.\n${head}---\n${body}\n`]
   const DEVS = Array.from({ length: 11 }, (_, i) => `dev${i + 10}`)
 
-  /** A room made from a repo with these agent files, once Room setup is done. */
-  async function setUp(files: [string, string][]) {
+  /** A room made from a repo with these agent files, and these in ~/.claude/agents, once Room setup is done. */
+  async function setUp(files: [string, string][], personal: [string, string][] = []) {
     const repo = await tempRepo({ 'README.md': '# shop\n', ...Object.fromEntries(files) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await mkdir(join(home, '.claude', 'agents'), { recursive: true })
+    for (const [path, text] of personal) await writeFile(join(home, path), text)
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, starterDir: STARTERS, claudeSettingsFile: join(home, 'claude-settings.json') })
     onTestFinished(() => k.stop())
@@ -119,6 +121,11 @@ describe('[team] roster', () => {
     team = await h['agents.setTeam']({ roomId: room.id, team: { roster: null } })
     expect(team).toHaveLength(16)
     expect(await settings()).not.toContain('[team]')
+  })
+
+  it('counts personal agents, which join every room, and says where they came from', async () => {
+    const { seat } = await setUp([agent('api')], DEVS.concat('dev21').map((id) => agent(id)))
+    expect(seat).toMatchObject({ detail: '13 agents found in .claude/agents and ~/.claude/agents', brought: 1, roster: { agents: 13, needed: true } })
   })
 
   it("doesn't ask with 12 agents or fewer, and keeps a subagent the user makes a teammate", async () => {
