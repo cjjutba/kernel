@@ -7,7 +7,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
-import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { briefParts, ISSUE_CAPS, issueText, issueTools } from '../src/main/services/issueMcp'
@@ -159,6 +159,11 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   it('tells the Lead to set user_asked only when the user asked for more', () => {
     expect(LEAD_RULE).toContain('create_workspace refuses once the room has as many teammate workspaces open as its limit allows.')
     expect(LEAD_RULE).toContain('Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.')
+  })
+
+  it('tells the Lead never to use em or en dashes, and has none itself', () => {
+    expect(LEAD_RULE).toContain('Never use em dashes or en dashes. Use a comma, or split the sentence in two.')
+    expect(`${LEAD_RULE}\n${LEAD_SHARING_RULE}`).not.toMatch(/[\u2013\u2014]/)
   })
 
   it("reads the room's own limit, then Settings, Models', in a real Kernel (KERNEL-492)", { timeout: 60_000 }, async () => {
