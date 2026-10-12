@@ -18,7 +18,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 const REPO = {
   'README.md': '# client\n',
   '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
-  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\nrole: Frontend\n---\nYou are Kai.',
+  '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\nrole: Frontend\n---\nYou are Kai. Open a PR for each task.',
   '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
 }
 

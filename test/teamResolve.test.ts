@@ -4,12 +4,13 @@ import { describe, expect, it } from 'vitest'
 import type { AgentDef, TeamConfig } from '@shared/types'
 import { agentFromFile } from '../src/main/services/agents'
 import { loadBuiltins } from '../src/main/services/builtins'
-import { resolveTeam } from '../src/main/services/teamResolve'
+import { adviseRoster, resolveTeam, writtenAsSubagent } from '../src/main/services/teamResolve'
 
 // KERNEL-397: one team per room, whatever shape its .claude/agents folder has. Kernel's Rowan and Theo fill the gaps.
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
-const file = (name: string, head: string, body = 'Body') => agentFromFile(`/repo/.claude/agents/${name}.md`, `---\n${head}\n---\n${body}`)
+// The body mentions a pull request, so a file with no tools line reads as a teammate, not a subagent (KERNEL-465).
+const file = (name: string, head: string, body = 'Open a pull request when the task is done.') => agentFromFile(`/repo/.claude/agents/${name}.md`, `---\n${head}\n---\n${body}`)
 
 async function team(files: AgentDef[], config?: TeamConfig, o: { starters?: boolean } = {}) {
   const builtins = await loadBuiltins(o.starters === false ? undefined : STARTERS, files)
@@ -137,5 +138,51 @@ describe('resolveTeam', () => {
     expect(roles(r.agents)).toEqual([['blank', 'Blank', 'member'], ['block', 'Block', 'member'], ['flow', 'Flow', 'member'], ['mcp', 'Mcp', 'helper']])
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['none', 'none'])
     expect(warningsOf(r.agents)).toEqual({ blank: ['no-description'], mcp: ['cant-open-pr'] })
+  })
+
+  // KERNEL-465: a subagent collection's files have no tools line, which would make every one of them a teammate.
+  it('makes a helper of an agent written as a subagent with no pull request workflow, and says so', async () => {
+    const files = [
+      file('architect', 'name: architect\ndescription: Designs the system. Use proactively.', 'You are a senior architect. Return a design.'),
+      file('api', 'name: api\ndescription: Builds the API, then opens a pull request.', 'You build the API.'),
+      file('fixer', 'name: fixer\ndescription: Fixes bugs.', 'Work on your own branch.'),
+      file('porter', 'name: porter\ndescription: Ports code.', 'Stay in your worktree. Open a PR.'),
+      file('editor', 'name: editor\ndescription: Edits copy.\ntools: Read, Edit, Bash', 'You edit copy.'),
+      file('reader', 'name: reader\ndescription: Reads code.\ntools: Read, Grep', 'You read code.')
+    ]
+    const r = await team(files, undefined, { starters: false })
+    expect(roles(r.agents)).toEqual([['api', 'Api', 'member'], ['architect', 'Architect', 'helper'], ['editor', 'Editor', 'member'], ['fixer', 'Fixer', 'member'], ['porter', 'Porter', 'member'], ['reader', 'Reader', 'helper']])
+    // An agent whose tools can't open a pull request says that instead.
+    expect(warningsOf(r.agents)).toEqual({ architect: ['looks-like-subagent'], reader: ['cant-open-pr'] })
+    expect(files.map(writtenAsSubagent)).toEqual([true, false, false, false, false, true])
+    // [team] decides over the default, with nothing to warn about.
+    const kept = await team(files, { members: ['architect'], helpers: ['api'] }, { starters: false })
+    expect(roles(kept.agents).slice(0, 2)).toEqual([['api', 'Api', 'helper'], ['architect', 'Architect', 'member']])
+    expect(warningsOf(kept.agents)).toEqual({ reader: ['cant-open-pr'] })
+    // One can still lead: the Lead takes no tasks either way.
+    expect(warningsOf((await team(files.slice(0, 2), { lead: 'architect' }, { starters: false })).agents)).toEqual({})
+  })
+
+  it("keeps only the roster's agents on the team, and the Lead and the reviewer whatever it says", async () => {
+    const files = [KAI, NOOR, ROWAN, THEO, file('ivy', 'name: ivy\ndescription: QA.\nrole: QA')]
+    const r = await team(files, { roster: ['kai', 'ghost'] })
+    expect(roles(r.agents)).toEqual([['rowan', 'Rowan', 'lead'], ['kai', 'Kai', 'member'], ['theo', 'Theo', 'reviewer']])
+    expect([r.leadFrom, r.reviewerFrom]).toEqual(['file', 'file'])
+    // An id that names nobody is left out quietly: a retired agent's id stays on the roster, so restoring it puts it back.
+    expect(warningsOf(r.agents)).toEqual({})
+    // [team] picks the Lead from every file, on the roster or not.
+    expect(roles((await team(files, { roster: ['kai'], lead: 'noor', reviewer: 'none' })).agents)).toEqual([['noor', 'Noor', 'lead'], ['kai', 'Kai', 'member']])
+    // An empty roster is no roster.
+    expect((await team(files, { roster: [] })).agents).toHaveLength(5)
+  })
+
+  it('asks for a roster past 12 agent files, suggesting the agents that take tasks', async () => {
+    const teammates = Array.from({ length: 11 }, (_, i) => file(`dev${i + 10}`, `name: dev${i + 10}\ndescription: Engineer.`))
+    const helpers = [file('scout', 'name: scout\ndescription: Looks things up.\ntools: Read'), file('architect', 'name: architect\ndescription: Designs.', 'You design.')]
+    const all = (await team([...teammates, ...helpers])).agents
+    expect(adviseRoster(all)).toEqual({ agents: 13, needed: true, suggested: teammates.map((a) => a.id) })
+    expect(adviseRoster(all, { roster: ['dev10'] })).toMatchObject({ agents: 13, needed: false })
+    // Kernel's own Rowan and Theo don't count.
+    expect(adviseRoster((await team([...teammates, helpers[0]])).agents)).toEqual({ agents: 12, needed: false, suggested: teammates.map((a) => a.id) })
   })
 })
