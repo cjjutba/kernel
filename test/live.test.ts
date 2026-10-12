@@ -255,7 +255,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
         workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
         models: { engineers: 'claude-sonnet-5-5', effort: 'low' },
-        permissions: { mode: 'bypassInWorktrees', alwaysAsk: [], neverAllow: [] },
+        permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, alwaysAsk: [], neverAllow: [] },
         // The side project's committed setup (install, database push, seed) is not what this test is about.
         scripts: { setupOnCreate: false }
       }))

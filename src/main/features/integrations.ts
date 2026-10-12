@@ -1,4 +1,4 @@
-import type { IssueTaken, Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
+import type { IssueTaken, RoomTracker, Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs, prsNaming } from '../services/github'
@@ -7,6 +7,7 @@ import { loadRepoSettings } from '../services/settings'
 import { issueTaken, TAKEN_TIMEOUT_MS } from '../services/issueTaken'
 import { trackerKind, trackerName } from '../services/trackers'
 import { githubKey, githubTracker } from '../services/trackers/github'
+import { listGithubIssues, readGithubIssue } from '../services/trackers/githubIssues'
 import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
 import { noneTracker } from '../services/trackers/none'
 import { remoteBranches, remoteRepo } from '../services/worktrees'
@@ -102,21 +103,31 @@ export class Integrations extends Feature {
   }
 
   /**
-   * The room's issue tracker, built on every call, so a change to the room's settings, a new token or a new remote applies
-   * at once (KERNEL-462). Jira reads as no tracker until Kernel can read it (KERNEL-474).
+   * What the room's tracker is, read on every call, so a change to the room's settings, a new token or a new remote applies
+   * at once (KERNEL-462). `remote` is the room's GitHub `owner/repo`, when it has one.
    */
-  async trackerFor(roomId: string): Promise<Tracker> {
+  private async detect(roomId: string) {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
-    const kind = trackerKind({
-      kind: repo.tracker?.kind,
-      linearToken: !!(await this.linearKey()),
-      linearTeam: !!repo.linear?.team,
-      githubRemote: !!(room.repo ?? (await remoteRepo(room.path, await this.k.config.remoteFor(room.path, repo))))
-    })
+    const remote = room.repo ?? (await remoteRepo(room.path, await this.k.config.remoteFor(room.path, repo)))
+    const kind = trackerKind({ kind: repo.tracker?.kind, linearToken: !!(await this.linearKey()), linearTeam: !!repo.linear?.team, githubRemote: !!remote })
+    return { room, kind, remote }
+  }
+
+  /** The room's issue tracker. Jira reads as no tracker until Kernel can read it (KERNEL-474). */
+  async trackerFor(roomId: string): Promise<Tracker> {
+    const { room, kind } = await this.detect(roomId)
     if (kind === 'linear') return linearTracker(() => this.linearKey(), this.linearFetch)
     if (kind === 'github') return githubTracker(room.path)
     return noneTracker()
+  }
+
+  /** The room's tracker as the screens that list its issues need it: the kind Kernel reads, and GitHub's `owner/repo` (KERNEL-471). */
+  async trackerInfo(roomId: string): Promise<RoomTracker> {
+    const { kind, remote } = await this.detect(roomId)
+    if (kind === 'linear') return { kind }
+    if (kind === 'github') return { kind, ...(remote ? { where: remote } : {}) }
+    return { kind: 'none' }
   }
 
   private async integrations() {
@@ -130,6 +141,9 @@ export class Integrations extends Feature {
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ roomId, query }) => (await this.trackerFor(roomId)).search(query),
       'issues.taken': async ({ roomId, issue }) => this.issueTaken(roomId, issue),
+      'issues.tracker': async ({ roomId }) => this.trackerInfo(roomId),
+      'github.issueList': async ({ roomId, query }) => listGithubIssues(this.mustRoom(roomId).path, query, await ghUserName().catch(() => null)),
+      'github.issue': async ({ roomId, id }) => readGithubIssue(this.mustRoom(roomId).path, id, await ghUserName().catch(() => null)),
       'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
       'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),

@@ -23,7 +23,8 @@ export type Route =
   /** New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
   | { name: 'leadNew'; roomId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
-  | { name: 'issues'; issueId?: string }
+  /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
+  | { name: 'issues'; issueId?: string; roomId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
   /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
   | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider }
@@ -56,6 +57,16 @@ export type Modal =
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
+  /**
+   * Someone else may already be on the issue a workspace is about to start from: what Kernel found, in the order to show it
+   * (ConfirmIssueTaken.png, KERNEL-471). The findings have the shape of KERNEL-479's `IssueTakenFinding`, which opens it.
+   */
+  | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[] }
+  /**
+   * The first switch into Bypass permissions, asked once (KERNEL-455). `roomId` is the room whose mode override is being set,
+   * and none means the app's mode in Settings, Permissions.
+   */
+  | { name: 'confirm'; kind: 'bypass'; roomId?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
 
@@ -67,7 +78,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'

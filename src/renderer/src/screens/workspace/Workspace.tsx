@@ -20,6 +20,7 @@ import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
+import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
@@ -28,7 +29,7 @@ import { SetupWait } from './SetupWait'
 import { Transcript } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
-import { githubIssueUrl, isGithubKey } from './issueKey'
+import { githubIssueUrl, issueTracker } from './issueKey'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
@@ -283,6 +284,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
           </div>
+          {ownPr && <LocalMergeInfo ws={ws} />}
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>
@@ -325,12 +327,16 @@ function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
   )
 }
 
-/** The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, a GitHub issue opens its page. A GitHub key with no page to open is plain text. */
+/**
+ * The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, in the workspace's
+ * room, and a GitHub issue opens its page. A key with no page to open is plain text.
+ */
 function IssueKey({ ws, room }: { ws: WorkspaceModel; room?: Room }) {
   const source = ws.source
   if (source?.kind !== 'issue') return null
-  if (!isGithubKey(source.id)) return <button type="button" className="ws-issue" aria-label={`Open Linear issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id })}>{source.id}</button>
-  const url = githubIssueUrl(source, room)
+  const tracker = issueTracker(source)
+  if (tracker === 'linear') return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id, roomId: ws.roomId })}>{source.id}</button>
+  const url = tracker === 'github' ? githubIssueUrl(source, room) : source.url
   if (!url) return <span className="ws-issue" title={source.title}>{source.id}</span>
   return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => void call('system.openExternal', { url })}>{source.id}</button>
 }

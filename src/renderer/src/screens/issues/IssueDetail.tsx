@@ -9,7 +9,8 @@ import { RoomIcon } from '../../components/RoomIcon'
 import { Markdown } from '../workspace/markdown'
 import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
 
-function Linked({ ws }: { ws: Workspace }) {
+/** One workspace working on the issue, with its agent and what it is doing. */
+export function Linked({ ws }: { ws: Workspace }) {
   const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   return (

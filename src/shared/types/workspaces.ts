@@ -1,5 +1,6 @@
 import type { ReviewVerdict } from './chats'
 import type { PrBlocked } from './pullRequests'
+import type { MergeMethod } from './settings'
 import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
@@ -84,6 +85,10 @@ export interface Workspace {
   stat?: DiffStat
   createdAt: number
   mergedAt?: number
+  /** How Kernel's last merge of this workspace's PR landed: the room's method, which can differ from the app's (KERNEL-468). */
+  mergedWith?: MergeMethod
+  /** The commit a local merge left on the base branch, for "Squashed into main as 4e1b9c2" (KERNEL-467). */
+  mergeCommit?: string
   archivedAt?: number
   /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
   waitsFor?: WaitsFor

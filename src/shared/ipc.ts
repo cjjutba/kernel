@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -31,6 +31,8 @@ export interface KernelApi {
   'hooks.restart': { req: { port?: number }; res: HookStatus }
   /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
   'hooks.uninstall': { req: void; res: HookStatus }
+  /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
+  'hooks.turnOn': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
@@ -55,6 +57,11 @@ export interface KernelApi {
   'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
   /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
   'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
+  /**
+   * Whether git can push from the room's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
+   * is set. Null when the room has no remote. A recheck also updates the room's Check push access step while setup shows.
+   */
+  'rooms.pushCheck': { req: { roomId: string; recheck?: boolean }; res: PushCheck | null }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
   'rooms.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
@@ -123,6 +130,12 @@ export interface KernelApi {
    * be on it (ConfirmIssueTaken.png, KERNEL-479). A check that can't answer adds a note instead of holding the start up.
    */
   'issues.taken': { req: { roomId: string; issue: string }; res: IssueTaken }
+  /** The room's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
+  'issues.tracker': { req: { roomId: string }; res: RoomTracker }
+  /** The room's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
+  'github.issueList': { req: { roomId: string; query?: string }; res: GithubIssue[] }
+  /** One GitHub issue by key (`#41`), with its description and comments. */
+  'github.issue': { req: { roomId: string; id: string }; res: GithubIssueDetail }
 
   // Linear issues (KERNEL-159)
   /** Open issues, newest first, up to 100. */
@@ -226,6 +239,8 @@ export interface KernelApi {
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
+  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */
@@ -286,8 +301,20 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /**
+   * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
+   * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
+   */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  /**
+   * The files to copy that look like production, one hint per file, without the ones the room chose Keep copying for. Names
+   * only, never values (KERNEL-449).
+   */
+  'files.production': { req: { roomId: string }; res: ProductionHint[] }
+  /** Keep copying: the room stops warning about these files until another variable in them looks like production (KERNEL-449). */
+  'files.keepCopying': { req: { roomId: string; hints: ProductionHint[] }; res: Room }
   // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
   // main through `env.reveal`.
   'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }

@@ -5,13 +5,20 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { query, type CanUseTool, type McpStdioServerConfig, type Options, type PermissionMode, type SDKMessage, type SDKUserMessage, type Settings } from '@anthropic-ai/claude-agent-sdk'
-import { InputQueue, sessionEnv, toUserMessage } from '../src/main/services/providers/claude'
+import { claudeModels, InputQueue, sessionEnv, toUserMessage } from '../src/main/services/providers/claude'
+import { claudePolicy, supportsAuto } from '../src/main/services/claudeSettings'
 import { bundledCodex } from '../src/main/services/providers/binary'
 import { codexEnv, KERNEL_VERSION } from '../src/main/services/providers/codex/client'
 import { initializeParams, Rpc, RpcError } from '../src/main/services/providers/codex/rpc'
 import type { ApprovalsReviewer } from '../src/main/services/providers/codex/protocol/v2/ApprovalsReviewer'
 import type { AskForApproval } from '../src/main/services/providers/codex/protocol/v2/AskForApproval'
 import type { ThreadStartResponse } from '../src/main/services/providers/codex/protocol/v2/ThreadStartResponse'
+import type { Workspace } from '@shared/types'
+import { Store } from '../src/main/db'
+import { Approvals } from '../src/main/services/approvals'
+import { neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import { Sessions } from '../src/main/services/sessions'
+import type { AppSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
 // KERNEL-433: how a permission decision reaches the user on the pinned Claude Code (SDK 0.3.292) and the pinned Codex
@@ -64,6 +71,21 @@ const askRule: Settings = { permissions: { ask: [`Bash(${TOUCH})`] } }
 // --- Claude Code ---
 
 describe.skipIf(!live)('live permissions on Claude Code', () => {
+  // KERNEL-447: the two @alpha SDK calls behind admin policy, and the models Claude Code says run Auto, matched to Kernel's
+  // model ids. No model turn: the settings are read from disk, and the models from Claude Code's initialize answer.
+  it("reads admin policy, and knows which of Kernel's models run Auto", { timeout: 120_000 }, async () => {
+    const cwd = await tempRepo()
+    try {
+      const policy = await claudePolicy(cwd)
+      const models = await claudeModels(cwd, { env: {} })
+      evidence.policyAndModels = { policy, models: models.map((m) => ({ value: m.value, resolvedModel: m.resolvedModel, supportsAutoMode: m.supportsAutoMode })) }
+      expect(models.length, "Claude Code's initialize answer listed no models").toBeGreaterThan(0)
+      expect(supportsAuto(models, AUTO_MODEL), `no model row matches ${AUTO_MODEL}, so Kernel would never run Auto on it. Check supportsAuto against the rows in the evidence`).not.toBeUndefined()
+    } finally {
+      await rm(cwd, { recursive: true, force: true })
+    }
+  })
+
   it('Q1: a hook ask in bypassPermissions', { timeout: 300_000 }, async () => {
     const r = await claude({ mode: 'bypassPermissions', prompt: RUN_TOUCH, hooks: askBash })
     evidence.q1HookAskBypass = r
@@ -257,6 +279,54 @@ describe.skipIf(!liveCodex)('live permissions on Codex app-server', () => {
     const r = await codex({ policy: 'untrusted', mcp: true, prompt: CALL_TOOL('probe_read') })
     evidence.q8McpReadOnly = r
     expect(r.mcpCalls.some((c) => c.server === 'probe') || r.requests.length > 0, 'Q8: the model never called the probe server, so this probe answers nothing').toBe(true)
+  })
+})
+
+// --- Kernel's Codex runner in Bypass permissions (KERNEL-447) ---
+
+describe.skipIf(!liveCodex)("live Bypass permissions through Kernel's Codex runner", () => {
+  it('accepts a command outside the sandbox, and declines Never allow and a push that might reach main, with no card', { timeout: 300_000 }, async () => {
+    const bin = bundledCodex()
+    expect(bin, 'the pinned @openai/codex package has no binary for this Mac').toBeTruthy()
+    const home = await mkdtemp(join(tmpdir(), 'kernel-probe-codex-home-'))
+    const data = await mkdtemp(join(tmpdir(), 'kernel-probe-447-data-'))
+    const outside = await mkdtemp(join(tmpdir(), 'kernel-probe-447-outside-'))
+    const cwd = await tempRepo()
+    const auth = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'auth.json')
+    expect(existsSync(auth), `Codex isn't signed in with a file login at ${auth}`).toBe(true)
+    await symlink(auth, join(home, 'auth.json'))
+    const never = 'touch kernel-probe-447-never.txt'
+    const store = new Store(join(data, 'kernel.db'))
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'probe', branch: 'feat/probe', baseRef: 'main', path: cwd, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Probe', kind: 'chat', provider: 'codex', model: CODEX_MODEL, effort: 'low', plan: false, createdAt: 1 })
+    const settings = { permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['touch'], neverAllow: [never], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, envFor: () => ({ ...process.env }) as Record<string, string>,
+      roomAllow: () => [], allowInRoom: () => undefined, codexFor: () => ({ bin: bin!, home, personality: 'pragmatic', tools: [] })
+    })
+    try {
+      await sessions.send('chat', [{ type: 'text', text: `Run these shell commands one at a time, each exactly once, and nothing else:\n1. touch ${join(outside, `${MARK}.txt`)}\n2. ${never}\n3. git push\nIf one is refused or fails, go on to the next. Then reply "done".` }])
+      await within((async () => { while (sessions.isRunning('chat')) await new Promise((r) => setTimeout(r, 200)) })(), 240_000, 'the turn to end')
+      const items = store.items('chat')
+      const notes = items.flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+      const commands = items.flatMap((i) => (i.kind === 'tool' && i.name === 'Bash' ? [i.detail] : []))
+      const r = { commands, notes, cards: store.approvals({}).length, outside: existsSync(join(outside, `${MARK}.txt`)), never: existsSync(join(cwd, 'kernel-probe-447-never.txt')) }
+      evidence.codexBypassThroughKernel = r
+      console.log(`[live] codex bypass through Kernel: ${JSON.stringify(r)}`)
+      expect(commands.length, 'the model ran no command, so this probe answers nothing').toBeGreaterThan(0)
+      expect(r.cards, 'Bypass permissions put a card in front of the user').toBe(0)
+      expect(r.outside, 'Bypass permissions should accept a command outside the sandbox (Always ask on `touch` gives no opinion there)').toBe(true)
+      expect(r.never, 'Never allow should hold in Bypass permissions').toBe(false)
+      if (commands.some((c) => c.includes('kernel-probe-447-never'))) expect(notes).toContain(neverAllowed(never))
+      if (commands.some((c) => /\bgit push\b/.test(c))) expect(notes).toContain(pushOwnBranch(['main'], 'feat/probe'))
+    } finally {
+      sessions.stopAll()
+      store.db.close()
+      await rm(home, { recursive: true, force: true })
+      await rm(outside, { recursive: true, force: true })
+      await rm(cwd, { recursive: true, force: true })
+    }
   })
 })
 

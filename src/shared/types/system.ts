@@ -1,13 +1,18 @@
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'git' | 'gh' | 'hooks' | 'codex'
+  /** `shell` shows only when reading the login shell timed out (KERNEL-448). */
+  id: 'shell' | 'claude' | 'auth' | 'git' | 'gh' | 'hooks' | 'codex'
   ok: boolean
   /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
   blocking: boolean
   title: string
+  /** Text in backticks shows as code, like `.zshrc`. */
   detail: string
+  /** A muted line under the detail, like where the gh login comes from (KERNEL-437). Backticks show as code. */
+  note?: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
   meta?: string
-  fix?: { command?: string; action?: 'use-next-port' | 'show-process' }
+  /** `recheck` is a Check again button with nothing to copy. */
+  fix?: { command?: string; action?: 'use-next-port' | 'show-process' | 'recheck' }
 }
 
 /** Hook server and installed hooks (CheckHooks.png, Settings > Hooks, the footer). */
@@ -21,7 +26,28 @@ export interface HookStatus {
   token?: string
   /** Kernel couldn't bring its out-of-date entries up to date at start, so outside sessions don't report until Install. */
   needsInstall?: boolean
+  /** Why the hooks can't be written or can't run, with its fix. Check hooks shows it in place of the event list (KERNEL-461). */
+  problem?: HookProblem
 }
+
+/**
+ * Why Kernel's hooks aren't installed or can't run, and the one step that fixes it (CheckHooksNotWritable.png and the four
+ * beside it, KERNEL-461). Paths are as the user reads them, with ~ for home, and `fix` is a command to paste into Terminal.
+ */
+export type HookProblem =
+  /** EACCES: the account can't add files to `dir`, where `file` lives. */
+  | { kind: 'not-writable'; code: string; file: string; dir: string; fix: string }
+  /** EROFS: `dir` is on the disk `disk`, mounted read-only. */
+  | { kind: 'read-only'; code: string; dir: string; disk: string; fix: string }
+  /** `file` links into `store`, a folder Kernel can't write, so Kernel leaves it alone. `nix` when the store is Nix's. */
+  | { kind: 'symlink'; code: string; file: string; store: string; nix: boolean; fix: string }
+  /**
+   * Managed settings set `setting`, in `source` when it is a file. Kernel never edits them. `block` is Kernel's hooks as JSON,
+   * for the admin, when only managed hooks run.
+   */
+  | { kind: 'managed'; setting: 'allowManagedHooksOnly' | 'disableAllHooks'; source?: string; block?: string }
+  /** The user's own `file` sets disableAllHooks. */
+  | { kind: 'off'; file: string }
 
 /**
  * Kernel's PR reads from GitHub (WorkspaceGitHubPaused.png, KERNEL-401). `pausedUntil` is set while a GitHub rate limit holds
