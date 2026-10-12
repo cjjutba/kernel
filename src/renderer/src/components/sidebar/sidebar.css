@@ -123,12 +123,19 @@ button.hc-pr:hover { color: var(--ink); }
 /* A workspace under the chat that started it sits one level in, 18px past the chat's icon: the sub row's 20px plus 18px. Chat rows keep the sub row's padding (KERNEL-600). */
 .nav-item.nav-nested { padding-left: 38px; }
 /* A chat and the workspaces it started are one block, 8px under the block above: 5px here on top of the list's 3px gap. The workspaces no open chat owns form a block
-   of their own, and so does the Lead's row. A chat with workspaces to show carries data-guide, a 1px line 28px in, the centre of the chat's icon, from 24px down its
-   row to 15px above the block's end, so it stops beside the last workspace. It is --line-2, and --line-4 in the block that holds the open row, as the file tree's guides
-   are. A folded chat has no workspaces drawn and so no guide. */
-.nav-group { --guide: var(--line-2); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+   of their own, and so does the Lead's row. A chat with workspaces to show carries data-guide and is drawn as a tree (KERNEL-631). The trunk is a 1px line 28px in, the
+   centre of the chat's 16px icon (20px to 36px). It starts 2px under the icon, 25px down the 30px row, and each nested row carries its own length of it, from the 3px gap
+   above the row to its centre, so no length depends on the block's height. A row that isn't the last also runs it on to the row's end, and its elbow is a 1px branch at
+   the icon's centre, 15px down, from the trunk to 4px short of the nested icon (38px in). The last row that isn't folding away turns the trunk into a └ with a 5px radius
+   and nothing under it. They are --line-3, and --line-4 in the block that holds the open row. A folded chat has no workspaces drawn and so no tree. */
+.nav-group { --guide: var(--line-3); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
 .nav-group:has([aria-current='page']) { --guide: var(--line-4); }
-.nav-group[data-guide]::before { content: ''; position: absolute; z-index: 1; left: 28px; top: 24px; bottom: 15px; width: 1px; background: var(--guide); pointer-events: none; }
+.nav-group[data-guide]::before { content: ''; position: absolute; z-index: 1; left: 28px; top: 25px; height: 8px; width: 1px; background: var(--guide); pointer-events: none; }
+.nav-group[data-guide] > .ws-row::before, .nav-group[data-guide] > .ws-row::after { content: ''; position: absolute; z-index: 1; pointer-events: none; }
+.nav-group[data-guide] > .ws-row::before { left: 28px; top: -3px; bottom: 0; width: 1px; background: var(--guide); }
+.nav-group[data-guide] > .ws-row::after { left: 29px; top: 15px; width: 5px; height: 1px; background: var(--guide); }
+.nav-group[data-guide] > .ws-row:nth-last-child(1 of :not(.row-fold))::before { bottom: auto; top: -3px; width: 6px; height: 19px; box-sizing: border-box; background: none; border-left: 1px solid var(--guide); border-bottom: 1px solid var(--guide); border-bottom-left-radius: 5px; }
+.nav-group[data-guide] > .ws-row:nth-last-child(1 of :not(.row-fold))::after { display: none; }
 /* The sidebar's width is the container the diff counts are measured against (KERNEL-601): they show at 300px or more. The list's content box is the sidebar's width less
    the 10px and 8px of padding the frame gives it, so 300px is 282px here. */
 .sb-scroll { container: sidebar / inline-size; }
