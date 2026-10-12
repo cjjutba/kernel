@@ -103,8 +103,7 @@ export class AgentChanges extends Feature {
   async edit(roomId: string, agent: AgentDef, patch: AgentEdit, scope: AgentScope = 'me'): Promise<AgentChangePr | undefined> {
     const room = this.mustRoom(roomId)
     if (scope === 'me') {
-      if (agent.origin === 'personal') { await updateAgent(this.home, agent.id, patch); return undefined }
-      if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from the ${pluginOf(agent)} plugin, and Kernel doesn't change a plugin's files.`)
+      if (agent.origin === 'personal' || agent.origin === 'plugin') { await this.editOwn(agent, patch); return undefined }
       const file = (await loadAgents(room.path)).find((a) => a.id === agent.id)
       if (!file) throw new Error(`${agent.id} is not in .claude/agents.`)
       if (isUnreadable(file)) throw new Error(`Kernel can't read ${basename(file.file)}: ${file.warnings![0].detail}. Fix the file, then save again.`)
@@ -123,6 +122,16 @@ export class AgentChanges extends Feature {
       same: `${rel} already says that on the base branch.`,
       write: async (path, base) => { await onBase(path, rel, base); await updateAgent(path, agent.id, changed) }
     })
+  }
+
+  /**
+   * A save to an agent that joins every room, with or without one open (KERNEL-640): a personal agent's own file in
+   * ~/.claude/agents. A plugin's files are the plugin's.
+   */
+  async editOwn(agent: AgentDef, patch: AgentEdit): Promise<void> {
+    if (agent.origin === 'plugin') throw new Error(`${agent.name} comes from the ${pluginOf(agent)} plugin, and Kernel doesn't change a plugin's files.`)
+    if (agent.origin !== 'personal') throw new Error(`${agent.id} is not in ~/.claude/agents.`)
+    await updateAgent(this.home, agent.id, patch)
   }
 
   /**

@@ -41,7 +41,14 @@ export class Team extends Feature {
   private shapes = new Map<string, string>()
   /** Plugin agents, as Claude Code listed them once this launch (KERNEL-463). Unset until the list comes back. */
   private plugins?: AgentDef[]
-  private pluginsAsked = false
+  /** Claude Code's plugin list, asked once a launch. Settles when it comes back or fails. */
+  private pluginsAsk?: Promise<void>
+  /** The watcher on ~/.claude/agents for Settings, Agents, from its first list on (KERNEL-640). */
+  private globalWatcher?: () => void
+  /** The last `globalAgents` list pushed, so a change that changes nothing isn't sent again. */
+  private globalSent?: string
+  /** Pushes run one after another, so a slow read can't send an older list after a newer one. */
+  private globalPush = Promise.resolve()
   /**
    * What each provider offers, as last asked. A sign-in check takes a CLI start, so a team read doesn't ask again until
    * something real changes it: a sign-in or sign-out, another executable, Codex's model list (`forgetOffers`, KERNEL-634).
@@ -51,6 +58,8 @@ export class Team extends Feature {
   stop() {
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
+    this.globalWatcher?.()
+    this.globalWatcher = undefined
   }
 
   /** A removed room's team: its watcher, the cached agents, their statuses and the user's own changes to them. */
@@ -117,7 +126,7 @@ export class Team extends Feature {
 
   private async resolve(roomId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
     const room = this.mustRoom(roomId)
-    this.askPlugins()
+    void this.askPlugins()
     const plugins = this.plugins
     const [files, repo] = await Promise.all([this.ownFiles(roomId, plugins), loadRepoSettings(room.path)])
     const builtins = await loadBuiltins(this.o.starterDir, files)
@@ -218,15 +227,50 @@ export class Team extends Feature {
    * go ahead without them, and every room read so far reads again when the list comes back. A failed ask leaves no plugin
    * agents until the next launch, so a Mac without Claude Code doesn't start a process at every read.
    */
-  private askPlugins() {
+  private askPlugins(): Promise<void> {
     const ask = this.o.claudeAgents
-    if (!ask || this.pluginsAsked) return
-    this.pluginsAsked = true
-    void (async () => {
+    if (!ask) return Promise.resolve()
+    return (this.pluginsAsk ??= (async () => {
       const list = await ask(this.home)
       this.plugins = await loadPluginAgents(list, this.home)
-      if (!this.stopped) for (const roomId of this.agentCache.keys()) this.reload(roomId, { quiet: true })
-    })().catch((err) => { this.plugins = []; console.warn('[kernel] could not list plugin agents', err) })
+      if (this.stopped) return
+      for (const roomId of this.agentCache.keys()) this.reload(roomId, { quiet: true })
+      if (this.globalWatcher) this.pushGlobal()
+    })().catch((err) => { this.plugins = []; console.warn('[kernel] could not list plugin agents', err) }))
+  }
+
+  /**
+   * Settings, Agents with no room open (KERNEL-640): the agents that join every room, the user's own then plugin agents, read
+   * as a room reads them. The first list waits for Claude Code's plugin list, and starts watching ~/.claude/agents so the page
+   * hears of a change as `globalAgents`.
+   */
+  async globalAgents(): Promise<AgentDef[]> {
+    await this.askPlugins()
+    if (!this.globalWatcher && !this.stopped) this.globalWatcher = watchPersonalAgents(this.home, () => this.pushGlobal())
+    return teamFiles([], await loadPersonalAgents(this.home), this.plugins)
+  }
+
+  private pushGlobal() {
+    this.globalPush = this.globalPush.then(async () => {
+      const agents = await this.globalAgents()
+      const sent = JSON.stringify(agents)
+      if (this.stopped || sent === this.globalSent) return
+      this.globalSent = sent
+      bus.push({ type: 'globalAgents', agents })
+    }).catch(() => undefined)
+  }
+
+  /**
+   * Settings, Agents > Save changes, with or without a room (KERNEL-640): rewrites a personal agent's file, then every room
+   * Kernel has read reads its team again, so the edit shows there and the agent's next turn uses it.
+   */
+  private async saveGlobal(agentId: string, patch: AgentEdit): Promise<AgentDef> {
+    const agent = (await this.globalAgents()).find((a) => a.id === agentId)
+    if (!agent) throw new Error(`${agentId} is not in ~/.claude/agents.`)
+    await this.k.agentChanges.editOwn(agent, patch)
+    this.pushGlobal()
+    await Promise.all([...this.agentCache.keys()].map((roomId) => this.reread(roomId).catch(() => undefined)))
+    return (await this.globalAgents()).find((a) => a.id === agentId) ?? agent
   }
 
   /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
@@ -270,14 +314,16 @@ export class Team extends Feature {
    * in: they were there all along, and Kernel only just heard of them.
    */
   private reload(roomId: string, o: { quiet?: boolean } = {}) {
-    void (async () => {
-      if (!this.store.room(roomId)) return
-      const was = this.agentCache.get(roomId)
-      const before = JSON.stringify(was)
-      const list = await this.agents(roomId)
-      if (JSON.stringify(list) === before) return
-      this.changed(roomId, list, o.quiet ? [...(was ?? []), ...list.filter((a) => a.origin === 'plugin' && !was?.some((w) => w.id === a.id))] : was)
-    })().catch(() => undefined)
+    void this.reread(roomId, o).catch(() => undefined)
+  }
+
+  private async reread(roomId: string, o: { quiet?: boolean } = {}) {
+    if (!this.store.room(roomId)) return
+    const was = this.agentCache.get(roomId)
+    const before = JSON.stringify(was)
+    const list = await this.agents(roomId)
+    if (JSON.stringify(list) === before) return
+    this.changed(roomId, list, o.quiet ? [...(was ?? []), ...list.filter((a) => a.origin === 'plugin' && !was?.some((w) => w.id === a.id))] : was)
   }
 
   /** The team changed: the renderer hears, and agents whose definition changed start fresh at their next turn. */
@@ -549,7 +595,9 @@ export class Team extends Feature {
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'agents.setTeam': async ({ roomId, team, from }) => this.listed(roomId, await this.setTeam(roomId, team, from)),
       'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),
-      'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id)
+      'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id),
+      'agents.listGlobal': async () => this.globalAgents(),
+      'agents.saveGlobal': async ({ agentId, patch }) => this.saveGlobal(agentId, patch)
     } satisfies Partial<Handlers>
   }
 }
