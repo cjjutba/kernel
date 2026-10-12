@@ -12,12 +12,14 @@ export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
   | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
+  | 'switchBack' | 'models' | 'signInAccount'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'accountNearLimit' | 'nearLimit' | 'weeklyWarn' | 'switchWarning' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
-  kind: BannerKind
+  /** `warn` is a heads-up that stops nothing (KERNEL-619). */
+  kind: BannerKind | 'warn'
   title: string
   sub: string
   actions: { id: BannerAction; label: string; primary?: boolean }[]
@@ -29,6 +31,8 @@ export interface BannerView {
   switchTo?: ModelId
   /** The account "Switch to" moves the provider to (KERNEL-406). Switching is always the user's click. */
   switchAccount?: { provider: Provider; accountId: string; label: string }
+  /** The signed-out account a limit banner asks the user to sign in to, `cli` for the provider's own login (KERNEL-619). */
+  signIn?: { provider: Provider; accountId: string; label: string; cli: boolean }
   /** Set on the banners the user can close until their window resets (KERNEL-595), the near-limit offer to switch accounts too (KERNEL-569). */
   dismissKey?: string
 }
@@ -89,6 +93,9 @@ export function resetIn(resetsAt: number, now: number): string {
   return `in ${days} days`
 }
 
+/** "Theo", "Theo and Noor", "Theo, Noor and Kai". */
+const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`)
+
 /** "3:40 PM" within a day, else "Monday at 9:00 AM": the time something waits until. */
 const untilPhrase = (resetsAt: number, now: number) => resetPhrase(resetsAt, now).replace(/^at /, '')
 
@@ -137,6 +144,11 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const alt = subscriptions[0] ?? spare[0]
   const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
   const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
+  // The only account left to switch to is signed out: the banner says so and offers its sign-in, which is how a limit gets past (KERNEL-619).
+  const signedOut = alt ? undefined : accounts.find((a) => !a.active && !a.signedIn && a.auth !== 'apiKey')
+  const signIn = signedOut ? { provider, accountId: signedOut.id, label: signedOut.label, cli: signedOut.cli } : undefined
+  const signInAction = signedOut ? [{ id: 'signInAccount' as const, label: 'Sign in', primary: true }] : []
+  const signedOutNote = signedOut ? ` ${signedOut.label} is signed out. Sign in to switch to it.` : ''
   const keepGoing = i.codexInUse ? ` Agents on ${otherName} keep working.` : ''
   const billed = alt?.auth === 'apiKey' ? ` ${alt.label} is billed per token.` : ''
 
@@ -191,9 +203,9 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const held = i.codexInUse ? `Agents on ${providerName} wait until it resets.` : 'Every room is paused.'
     return {
       id: 'weekly', kind: 'limit', title: `You've used your ${named('weekly limit')}`,
-      sub: `${weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${keepGoing}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.'}${billed}`,
-      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt }] : []), ...switchAction],
-      blocks: !alt, limit: weekly.type, switchAccount
+      sub: `${weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${keepGoing}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.'}${billed}${signedOutNote}`,
+      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'View usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt && !signedOut }] : []), ...switchAction, ...signInAction],
+      blocks: !alt, limit: weekly.type, switchAccount, signIn
     }
   }
 
@@ -202,11 +214,11 @@ export function bannerFor(i: BannerInput): BannerView | null {
     const after = i.running ? `${name} finishes this step, then waits.` : `${name} finished this turn and stopped.`
     return {
       id: 'session', kind: 'limit', title: `You've hit your ${named('5-hour limit')}`,
-      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}${billed}`,
-      actions: alt
-        ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : [{ id: 'queue' as const, label: 'Queue message' }]), ...switchAction]
+      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}${billed}${signedOutNote}`,
+      actions: alt || signedOut
+        ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : [{ id: 'queue' as const, label: 'Queue message' }]), ...switchAction, ...signInAction]
         : [{ id: 'queue', label: 'Queue message' }, ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: true }] : [])],
-      blocks: false, limit: 'five_hour', switchAccount
+      blocks: false, limit: 'five_hour', switchAccount, signIn
     }
   }
 
@@ -235,6 +247,23 @@ export function bannerFor(i: BannerInput): BannerView | null {
       sub: `${roomy.label} has room.`,
       actions: [{ id: 'switchAccount', label: `Switch to ${roomy.label}`, primary: true }],
       blocks: false, switchAccount: { provider, accountId: roomy.id, label: roomy.label }, dismissKey: key
+    }
+  }
+
+  // A switch to an account whose plan lacks a model agents start on: their next turns there would fail, so say which agents and offer the way back or the
+  // place to pick another model. Closed until midnight, the way the Inbox says it once a day (KERNEL-616, KERNEL-619).
+  const lacks = current && current.auth !== 'apiKey' ? current.missingModels : undefined
+  if (current && lacks?.length) {
+    const midnight = new Date(now)
+    midnight.setHours(24, 0, 0, 0)
+    const key = limitBannerKey('switchWarning', Math.floor(midnight.getTime() / 1000), `${provider}:${current.id}:${lacks.map((m) => m.model).join('+')}`)
+    const back = accounts.find((a) => a.id !== current.id && a.signedIn && a.auth !== 'apiKey' && !a.missingModels?.length)
+    const agents = [...new Set(lacks.flatMap((m) => m.agents))]
+    if (!i.dismissed?.has(key)) return {
+      id: 'switchWarning', kind: 'warn', title: `${current.label}\u2019s plan doesn\u2019t include ${names(lacks.map((m) => m.label))}`,
+      sub: `${names(agents)} ${agents.length === 1 ? 'uses' : 'use'} ${lacks.length === 1 ? 'it' : 'them'}.`,
+      actions: [...(back ? [{ id: 'switchBack' as const, label: `Switch back to ${back.label}` }] : []), { id: 'models', label: 'Models and effort', primary: true }],
+      blocks: false, switchAccount: back ? { provider, accountId: back.id, label: back.label } : undefined, dismissKey: key
     }
   }
 

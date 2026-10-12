@@ -18,7 +18,7 @@ import './banners.css'
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   notify: 'Setting up', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
-  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching'
+  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving', switchAccount: 'Switching', switchBack: 'Switching', signInAccount: 'Signing in'
 }
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
@@ -108,6 +108,20 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         actions.accounts.set(await call('accounts.switch', { provider: view.switchAccount!.provider, accountId: view.switchAccount!.accountId, reason: 'banner' }))
         if (view.dismissKey) dismissLimitBanner(view.dismissKey)
       })
+      // Back to the account the user came from, or the first other one that offers every model agents use. A plain switch, not the banner's at-a-limit one (KERNEL-619).
+      case 'switchBack': return view.switchAccount && run(id, 'Could not switch accounts', async () => {
+        actions.accounts.set(await call('accounts.switch', { provider: view.switchAccount!.provider, accountId: view.switchAccount!.accountId }))
+        if (view.dismissKey) dismissLimitBanner(view.dismissKey)
+      })
+      case 'models': return go({ name: 'settings', page: 'models' })
+      // The provider's own login signs in right here. An added account asks for a code and keeps its name, which its row in Settings, Providers does.
+      case 'signInAccount': return view.signIn && (view.signIn.cli
+        ? run(id, 'Could not sign in', async () => {
+          await call('providers.signIn', { provider: view.signIn!.provider, accountId: view.signIn!.accountId })
+          actions.accounts.set(await call('accounts.list', undefined))
+          if (view.signIn!.provider === 'claude') actions.account.set(await call('account.get', undefined))
+        })
+        : go({ name: 'settings', page: 'providers', tab: view.signIn.provider }))
       case 'providers': return go({ name: 'settings', page: 'providers', tab: 'codex' })
       case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {

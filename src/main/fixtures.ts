@@ -285,6 +285,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.add': async () => {
       const step = f.push.find((e) => e.type === 'account.add')
       if (!step) throw new Error('Adding an account needs the real app.')
+      if (step.type === 'account.add' && step.add.step === 'failed') throw new Error(step.add.error ?? 'Could not add the account.')
       bus.push(step)
       return new Promise<never>(() => undefined)
     },

@@ -381,7 +381,6 @@ export function AppSidebar() {
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
-  const plan = useStore((s) => s.account?.plan)
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
@@ -457,9 +456,9 @@ export function AppSidebar() {
         })}
       </div>
       <div style={{ flex: 1 }} />
-      {/* The plan on the left, What's new and Settings on the right, as in Conductor. Ask Rowan and the update pill are in the footer (KERNEL-588). */}
+      {/* The Usage pill on the left, What's new and Settings on the right, as in Conductor. Ask Rowan and the update pill are in the footer (KERNEL-588). */}
       <div className="sb-foot">
-        {plan && <PlanButton plan={plan} />}
+        <PlanButton />
         <span className="grow" />
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
         <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => actions.ui.openSettings()} />

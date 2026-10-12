@@ -10,14 +10,14 @@ export const bannerIcon: Record<BannerKind, IconName> = {
 }
 
 /**
- * A banner: neutral surface, an icon for its type, never a red background. With `onDismiss` it has a close button that shows on
+ * A banner: neutral surface, an icon for its type, never a red background. `warn` is a heads-up that stops nothing, with a warning triangle (KERNEL-619). With `onDismiss` it has a close button that shows on
  * hover or focus, and dragging it right, or swiping right on a trackpad, closes it too, as it does a toast.
  */
-export function Banner({ kind, title, children, actions, onDismiss }: { kind: BannerKind; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
+export function Banner({ kind, title, children, actions, onDismiss }: { kind: BannerKind | 'warn'; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
   const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
   return (
     <div role="alert" className="banner" data-kind={kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
-      {kind === 'retry' ? <span className="spin" aria-hidden="true" /> : <Icon name={bannerIcon[kind]} />}
+      {kind === 'retry' ? <span className="spin" aria-hidden="true" /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
       <div className="grow"><div className="banner-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
       {actions}
       {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}

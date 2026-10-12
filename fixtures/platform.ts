@@ -112,6 +112,10 @@ const providerUsage = (readAt?: number): RateLimit[] => [
   window5('codex', 'personal', 3, next(18, 20)), windowWeek('codex', 'personal', 9, nextOn(5, 8, 0))
 ]
 const richAccounts: AccountProfile[] = [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex, keyAccount('codex')]
+/** Work's own login has Fable's weekly window at 90% beside its 5-hour and weekly ones (KERNEL-619). */
+const fableWindow: RateLimit = { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextOn(1, 9, 0)), model: 'claude-fable-5-1' }
+/** The home screen with the Usage popover open over the sidebar (KERNEL-619). */
+const usagePopover = (extra: Partial<Fixture>): Fixture => ({ ...teamFixtures.Home, usage: [...providerUsage(), fableWindow], ...extra, ui: { route: { name: 'home' }, menu: 'plan' } })
 /** Settings, Providers on one tab, with each account's nickname, plan and usage windows (KERNEL-561). */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
   accounts: richAccounts,
@@ -321,8 +325,20 @@ export const platformFixtures: Record<string, Fixture> = {
     accounts: [workClaude, { ...personalClaude, email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, keyAccount('claude'), ownCodex],
     usage: providerUsage(todayAt(14, 10))
   }),
+  // KERNEL-619: Claude Code found two claude.ai connectors on Personal's login that need a sign-in. Work's login has none.
+  SettingsProvidersMcp: providersPage('claude', {
+    accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
+  }),
+  // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
+  SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Home, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'home' }, menu: 'account' } },
+  // KERNEL-619: the plan pill reads Usage and opens Claude Code and Codex together, each from the account in use. Work's Fable window is at 90%. Codex lists one other account.
+  UsagePopover: usagePopover({ accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex] }),
+  // KERNEL-619: a key is in use on Claude Code, so it says Billed per token and Switch lists both subscriptions.
+  UsagePopoverApiKey: usagePopover({ accounts: [{ ...workClaude, active: false }, personalClaude, keyAccount('claude', true), ownCodex, personalCodex] }),
+  // KERNEL-619: Codex isn't signed in, so its section is one line with Sign in.
+  UsagePopoverSignedOut: usagePopover({ accounts: [workClaude, personalClaude, keyAccount('claude'), { ...ownCodex, signedIn: false }, personalCodex] }),
   SearchSwitchAccount: { ...teamFixtures.CommandPalette, workspaces: teamFixtures.CommandPalette.workspaces.map((w) => (w.id === ids.schema ? { ...w, status: 'archived' as const } : w)), accounts: richAccounts, usage: providerUsage() },
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
@@ -483,6 +499,13 @@ export const platformFixtures: Record<string, Fixture> = {
     usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
     ui: open
   })),
+  // KERNEL-619: the only other account is signed out, so the banner says so and offers its sign-in beside Notify me. Kai's room runs on Codex too, as in the ones above.
+  WorkspaceProviderLimitSignedOut: scene(() => ({
+    settings: withRoles({ qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }),
+    accounts: [workClaude, { ...personalClaude, signedIn: false }],
+    usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }],
+    ui: open
+  })),
   // KERNEL-569: Work is at 90% of its 5-hour window and Personal has room, so the banner offers the move before the limit. Switching at a limit is off.
   WorkspaceProviderNearLimit: scene(() => ({
     accounts: [workClaude, personalClaude],
@@ -500,6 +523,12 @@ export const platformFixtures: Record<string, Fixture> = {
     account: personalAccount,
     accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true }],
     items: { [ids.tableChat]: afterSwitch('Now on Personal (Work hit its 5-hour limit)') },
+    ui: open
+  })),
+  // KERNEL-619: after a switch to Personal, whose plan lacks Opus 5.5, which Theo and Noor use. The banner offers the way back and the place to pick another model.
+  WorkspaceSwitchWarning: scene(() => ({
+    account: personalAccount,
+    accounts: [{ ...workClaude, active: false }, { ...personalClaude, active: true, missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Theo', 'Noor'] }] }],
     ui: open
   })),
   WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),
