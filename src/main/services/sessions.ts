@@ -12,7 +12,8 @@ import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { forProvider, Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
-import { missingServers } from './agentTools'
+import { missingServers, type MissingServer } from './agentTools'
+import type { McpReport } from './mcp'
 import { revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
@@ -102,6 +103,13 @@ export interface SessionDeps {
   codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
   /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
+  /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
+  aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
+  /**
+   * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
+   * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
+   */
+  onMcp?: (ws: Workspace, provider: Provider, servers: McpReport[]) => McpReport[]
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
@@ -163,6 +171,18 @@ const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ..
 
 /** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
 const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
+
+/** What a chat says once about a server its agent file lists that the session can't use (KERNEL-397, KERNEL-464). */
+export function mcpNote(m: MissingServer): string {
+  const lists = `This agent's file lists ${m.entry}, but`
+  switch (m.status) {
+    case 'failed': return `${lists} the MCP server ${m.name} failed to connect.`
+    case 'needs-auth': return `${lists} the MCP server ${m.name} needs you to sign in. Sign in with /mcp in Claude Code.`
+    case 'disabled': return `${lists} the MCP server ${m.name} is switched off in Claude Code. Turn it on with /mcp.`
+    case 'off': return `${lists} the MCP server ${m.name} is switched off in this room. Turn it on in Settings, Skills and MCP.`
+    default: return `${lists} no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`
+  }
+}
 
 export class Sessions {
   private live = new Map<string, Live>()
@@ -1100,10 +1120,10 @@ export class Sessions {
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws) })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root, mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root, aliases: this.d.aliasesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()
@@ -1137,14 +1157,20 @@ export class Sessions {
           }
           this.billing.set(chatId, source)
         }
-        if (o.mcpServers && !this.mcpChecked.has(chatId)) {
+        const servers = o.mcpServers
+        const room = servers && (this.d.onMcp?.(ws, chatProvider(chat), servers) ?? [])
+        if (servers && room && !this.mcpChecked.has(chatId)) {
           this.mcpChecked.add(chatId)
-          const missing = missingServers(this.d.agentFor(ws)?.tools, o.mcpServers)
-          const text = missing.map((m) => `This agent's file lists ${m.entry}, but no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`).join(' ')
+          // claude.ai's connectors can join after the first init, so the room's word on those counts too. The room's
+          // switched-off servers never start, so the room's settings alone know them. Every other server is as this session has it.
+          const late = room.filter((r) => r.source === 'claudeai' && !servers.some((s) => s.name === r.name))
+          const off = (this.d.disabledFor?.(ws)?.mcp ?? []).map((name) => ({ name, enabled: false }))
+          const text = missingServers(this.d.agentFor(ws)?.tools, [...late, ...servers, ...off], this.d.aliasesFor?.(ws)).map(mcpNote).join(' ')
           if (text) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text })
         }
         this.setRunning(chat, ws, live, true)
       },
+      mcpStatus: (servers) => { this.d.onMcp?.(ws, chatProvider(this.mustChat(chatId)), servers) },
       blocked: (event, output) => this.blocked(ws, chatId, event, output),
       toolSucceeded: () => { if (this.turns.get(chatId)?.blocked === 'PreToolUse') this.unblock(this.mustChat(chatId), ws) },
       setTasks: (ids) => { live.tasks = new Set(ids) },

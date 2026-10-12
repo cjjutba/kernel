@@ -1,9 +1,38 @@
 import { basename } from 'node:path'
-import type { AgentDef, AgentWarning, TeamConfig } from '@shared/types'
+import type { AgentDef, AgentWarning, RosterAdvice, TeamConfig } from '@shared/types'
 import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, RESERVED_AGENT_IDS } from '@shared/team'
 import type { Builtins } from './builtins'
-import { canOpenPr } from './agentTools'
+import { canOpenPr, toolName } from './agentTools'
 import { isUnreadable } from './agents'
+
+/** Room setup asks for a roster when a room has more agent files than this (KERNEL-465). */
+export const ROSTER_LIMIT = 12
+
+/** Words that say an agent works a task through to a pull request. "Merge request" is GitLab's name for one. */
+const PR_WORKFLOW = /\b(pull[- ]?requests?|PRs?|merge[- ]requests?|branch(es)?|worktrees?)\b/i
+
+/**
+ * An agent file written to be called as a subagent, with no pull request workflow (KERNEL-465): it names neither Edit nor
+ * Write, and neither its description nor its prompt mentions a branch, a pull request or a worktree. Collections of Claude
+ * Code subagents are mostly these, and they have no tools line, which would otherwise make every one of them a teammate.
+ */
+export function writtenAsSubagent(a: Pick<AgentDef, 'tools' | 'description' | 'prompt'>): boolean {
+  return !a.tools?.some((t) => ['Edit', 'Write'].includes(toolName(t))) && !PR_WORKFLOW.test(`${a.description}\n${a.prompt}`)
+}
+
+/** Whether an agent takes tasks when `[team]` says nothing about it: its tools can open a pull request, and it isn't written as a subagent. */
+export function takesTasksByDefault(a: Pick<AgentDef, 'tools' | 'disallowedTools' | 'description' | 'prompt'>): boolean {
+  return canOpenPr(a.tools, a.disallowedTools) && !writtenAsSubagent(a)
+}
+
+/**
+ * What Room setup reads to ask for a roster (KERNEL-465), from the team resolved without one. Kernel suggests the agents
+ * that take tasks. The Lead and the reviewer are on the team whatever the roster says.
+ */
+export function adviseRoster(agents: AgentDef[], config?: TeamConfig): RosterAdvice {
+  const files = agents.filter((a) => !a.builtIn)
+  return { agents: files.length, needed: files.length > ROSTER_LIMIT && !config?.roster?.length, suggested: files.filter((a) => a.member).map((a) => a.id) }
+}
 
 /** Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). */
 export interface Resolved {
@@ -17,7 +46,10 @@ export interface Resolved {
  * leave a gap. Exactly one agent leads, at most one reviews, and every file agent either takes tasks or doesn't.
  * - Lead: `[team] lead`, else a file marked Lead (the first by name when several are), else Kernel's Rowan.
  * - Reviewer: `[team] reviewer` (`none` for nobody), else the first other file whose role says review, else Kernel's Theo.
- * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request.
+ * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request and it isn't
+ *   written as a subagent (KERNEL-465).
+ * - On the team: every file, or only those `[team] roster` lists, plus the Lead and the reviewer. They are picked from every
+ *   file first, so a roster never changes who leads or reviews (KERNEL-465).
  * A file with a reserved id, or the same id as an earlier file, is left out with a warning. A file Kernel can't read stays
  * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent leads or reviews only
  * when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first, then by name.
@@ -64,14 +96,19 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
     else if (o.builtins.reviewer) { reviewer = o.builtins.reviewer; reviewerFrom = 'builtin' }
   }
 
-  const team: AgentDef[] = files.map((a) => {
+  const onRoster = (a: AgentDef) => !cfg.roster?.length || cfg.roster.includes(a.id) || a === lead || a === reviewer
+  const team: AgentDef[] = files.filter(onRoster).map((a) => {
     // Its error is the one thing to say about it.
     if (isUnreadable(a)) return { ...a, lead: false, reviewer: false, member: false }
     const isLead = a === lead
     const isReviewer = a === reviewer
     const opens = canOpenPr(a.tools, a.disallowedTools)
-    const member = isLead ? false : cfg.helpers?.includes(a.id) ? false : cfg.members?.includes(a.id) ? true : opens
-    if (!isLead && !isReviewer && !opens && !cfg.members?.includes(a.id) && !cfg.helpers?.includes(a.id)) warn(a.id, { kind: 'cant-open-pr' })
+    const byDefault = takesTasksByDefault(a)
+    const member = isLead ? false : cfg.helpers?.includes(a.id) ? false : cfg.members?.includes(a.id) ? true : byDefault
+    if (!isLead && !isReviewer && !cfg.members?.includes(a.id) && !cfg.helpers?.includes(a.id)) {
+      if (!opens) warn(a.id, { kind: 'cant-open-pr' })
+      else if (!byDefault) warn(a.id, { kind: 'looks-like-subagent' })
+    }
     if (!a.description.trim()) warn(a.id, { kind: 'no-description' })
     if (!isLead && !a.lead && /\blead\b/i.test(a.role)) warn(a.id, { kind: 'looks-like-lead' })
     return { ...a, lead: isLead, reviewer: isReviewer, member }
