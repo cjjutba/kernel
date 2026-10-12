@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -530,18 +530,26 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
 }
 
+/** The pieces a Team update fixture builds from (TeamUpdateMerge, TeamUpdateReview): a row, an event, the card with its text for the Lead, and the workspace, verdict and PR a row is about. */
+const tuRow = (workspaceId: string, agentId: string, name: string, task: string, events: TeamUpdateRow['events']): TeamUpdateRow => ({ workspaceId, agentId, name, task, events })
+const tuEv = (kind: TeamEventKind, text: string, actionable = false) => ({ kind, text, actionable })
+const tuCard = (id: string, m: number, rows: TeamUpdateRow[], todo = 'Tell the user what is ready to merge.'): ChatItem => ({
+  kind: 'user', id, ts: at(20, m), from: 'kernel', update: { rows },
+  parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), '']), 'To do:', `- ${todo}`].join('\n') }]
+})
+const tuWork = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
+  ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
+const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
+const tuChecks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
+const tuInfo = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/samrivera/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks: tuChecks, comments: [], conflicts: [], head })
+
 /**
  * Team updates with Merge (TeamUpdateMerge.png, KERNEL-351): an older card about PR #162 that no longer offers it, then a card where #162 and
  * a reviewer's row (#161) can merge, #158 waits for Theo's approval of its latest commit, #155 is merging and #150 merged and sits in History.
  */
 const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
-  const header = 'Team update from Kernel, not from the user.'
-  const row = (workspaceId: string, agentId: string, name: string, task: string, events: TeamUpdateRow['events']): TeamUpdateRow => ({ workspaceId, agentId, name, task, events })
-  const ev = (kind: TeamEventKind, text: string, actionable = false) => ({ kind, text, actionable })
-  const card = (id: string, m: number, rows: TeamUpdateRow[]): ChatItem => ({
-    kind: 'user', id, ts: at(20, m), from: 'kernel', update: { rows },
-    parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), '']), 'To do:', '- Tell the user what is ready to merge.'].join('\n') }]
-  })
+  const row = tuRow, ev = tuEv, work = tuWork, verdict = tuVerdict, info = tuInfo
+  const card = (id: string, m: number, rows: TeamUpdateRow[]) => tuCard(id, m, rows)
   // Tasks come as the engine sends them, the workspace title with no key: the card reads the key from the issue the
   // workspace started on (KERNEL-411). A reviewer's workspace started on no issue, so Theo's task carries it.
   const rows = [
@@ -553,11 +561,6 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
     row('ws-163', 'noor', 'Noor', "Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
-  const work = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
-    ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
-  const verdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
-  const checks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
-  const info = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/samrivera/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks, comments: [], conflicts: [], head })
   const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
     { kind: 'result', id: 'tum-res0', ts: at(20, 11), durationMs: 24 * 60_000 + 6_000, ok: true },
     card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
@@ -579,6 +582,40 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
       work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
     ],
     prs: { 'ws-182': info('ws-182', 162, 'h162'), 'ws-176': info('ws-176', 161, 'h161'), 'ws-172': info('ws-172', 158, 'h158b') }
+  }
+}
+
+/**
+ * Team updates for the review pipeline (TeamUpdateReview.png, KERNEL-557): a PR Kernel merged by itself, one still blocked after 2 review
+ * rounds with its two open blockers, and a ready one whose optional UX review was skipped to save usage. The replies are the teammate's
+ * last words in the canvas. The engine sends the events, and the card adds "Needs you", the open list and the PR link.
+ */
+const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
+  const row = tuRow, ev = tuEv
+  const rows = [
+    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('pr.opened', 'Opened PR #162'), ev('pr.merged', 'Merged automatically'), ev('pr.review', 'Reviews approved, checks passed, 84 lines')]), prNumber: 162,
+      reply: 'Merged without asking you. Every review passed, checks were green and the change was 84 lines, under your 200 line limit.' },
+    { ...row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed'), ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
+    { ...row('ws-176', 'ivy', 'Ivy', 'Rowan asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
+      reply: 'Your usage is at 91% of the 5-hour limit, so Kernel left out the optional UX review.' }
+  ]
+  const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
+  const blocker = (kind: ReviewKind, workspaceId: string, text: string): ReviewVerdict => ({ ...tuVerdict(workspaceId, 158, 'h158'), verdict: 'blockers', lens: kind, blockers: [{ text }], summary: text })
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+    { kind: 'result', id: 'tur-res0', ts: at(20, 31), durationMs: 8 * 60_000 + 41_000, ok: true },
+    tuCard('tur-1', 31, rows, 'Tell the user what is ready to merge, and what still needs them.'),
+    { kind: 'result', id: 'tur-res1', ts: at(20, 33), durationMs: 62_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    workspaces: [
+      ...(s.workspaces ?? f.workspaces),
+      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prState: 'merged', status: 'archived', mergedAt: at(20, 29), prHead: 'h162', ...issue('KERNEL-182', 0) }),
+      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the room'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
+      tuWork('ws-176', 'ivy', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
+    ],
+    prs: { 'ws-172': tuInfo('ws-172', 158, 'h158'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
   }
 }
 
@@ -1561,6 +1598,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
+  // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
+  TeamUpdateReview: scene((f) => teamUpdateReview(f)),
   TeamUpdatePrStates: scene((f) => teamUpdatePrStates(f)),
   // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
   GroupedNewChat: scene((f) => {

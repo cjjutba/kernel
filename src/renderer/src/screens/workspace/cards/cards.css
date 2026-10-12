@@ -121,6 +121,16 @@
 .tucard-ev[data-tone='merged'] { color: var(--merged); }
 .tucard-quote { margin: 7px 0 0; padding: 0; color: var(--ink-3); font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tucard-quote[data-clamped='true'] { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* What is still open on a PR the reviews couldn't clear, one line per blocker with the review it came from; and the link a merge Kernel made leaves (KERNEL-557). */
+.tucard-items { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.tucard-items li { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.tucard-kind { flex-shrink: 0; width: 58px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.tucard-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tucard-items .tucard-more-open { padding-left: 68px; font-size: 12px; color: var(--faint); }
+.tucard-pr { margin-left: 6px; white-space: nowrap; color: var(--merged); text-decoration: none; }
+.tucard-pr[data-lone] { margin-left: 0; }
+.tucard-pr:hover { text-decoration: underline; }
+.tucard-pr svg { vertical-align: -1px; margin-left: 3px; }
 .tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin: 2px 0 0; padding: 0; color: var(--muted); font-size: 12px; }
 .tucard-toggle:hover { color: var(--ink-2); }
 .tucard-from { padding: 10px 16px 0; font-size: 12px; color: var(--muted); }

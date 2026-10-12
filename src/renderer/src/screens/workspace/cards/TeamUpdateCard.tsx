@@ -1,12 +1,15 @@
 import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ChatItem, TeamUpdateRow, Workspace } from '@shared/types'
+import { mergeableState } from '@shared/merge'
+import { call } from '../../../api'
 import { go, useStore } from '../../../store'
+import { Icon } from '../../../ui'
 import { KernelNote } from '../KernelNote'
 import { MessageActions } from '../MessageActions'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
 import { inline } from '../markdown'
-import { cardData, eventTone, mergeTargetOf, newestRows, sections, taskParts, textOf } from './teamUpdate'
+import { cardData, eventTone, isStillBlocked, mergeTargetOf, mergedAutomatically, newestRows, openItems, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
 /** One workspace by id, so a row redraws only when its own workspace changes, not when any workspace does. */
@@ -60,6 +63,11 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
   const target = workspaceOf(targetId)
   const merge = useNewest(targetId, itemId, row.workspaceId) && target && target.status !== 'archived' ? target : undefined
   const archived = ws?.status === 'archived'
+  // A PR the reviews still block after their rounds comes to the user: "Needs you" takes the Merge button's place, and what is open lists under it (KERNEL-557).
+  const stuck = isStillBlocked(row) && !!merge && mergeableState(merge.prState)
+  const open = stuck && target ? openItems(target) : []
+  // A merge Kernel made on its own links to the PR, since no one pressed Merge to see it (KERNEL-557).
+  const link = mergedAutomatically(row) && ws?.prUrl ? { url: ws.prUrl, number: row.prNumber ?? ws.prNumber } : undefined
   // The key from the task, else from the issue the workspace started on, as the PRs tab reads it (KERNEL-411).
   const parts = taskParts(row.task)
   const key = parts.key ?? (ws?.source?.kind === 'issue' ? ws.source.id : undefined)
@@ -72,7 +80,7 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
         <span className="tucard-task ellipsis">{title}</span>
         {ws && (
           <span className="tucard-act">
-            {merge && <MergeButton ws={merge} />}
+            {stuck ? <span className="tucard-why">Needs you</span> : merge && <MergeButton ws={merge} />}
             <button type="button" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
               onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
               {archived ? 'In History' : 'Open'}
@@ -92,18 +100,42 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
           ))}
         </p>
       )}
-      {row.reply && <Reply text={row.reply} />}
+      {open.length > 0 && (
+        <ul className="tucard-items" aria-label="Still open">
+          {open.slice(0, MAX_OPEN).map((i, n) => <li key={n}><span className="tucard-kind">{i.kind}</span><span className="tucard-what" data-tip={i.text}>{i.text}</span></li>)}
+          {open.length > MAX_OPEN && <li className="tucard-more-open">{open.length - MAX_OPEN} more</li>}
+        </ul>
+      )}
+      {row.reply ? <Reply text={row.reply} link={link} /> : link && <p className="tucard-quote"><PrLink {...link} lone /></p>}
       {row.shared?.map((f) => <SharedRow key={f.sharedId} sharedId={f.sharedId} version={f.version} title={f.title} kind={f.kind} />)}
     </div>
   )
 }
 
-/** The teammate's reply, three lines until the user asks for the rest. Show more appears only when the lines run over. */
-function Reply({ text }: { text: string }) {
+/** The most blockers a still blocked row lists. The PR itself has the rest. */
+const MAX_OPEN = 5
+
+/** "PR #162 ↗", the PR on GitHub, in the merged tone. */
+function PrLink({ url, number, tabbable = true, lone }: { url: string; number?: number; tabbable?: boolean; lone?: boolean }) {
+  const name = number ? `PR #${number}` : 'the PR'
+  return (
+    <a className="tucard-pr" data-lone={lone || undefined} href={url} aria-label={`Open ${name} on GitHub`} tabIndex={tabbable ? undefined : -1} aria-hidden={tabbable ? undefined : true}
+      onClick={(e) => { e.preventDefault(); void call('system.openExternal', { url }).catch(() => undefined) }}>
+      {number ? `PR #${number}` : 'PR'}<Icon name="ext" size={11} />
+    </a>
+  )
+}
+
+/**
+ * The teammate's reply, three lines until the user asks for the rest. Show more appears only when the lines run over. A `link` follows
+ * the last line. When the lines run over it is cut off with them, so it shows again under the reply, and the one in the text steps aside.
+ */
+function Reply({ text, link }: { text: string; link?: { url: string; number?: number } }) {
   const ref = useRef<HTMLQuoteElement>(null)
   const id = useId()
   const [open, setOpen] = useState(false)
   const [over, setOver] = useState(false)
+  const clipped = over && !open
   useLayoutEffect(() => {
     const el = ref.current
     if (!el || open) return
@@ -118,8 +150,9 @@ function Reply({ text }: { text: string }) {
     <>
       {/* Clamped, paragraphs sit on the next line so a blank one doesn't use up the three. */}
       {/* Inline code, bold and links render as they do in chat, so a reply never shows raw backticks (KERNEL-411). */}
-      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{inline(open ? text : text.replace(/\n{2,}/g, '\n'))}</blockquote>
+      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{inline(open ? text : text.replace(/\n{2,}/g, '\n'))}{link && <PrLink {...link} tabbable={!clipped} />}</blockquote>
       {(over || open) && <button type="button" className="tucard-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>{open ? 'Show less' : 'Show more'}</button>}
+      {link && clipped && <p className="tucard-quote"><PrLink {...link} lone /></p>}
     </>
   )
 }
