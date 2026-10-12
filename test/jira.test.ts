@@ -196,7 +196,20 @@ describe('Jira as a tracker (KERNEL-474)', () => {
       comments: [{ body: 'First', createdAt: '2026-10-10T10:00:00.000+0000' }, { author: 'Rowan', body: 'Second', createdAt: '2026-10-11T10:00:00.000+0000' }],
       blockedBy: ['PROJ-2']
     })
-    expect(j.calls.map((c) => c.path)).toEqual(['/rest/api/3/issue/PROJ-7?fields=summary,description,labels,status,comment,issuelinks'])
+    expect(j.calls.map((c) => c.path)).toEqual(['/rest/api/3/issue/PROJ-7?fields=summary,description,labels,status,assignee,comment,issuelinks'])
+  })
+
+  it('names the assignee, and says whether it is the account, for the check that someone else is on the issue (KERNEL-479)', async () => {
+    const assigned = (accountId: string, myself: () => unknown) => jira((c) => c.path === '/rest/api/3/myself' ? myself()
+      : { key: 'PROJ-7', fields: { summary: 'Crash on save', labels: [], assignee: { displayName: 'Sam Lee', accountId } } })
+    const read = async (j: ReturnType<typeof jira>) => (await jiraTracker({ creds, fetch: j.fetch }).issue('PROJ-7')).assignees
+    expect(await read(assigned('acc-sam', () => ({ accountId: 'acc-sam' })))).toEqual([{ name: 'Sam Lee', me: true }])
+    expect(await read(assigned('acc-ana', () => ({ accountId: 'acc-sam' })))).toEqual([{ name: 'Sam Lee', me: false }])
+    expect(await read(assigned('acc-sam', () => new Response('', { status: 429 })))).toEqual([{ name: 'Sam Lee' }])
+    // An issue nobody is on costs no second call.
+    const free = jira(() => ({ key: 'PROJ-7', fields: { summary: 'Crash on save', assignee: null } }))
+    expect(await read(free)).toBeUndefined()
+    expect(free.calls).toHaveLength(1)
   })
 
   it('refuses a key that isn\'t Jira\'s without asking, and needs an account to read', async () => {

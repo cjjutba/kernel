@@ -281,11 +281,12 @@ export async function listJiraIssues(creds: JiraCredentials | undefined, f: Jira
   return [exact, ...issues.filter((i) => i.id !== exact.id)].slice(0, max)
 }
 
-const DETAIL_FIELDS = 'summary,description,labels,status,comment,issuelinks'
+const DETAIL_FIELDS = 'summary,description,labels,status,assignee,comment,issuelinks'
 
 /**
  * One issue in full: its description and its last 50 comments, oldest first, as Markdown. `blockedBy` holds the open issues
- * linked to it as "is blocked by". On the blocked issue Jira gives each of them as the link's `inwardIssue`.
+ * linked to it as "is blocked by". On the blocked issue Jira gives each of them as the link's `inwardIssue`. `assignees`
+ * holds its assignee, with `me` left out when Jira won't say who the account is.
  */
 export async function getJiraIssue(creds: JiraCredentials | undefined, key: string, fetchImpl: typeof fetch = fetch): Promise<TrackerIssue> {
   if (!creds) throw new JiraError(NO_JIRA)
@@ -297,7 +298,13 @@ export async function getJiraIssue(creds: JiraCredentials | undefined, key: stri
     .slice(-50)
   const blocking = (l: NonNullable<NonNullable<RawIssue['fields']>['issuelinks']>[number]) => l.type?.name === 'Blocks' || /blocked by/i.test(l.type?.inward ?? '')
   const blockedBy = [...new Set((f.issuelinks ?? []).flatMap((l) => (blocking(l) &&l.inwardIssue && category(l.inwardIssue.fields?.status) !== 'done' ? [l.inwardIssue.key] : [])))]
-  return { id: r.key, title: f.summary ?? '', url: browse(creds.site, r.key), description: adfToMarkdown(f.description), comments, labels: f.labels ?? [], blockedBy }
+  // Jira has one assignee. Whether it's the user takes the account's id, so Kernel asks only when there is one (KERNEL-479).
+  const assignee = f.assignee?.accountId ? f.assignee : undefined
+  const me = assignee ? await jiraRequest<{ accountId?: string }>(creds, '/rest/api/3/myself', {}, fetchImpl).then((m) => m.accountId, () => undefined) : undefined
+  return {
+    id: r.key, title: f.summary ?? '', url: browse(creds.site, r.key), description: adfToMarkdown(f.description), comments, labels: f.labels ?? [], blockedBy,
+    ...(assignee ? { assignees: [{ name: assignee.displayName || assignee.accountId!, ...(me ? { me: me === assignee.accountId } : {}) }] } : {})
+  }
 }
 
 // ---- Transitions ----
