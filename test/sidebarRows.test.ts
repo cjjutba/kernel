@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeChatList, slotKey, slotsFor, sidebarRows, threadTab } from '../src/renderer/src/components/sidebar/slots'
+import { mergeChatList, rowHolder, slotKey, slotsFor, sidebarRows, threadTab } from '../src/renderer/src/components/sidebar/slots'
 import type { AgentDef, Chat, Room, Thread, Workspace } from '../src/shared/types'
 
 const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'main', paused: false, createdAt: 0 }
@@ -113,6 +113,44 @@ describe('folded chats', () => {
 
   it('keeps every number when a chat is folded', () => {
     expect(keys(slotsFor(room, agents, workspaces, lists, threads))).toEqual(['chat:t1', 'chat:t2', 'chat:t3'])
+  })
+})
+
+describe('the room and chat that hold the page in view', () => {
+  const workspaces = [own('t1'), own('t2'), ws('w1', { threadId: 't1' }), ws('loose'), ws('gone', { status: 'archived' }), ws('other', { roomId: 'b' })]
+  const threads = threadsOf(thread('t1', { createdAt: 2 }), thread('t2', { createdAt: 1 }))
+  const lists = { ...tabsOf('t1'), ...tabsOf('t2') }
+  const at = (workspaceId: string, folded: string[] = []) => rowHolder({ name: 'workspace', workspaceId }, [room], agents, workspaces, lists, threads, folded)
+
+  it('names the room of a workspace row or a chat row, and nothing else to open', () => {
+    expect(at('loose')).toEqual({ roomId: 'a' })
+    expect(at('ws-t2')).toEqual({ roomId: 'a' })
+    expect(at('w1')).toEqual({ roomId: 'a' })
+  })
+
+  it('names the folded chat that hides a workspace, and only that one', () => {
+    const held = at('w1', ['t1'])
+    expect(held?.roomId).toBe('a')
+    expect(held?.unfold?.thread.id).toBe('t1')
+    expect(at('loose', ['t1'])).toEqual({ roomId: 'a' })
+    expect(at('ws-t1', ['t1'])).toEqual({ roomId: 'a' })
+  })
+
+  it('names nothing for a page with no row: an archived workspace, an unlisted room, an unknown workspace or another page', () => {
+    expect(at('gone')).toBeUndefined()
+    expect(at('other')).toBeUndefined()
+    expect(at('nope')).toBeUndefined()
+    expect(rowHolder({ name: 'inbox' }, [room], agents, workspaces, lists, threads, [])).toBeUndefined()
+  })
+
+  it("holds the Lead's own workspace in its room while the Lead row is listed in place of a chat", () => {
+    const lead = ws('lead-ws', { agentId: 'rowan', lead: true })
+    expect(rowHolder({ name: 'workspace', workspaceId: 'lead-ws' }, [room], agents, [lead, ws('w1')], {}, {}, [])).toEqual({ roomId: 'a' })
+  })
+
+  it('holds New chat with Rowan in its room only while the Lead row is listed', () => {
+    expect(rowHolder({ name: 'leadNew', roomId: 'a' }, [room], agents, [ws('w1')], {}, {}, [])).toEqual({ roomId: 'a' })
+    expect(rowHolder({ name: 'leadNew', roomId: 'a' }, [room], agents, workspaces, lists, threads, [])).toBeUndefined()
   })
 })
 
