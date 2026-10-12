@@ -1,7 +1,7 @@
 import type { Workspace } from '@shared/types'
 import { bus } from '../bus'
-import { exec } from '../services/exec'
-import { behindCount, fetchOrigin, folderGone, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
+import { exec, git } from '../services/exec'
+import { behindCount, fastForward, fetchOrigin, folderGone, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
 import { Feature } from './feature'
 
 /** Store meta: what the last check found for each workspace it watches (KERNEL-180). */
@@ -28,6 +28,12 @@ export function baseMessage(baseRef: string, behind: number, files: string[]): s
     + `At a stopping point, commit your work, rebase onto ${baseRef}, resolve the conflicts and re-run the tests. Then carry on with your task.`
 }
 
+/** What Kernel tells a teammate whose branch started from a stale base, once a fetch works, when it has work of its own (KERNEL-653). */
+export function catchUpMessage(baseRef: string, behind: number): string {
+  return `Kernel couldn't fetch when your workspace started, so your branch began from ${baseRef} as last fetched. The fetch works now, and ${baseRef} has ${behind} ${behind === 1 ? 'commit' : 'commits'} your branch doesn't. `
+    + `At a stopping point, commit your work, rebase onto ${baseRef} and re-run the tests. Then carry on with your task.`
+}
+
 /**
  * Tells a teammate when its base branch moves under it in a way that would conflict, before it opens a pull request, so it
  * rebases early (KERNEL-180). GitHub says so only once the PR exists. The check is local: `behind` counts the base's new
@@ -37,12 +43,16 @@ export function baseMessage(baseRef: string, behind: number, files: string[]): s
  *
  * Triggers, all real events: a PR in the room merged (with a fetch), a teammate's turn ended (it may be told what waited
  * while it was busy), and a workspace was created after a fetch that worked.
+ *
+ * It also catches up a workspace that started from a stale base because its fetch failed (KERNEL-179), once a fetch of the
+ * room's remote passes (KERNEL-653). A teammate's turn end, while its workspace has `fetchFailed`, fetches again (reusing
+ * one that passed in the last minute), so that retry is a real event too.
  */
 export class BaseWatch extends Feature {
   private chain = new Map<string, Promise<unknown>>()
 
   /** One check at a time per room, so two triggers together can't tell a teammate twice. */
-  check(roomId: string, o: { fetch: boolean; only?: string }): Promise<void> {
+  check(roomId: string, o: { fetch: boolean; only?: string; fetched?: boolean }): Promise<void> {
     const next = (this.chain.get(roomId) ?? Promise.resolve()).catch(() => undefined).then(() => this.run(roomId, o))
     this.chain.set(roomId, next)
     return next.finally(() => { if (this.chain.get(roomId) === next) this.chain.delete(roomId) })
@@ -62,18 +72,27 @@ export class BaseWatch extends Feature {
     this.store.saveMeta(META, all)
   }
 
-  private async run(roomId: string, o: { fetch: boolean; only?: string }) {
+  private async run(roomId: string, o: { fetch: boolean; only?: string; fetched?: boolean }) {
     const room = this.store.room(roomId)
     if (!room || this.stopped) return
+    const remote = await this.k.config.remoteFor(room.path)
+    let fetched = !!o.fetched
     if (o.fetch) {
       // Fresh, since this runs because something merged a moment ago, which a fetch already running may have missed.
-      const fetched = await fetchOrigin(room.path, await this.k.config.remoteFor(room.path), { fresh: true }).catch(() => undefined)
-      if (!fetched?.ok) return
+      const r = await fetchOrigin(room.path, remote, { fresh: true }).catch(() => undefined)
+      if (!r?.ok) return
+      fetched = true
+    } else if (o.only && this.store.workspace(o.only)?.fetchFailed) {
+      // A turn end of a workspace that started stale tries the fetch again (KERNEL-653).
+      fetched = !!(await fetchOrigin(room.path, remote).catch(() => undefined))?.ok
     }
+    const caughtUp = fetched ? await this.catchUp(roomId, remote) : new Set<string>()
     const known = this.store.meta<Record<string, Watched>>(META) ?? {}
     for (const id of Object.keys(known)) if (!this.store.workspace(id)) this.put(id)
     for (const ws of this.store.workspaces(roomId)) {
       if (o.only && ws.id !== o.only) continue
+      // Just moved, or just asked to rebase: one message is enough.
+      if (caughtUp.has(ws.id)) continue
       if (!this.watched(ws)) { this.put(ws.id); continue }
       await this.watch(ws).catch(() => undefined)
     }
@@ -95,6 +114,55 @@ export class BaseWatch extends Feature {
     const state: Watched = { sha, behind, conflicts, ...(before?.told ? { told: before.told } : {}) }
     this.put(ws.id, state)
     if (conflicts.length && state.told !== sha && this.tell(this.store.workspace(ws.id) ?? ws, state)) this.put(ws.id, { ...state, told: sha })
+  }
+
+  /** A turn runs in the workspace or a message waits to go, so its files mustn't move. */
+  private busy(id: string): boolean {
+    return this.store.chats(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
+  }
+
+  /**
+   * After a fetch of the room's remote passed: each idle teammate workspace with `fetchFailed` moves to its base when it has
+   * no work of its own, or is told once to rebase when it has, and loses `fetchFailed` (KERNEL-653). A busy one waits for its
+   * turn end. Returns the workspaces it moved or told.
+   */
+  private async catchUp(roomId: string, remote: string): Promise<Set<string>> {
+    const done = new Set<string>()
+    for (const ws of this.store.workspaces(roomId)) {
+      if (!ws.fetchFailed || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.reviewOf || this.isLeadWorkspace(ws)) continue
+      if (await this.catchUpOne(ws, remote).catch(() => false)) done.add(ws.id)
+    }
+    return done
+  }
+
+  private async catchUpOne(ws: Workspace, remote: string): Promise<boolean> {
+    // Read again after each step that waits on git: a turn can start while git runs.
+    const held = () => this.stopped || this.busy(ws.id)
+    if (held() || await folderGone(ws.path)) return false
+    const count = async (range: string) => Number((await git(ws.path, 'rev-list', '--count', range)).trim())
+    const behind = await count(`HEAD..${ws.baseRef}`)
+    const own = await count(`${ws.baseRef}..HEAD`)
+    const changed = (await git(ws.path, 'status', '--porcelain', '--untracked-files=no')).trim() !== ''
+    if (held()) return false
+    const agent = this.k.team.agentOf(ws.roomId, ws.agentId)?.name ?? 'the teammate'
+    if (behind && (own || changed || !(await fastForward(ws.path, ws.baseRef)))) {
+      const chat = this.prChat(ws.id)
+      if (held() || !chat) return false
+      let sent = false
+      try { sent = this.sessions.post(chat.id, [{ type: 'text', text: catchUpMessage(ws.baseRef, behind) }]) } catch { return false }
+      if (!sent) return false
+      this.updateWs(ws.id, { fetchFailed: undefined })
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `told ${agent} to rebase onto ${ws.baseRef}, since its workspace started from it as last fetched` })
+      return true
+    }
+    if (this.stopped) return false
+    this.updateWs(ws.id, { fetchFailed: undefined })
+    this.note(ws.id, `Fetched ${remote}, so this workspace now starts from the latest ${ws.baseRef}.`)
+    if (behind) {
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `updated ${agent}'s worktree to ${ws.baseRef}, ${behind === 1 ? '1 new commit' : `${behind} new commits`}` })
+      void this.k.workspaces.changes(ws.id).catch(() => undefined)
+    }
+    return true
   }
 
   /**

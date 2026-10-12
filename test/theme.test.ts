@@ -106,7 +106,7 @@ describe('theme contrast', () => {
   })
   it('hover card status words reach 4.5:1 on their pill in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['working', 'needs', 'add', 'del', 'merged', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['working', 'add', 'del', 'merged', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })

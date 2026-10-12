@@ -1,6 +1,6 @@
 @import './ui/ui.css';
 /* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
-   pill fills color status words in the sidebar's hover cards (D-084); `--needs` also marks what waits on you in the sidebar.
+   pill fills color status words in the sidebar's hover cards (D-084); `--needs` is only the composer's context ring from 75%, no icon uses it (no-amber-icons).
    `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
    orange, on the Claude mark in the model picker and nowhere else. */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
@@ -35,7 +35,6 @@
   --working: #7cb2ff;
   --needs: #f2c55c;
   --tint-working: #1c2b45;
-  --tint-needs: #40330f;
   --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-merged: #2c2545;
@@ -114,7 +113,6 @@
   --working: #1a56b0;
   --needs: #7a4f00;
   --tint-working: #d6e4fb;
-  --tint-needs: #fce9a8;
   --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
   --tint-merged: #ebe5fc;
@@ -262,8 +260,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .header h1 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
 /* Sidebar hidden: the header clears the traffic lights, which always sit on its row (KERNEL-431), and drags the window. */
 .app[data-sidebar='hidden'] .main { padding-left: 8px; }
-.app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; -webkit-app-region: drag; }
-.app[data-sidebar='hidden'] .panel > .header > :not(.grow) { -webkit-app-region: no-drag; }
+.app[data-sidebar='hidden'] .panel > .header { padding-left: 78px; }
+/* The top row drags the window, sidebar shown or hidden (KERNEL-657): a screen header, the workspace's right panel header and the 8px strip above the panels.
+   Controls inside them, and any menu or popover that opens over them, opt out, since Electron's drag regions swallow clicks. Pick by kind, not by position. */
+.panel > .header, .ws-aside-head { -webkit-app-region: drag; }
+.main { position: relative; }
+.main::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 8px; -webkit-app-region: drag; }
+:is(.panel > .header, .ws-aside-head) :is(button, a, input, select, textarea, label, summary, [role='button'], [role='tab'], [role='menu'], [role='menuitem'], [role='listbox'], [role='dialog'], [role='separator'], [tabindex], [data-tip], .menu) { -webkit-app-region: no-drag; }
+.menu, [role='menu'], [role='listbox'], [role='dialog'], [role='separator'] { -webkit-app-region: no-drag; }
 
 /* sidebar */
 .sidebar { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; }

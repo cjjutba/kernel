@@ -30,10 +30,23 @@ const DAY = 24 * 3600_000
 /** "3:40 PM": the time a limit resets, as banners, the footer and Settings say it. */
 export const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 
-/** "at 3:40 PM" within a day, else "Monday at 9:00 AM". `resetsAt` is in epoch seconds, `now` in milliseconds. */
-export function resetPhrase(resetsAt: number, now: number): string {
+/** Calendar days from `now`'s local date to `ms`'s. Rounded, so a day that daylight saving makes 23 or 25 hours still counts as one. */
+const daysAhead = (ms: number, now: number) => Math.round((new Date(ms).setHours(0, 0, 0, 0) - new Date(now).setHours(0, 0, 0, 0)) / DAY)
+
+/**
+ * When a limit resets, by calendar day in local time: "at 4:00 PM" later today, "tomorrow at 4:00 AM", "Friday at 9:00 AM"
+ * 2 to 6 days out, "Oct 21 at 9:00 AM" from 7 days. Only the today form starts with "at ", so "waits until" can drop it.
+ * `notice` is for Mac notifications, which can be read a day later in Notification Center: it never says today or tomorrow,
+ * and names the weekday instead. `resetsAt` is in epoch seconds, `now` in milliseconds.
+ */
+export function resetPhrase(resetsAt: number, now: number, { notice = false } = {}): string {
   const ms = resetsAt * 1000
-  return ms - now < DAY ? `at ${clock(ms)}` : `${new Date(ms).toLocaleDateString('en-US', { weekday: 'long' })} at ${clock(ms)}`
+  const days = daysAhead(ms, now)
+  const at = clock(ms)
+  if (days >= 7) return `${new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at ${at}`
+  if (!notice && days <= 0) return `at ${at}`
+  if (!notice && days === 1) return `tomorrow at ${at}`
+  return `${new Date(ms).toLocaleDateString('en-US', { weekday: 'long' })} at ${at}`
 }
 
 /** What `switchChoices` reads of an account. */

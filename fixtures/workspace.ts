@@ -537,6 +537,7 @@ const tuCard = (id: string, m: number, rows: TeamUpdateRow[], todo = 'Tell the u
   kind: 'user', id, ts: at(20, m), from: 'kernel', update: { rows },
   parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), '']), 'To do:', `- ${todo}`].join('\n') }]
 })
+const withOmitted = (item: ChatItem, omitted: number): ChatItem => (item.kind === 'user' && item.update ? { ...item, update: { ...item.update, omitted } } : item)
 const tuWork = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
   ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
 const tuVerdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
@@ -563,7 +564,8 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
   const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
     { kind: 'result', id: 'tum-res0', ts: at(20, 11), durationMs: 24 * 60_000 + 6_000, ok: true },
-    card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
+    // Workspaces past the 8th: the card says they didn't fit (KERNEL-654).
+    withOmitted(card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]), 3),
     { kind: 'result', id: 'tum-res1', ts: at(20, 15), durationMs: 10_000, ok: true },
     card('tum-2', 15, rows),
     { kind: 'result', id: 'tum-res2', ts: at(20, 16), durationMs: 55_000, ok: true }

@@ -60,7 +60,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // A chat with Rowan can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
       else if (ws.prNumber) void k.refreshPr(ws.id).catch(() => undefined)
       void k.overlaps.check(ws.roomId).catch(() => undefined)
-      // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180).
+      // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180). One that started from a
+      // stale base fetches again and catches up (KERNEL-653).
       if (teammate) void k.baseWatch.check(ws.roomId, { fetch: false, only: ws.id }).catch(() => undefined)
       k.waits.releaseTaken(ws.id, chat.id, turn.by)
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).

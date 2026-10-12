@@ -37,8 +37,8 @@ export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
   if (!data.rows.length && !data.omitted) return <KernelNote item={item} />
-  // An update from before KERNEL-117 counted the lines it left out, not workspaces.
-  const omitted = !data.omitted ? '' : item.update ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} left out` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
+  // An update from before KERNEL-117 counted the lines it left out, not workspaces. Past the 8th workspace, older updates dropped them and newer ones carry them into the next update (KERNEL-637), so the card says only that they didn't fit.
+  const omitted = !data.omitted ? '' : item.update ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
   return (
     <div className="msg tucard-wrap">
       <section className="card tcard tucard" aria-label="Team update from Kernel">

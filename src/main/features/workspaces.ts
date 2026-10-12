@@ -107,9 +107,10 @@ export class Workspaces extends Feature {
     // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
     // without that remote has nothing to fetch, so it says nothing. One whose worktree waits for `makeWorktree` fetches there.
     const fetched = !reviewed && !o.noFetch && !later && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
-      ? await fetchOrigin(room.path, remote) : undefined
-    // The fetch may have moved the base under the room's other workspaces (KERNEL-180).
-    if (fetched?.ok) void this.k.baseWatch.check(roomId, { fetch: false }).catch(() => undefined)
+      ? await fetchOrigin(room.path, remote, { check: stripRemote(want, remote) }) : undefined
+    // The fetch may have moved the base under the room's other workspaces (KERNEL-180), and catches up one that started
+    // when a fetch failed (KERNEL-653).
+    if (fetched?.ok) void this.k.baseWatch.check(roomId, { fetch: false, fetched: true }).catch(() => undefined)
     // A base on the remote waits for the fetch, which may bring it, and `makeWorktree` reads it then. Any other must be here
     // now, so New chat still says when it isn't (KERNEL-542).
     const baseRef = reviewed ? await this.k.reviews.reviewBase(room.path, reviewed.branch, remote)
@@ -235,10 +236,10 @@ export class Workspaces extends Feature {
       const repo = await loadRepoSettings(room.path)
       const remote = await this.k.config.remoteFor(room.path, repo)
       const fetched = ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
-        ? await fetchOrigin(room.path, remote) : undefined
+        ? await fetchOrigin(room.path, remote, { check: stripRemote(ws.baseRef, remote) }) : undefined
       // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
       if (this.stopped) return ws
-      if (fetched?.ok) void this.k.baseWatch.check(room.id, { fetch: false }).catch(() => undefined)
+      if (fetched?.ok) void this.k.baseWatch.check(room.id, { fetch: false, fetched: true }).catch(() => undefined)
       // A base other than the default branch was picked in New chat, and a picked base never falls back to another (KERNEL-405).
       const main = `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}`
       const baseRef = await resolveBaseRef(room.path, ws.baseRef, { strict: ws.baseRef !== main, remote })

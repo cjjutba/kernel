@@ -132,17 +132,24 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
  * room last fetched (FETCH_HEAD's mtime), so a caller can say how old `<remote>/<branch>` is (KERNEL-179). Git empties
  * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
  * failed) gives no time. Fetch from the room's folder, not a worktree: each worktree keeps its own FETCH_HEAD.
+ * With `check`, a branch name, a fetch that passed in the last minute is reused only while `<remote>/<check>` still
+ * matches the remote's, read with `git ls-remote` (KERNEL-653).
  */
-export function fetchOrigin(repo: string, remote = 'origin', o: { fresh?: boolean } = {}): Promise<Fetched> {
+export function fetchOrigin(repo: string, remote = 'origin', o: { fresh?: boolean; check?: string } = {}): Promise<Fetched> {
   // Fetches that overlap share one. Two at once race for the remote's ref locks, and the loser fails. A `fresh` caller
   // needs what merged a moment ago, which a fetch already running may have missed, so it fetches again after that one.
   const key = `${repo}\n${remote}`
   const running = fetching.get(key)
   if (running && !o.fresh) return running
   // One that passed in the last minute is reused, as New chat's fetch on open is by Create (KERNEL-542).
-  if (!running && !o.fresh && Date.now() - (fetchedOk.get(key) ?? -Infinity) < FETCH_REUSE_MS) return Promise.resolve({ ok: true })
+  // A workspace being made checks the remote first, so a PR merged inside that minute is in it (KERNEL-653).
+  if (!running && !o.fresh && Date.now() - (fetchedOk.get(key) ?? -Infinity) < FETCH_REUSE_MS) {
+    if (!o.check) return Promise.resolve({ ok: true })
+    return sameAsRemote(repo, remote, o.check).then((same) => same ? { ok: true } : fetchOrigin(repo, remote, { fresh: true }))
+  }
+  // A fetch that failed ends the reuse, so a later caller doesn't take the remote as reached (KERNEL-653).
   const next: Promise<Fetched> = (running ?? Promise.resolve()).catch(() => undefined).then(() => fetchNow(repo, remote))
-    .then((r) => { if (r.ok) fetchedOk.set(key, Date.now()); return r })
+    .then((r) => { if (r.ok) fetchedOk.set(key, Date.now()); else fetchedOk.delete(key); return r })
     .finally(() => { if (fetching.get(key) === next) fetching.delete(key) })
   fetching.set(key, next)
   return next
@@ -153,6 +160,16 @@ const fetching = new Map<string, Promise<Fetched>>()
 const fetchedOk = new Map<string, number>()
 /** How long a fetch that passed is reused by a caller that isn't `fresh`. */
 export const FETCH_REUSE_MS = 60_000
+
+/** The remote's `branch` is where the last fetch left `<remote>/<branch>`. False when ls-remote fails or the remote has no such branch. */
+async function sameAsRemote(repo: string, remote: string, branch: string): Promise<boolean> {
+  const [there, here] = await Promise.all([
+    exec('git', ['-C', repo, 'ls-remote', remote, `refs/heads/${branch}`], { timeoutMs: 10000 }),
+    exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${branch}^{commit}`])
+  ])
+  const sha = there.code === 0 ? there.stdout.trim().split(/\s/)[0] : ''
+  return !!sha && here.code === 0 && here.stdout.trim() === sha
+}
 
 async function fetchNow(repo: string, remote: string): Promise<Fetched> {
   const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
