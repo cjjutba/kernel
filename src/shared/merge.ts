@@ -41,22 +41,36 @@ export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prH
 }
 
 /**
- * Whether the merge can't go ahead without reading the PR from GitHub: for its checks, or for its head commit when a
- * reviewer looked at it. A merge always reads GitHub first (KERNEL-376); when that read fails and neither rule needs it,
- * the merge goes ahead on what Kernel already knows.
+ * The reviewer who found blockers on the PR's head commit, by agent id, and how many that review found, or nothing. With
+ * blockers from more than one review, the latest names them. Pass GitHub's head as `prHead` when there is a fresh read.
  */
-export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>): boolean {
-  return rules.requireGreen || (rules.requireReviewer && !!ws.reviews?.length)
+export function headBlockers(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { agentId: string; count: number } | undefined {
+  const blocking = reviewVerdicts(ws).current.filter((v) => v.verdict === 'blockers')
+  if (!blocking.length) return undefined
+  const v = blocking.reduce((a, b) => (b.ts > a.ts ? b : a))
+  return { agentId: v.agentId, count: v.blockers?.length || 1 }
+}
+
+/**
+ * Whether the merge can't go ahead without reading the PR from GitHub: for its checks, or for its head commit when a
+ * reviewer looked at it, since blockers on the head commit hold the merge whatever the reviewer rule says (KERNEL-497). A
+ * merge always reads GitHub first (KERNEL-376); when that read fails and nothing needs it, the merge goes ahead on what
+ * Kernel already knows.
+ */
+export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSettings['pr'], 'requireGreen'>): boolean {
+  return rules.requireGreen || !!ws.reviews?.length
 }
 
 /**
  * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now: it has to be
  * ready or open, and settled on whether it conflicts, which GitHub works out again each time the base moves (KERNEL-376).
  * Only the checks that decide the PR count, and GitHub's own branch rules hold it too (KERNEL-388). Its head commit wins
- * over the one the last poll saw. With "require Reviewer approval" on, a PR a reviewer looked at needs an approval of its
- * head commit and no blockers on it; one nobody reviewed merges as before. `name` turns an agent id into the reviewer's name.
+ * over the one the last poll saw. Blockers on the head commit hold the merge whatever the settings say (KERNEL-497). With
+ * "require Reviewer approval" on, a PR a reviewer looked at needs an approval of its head commit too; one nobody reviewed
+ * merges as before. `override` is a person's Merge anyway: it skips the review, and only the review. `name` turns an agent
+ * id into the reviewer's name.
  */
-export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id): string | undefined {
+export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
   if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
   if (rules.requireGreen && pr && !allGreen(gatingChecks(pr.checks))) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
@@ -64,13 +78,16 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   const blocked = pr ? pr.blocked : ws.prBlocked
   if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
   if (pr && (pr.conflictsUnknown || !mergeableState(pr.state))) return 'This pull request is not ready to merge.'
+  if (o.override) return undefined
+  const at = { ...ws, prHead: pr?.head ?? ws.prHead }
+  const found = headBlockers(at)
+  if (found) return `${name(found.agentId)} found ${found.count} ${found.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
   if (!rules.requireReviewer) return undefined
-  const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })
-  const latest = (vs: ReviewVerdict[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
-  // The reviewer who found blockers on the head commit, else whoever reviewed last when nobody approved the head commit.
-  const blocking = current.filter((v) => v.verdict === 'blockers')
-  const holder = blocking.length ? latest(blocking) : verdicts.length && !current.some((v) => v.verdict === 'approved') ? latest(verdicts) : undefined
-  return holder && `${name(holder.agentId)} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`
+  // Nobody approved the head commit of a PR a reviewer looked at: whoever reviewed last holds it.
+  const { verdicts, current } = reviewVerdicts(at)
+  if (!verdicts.length || current.some((v) => v.verdict === 'approved')) return undefined
+  const holder = verdicts.reduce((a, b) => (b.ts > a.ts ? b : a))
+  return `${name(holder.agentId)} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`
 }
 
 /** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { MergeMethod, PrInfo, PrState, Workspace } from '@shared/types'
-import { blockedText, gatingChecks, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
+import { blockedText, gatingChecks, headBlockers, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
@@ -20,6 +20,7 @@ const both = { requireGreen: true, requireReviewer: true }
 const reviewer = { requireGreen: false, requireReviewer: true }
 const name = (id: string) => (id === 'theo' ? 'Theo' : id)
 const held = "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+const found = 'Theo found 1 blocker on the latest commit. Merge anyway to go ahead.'
 const notReady = 'This pull request is not ready to merge.'
 const STATES = Object.keys({ none: 1, creating: 1, draft: 1, open: 1, checks: 1, cifail: 1, changes: 1, conflict: 1, resolving: 1, ready: 1, merging: 1, merged: 1, closed: 1 } satisfies Record<PrState, 1>) as PrState[]
 
@@ -60,10 +61,11 @@ describe('the PR state', () => {
 
 describe('GitHub and the checks', () => {
   it('needs the GitHub read only when green checks are required or a reviewer looked at the PR', () => {
-    expect(mergeNeedsPr(ws(), { requireGreen: false, requireReviewer: true })).toBe(false)
+    expect(mergeNeedsPr(ws(), { requireGreen: false })).toBe(false)
     expect(mergeNeedsPr(ws({ reviews: [v('approved', B, 1)] }), reviewer)).toBe(true)
-    expect(mergeNeedsPr(ws({ reviews: [v('approved', B, 1)] }), { requireGreen: false, requireReviewer: false })).toBe(false)
-    expect(mergeNeedsPr(ws(), { requireGreen: true, requireReviewer: false })).toBe(true)
+    // Blockers on the head commit hold the merge with the reviewer rule off too, so the head has to be GitHub's (KERNEL-497).
+    expect(mergeNeedsPr(ws({ reviews: [v('approved', B, 1)] }), { requireGreen: false })).toBe(true)
+    expect(mergeNeedsPr(ws(), { requireGreen: true })).toBe(true)
   })
 
   it('says why a PR cannot merge, in order: its state, GitHub, checks, then the review', () => {
@@ -125,15 +127,58 @@ describe('the review', () => {
     expect(mergeBlock(ws({ prHead: A, reviews: [v('approved', A, 1)] }), info({ head: B }), both, name)).toBe(held)
   })
 
-  it('holds on blockers on the head commit, naming the reviewer who found them', () => {
-    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both, name)).toBe(held)
-    expect(mergeBlock(ws({ reviews: [v('approved', B, 1, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 2)] }), info(), both, name)).toBe(held)
+  it('holds on blockers on the head commit, naming the reviewer who found them and how many', () => {
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both, name)).toBe(found)
+    expect(mergeBlock(ws({ reviews: [v('approved', B, 1, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 2)] }), info(), both, name)).toBe(found)
+    const three = [{ text: 'a' }, { text: 'b' }, { text: 'c' }]
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1, { blockers: three })] }), info(), both, name)).toBe('Theo found 3 blockers on the latest commit. Merge anyway to go ahead.')
     // Without a name lookup it falls back to the agent id.
-    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both)).toContain("theo hasn't approved")
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both)).toContain('theo found 1 blocker')
+  })
+})
+
+describe('blockers on the head commit (KERNEL-497)', () => {
+  const off = { requireGreen: true, requireReviewer: false }
+  const override = { override: true }
+
+  it('names the reviewer who found blockers on the head commit and how many, built on reviewVerdicts', () => {
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { blockers: [{ text: 'a' }, { text: 'b' }] })] }))).toEqual({ agentId: 'theo', count: 2 })
+    // A verdict with no list of blockers still found one.
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1)] }))).toEqual({ agentId: 'theo', count: 1 })
+    // The latest review with blockers names them.
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 2, { agentId: 'ivy', workspaceId: 'r2' }), v('blockers', B, 1)] }))).toEqual({ agentId: 'ivy', count: 1 })
+    // Blockers on an earlier commit, or on another PR from this branch, aren't on the head commit.
+    expect(headBlockers(ws({ reviews: [v('blockers', A, 1)] }))).toBeUndefined()
+    expect(headBlockers(ws({ reviews: [v('blockers', B, 1, { prNumber: 7 })] }))).toBeUndefined()
+    expect(headBlockers(ws({ reviews: [v('approved', B, 1)] }))).toBeUndefined()
+    expect(headBlockers(ws())).toBeUndefined()
   })
 
-  it('ignores the review when Reviewer approval is not required', () => {
-    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), { requireGreen: true, requireReviewer: false }, name)).toBeUndefined()
+  it('hold the merge with the reviewer rule off', () => {
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), off, name)).toBe(found)
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), { requireGreen: false, requireReviewer: false }, name)).toBe(found)
+    // GitHub's head wins: blockers on the commit the last poll saw don't hold a PR that moved on.
+    expect(mergeBlock(ws({ prHead: A, reviews: [v('blockers', A, 1)] }), info({ head: B }), off, name)).toBeUndefined()
+    // With no GitHub read there is nothing to judge the head by, so the merge waits for one.
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), undefined, { requireGreen: false, requireReviewer: false }, name)).toBe('Could not read the pull request from GitHub.')
+  })
+
+  it('leave the wait for an approval to the reviewer rule', () => {
+    expect(mergeBlock(ws({ reviews: [v('approved', A, 1)] }), info(), off, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [v('approved', A, 1)] }), info(), both, name)).toBe(held)
+  })
+
+  it('give way to the override, which skips the review and only the review', () => {
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), off, name, override)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), both, name, override)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [v('approved', A, 1)] }), info(), both, name, override)).toBeUndefined()
+    const blockers = ws({ reviews: [v('blockers', B, 1)] })
+    expect(mergeBlock(blockers, info({ checks: [{ name: 'e2e', state: 'fail' }] }), both, name, override)).toContain('Checks have not passed yet')
+    expect(mergeBlock(blockers, info({ state: 'conflict' }), both, name, override)).toBe(notReady)
+    expect(mergeBlock(blockers, info({ conflictsUnknown: true }), both, name, override)).toBe(notReady)
+    expect(mergeBlock(blockers, info({ blocked: 'rules' }), both, name, override)).toBe("GitHub's branch rules block this merge.")
+    expect(mergeBlock({ ...blockers, prState: 'cifail' }, info(), both, name, override)).toBe(notReady)
+    expect(mergeBlock(blockers, null, both, name, override)).toBe('Could not read the pull request from GitHub.')
   })
 })
 

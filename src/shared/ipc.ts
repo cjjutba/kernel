@@ -258,7 +258,8 @@ export interface KernelApi {
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
   'pr.create': { req: { workspaceId: string; draft?: boolean }; res: Workspace }
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
-  'pr.merge': { req: { workspaceId: string }; res: Workspace }
+  /** `override` is a person's Merge anyway past a reviewer's blockers. Rowan and Merge all never send it (KERNEL-497). */
+  'pr.merge': { req: { workspaceId: string; override?: boolean }; res: Workspace }
   /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
