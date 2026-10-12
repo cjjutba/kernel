@@ -17,7 +17,6 @@ import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
-import { bypassSandbox, onSandboxFallback, sandboxFallbackNote } from './sandbox'
 
 export { packagedClaude }
 
@@ -149,14 +148,9 @@ export class ClaudeRunner implements Runner {
       abortController: this.abort,
       env: sessionEnv(o.env, o.credential ?? {}, { agentTeams: host.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
-      // A process that may run in Bypass permissions runs its commands in the sandbox, and the chat says when Claude Code
-      // runs them without it (KERNEL-458). Kernel's hooks and canUseTool still decide first.
-      ...(o.bypass ? { sandbox: bypassSandbox(ws.path, { root: o.root }) } : {}),
-      spawnClaudeCodeProcess: (s) => {
-        const child = host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc)
-        if (o.bypass) onSandboxFallback(child.stderr, (reason) => host.item({ kind: 'note', id: randomUUID(), ts: Date.now(), text: sandboxFallbackNote(reason) }))
-        return child as unknown as SpawnedProcess
-      }
+      // No sandbox, Bypass permissions included, as in Claude Code's own `--dangerously-skip-permissions` (KERNEL-571).
+      // Kernel's hooks and canUseTool still decide first.
+      spawnClaudeCodeProcess: (s) => host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc) as unknown as SpawnedProcess
     }
     this.query = query({ prompt: this.input, options })
     this.resume = chat.sessionId
