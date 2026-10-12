@@ -36,9 +36,16 @@ export interface ClaudeAccount {
 export type AccountAuth = 'subscription' | 'apiKey'
 
 /**
+ * Why a provider moved to another account (KERNEL-568): `user` from Settings, the account menu or Cmd+K, `banner` from the
+ * limit banner's Switch to, and `limit` when Kernel moved on its own because the account in use hit its limit.
+ */
+export type SwitchReason = 'user' | 'banner' | 'limit'
+
+/**
  * One account a provider can run on (Settings, Providers, KERNEL-406). Each provider always has its CLI's own login
  * (`cli`), which is `~/.claude` or `~/.codex` as the user set it up. Added accounts keep only their credential apart. The
- * active one runs the next turn, and switching is always the user's click.
+ * active one runs the next turn. Switching is the user's click, or Kernel's at a limit once the user turned that on
+ * (`accounts.switchAtLimit`, KERNEL-568).
  */
 export interface AccountProfile {
   id: string

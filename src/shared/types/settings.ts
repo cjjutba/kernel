@@ -42,6 +42,11 @@ export interface AppSettings {
     sound: 'subtle' | 'chime' | 'none'; quietHours: { from: string; to: string } | null
   }
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
+  /**
+   * `switchAtLimit`: per provider, Kernel moves to another signed-in subscription account when the one in use hits its 5-hour
+   * or weekly limit. Off by default, and never to an API key account (KERNEL-568).
+   */
+  accounts: { switchAtLimit: Record<Provider, boolean> }
   workspace: {
     mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
     /** The branch a new chat with Rowan starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
