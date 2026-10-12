@@ -55,6 +55,7 @@ import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
+import { ArchiveGhost, useArchiveStage } from './screens/workspace/archiveMotion'
 import { toggleBottomPanel } from './screens/workspace/bottomSplit'
 import { DevUi } from './ui/DevUi'
 
@@ -173,6 +174,7 @@ export function App() {
   useDevUiHash()
   useAppearance()
   useFoldPanels()
+  const archiving = useArchiveStage()
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
@@ -244,7 +246,8 @@ export function App() {
     <Suspense fallback={<div className="app" data-lazy="pending"><Loading /></div>}>
       <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
         {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
-        <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
+        <div className="main" data-archiving={archiving ? '' : undefined} style={fullWindow(route) ? { padding: 8 } : undefined}>
+          {archiving && <ArchiveGhost stage={archiving} />}
           <Screen route={route} />
         </div>
         {modal && <ModalView modal={modal} />}

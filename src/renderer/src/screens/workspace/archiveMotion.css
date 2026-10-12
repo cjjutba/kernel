@@ -1,0 +1,7 @@
+/* The archive beat (KERNEL-580, DESIGN.md Motion). Every curve is ease-out. The row and the screen start in the same frame and end together at 200ms. */
+:root { --archive-fold: 200ms; --archive-fade: 120ms; --archive-screen: 200ms; }
+
+/* The copy of the screen the archive left, under the destination. It sits where the screen does, padding included, so the two frames coincide. */
+.main[data-archiving] { position: relative; }
+.archive-ghost { position: absolute; inset: 0; padding: inherit; pointer-events: none; }
+.archive-layer { position: absolute; inset: 0; display: flex; flex-direction: column; padding: inherit; }

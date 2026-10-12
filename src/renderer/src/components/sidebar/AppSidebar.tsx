@@ -6,7 +6,8 @@ import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { chatWorkspaces, isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
-import { archiveChatFromSidebar } from '../../screens/workspace/archiveChat'
+import { archiveChatFromSidebar, archivingChat } from '../../screens/workspace/archiveChat'
+import { reducedMotion, useArriving, useStage } from '../../screens/workspace/archiveMotion'
 import { currentThread } from '../../nav'
 import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
@@ -21,6 +22,7 @@ import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
 import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
+import { useShown, type Fate } from './leaving'
 import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import { workspaceRowLabel } from './workspaceRowLabel'
@@ -32,6 +34,9 @@ const same = (a: Route, b: Route) => {
   for (const k in y) if (!(k in x) && y[k] !== undefined) return false
   return true
 }
+
+/** A row whose workspace was archived and has left the list, and is still drawn: `from` is the route the archive moved off, and `held` means it waits as it was. */
+type Gone = { from?: Route; held?: boolean }
 
 /** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
 const HINT_DELAY = 400
@@ -62,11 +67,12 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void }) {
+function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
-  const current = useStore((s) => same(s.ui.route, route) || (route.name === 'issues' && s.ui.route.name === 'issues'))
+  const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') })
+  const arrive = useArriving(current && !leaving)
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {slot?.hint ? <KeyHint n={slot.n} /> : right}
@@ -87,16 +93,17 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
  * The room's Lead, shown only while it has no open chat to list. It opens New chat with Rowan, where the first message starts a chat in its
  * own workspace (KERNEL-405). Its icon shows the Lead's floor status.
  */
-function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
+function LeadItem({ roomId, slot, opening, onSettled }: { roomId: string; slot?: RowKey; /** The room's last chat is folding away, so this row opens in its place. */ opening?: boolean; onSettled?: () => void }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return (r.name === 'leadNew' && r.roomId === roomId) || (r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id))) })
   const waiting = useLeadWaiting(roomId)
+  const arrive = useArriving(current)
   if (!lead) return null
   const g = leadGlyph(status, waiting)
   return (
-    <div>
-      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
+    <div className={opening ? 'row-open' : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-open') onSettled?.() }}>
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
         <Glyph g={g} />
         <span className="grow ellipsis">{lead.name}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : <span className="muted" style={{ fontSize: 12 }}>Lead</span>}
@@ -112,16 +119,17 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
  * that handed off workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
  * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405).
  */
-function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
+function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
   // A folded chat counts its workspaces: an unfolded one shows its own icon in its own row.
   const waiting = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }).map((w) => w.approval), [approvals, tabs, folded, owned])
   const running = useStore((s) => tabs.some((c) => s.running[c.id]))
   // The chat's own workspace is on screen (KERNEL-405).
   const current = useStore((s) => {
-    const r = s.ui.route
+    const r = leaving ? leaving.from ?? s.ui.route : s.ui.route
     return r.name === 'workspace' && (ws ? r.workspaceId === ws.id : r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id)
   })
+  const arrive = useArriving(current && !leaving)
   // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
   const g = chatGlyph({ ws, waiting, running, trust: folded && chatTrusts(owned).length > 0 })
   // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
@@ -130,9 +138,9 @@ function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot }: { roomId: s
   const archive = () => void run('archive', () => archiveChatFromSidebar(thread))
   const name = g.label ? `${thread.title}, ${g.label}` : thread.title
   return (
-    <div className={`hv chat-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
+    <div className={`hv chat-row${busy ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <button
-        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
+        className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
@@ -173,7 +181,7 @@ async function archiveFromSidebar(ws: Workspace) {
  * A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals
  * for Archive.
  */
-function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nested?: boolean }) {
+function WorkspaceItem({ ws, slot, nested, leaving, onSettled }: { ws: Workspace; slot?: RowKey; nested?: boolean; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
@@ -181,14 +189,14 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const local = useLocalMerge(ws)
   const pending = useStore((s) => s.prPending[ws.id])
   const g = workspaceGlyph(ws, { waiting, running, local, pending })
-  const current = useStore((s) => same(s.ui.route, { name: 'workspace', workspaceId: ws.id }))
+  const current = useStore((s) => same(leaving ? leaving.from ?? s.ui.route : s.ui.route, { name: 'workspace', workspaceId: ws.id }))
   const unread = useStore((s) => workspaceRowUnread(s.chats[ws.id], current))
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   const label = workspaceRowLabel(ws)
   return (
-    <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
+    <div className={`hv ws-row${busy ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <NavItem
-        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
+        sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
@@ -237,6 +245,16 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const threads = useStore((s) => s.threads)
   const foldedChats = useStore((s) => s.ui.foldedChats)
   const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, threads, foldedChats), [room, agents, workspaces, chats, threads, foldedChats])
+  // An archived row stays in the list while it folds away (DESIGN.md, Motion). The row on screen keeps its fill, which it had on the screen the archive left.
+  const leftFrom = useStage()?.from
+  const fate = (row: Slot): Fate => {
+    const ws = row.kind === 'chat' || row.kind === 'workspace' ? row.ws : undefined
+    if (!ws || workspaces.find((w) => w.id === ws.id)?.status !== 'archived') return undefined
+    // A workspace its chat is archiving waits for the chat's row, unless it is the one on screen, which goes with the screen.
+    const waits = row.kind === 'workspace' && !!ws.threadId && archivingChat(ws.threadId) && rows.some((r) => r.kind === 'chat' && r.thread.id === ws.threadId)
+    return waits && !(leftFrom?.name === 'workspace' && leftFrom.workspaceId === ws.id) ? 'hold' : 'fold'
+  }
+  const [shown, settle] = useShown(rows, expanded && !reducedMotion(), fate)
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
   const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads])
   const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
@@ -263,11 +281,11 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
-      {expanded && rows.map((row) => {
-        const key = slotKey(row)
-        if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
-        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} ws={row.ws} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
-        return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} />
+      {expanded && shown.map(({ key, row, leaving, held, opening }) => {
+        const gone = leaving || held ? { from: leftFrom, held } : undefined
+        if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} opening={opening} onSettled={() => settle(key)} />
+        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} ws={row.ws} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} leaving={gone} onSettled={() => settle(key)} />
+        return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} leaving={gone} onSettled={() => settle(key)} />
       })}
     </div>
   )
