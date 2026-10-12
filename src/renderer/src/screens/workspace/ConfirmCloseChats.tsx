@@ -2,9 +2,9 @@ import { useRef, useState } from 'react'
 import type { Thread } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
-import { roomHome, tabOf, threadIdOf } from '../../nav'
+import { archiveDestination, tabOf, threadIdOf } from '../../nav'
 import { actions, getState, go, loadWorkspace, useStore, type State } from '../../store'
-import { openRow, sidebarRows, type Slot } from '../../components/sidebar/slots'
+import { sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
 import { archiveChatFromSidebar } from './archiveChat'
@@ -51,13 +51,11 @@ function chatRows(s: State, roomId: string) {
  * Close chat tabs. Main stops each chat's session, which ends a running turn and drops its queued messages, and opens a
  * new chat when no chat tab is left. When the open tab is one of them, the next tab to its right opens, or to its left when
  * none is left on the right, like closing a browser tab. In the Lead's workspace that is the next tab of the same chat. Closing a chat's
- * last tab closes the chat, and the chat row above it opens, or the one below when it was the first, or the room when no chat is left (KERNEL-338).
+ * last tab closes the chat, and the shared Lead workspace it was in sends you to the room's front door, as archiving any chat on screen does (KERNEL-596).
  */
 export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void) {
   const s = getState()
   const closing = closesThread(s, workspaceId, ids)
-  const roomId = s.workspaces.find((w) => w.id === workspaceId)?.roomId
-  const order = closing && roomId ? chatRows(s, roomId).map((r) => r.thread.id) : []
   const all = s.chats[workspaceId] ?? []
   const shown = all.find((c) => c.id === active)
   // The tabs a neighbour is picked from: the active tab's own chat in the Lead's workspace, else every tab.
@@ -67,12 +65,9 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
     dropDrafts([id])
   }
   await loadWorkspace(workspaceId)
-  if (closing && roomId) {
-    const rows = chatRows(getState(), roomId)
-    const at = order.indexOf(closing.id)
-    const next = [...order.slice(0, at).reverse(), ...order.slice(at + 1)].map((id) => rows.find((r) => r.thread.id === id)).find(Boolean) ?? rows[0]
-    if (next) openRow(roomId, next)
-    else go(roomHome(roomId, getState()))
+  if (closing) {
+    const to = archiveDestination(getState().ui.route, getState(), (id) => id === workspaceId)
+    if (to) go(to)
     return
   }
   if (!active || !ids.includes(active)) return

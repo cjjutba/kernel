@@ -78,29 +78,32 @@ describe('the Close this chat dialog (KERNEL-362)', () => {
   })
 })
 
-describe('closeChats in the Lead\'s workspace (KERNEL-338)', () => {
+describe('closeChats in the Lead\'s workspace (KERNEL-338, KERNEL-596)', () => {
   const closeLast = async (id: string) => {
     actions.ui.go({ name: 'workspace', workspaceId: 'lead' })
     actions.ui.openTab('lead', id)
     await closeChats('lead', [id], id, select)
   }
+  const door = { name: 'leadNew', roomId: 'r1' }
 
-  it('opens the chat row above when a chat closes', async () => {
+  it('goes to the room front door when the chat on screen closes, and not to the chat row above', async () => {
     await closeLast('b1')
-    expect(tabOf(getState(), 'lead')).toBe('a1')
+    expect(route()).toEqual(door)
   })
 
-  it('opens the chat row below when the first chat closes', async () => {
+  it('goes to the front door when the first chat closes, and not to the chat below', async () => {
     await closeLast('a1')
     await closeChats('lead', ['a2'], 'a2', select)
-    expect(tabOf(getState(), 'lead')).toBe('b1')
+    expect(route()).toEqual(door)
   })
 
-  it('opens New chat with Rowan when no chat is left, since the shared Lead workspace hosts none (KERNEL-405)', async () => {
-    seed([tab('only', 't1')])
+  it('stays put when the chat closes while another screen is open', async () => {
+    actions.ui.go({ name: 'history' })
+    await closeChats('lead', ['b1'], 'b1', select)
+    expect(route()).toEqual({ name: 'history' })
     actions.ui.go({ name: 'workspace', workspaceId: 'elsewhere' })
-    await closeChats('lead', ['only'], 'only', select)
-    expect(route()).toEqual({ name: 'leadNew', roomId: 'r1' })
+    await closeChats('lead', ['c1'], 'c1', select)
+    expect(route()).toEqual({ name: 'workspace', workspaceId: 'elsewhere' })
   })
 
   it('picks the next tab of the same chat when a tab that is not the last closes', async () => {
