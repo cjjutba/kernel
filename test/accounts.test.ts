@@ -1,15 +1,38 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { chmod, lstat, mkdir, mkdtemp, readlink, realpath, writeFile } from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AccountAddStep, Chat, RateLimit, Workspace } from '@shared/types'
+import type { AccountAddStep, AccountProfile, Chat, RateLimit, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
+import { limitProvider } from '@shared/providers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
+import { sessionEnv } from '../src/main/services/providers/claude'
 import { fakeCodex } from './helpers/fakeCodex'
-import { fakeClaude, TOKEN } from './helpers/fakeClaude'
+import { fakeClaude, LINK } from './helpers/fakeClaude'
 import { tempRepo } from './helpers'
+
+// Claude Code's usage call, answered by the account each short session runs on: its CLAUDE_CONFIG_DIR, '' for the CLI's own
+// login (KERNEL-567). `usage` holds each account's 5-hour use in percent. No Claude Code process starts.
+const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, probes: [] as { dir: string; token?: string }[] }))
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
+  ...await original<object>(),
+  query: ({ options }: { options: { env?: Record<string, string> } }) => {
+    const dir = options.env?.CLAUDE_CONFIG_DIR ?? ''
+    sdk.probes.push({ dir, ...(options.env?.CLAUDE_CODE_OAUTH_TOKEN ? { token: options.env.CLAUDE_CODE_OAUTH_TOKEN } : {}) })
+    const window = (used: number) => ({ utilization: used, resets_at: new Date(Date.now() + 3600_000).toISOString() })
+    return {
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
+      interrupt: async () => {},
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
+        const used = sdk.usage[dir]
+        if (used === undefined) throw new Error('not supported')
+        return { rate_limits: { five_hour: window(used), seven_day: window(used / 2) } }
+      }
+    }
+  }
+}))
 
 /** Encrypts by reversing, so a test can tell a stored token from the plain one. */
 const cipher = { encrypt: (t: string) => `enc:${[...t].reverse().join('')}`, decrypt: (d: string) => [...d.slice(4)].reverse().join('') }
@@ -25,9 +48,14 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 }
 
 let fake: Awaited<ReturnType<typeof fakeCodex>>
-const saved = { log: process.env.FAKE_CODEX_LOG, codexHome: process.env.CODEX_HOME }
-beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME })
-afterEach(() => { process.env.FAKE_CODEX_LOG = saved.log; if (saved.codexHome) process.env.CODEX_HOME = saved.codexHome; bus.removeAllListeners('push') })
+const saved = { log: process.env.FAKE_CODEX_LOG, codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
+beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.probes = [] })
+afterEach(() => {
+  process.env.FAKE_CODEX_LOG = saved.log
+  if (saved.codexHome) process.env.CODEX_HOME = saved.codexHome
+  if (saved.claudeDir) process.env.CLAUDE_CONFIG_DIR = saved.claudeDir
+  bus.removeAllListeners('push')
+})
 
 async function kernel() {
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -60,18 +88,23 @@ describe('Codex accounts (KERNEL-406)', () => {
     await k.stop()
   })
 
-  it('adds an account with a ChatGPT sign-in in the browser, and leaves the CLI login active until the user switches', async () => {
+  it('adds an account with a ChatGPT sign-in in the browser, named by its email, and leaves the CLI login active until the user switches', async () => {
     const { k, opened } = await kernel()
     const steps: AccountAddStep[] = []
     bus.on('push', (e: PushEvent) => { if (e.type === 'account.add') steps.push(e.add) })
-    const added = await k.handlers()['accounts.add']({ provider: 'codex', label: 'Work' })
-    expect(added).toMatchObject({ provider: 'codex', label: 'Work', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: false, active: false, signedIn: true })
+    const added = await k.handlers()['accounts.add']({ provider: 'codex' })
+    expect(added).toMatchObject({ provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: false, active: false, signedIn: true })
     expect(opened).toEqual(['https://auth.openai.com/oauth/authorize?fake=1'])
     expect(steps.map((s) => s.step)).toEqual(['browser', 'done'])
     expect(existsSync(join(k.providers.codexHome(added.id)!, 'auth.json'))).toBe(true)
     const list = await k.handlers()['accounts.list']()
-    expect(list.filter((a) => a.provider === 'codex').map((a) => [a.label, a.cli, a.active])).toEqual([['cj@example.com', true, true], ['Work', false, false]])
+    expect(list.filter((a) => a.provider === 'codex').map((a) => [a.label, a.cli, a.active])).toEqual([['cj@example.com', true, true], ['cj@example.com', false, false]])
     expect(k.providers.codexHome()).toBeUndefined()
+    // The CLI's own row reads ~/.codex, whichever account is in use.
+    await k.handlers()['accounts.switch']({ provider: 'codex', accountId: added.id })
+    await rm(join(k.providers.codexHome(added.id)!, 'auth.json'))
+    const after = (await k.handlers()['accounts.list']()).filter((a) => a.provider === 'codex')
+    expect(after.map((a) => [a.cli, a.signedIn])).toEqual([[true, true], [false, false]])
     await k.stop()
   })
 
@@ -114,94 +147,286 @@ describe('Codex accounts (KERNEL-406)', () => {
   })
 })
 
-describe('Claude accounts (KERNEL-406)', () => {
-  const fakeEnv = { wrap: process.env.FAKE_WRAP, none: process.env.FAKE_NO_TOKEN, code: process.env.FAKE_CODE_FILE }
-  afterEach(() => {
-    for (const [key, value] of [['FAKE_WRAP', fakeEnv.wrap], ['FAKE_NO_TOKEN', fakeEnv.none], ['FAKE_CODE_FILE', fakeEnv.code]] as const) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value
-    }
-  })
+describe('Claude accounts (KERNEL-567)', () => {
+  const keys = ['FAKE_CODE_FILE', 'FAKE_EMAIL', 'FAKE_PLAN', 'FAKE_LOGIN_FAIL', 'CLAUDE_CODE_OAUTH_TOKEN'] as const
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  afterEach(() => { for (const key of keys) { if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key] } })
 
-  /** A Kernel whose Claude is a fake `setup-token`, and whose CLI login reads as a Max plan. */
+  /** A Kernel whose Claude is a fake CLI with its own login on Max, and a `~/.claude` and `~/.claude.json` as that login has them. */
   async function claudeKernel() {
     const t = await kernel()
     t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
-    await t.k.providers.setPath('claude', { path: await fakeClaude() })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    await mkdir(join(t.home, '.claude', 'projects', '-repo'), { recursive: true })
+    await writeFile(join(t.home, '.claude', 'settings.json'), '{"hooks":{}}')
+    await writeFile(join(t.home, '.claude.json'), JSON.stringify({ mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': {} }, oauthAccount: { emailAddress: 'cj@example.com' } }))
     const steps: AccountAddStep[] = []
-    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add') steps.push(e.add) })
-    return { ...t, h: t.k.handlers(), steps }
+    const pushed: AccountProfile[][] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add') steps.push(e.add); if (e.type === 'accounts') pushed.push(e.accounts) })
+    return { ...t, claude, h: t.k.handlers(), steps, pushed, dataDir: t.k.o.dataDir }
   }
 
-  it('adds an account from claude setup-token with the name and plan given, and the plan defaults follow it once in use', async () => {
-    const { k, h, steps } = await claudeKernel()
-    process.env.FAKE_WRAP = '60'
-    await expect(h['accounts.add']({ provider: 'claude', plan: 'pro' })).rejects.toThrow('Give the account a name.')
-    await expect(h['accounts.add']({ provider: 'claude', label: 'Side' })).rejects.toThrow("Pick the account's plan.")
-    const added = await h['accounts.add']({ provider: 'claude', label: ' Side ', plan: 'pro' })
-    expect(added).toMatchObject({ label: 'Side', plan: 'Claude Pro', cli: false, active: false, signedIn: true, usageFromTurns: true })
-    expect(steps.map((s) => s.step)).toEqual(['browser', 'done'])
-    expect(steps[0].url).toMatch(/^https:\/\/claude\.ai\/oauth\/authorize/)
-    expect((await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude').map((a) => a.label)).toEqual(['Claude Code’s own login', 'Side'])
-    // On the CLI's own login, the plan is the CLI's.
+  const claudeRows = async (h: ReturnType<Kernel['handlers']>) => (await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude')
+
+  it('adds an account with only the browser sign-in, named by its email, with the plan read from it, which the defaults follow', async () => {
+    const { k, h, steps, claude, home } = await claudeKernel()
+    // A token the Mac exports never signs in for the account.
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat01-from-the-mac'
+    const added = await h['accounts.add']({ provider: 'claude' })
+    expect(added).toEqual({ id: added.id, provider: 'claude', label: 'side@example.com', email: 'side@example.com', plan: 'Claude Pro', cli: false, auth: 'subscription', active: false, signedIn: true })
+    expect(steps.map((s) => s.step)).toEqual(['browser', 'code', 'done'])
+    expect(steps[0].url).toBe(LINK)
+    const folder = k.providers.claudeHome(added.id)
+    expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' }, [folder]: { email: 'side@example.com', plan: 'pro' } })
+    const calls = await claude.calls()
+    expect(calls.filter((c) => c.args === 'auth login').map((c) => c.dir)).toEqual([folder])
+    expect(calls.filter((c) => c.dir === folder).some((c) => c.token)).toBe(false)
+    // Linked right after the login, with the CLI login's MCP servers and its own login kept.
+    expect(await readlink(join(folder, 'settings.json'))).toBe(join(home, '.claude', 'settings.json'))
+    expect(await readlink(join(folder, 'projects'))).toBe(join(home, '.claude', 'projects'))
+    expect(JSON.parse(await readFile(join(folder, '.claude.json'), 'utf8'))).toMatchObject({ oauthAccount: { emailAddress: 'side@example.com' }, mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': {} } })
+    // On the CLI's own login, the plan is the CLI's. Switched, the defaults follow the account's.
     await h['account.get'](undefined)
     expect(k.settings.plan).toBe('max')
     await h['accounts.switch']({ provider: 'claude', accountId: added.id })
-    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: TOKEN })
-    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true, name: 'Side', plan: 'Claude Pro' })
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true, name: 'side@example.com', email: 'side@example.com', plan: 'Claude Pro' })
     expect(k.settings.plan).toBe('pro')
-    expect(k.settings.models.roles.lead.model).toBe('claude-sonnet-5-5')
-    expect(await k.providers.status('claude')).toMatchObject({ signedIn: true, loginMethod: 'Token from claude setup-token', plan: 'Claude Pro' })
-    expect((await k.providers.status('claude')).email).toBeUndefined()
-    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(await k.providers.status('claude')).toMatchObject({ signedIn: true, loginMethod: 'Claude account', plan: 'Claude Pro', email: 'side@example.com' })
+    // An upgrade on claude.ai shows at the next read, and the defaults follow it.
+    await claude.setLogin(folder, { email: 'side@example.com', plan: 'max' })
+    await h['account.get'](undefined)
     expect(k.settings.plan).toBe('max')
+    expect((await claudeRows(h)).find((a) => a.id === added.id)).toMatchObject({ plan: 'Claude Max' })
     await k.stop()
   })
 
-  it('says why when no token came, adds nothing, and can be tried again', async () => {
-    const { k, h, steps } = await claudeKernel()
-    process.env.FAKE_NO_TOKEN = '1'
-    await expect(h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'max' })).rejects.toThrow("Kernel couldn't read a token from claude setup-token.")
-    expect(steps.at(-1)).toMatchObject({ step: 'failed', error: "Kernel couldn't read a token from claude setup-token." })
-    expect((await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude')).toHaveLength(1)
-    delete process.env.FAKE_NO_TOKEN
-    expect(await h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'max' })).toMatchObject({ label: 'Side', plan: 'Claude Max' })
+  it('says why a sign-in failed, adds nothing, leaves no folder, and can be tried again', async () => {
+    const { k, h, steps, dataDir } = await claudeKernel()
+    process.env.FAKE_LOGIN_FAIL = '1'
+    await expect(h['accounts.add']({ provider: 'claude' })).rejects.toThrow('Claude Code said: OAuth error: Request failed with status code 400')
+    expect(steps.at(-1)).toMatchObject({ step: 'failed', error: 'Claude Code said: OAuth error: Request failed with status code 400' })
+    expect(await claudeRows(h)).toHaveLength(1)
+    expect(await readdir(join(dataDir, 'claude-homes'))).toEqual([])
+    delete process.env.FAKE_LOGIN_FAIL
+    expect(await h['accounts.add']({ provider: 'claude' })).toMatchObject({ label: 'side@example.com', plan: 'Claude Pro' })
     await k.stop()
   })
 
-  it('keeps an account whose token a session refused signed out until Run login gets a new one, with the code its page shows', async () => {
-    const { k, h, steps } = await claudeKernel()
-    const added = await h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'team' })
+  it("runs the account's processes on its own folder, readied before each, and never on a token from the Mac", async () => {
+    const { k, h, home } = await claudeKernel()
+    const added = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(added.id)
+    const deps = (k.sessions as unknown as { d: { claudeEnv: () => Record<string, string> } }).d
+    expect(deps.claudeEnv()).toEqual({})
     await h['accounts.switch']({ provider: 'claude', accountId: added.id })
-    k.account.signedOut('claude')
-    expect((await h['accounts.list'](undefined)).find((a) => a.id === added.id)?.signedIn).toBe(false)
-    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: false })
-    expect(k.sessions.heldFor('claude')).toContain('auth')
-    // Run login on the added account runs setup-token again; this time its page shows a code.
-    const codeFile = join(await mkdtemp(join(tmpdir(), 'kernel-code-')), 'code')
-    process.env.FAKE_CODE_FILE = codeFile
-    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add' && e.add.step === 'code') void h['accounts.code']({ provider: 'claude', code: 'xyz-789' }) })
-    await expect(h['accounts.code']({ provider: 'claude', code: 'early' })).rejects.toThrow('No sign-in is waiting for a code.')
-    await h['providers.signIn']({ provider: 'claude' })
-    expect(steps.map((s) => s.step).slice(-3)).toEqual(['browser', 'code', 'done'])
-    expect((await (await import('node:fs/promises')).readFile(codeFile, 'utf8')).trim()).toBe('xyz-789')
-    expect((await h['accounts.list'](undefined)).find((a) => a.id === added.id)?.signedIn).toBe(true)
-    expect(k.sessions.heldFor('claude')).not.toContain('auth')
+    // What ~/.claude gained since is linked, and the MCP servers are copied again.
+    await writeFile(join(home, '.claude', 'CLAUDE.md'), '# me')
+    await writeFile(join(home, '.claude.json'), JSON.stringify({ mcpServers: { fal: { command: 'fal' } } }))
+    expect(deps.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: folder })
+    expect(await readlink(join(folder, 'CLAUDE.md'))).toBe(join(home, '.claude', 'CLAUDE.md'))
+    expect(JSON.parse(await readFile(join(folder, '.claude.json'), 'utf8'))).toEqual({ oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1', mcpServers: { fal: { command: 'fal' } } })
+    const env = sessionEnv({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-mac', ANTHROPIC_API_KEY: 'sk-ant-api03-mac' }, deps.claudeEnv())
+    expect(env).toMatchObject({ PATH: '/bin', CLAUDE_CONFIG_DIR: folder })
+    expect(env).not.toHaveProperty('CLAUDE_CODE_OAUTH_TOKEN')
+    expect(env).not.toHaveProperty('ANTHROPIC_API_KEY')
+    // A usage probe runs on the folder too.
+    sdk.usage = { [folder]: 12 }
+    await k.providers.readUsage({ force: true })
+    expect(sdk.probes).toContainEqual({ dir: folder })
     await k.stop()
   })
 
-  it("passes the active account's token to Claude sessions, kept encrypted on disk, and nothing for the CLI login", async () => {
-    const { k } = await kernel()
-    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } }; save: () => Promise<void>; saveToken: (id: string, t?: string) => Promise<void>; tokensFile: string }
-    p.load().claude.accounts.push({ id: 'work', label: 'Work', createdAt: 1 })
+  it("signs an added account out of its own folder only, signs it in again on its row, and removes it without touching ~/.claude", async () => {
+    const { k, h, claude, home } = await claudeKernel()
+    const added = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(added.id)
+    await h['accounts.switch']({ provider: 'claude', accountId: added.id })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    const out = await h['accounts.signOut']({ provider: 'claude', accountId: added.id })
+    expect(out.find((a) => a.id === added.id)).toMatchObject({ signedIn: false, active: false })
+    expect(out.find((a) => a.cli && a.provider === 'claude')).toMatchObject({ signedIn: true })
+    expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' } })
+    // The user signed it out, so the Inbox doesn't say so.
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toEqual([])
+    await h['providers.signIn']({ provider: 'claude', accountId: added.id })
+    expect((await claudeRows(h)).find((a) => a.id === added.id)).toMatchObject({ signedIn: true, active: false })
+    const before = (await readdir(join(home, '.claude'), { recursive: true })).sort()
+    await h['accounts.remove']({ provider: 'claude', accountId: added.id })
+    expect(existsSync(folder)).toBe(false)
+    expect((await readdir(join(home, '.claude'), { recursive: true })).sort()).toEqual(before)
+    expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' } })
+    // Every logout named the account's folder, so the CLI's own login was never signed out.
+    expect((await claude.calls()).filter((c) => c.args === 'auth logout').map((c) => c.dir)).toEqual([folder, folder])
+    await k.stop()
+  })
+
+  it('renames every account on both providers, the CLI logins included, keeps the names after a restart, and an empty name goes back to the email', async () => {
+    const { k, h, claude, home, dataDir } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const chatgpt = await h['accounts.add']({ provider: 'codex' })
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; auth?: 'apiKey'; createdAt: number }[] } }; save: () => Promise<void> }
+    p.load().claude.accounts.push({ id: 'key', label: 'Work key', auth: 'apiKey', createdAt: 1 })
     await p.save()
-    await p.saveToken('work', 'sk-ant-oat01-secret')
-    expect(JSON.stringify(JSON.parse(await (await import('node:fs/promises')).readFile(p.tokensFile, 'utf8')))).not.toContain('secret')
-    expect(k.providers.claudeEnv()).toEqual({})
-    await k.handlers()['accounts.switch']({ provider: 'claude', accountId: 'work' })
-    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-secret' })
-    const deps = (k.sessions as unknown as { d: { claudeEnv: () => Record<string, string>; accountFor: (p: string) => string | undefined } }).d
-    expect(deps.claudeEnv()).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-secret' })
-    expect(deps.accountFor('claude')).toBe('work')
+    await h['accounts.rename']({ provider: 'claude', accountId: 'cli', label: ' Work ' })
+    await h['accounts.rename']({ provider: 'claude', accountId: side.id, label: 'Personal' })
+    await h['accounts.rename']({ provider: 'claude', accountId: 'key', label: 'Billing key' })
+    await h['accounts.rename']({ provider: 'codex', accountId: 'cli', label: 'Codex work' })
+    const renamed = await h['accounts.rename']({ provider: 'codex', accountId: chatgpt.id, label: 'Side' })
+    const labels = (rows: AccountProfile[]) => rows.map((a) => `${a.provider}:${a.label}`)
+    expect(labels(renamed)).toEqual(['claude:Work', 'claude:Personal', 'claude:Billing key', 'codex:Codex work', 'codex:Side'])
+    await k.stop()
+    const again = new Kernel({ dataDir, home, cipher })
+    await again.start()
+    await again.providers.setPath('claude', { path: claude.bin })
+    await again.providers.setPath('codex', { path: fake.bin })
+    const ha = again.handlers()
+    expect(labels(await ha['accounts.list'](undefined))).toEqual(labels(renamed))
+    await ha['accounts.rename']({ provider: 'claude', accountId: side.id, label: '  ' })
+    const back = await ha['accounts.rename']({ provider: 'claude', accountId: 'cli', label: '' })
+    expect(labels(back).slice(0, 2)).toEqual(['claude:cj@example.com', 'claude:side@example.com'])
+    await again.stop()
+  })
+
+  it('reads the usage of every signed-in account without a turn, each on its own login, and holds only on the account in use', async () => {
+    const { k, h, claude } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    // Adding reads the new account's provider in the background.
+    await until(() => new Set(sdk.probes.map((x) => x.dir)).size === 2)
+    const chatgpt = await h['accounts.add']({ provider: 'codex' })
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } }; save: () => Promise<void> }
+    p.load().claude.accounts.push({ id: 'legacy', label: 'Old', createdAt: 1 })
+    await p.save()
+    sdk.usage = { '': 30, [folder]: 95 }
+    sdk.probes = []
+    const limits = await k.providers.readUsage({ force: true })
+    const hour = (provider: string) => limits.filter((l) => l.type === 'five_hour' && limitProvider(l) === provider).map((l) => [l.accountId ?? 'cli', l.utilization]).sort()
+    expect(hour('claude')).toEqual([['cli', 0.3], [side.id, 0.95]].sort())
+    expect(hour('codex')).toEqual([['cli', 0.4], [chatgpt.id, 0.4]].sort())
+    // A legacy token account isn't read: its meters come from its turns.
+    expect(sdk.probes.map((x) => x.dir).sort()).toEqual(['', folder])
+    // The account in use is the CLI login, so the added account's 95% holds nothing.
+    await k.config.setSettings({ usage: { pauseNearLimit: true } })
+    expect(k.account.nearLimit('claude')).toBeUndefined()
+    // Read in the last minute, so opening the account menu again reads nothing new.
+    sdk.probes = []
+    await h['usage.get'](undefined)
+    expect(sdk.probes).toEqual([])
+    // A signed-out account isn't asked.
+    await claude.setLogin(folder, null)
+    await k.providers.readUsage({ force: true })
+    expect(sdk.probes.map((x) => x.dir)).toEqual([''])
+    await k.stop()
+  })
+
+  it('reads every account at once when the account in use nears its limit', async () => {
+    const { k, h } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    await until(() => sdk.probes.some((x) => x.dir === folder))
+    sdk.usage = { '': 92, [folder]: 20 }
+    sdk.probes = []
+    const s = k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }
+    s.mergeLimits([{ type: 'five_hour', utilization: 0.92, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    await until(() => sdk.probes.some((x) => x.dir === folder))
+    // Once per crossing.
+    s.mergeLimits([{ type: 'five_hour', utilization: 0.93, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    await new Promise((r) => setTimeout(r, 50))
+    expect(sdk.probes.filter((x) => x.dir === folder)).toHaveLength(1)
+    await k.stop()
+  })
+
+  it('saves one Inbox notice when an account signs out, and none again after a restart', async () => {
+    const { k, h, claude, home, dataDir } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    await h['accounts.rename']({ provider: 'claude', accountId: side.id, label: 'Personal' })
+    await k.providers.readUsage({ force: true })
+    const notices = (kk: Kernel) => kk.notifications.list().filter((n) => n.title.endsWith('is signed out'))
+    expect(notices(k)).toEqual([])
+    // Signed out on another Mac.
+    await claude.setLogin(folder, null)
+    await k.providers.readUsage({ force: true })
+    expect((await claudeRows(h)).find((a) => a.id === side.id)?.signedIn).toBe(false)
+    expect(notices(k)).toMatchObject([{ title: 'Personal is signed out', sub: 'Sign in again in Settings, Providers.', body: 'Personal is signed out. Sign in again in Settings, Providers.' }])
+    await k.providers.readUsage({ force: true })
+    expect(notices(k)).toHaveLength(1)
+    await k.stop()
+    const again = new Kernel({ dataDir, home, cipher })
+    await again.start()
+    await again.providers.setPath('claude', { path: claude.bin })
+    await again.providers.setPath('codex', { path: fake.bin })
+    await again.providers.readUsage({ force: true })
+    expect(notices(again)).toHaveLength(1)
+    // Signed in again in a terminal: the next read has it.
+    await claude.setLogin(folder, { email: 'side@example.com', plan: 'pro' })
+    await again.providers.readUsage({ force: true })
+    expect((await claudeRows(again.handlers())).find((a) => a.id === side.id)?.signedIn).toBe(true)
+    // Codex's do too.
+    const chatgpt = await again.handlers()['accounts.add']({ provider: 'codex' })
+    await again.handlers()['accounts.rename']({ provider: 'codex', accountId: chatgpt.id, label: 'Side' })
+    await rm(join(again.providers.codexHome(chatgpt.id)!, 'auth.json'))
+    await again.providers.readUsage({ force: true })
+    expect(notices(again).map((n) => n.title)).toContain('Side is signed out')
+    await again.stop()
+  })
+
+  it('signs the account in use out when a session is refused, lifts the hold once a read finds it signed in, and says so once a day', async () => {
+    const { k, h } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    const notices = () => k.notifications.list().filter((n) => n.title === 'side@example.com is signed out')
+    k.account.signedOut('claude')
+    await until(() => notices().length === 1)
+    expect((await claudeRows(h)).find((a) => a.id === side.id)?.signedIn).toBe(false)
+    expect(k.sessions.heldFor('claude')).toContain('auth')
+    // Claude Code still reads the folder as signed in, so the next read lifts the hold.
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true })
+    expect(k.sessions.heldFor('claude')).not.toContain('auth')
+    expect((await claudeRows(h)).find((a) => a.id === side.id)?.signedIn).toBe(true)
+    // Refused again the same day: still the one notice.
+    k.account.signedOut('claude')
+    await until(async () => (await claudeRows(h)).find((a) => a.id === side.id)?.signedIn === false)
+    expect(notices()).toHaveLength(1)
+    await k.stop()
+  })
+
+  it('keeps a legacy token account running, and moves it to a full login on Sign in again with its id and nickname', async () => {
+    const { k, h, claude } = await claudeKernel()
+    const p = k.providers as unknown as { load: () => { claude: { accounts: object[] } }; save: () => Promise<void>; saveToken: (id: string, t?: string) => Promise<void>; tokensFile: string }
+    p.load().claude.accounts.push({ id: 'old', label: 'Personal', plan: 'Claude Team', claudePlan: 'team', createdAt: 1 })
+    await p.save()
+    await p.saveToken('old', 'sk-ant-oat01-old')
+    expect((await claudeRows(h)).find((a) => a.id === 'old')).toMatchObject({ label: 'Personal', plan: 'Claude Team', signedIn: true, usageFromTurns: true, legacyToken: true })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'old' })
+    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-old' })
+    expect(k.settings.plan).toBe('team')
+    expect(k.providers.usageReads({ provider: 'claude' }).map((r) => r.accountId)).toEqual([undefined])
+    process.env.FAKE_EMAIL = 'personal@example.com'
+    process.env.FAKE_PLAN = 'max'
+    await h['providers.signIn']({ provider: 'claude', accountId: 'old' })
+    const row = (await claudeRows(h)).find((a) => a.id === 'old')
+    expect(row).toEqual({ id: 'old', provider: 'claude', label: 'Personal', email: 'personal@example.com', plan: 'Claude Max', cli: false, auth: 'subscription', active: true, signedIn: true })
+    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: k.providers.claudeHome('old') })
+    expect(JSON.parse(await readFile(p.tokensFile, 'utf8'))).toEqual({})
+    expect(k.settings.plan).toBe('max')
+    expect(k.providers.usageReads({ provider: 'claude' }).map((r) => r.accountId)).toEqual([undefined, 'old'])
+    expect((await claude.logins()).cli).toEqual({ email: 'cj@example.com', plan: 'max' })
+    await k.stop()
+  })
+
+  it('reads an account whose data folder moved as signed out, and Remove signs out the path it signed in with too', async () => {
+    const { k, h, claude } = await claudeKernel()
+    const old = '/Users/someone/old-data/claude-homes/moved'
+    const p = k.providers as unknown as { load: () => { claude: { accounts: object[] } }; save: () => Promise<void> }
+    p.load().claude.accounts.push({ id: 'moved', label: 'Personal', email: 'side@example.com', home: old, signedIn: true, createdAt: 1 })
+    await p.save()
+    await claude.setLogin(old, { email: 'side@example.com', plan: 'pro' })
+    expect((await claudeRows(h)).find((a) => a.id === 'moved')?.signedIn).toBe(false)
+    await h['accounts.remove']({ provider: 'claude', accountId: 'moved' })
+    expect((await claude.calls()).filter((c) => c.args === 'auth logout').map((c) => c.dir)).toEqual([old, k.providers.claudeHome('moved')])
+    expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' } })
     await k.stop()
   })
 

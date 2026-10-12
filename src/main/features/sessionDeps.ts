@@ -64,6 +64,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     },
     accountFor: (provider) => k.providers.active(provider),
     claudeEnv: () => k.providers.claudeEnv(),
+    usageReads: () => k.providers.usageReads(),
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     onFailure: (failure, _ws, provider) => {

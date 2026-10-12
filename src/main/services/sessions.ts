@@ -17,7 +17,7 @@ import type { McpReport } from './mcp'
 import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
-import { ClaudeRunner, claudeCommands, claudeModels, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
+import { ClaudeRunner, claudeCommands, claudeModels, TOOL_STOPPED } from './providers/claude'
 import { claudeExecutable } from './providers/binary'
 import { chatMode, type ChatAvailability, type RunMode } from './permissions'
 import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
@@ -136,8 +136,13 @@ export interface SessionDeps {
   availability?: (chat: Chat, ws: Workspace, wants: RunMode) => ChatAvailability
   /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
   accountFor?: (provider: Provider) => string | undefined
-  /** What a Claude chat's process adds to its environment for the active account: its token, or its API key (KERNEL-406, KERNEL-523). */
+  /**
+   * What a Claude chat's process adds to its environment for the active account: its folder as CLAUDE_CONFIG_DIR, readied
+   * first (KERNEL-567), a legacy token, or its API key (KERNEL-406, KERNEL-523).
+   */
   claudeEnv?: () => Record<string, string>
+  /** The accounts `usage()` asks when its caller names none: every one the providers can read, live processes only (KERNEL-567). */
+  usageReads?: () => UsageRead[]
   /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
   authOf?: (provider: Provider, accountId: string | undefined) => AccountAuth
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
@@ -170,6 +175,12 @@ export interface SessionDeps {
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
 }
+
+/**
+ * One account whose usage windows `usage()` reads (KERNEL-567). Undefined `accountId` is the provider's CLI login. `read` reads
+ * it without a live process and merges what it got. Without it, only a live process on the account is asked.
+ */
+export interface UsageRead { provider: Provider; accountId?: string; read?: (merge: (p: LimitPatch[]) => void) => Promise<void> }
 
 /** Who sent a message the user didn't type, and the Team update card it carries (KERNEL-116). */
 export interface Sender { from?: MessageFrom; update?: TeamUpdate }
@@ -485,27 +496,27 @@ export class Sessions {
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
   /**
-   * 5-hour and weekly windows, fetched only when asked. A live session of each provider answers its usage call. Without a
-   * live Claude one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last
-   * rate_limit_event numbers stand. A Claude account Kernel added runs on a `setup-token` token, which the usage call
-   * answers nothing for, so it is never asked: its numbers come from its turns' rate_limit_event (KERNEL-406). An API key
-   * account has no windows, so its processes aren't asked either (KERNEL-523).
+   * 5-hour and weekly windows, read on demand for each account in `reads`, every one the providers can read by default
+   * (KERNEL-567). A live process on the account answers its usage call. Without one, the account's own `read` runs when it
+   * has one: a short Claude session in its folder, or Codex's account read in its home. A read that fails keeps the last
+   * numbers. Providers leaves out the accounts nothing can read: a legacy token account's numbers come from its turns'
+   * rate_limit_event (KERNEL-406), and an API key account has no windows (KERNEL-523).
    */
-  async usage(o: { probeIn?: string } = {}): Promise<RateLimit[]> {
-    const open = [...this.live.values()].filter((l) => !l.runner.closed)
-    const other = open.find((l) => !(l.runner instanceof ClaudeRunner) && !l.onKey)
-    if (other) await other.runner.usage()
-    if (this.d.accountFor?.('claude') === undefined) {
-      const claude = open.find((l) => l.runner instanceof ClaudeRunner && !l.account)
-      if (claude) await claude.runner.usage()
-      else if (o.probeIn) await probeClaudeUsage(o.probeIn, (p) => this.mergeLimits(p))
-    }
+  async usage(reads: UsageRead[] = this.d.usageReads?.() ?? []): Promise<RateLimit[]> {
+    const open = [...this.live.values()].filter((l) => !l.runner.closed && !l.onKey)
+    await Promise.all(reads.map(async (r) => {
+      const live = open.find((l) => (l.runner instanceof ClaudeRunner ? 'claude' : 'codex') === r.provider && l.account === r.accountId)
+      if (live) return live.runner.usage()
+      // Tagged as a live process's windows are, so each keeps its account and `limitKey` stays per account.
+      await r.read?.((p) => this.mergeLimits(r.accountId ? p.map((l) => ({ ...l, accountId: r.accountId })) : p)).catch(() => undefined)
+    }))
     return [...this.limits.values()]
   }
 
   /**
-   * Claude Code's own slash commands, for the composer's / menu. A live session answers; without one, Claude Code starts with
-   * no prompt, no settings and no transcript, lists them and stops, which sends no message. A failed read is tried again next time.
+   * Claude Code's own slash commands, for the composer's / menu. A live session answers; without one, Claude Code starts on
+   * the active account with no prompt, no settings and no transcript, lists them and stops, which sends no message. A failed
+   * read is tried again next time.
    */
   commands(cwd: string): Promise<BuiltinCommand[]> {
     this.builtins ??= this.readCommands(cwd).catch((err) => { this.builtins = undefined; throw err })
@@ -515,7 +526,7 @@ export class Sessions {
   private async readCommands(cwd: string): Promise<BuiltinCommand[]> {
     const live = [...this.live.values()].find((l) => !l.runner.closed && l.runner instanceof ClaudeRunner)
     if (live) return (live.runner as ClaudeRunner).commandList()
-    return claudeCommands(cwd)
+    return claudeCommands(cwd, { env: this.d.claudeEnv?.() ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
   }
 
   /**

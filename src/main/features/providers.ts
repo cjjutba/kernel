@@ -2,17 +2,21 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { CLAUDE_PLANS, EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
 import { exec } from '../services/exec'
-import { planName } from '../services/preflight'
+import type { LimitPatch } from '../services/providers/limits'
+import type { UsageRead } from '../services/sessions'
+import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
-import { resolveBinary } from '../services/providers/binary'
-import { captureClaudeToken } from '../services/providers/claudeToken'
-import { sessionEnv } from '../services/providers/claude'
+import { claudeExecutable, resolveBinary } from '../services/providers/binary'
+import { claudeStatus, copyClaudeConfig, linkClaudeHome, loginEnv, logoutClaude, removeClaudeHome, type ClaudeLogin } from '../services/providers/claudeHome'
+import { loginClaude } from '../services/providers/claudeToken'
+import { probeClaudeUsage, sessionEnv } from '../services/providers/claude'
 import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
+import { codexLimits } from '../services/providers/codex/runner'
 import type { Rpc } from '../services/providers/codex/rpc'
 import type { AccountLoginCompletedNotification } from '../services/providers/codex/protocol/v2/AccountLoginCompletedNotification'
 import type { LoginAccountResponse } from '../services/providers/codex/protocol/v2/LoginAccountResponse'
@@ -23,19 +27,40 @@ import { Feature } from './feature'
 export const versionOf = (out: string) => /(\d+\.\d+\.\d+)/.exec(out)?.[1]
 
 /**
- * An account Kernel added. Its credential lives apart: Claude's token in `claude-tokens.json`, Codex's `auth.json` in its home,
- * and an API key account's key in `api-keys.json` (`auth`, KERNEL-523). A Claude account's plan is the one the user picked,
- * since its token can't read it (`claudePlan`). An API key account has none.
+ * An account Kernel added. Its credential lives apart: a Claude login in its own folder (`home`, KERNEL-567), a legacy Claude
+ * token in `claude-tokens.json`, Codex's `auth.json` in its home, and an API key account's key in `api-keys.json` (`auth`,
+ * KERNEL-523). `label` is its nickname, or its email when it has none. A login's email and plan are read from it. A legacy
+ * token account's plan is the one the user picked (`claudePlan`), since its token can't read it. An API key account has none.
  */
-interface StoredAccount { id: string; label: string; email?: string; plan?: string; claudePlan?: Exclude<ClaudePlan, 'unknown'>; auth?: 'apiKey'; createdAt: number }
-/** Each provider's added accounts and the one it runs on. No `active` is the CLI's own login. */
-type AccountsFile = Record<Provider, { active?: string; accounts: StoredAccount[] }>
+interface StoredAccount {
+  id: string
+  label: string
+  email?: string
+  plan?: string
+  claudePlan?: Exclude<ClaudePlan, 'unknown'>
+  auth?: 'apiKey'
+  /** A Claude login's folder, as the exact path string it signed in with, which names its Keychain item (KERNEL-560). */
+  home?: string
+  /** What Kernel last read of a login's sign-in. Undefined until the first read, so a restart never announces an old sign-out. */
+  signedIn?: boolean
+  createdAt: number
+}
+/** The CLI's own login as `accounts.json` keeps it: its nickname, its last email, and what Kernel last read of its sign-in (KERNEL-567). */
+interface StoredCli { label?: string; email?: string; signedIn?: boolean }
+/** Each provider's added accounts, the one it runs on, and its CLI login. No `active` is the CLI's own login. */
+type AccountsFile = Record<Provider, { active?: string; accounts: StoredAccount[]; cli?: StoredCli }>
 
 /** The id the CLI's own login goes by in `accounts.*`. */
 export const CLI_ACCOUNT = 'cli'
 
+/** What the CLI's own login is called until it is renamed or its email is known. */
+const OWN_LOGIN: Record<Provider, string> = { claude: 'Claude Code’s own login', codex: 'Codex’s own login' }
+
 /** How long a sign-in in the browser may take before Kernel gives up on it. */
 const SIGN_IN_MS = 15 * 60_000
+
+/** How long `readUsage` trusts an account's last read. Claude Code answers the usage call from a snapshot under a minute old. */
+const USAGE_FRESH_MS = 60_000
 
 /**
  * What a Codex account's home shares with `~/.codex`, made first when `~/.codex` has none, so chats, MCP servers, plugins,
@@ -54,6 +79,10 @@ export class Providers extends Feature {
   private adding = new Map<Provider, { cancel: () => void; code?: (code: string) => void }>()
   /** Added accounts whose token or API key a session refused. They read as signed out until a new one replaces it. */
   private refused = new Set<string>()
+  /** When `readUsage` last read each account, by `provider:id`, so opening the account menu twice reads once. */
+  private usageReadAt = new Map<string, number>()
+  /** Usage reads running, by account id, which Remove waits for so none writes to a folder it deleted. */
+  private reading = new Map<string, Set<Promise<void>>>()
 
   // ---------- models
 
@@ -117,25 +146,26 @@ export class Providers extends Feature {
   }
 
   /**
-   * Who an account is signed in as, read through `bin`. An API key account is signed in while it has a key no session
-   * refused. A Codex login made with an API key outside Kernel reads as signed out: only a key account the user added bills a
-   * key (D-018, KERNEL-523).
+   * Who an account is signed in as, read through `bin`. Every read of a login counts toward its sign-in health (`noteLogin`).
+   * An added Claude login reads through its folder (KERNEL-567). An API key account is signed in while it has a key no
+   * session refused. A Codex login made with an API key outside Kernel reads as signed out: only a key account the user
+   * added bills a key (D-018, KERNEL-523).
    */
   private async identity(provider: Provider, accountId: string | undefined, bin: string): Promise<Pick<ProviderStatus, 'signedIn' | 'loginMethod' | 'plan' | 'email' | 'error'>> {
-    if (accountId && this.auth(provider, accountId) === 'apiKey') return this.keySignedIn(accountId) ? { signedIn: true, loginMethod: 'API key' } : { signedIn: false }
+    const added = accountId ? this.stored(provider, accountId) : undefined
+    if (added?.auth === 'apiKey') return this.keySignedIn(added.id) ? { signedIn: true, loginMethod: 'API key' } : { signedIn: false }
     if (provider === 'claude') {
-      // A token can't say who it belongs to or which plan, so an added account is what the user said when adding it.
-      const added = accountId ? this.load().claude.accounts.find((a) => a.id === accountId) : undefined
-      if (added) return this.tokenSignedIn(added.id) ? { signedIn: true, loginMethod: 'Token from claude setup-token', plan: added.plan } : { signedIn: false }
-      const a = await exec(bin, ['auth', 'status'], { timeoutMs: 15_000 })
-      let s: { loggedIn?: boolean; email?: unknown; subscriptionType?: unknown } = {}
-      try { s = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
-      if (!s.loggedIn) return { signedIn: false }
-      return { signedIn: true, loginMethod: 'Claude account', plan: planName(s.subscriptionType), email: typeof s.email === 'string' ? s.email : undefined }
+      // A legacy token can't say who it belongs to or which plan, so it is what the user said when adding it.
+      if (added && !added.home) return this.tokenSignedIn(added.id) ? { signedIn: true, loginMethod: 'Token from claude setup-token', plan: added.plan } : { signedIn: false }
+      const who = added ? await this.readClaudeLogin(added) : await claudeStatus(bin)
+      if (!added && who) await this.noteLogin('claude', undefined, who)
+      return who?.signedIn ? { signedIn: true, loginMethod: 'Claude account', plan: who.plan, email: who.email } : { signedIn: false }
     }
-    const { account } = await readCodexAccount(bin, this.codexHome(accountId))
-    if (account?.type !== 'chatgpt') return { signedIn: false, ...(account ? { error: 'Codex is signed in with an API key. Kernel runs agents on your ChatGPT plan, so sign in with ChatGPT.' } : {}) }
-    return { signedIn: true, loginMethod: 'ChatGPT', plan: codexPlan(account.planType), email: account.email ?? undefined }
+    const r = await readCodexAccount(bin, added ? this.codexHome(added.id) : undefined)
+    const chatgpt = r.account?.type === 'chatgpt' ? r.account : undefined
+    if (!r.failed) await this.noteLogin('codex', added?.id, { signedIn: !!chatgpt, email: chatgpt?.email ?? undefined, plan: codexPlan(chatgpt?.planType) })
+    if (!chatgpt) return { signedIn: false, ...(r.account ? { error: 'Codex is signed in with an API key. Kernel runs agents on your ChatGPT plan, so sign in with ChatGPT.' } : {}) }
+    return { signedIn: true, loginMethod: 'ChatGPT', plan: codexPlan(chatgpt.planType), email: chatgpt.email ?? undefined }
   }
 
   /** Whether the provider's active account is signed in. */
@@ -168,7 +198,8 @@ export class Providers extends Feature {
       const saved = JSON.parse(readFileSync(this.accountsFile, 'utf8')) as Partial<AccountsFile>
       for (const p of ['claude', 'codex'] as const) {
         const list = Array.isArray(saved[p]?.accounts) ? saved[p]!.accounts.filter((a) => typeof a?.id === 'string' && typeof a.label === 'string') : []
-        empty[p] = { accounts: list, ...(list.some((a) => a.id === saved[p]?.active) ? { active: saved[p]!.active } : {}) }
+        const cli = saved[p]?.cli && typeof saved[p]!.cli === 'object' ? saved[p]!.cli : undefined
+        empty[p] = { accounts: list, ...(list.some((a) => a.id === saved[p]?.active) ? { active: saved[p]!.active } : {}), ...(cli ? { cli } : {}) }
       }
     } catch { /* none yet */ }
     this.accounts = empty
@@ -176,6 +207,8 @@ export class Providers extends Feature {
   }
 
   private async save() { await writeFile(this.accountsFile, JSON.stringify(this.load(), null, 2)) }
+
+  private stored(provider: Provider, id: string): StoredAccount | undefined { return this.load()[provider].accounts.find((a) => a.id === id) }
 
   /** The account a provider runs on now. Undefined is the CLI's own login. */
   active(provider: Provider): string | undefined { return this.load()[provider].active }
@@ -193,23 +226,57 @@ export class Providers extends Feature {
   }
 
   /**
-   * What a Claude process adds to its environment for an account, the active one by default: its token, or an API key
-   * account's key (KERNEL-523). Nothing for the CLI login.
+   * The folder a Claude account signs in to and runs in, as CLAUDE_CONFIG_DIR. Built one way, with no trailing slash and no
+   * `realpath`, since its Keychain item is named after this exact string (KERNEL-560).
+   */
+  claudeHome(accountId: string): string { return join(this.o.dataDir, 'claude-homes', accountId) }
+
+  /** `~/.claude`, which every Claude account's folder links to. CLAUDE_CONFIG_DIR moves it, as it does for the CLI. */
+  private claudeRoot() { return process.env.CLAUDE_CONFIG_DIR ?? join(this.home, '.claude') }
+
+  /** The CLI login's `.claude.json`, which holds the MCP servers every account copies. */
+  private claudeConfig() { return process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(this.home, '.claude.json') }
+
+  /**
+   * A Claude login's folder moved with the data folder, so the Keychain item it signed in with no longer matches. It reads
+   * as signed out until Sign in again logs in at the new path (KERNEL-560).
+   */
+  private moved(a: StoredAccount) { return !!a.home && a.home !== this.claudeHome(a.id) }
+
+  /**
+   * Before each Claude process on an added login: what `~/.claude` gained since is linked in, and the shared `.claude.json`
+   * keys are copied (KERNEL-560). A failure leaves the folder as it was, and the login still runs.
+   */
+  private readyClaudeHome(home: string) {
+    try { linkClaudeHome(home, this.claudeRoot()) } catch { /* ~/.claude can't be read: the account runs on what it has */ }
+    try { copyClaudeConfig(home, this.claudeConfig()) } catch { /* the same */ }
+  }
+
+  /**
+   * What a Claude process adds to its environment for an account, the active one by default: an added login's folder as
+   * CLAUDE_CONFIG_DIR, readied first (KERNEL-567), a legacy token, or an API key account's key (KERNEL-523). Nothing for
+   * the CLI login. A folder that moved is passed as it signed in, so its sessions fail as signed out rather than run on
+   * another login.
    */
   claudeEnv(accountId = this.active('claude')): Record<string, string> {
-    if (!accountId) return {}
-    if (this.auth('claude', accountId) === 'apiKey') {
-      const key = this.apiKey('claude', accountId)
+    const a = accountId ? this.stored('claude', accountId) : undefined
+    if (!a) return {}
+    if (a.auth === 'apiKey') {
+      const key = this.apiKey('claude', a.id)
       return key ? { ANTHROPIC_API_KEY: key } : {}
     }
-    const token = this.tokens()[accountId]
+    if (a.home) {
+      if (!this.moved(a)) this.readyClaudeHome(a.home)
+      return { CLAUDE_CONFIG_DIR: a.home }
+    }
+    const token = this.tokens()[a.id]
     if (!token || !this.o.cipher) return {}
     try { return { CLAUDE_CODE_OAUTH_TOKEN: this.o.cipher.decrypt(token) } } catch { return {} }
   }
 
   /** How an account signs in, the active one by default (KERNEL-523). The CLI's own login is a subscription one. */
   auth(provider: Provider, accountId = this.active(provider)): AccountAuth {
-    return accountId && this.load()[provider].accounts.find((a) => a.id === accountId)?.auth === 'apiKey' ? 'apiKey' : 'subscription'
+    return accountId && this.stored(provider, accountId)?.auth === 'apiKey' ? 'apiKey' : 'subscription'
   }
 
   /** An API key account's key, the active account's by default. Undefined for any other account, or a key Kernel can't read. */
@@ -219,32 +286,92 @@ export class Providers extends Feature {
     try { return this.o.cipher.decrypt(sealed) } catch { return undefined }
   }
 
-  /** An added Claude account has a token no session has refused. */
+  /** A legacy Claude token account has a token no session has refused. */
   private tokenSignedIn(id: string) { return !!this.tokens()[id] && !this.refused.has(id) }
 
   /** An API key account has a key no session has refused. */
   private keySignedIn(id: string) { return !!this.keys()[id] && !this.refused.has(id) }
 
   /**
-   * The Claude account sessions run on, when it is one Kernel added: its name and the plan the user picked, which the plan
-   * defaults follow (KERNEL-225). An API key account has no plan. Undefined for the CLI's own login, which Kernel reads from the CLI.
+   * The Claude account sessions run on, when it is one Kernel added, with the plan the defaults follow (KERNEL-225). An
+   * added login reads its email and plan from Claude Code, so the defaults follow an upgrade or a downgrade (KERNEL-567). A
+   * legacy token account has the plan the user picked, and an API key account none. Undefined for the CLI's own login,
+   * which Kernel reads from the CLI.
    */
-  claudeTokenAccount(): ReadAccount | undefined {
+  async addedClaudeAccount(): Promise<ReadAccount | undefined> {
     const id = this.active('claude')
-    const a = id ? this.load().claude.accounts.find((x) => x.id === id) : undefined
+    const a = id ? this.stored('claude', id) : undefined
     if (!a) return undefined
     if (a.auth === 'apiKey') return { signedIn: this.keySignedIn(a.id), name: a.label }
-    return { signedIn: this.tokenSignedIn(a.id), name: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(a.claudePlan ? { subscriptionType: a.claudePlan } : {}) }
+    if (!a.home) return { signedIn: this.tokenSignedIn(a.id), name: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(a.claudePlan ? { subscriptionType: a.claudePlan } : {}) }
+    const who = await this.readClaudeLogin(a)
+    const signedIn = who?.signedIn ?? (a.signedIn !== false && !this.moved(a))
+    return { signedIn, name: a.label, ...(a.email ? { email: a.email } : {}), ...(a.plan ? { plan: a.plan } : {}), ...(a.claudePlan ? { subscriptionType: a.claudePlan } : {}) }
   }
 
   /**
-   * A session on the provider's active added account was refused: its token or API key stays signed out until a new one
-   * replaces it, or the 10-second sign-in check would lift the hold at once. A Codex ChatGPT account's sign-in is Codex's own to read.
+   * Reads an added Claude login through Claude Code with its folder: its sign-in, email and plan, kept on the account
+   * (`noteLogin`). A folder that moved reads as signed out. Undefined when Claude Code didn't answer.
+   */
+  private async readClaudeLogin(a: StoredAccount): Promise<ClaudeLogin | undefined> {
+    const bin = this.binary('claude').path
+    if (!bin || !a.home) return undefined
+    let who: ClaudeLogin | undefined = { signedIn: false }
+    if (!this.moved(a)) {
+      this.readyClaudeHome(a.home)
+      who = await claudeStatus(bin, loginEnv(a.home))
+    }
+    if (who) await this.noteLogin('claude', a.id, who)
+    return who
+  }
+
+  /**
+   * What a read found about a login, `id` undefined for the CLI's own (KERNEL-567): an added one keeps its email and plan,
+   * and a name that was its email follows a new one. Each change is saved and tells every window, and a login going from
+   * signed in to signed out saves one Inbox notice, unless the user signed it out (`quiet`).
+   */
+  private async noteLogin(provider: Provider, id: string | undefined, who: { signedIn: boolean; email?: string; plan?: string; subscriptionType?: string }, o: { quiet?: boolean; push?: boolean } = {}) {
+    const file = this.load()
+    const a = id ? this.stored(provider, id) : undefined
+    if ((id && !a) || this.stopped) return
+    const rec: StoredCli | StoredAccount = a ?? (file[provider].cli ??= {})
+    const was = rec.signedIn
+    let changed = was !== who.signedIn
+    rec.signedIn = who.signedIn
+    if (who.signedIn && who.email && rec.email !== who.email && !a) { rec.email = who.email; changed = true }
+    let planChanged = false
+    if (who.signedIn && a) {
+      const tier = provider === 'claude' ? planOf(who.subscriptionType) : 'unknown'
+      const next = { email: who.email ?? a.email, plan: who.plan ?? a.plan, claudePlan: tier === 'unknown' ? a.claudePlan : tier }
+      const label = a.label === a.email && next.email ? next.email : a.label
+      planChanged = next.claudePlan !== a.claudePlan
+      if (next.email !== a.email || next.plan !== a.plan || planChanged || label !== a.label) { Object.assign(a, next, { label }); changed = true }
+    }
+    if (!changed) return
+    await this.save()
+    if (was === true && !who.signedIn && !o.quiet) {
+      const name = a?.label ?? file[provider].cli?.label ?? file[provider].cli?.email ?? OWN_LOGIN[provider]
+      // One a day at most: a session the server refuses while `auth status` still reads signed in goes round every 10 seconds.
+      const day = new Date().toISOString().slice(0, 10)
+      this.notifications.notice({ id: `n-signed-out-${provider}-${id ?? CLI_ACCOUNT}-${day}`, title: `${name} is signed out`, sub: 'Sign in again in Settings, Providers.', heading: `${name} is signed out`, body: `${name} is signed out. Sign in again in Settings, Providers.` })
+    }
+    // The plan defaults follow the plan of the account in use (KERNEL-225).
+    if (planChanged && provider === 'claude' && id === this.active('claude')) void this.k.account.accountChanged().catch(() => undefined)
+    if (o.push !== false) void this.pushAccounts()
+  }
+
+  /**
+   * A session on the provider's active added account was refused. An added login reads as signed out until a read of it
+   * says otherwise (KERNEL-567). A token or API key stays signed out until a new one replaces it, or the 10-second sign-in
+   * check would lift the hold at once.
    */
   credentialRefused(provider: Provider) {
     const id = this.active(provider)
-    if (!id || this.refused.has(id) || (provider === 'codex' && this.auth('codex', id) !== 'apiKey')) return
-    this.refused.add(id)
+    const a = id ? this.stored(provider, id) : undefined
+    if (!a) return
+    if (a.home || (provider === 'codex' && a.auth !== 'apiKey')) { void this.noteLogin(provider, a.id, { signedIn: false }); return }
+    if (this.refused.has(a.id)) return
+    this.refused.add(a.id)
     void this.pushAccounts()
   }
 
@@ -293,12 +420,15 @@ export class Providers extends Feature {
     for (const { id: provider } of PROVIDERS) {
       const bin = this.binary(provider).path
       const cli = bin ? await this.identity(provider, undefined, bin) : { signedIn: false }
-      const own = provider === 'claude' ? 'Claude Code’s own login' : 'Codex’s own login'
-      out.push({ id: CLI_ACCOUNT, provider, label: cli.email ?? own, email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn })
+      const saved = file[provider].cli
+      out.push({ id: CLI_ACCOUNT, provider, label: saved?.label ?? cli.email ?? saved?.email ?? OWN_LOGIN[provider], email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn })
       for (const a of file[provider].accounts) {
         const key = a.auth === 'apiKey'
-        const signedIn = key ? this.keySignedIn(a.id) : provider === 'claude' ? this.tokenSignedIn(a.id) : existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id, signedIn, ...(provider === 'claude' && !key ? { usageFromTurns: true } : {}) })
+        const legacy = provider === 'claude' && !key && !a.home
+        const signedIn = key ? this.keySignedIn(a.id) : legacy ? this.tokenSignedIn(a.id)
+          : provider === 'claude' ? a.signedIn !== false && !this.moved(a)
+            : a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
+        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id, signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}) })
       }
     }
     return out
@@ -312,50 +442,123 @@ export class Providers extends Feature {
 
   private step(add: AccountAddStep) { if (!this.stopped) bus.push({ type: 'account.add', add }) }
 
+  // ---------- usage (KERNEL-567)
+
   /**
-   * Add account (KERNEL-406). Codex signs in with ChatGPT in a new home of its own. Claude runs `claude setup-token` and
-   * keeps the token it prints, with the name and plan the user gave, which the token can't tell. The new account is added
-   * but not used until the user switches to it: switching is always a click.
+   * Each subscription account whose usage windows Kernel can read, for `Sessions.usage`. A live process on the account
+   * answers. With `probe`, an account without one gets a read of its own: a short Claude session in its folder, or Codex's
+   * account read in its home, which also checks its sign-in. With `check`, a Claude read checks the sign-in first and asks a
+   * signed-out account nothing. A legacy token account's usage comes from its turns and an API key account has none, so
+   * neither is read. `active` keeps only the accounts in use, and `provider` only that provider's.
    */
-  async add(provider: Provider, label?: string, plan?: Exclude<ClaudePlan, 'unknown'>): Promise<AccountProfile> {
+  usageReads(o: { probe?: boolean; check?: boolean; active?: boolean; provider?: Provider } = {}): UsageRead[] {
+    const file = this.load()
+    const out: UsageRead[] = []
+    for (const { id: provider } of PROVIDERS) {
+      if (o.provider && o.provider !== provider) continue
+      const added = file[provider].accounts.filter((a) => a.auth !== 'apiKey' && (provider === 'codex' || !!a.home)).map((a) => a.id)
+      for (const id of [undefined, ...added]) {
+        if (o.active && id !== this.active(provider)) continue
+        const read = o.probe ? (merge: (p: LimitPatch[]) => void) => this.tracked(id, provider === 'claude' ? this.readClaudeUsage(id, merge, !!o.check) : this.readCodexUsage(id, merge)) : undefined
+        out.push({ provider, ...(id ? { accountId: id } : {}), ...(read ? { read } : {}) })
+      }
+    }
+    return out
+  }
+
+  /**
+   * Reads every subscription account's usage windows and sign-in now (KERNEL-567): at launch and when the account menu or
+   * Settings, Providers opens (`usage.get`), every 10 minutes while agents work, and when the account in use nears or hits
+   * a limit (`Account.applyLimits`). An account read in the last minute isn't read again unless `force`, so a read that is
+   * already running isn't doubled.
+   */
+  async readUsage(o: { force?: boolean; provider?: Provider } = {}): Promise<RateLimit[]> {
+    if (this.stopped) return []
+    const now = Date.now()
+    const key = (r: UsageRead) => `${r.provider}:${r.accountId ?? CLI_ACCOUNT}`
+    const reads = this.usageReads({ probe: true, check: true, provider: o.provider }).filter((r) => o.force || now - (this.usageReadAt.get(key(r)) ?? 0) >= USAGE_FRESH_MS)
+    for (const r of reads) this.usageReadAt.set(key(r), now)
+    return this.sessions.usage(reads)
+  }
+
+  private tracked(id: string | undefined, read: Promise<void>): Promise<void> {
+    if (!id) return read
+    const running = this.reading.get(id) ?? new Set<Promise<void>>()
+    this.reading.set(id, running)
+    const p = read.finally(() => running.delete(p))
+    running.add(p)
+    return p
+  }
+
+  /** A Claude account's windows from a short session on it, `id` undefined for the CLI's own login. `check` reads its sign-in first. */
+  private async readClaudeUsage(id: string | undefined, merge: (p: LimitPatch[]) => void, check: boolean) {
+    const bin = this.binary('claude').path
+    const a = id ? this.stored('claude', id) : undefined
+    if (!bin || (id && !a)) return
+    if (check) {
+      const who = a ? await this.readClaudeLogin(a) : await claudeStatus(bin)
+      if (!a && who) await this.noteLogin('claude', undefined, who)
+      if (!who?.signedIn) return
+    }
+    await probeClaudeUsage(this.o.dataDir, merge, { env: id ? this.claudeEnv(id) : {}, bin: claudeExecutable(this.settings.providers?.claude) })
+  }
+
+  /** A Codex account's windows and sign-in from one account read in its home, `id` undefined for the CLI's own login. */
+  private async readCodexUsage(id: string | undefined, merge: (p: LimitPatch[]) => void) {
+    const bin = this.binary('codex').path
+    if (!bin || (id && !this.stored('codex', id))) return
+    const r = await readCodexAccount(bin, id ? this.codexHome(id) : undefined)
+    const chatgpt = r.account?.type === 'chatgpt' ? r.account : undefined
+    if (!r.failed) await this.noteLogin('codex', id, { signedIn: !!chatgpt, email: chatgpt?.email ?? undefined, plan: codexPlan(chatgpt?.planType) })
+    merge(codexLimits(r.limits?.rateLimits, id))
+  }
+
+  // ---------- adding, signing in and out
+
+  /**
+   * Add account. Claude runs `claude auth login` in a new folder of the account's own, and Codex signs in with ChatGPT in a
+   * new home of its own (KERNEL-406, KERNEL-567). Each reads its email and plan from the account, and its email names it until
+   * it is renamed. The new account is added but not used until the user switches to it: switching is always a click.
+   */
+  async add(provider: Provider): Promise<AccountProfile> {
     if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
-    if (provider === 'claude') return this.addClaude(label, plan)
     const id = randomUUID()
+    const profile = provider === 'claude' ? await this.addClaude(id) : await this.addCodex(id)
+    this.step({ provider, step: 'done', account: profile })
+    void this.pushAccounts()
+    // Its windows, so its row has them before it runs a turn.
+    void this.readUsage({ provider }).catch(() => undefined)
+    return profile
+  }
+
+  private async addCodex(id: string): Promise<AccountProfile> {
     const home = this.codexHome(id)!
     await this.linkCodexHome(home)
     try {
       const who = await this.codexSignIn(home)
-      const stored: StoredAccount = { id, label: label?.trim() || who.email || 'ChatGPT account', email: who.email, plan: who.plan, createdAt: Date.now() }
+      const stored: StoredAccount = { id, label: who.email || 'ChatGPT account', email: who.email, plan: who.plan, signedIn: true, createdAt: Date.now() }
       this.load().codex.accounts.push(stored)
       await this.save()
-      const profile: AccountProfile = { id, provider, label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
-      this.step({ provider, step: 'done', account: profile })
-      void this.pushAccounts()
-      return profile
+      return { id, provider: 'codex', label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
     } catch (e) {
       await rm(home, { recursive: true, force: true }).catch(() => undefined)
-      this.step({ provider, step: 'failed', error: (e as Error).message })
+      this.step({ provider: 'codex', step: 'failed', error: (e as Error).message })
       throw e
     }
   }
 
-  private async addClaude(label: string | undefined, plan: Exclude<ClaudePlan, 'unknown'> | undefined): Promise<AccountProfile> {
-    const name = label?.trim()
-    const tier = CLAUDE_PLANS.find((p) => p.id === plan)
-    if (!name) throw new Error('Give the account a name.')
-    if (!tier) throw new Error("Pick the account's plan.")
+  /** A full Claude login in the new account's folder. Never `claude setup-token` (KERNEL-567). */
+  private async addClaude(id: string): Promise<AccountProfile> {
+    const home = this.claudeHome(id)
     try {
-      const token = await this.claudeSignIn()
-      const id = randomUUID()
-      await this.saveToken(id, token)
-      const stored: StoredAccount = { id, label: name, plan: `Claude ${tier.label}`, claudePlan: tier.id, createdAt: Date.now() }
+      const who = await this.claudeLogin(home)
+      const tier = planOf(who.subscriptionType)
+      const stored: StoredAccount = { id, label: who.email ?? 'Claude account', email: who.email, plan: who.plan, ...(tier !== 'unknown' ? { claudePlan: tier } : {}), home, signedIn: true, createdAt: Date.now() }
       this.load().claude.accounts.push(stored)
       await this.save()
-      const profile: AccountProfile = { id, provider: 'claude', label: name, plan: stored.plan, cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true }
-      this.step({ provider: 'claude', step: 'done', account: profile })
-      void this.pushAccounts()
-      return profile
+      return { id, provider: 'claude', label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
     } catch (e) {
+      await removeClaudeHome(home).catch(() => undefined)
       this.step({ provider: 'claude', step: 'failed', error: (e as Error).message })
       throw e
     }
@@ -393,20 +596,25 @@ export class Providers extends Feature {
   }
 
   /**
-   * `claude setup-token` in a pty wide enough for its token (`captureClaudeToken`). The CLI opens its sign-in in the
-   * browser, and Kernel passes the link on in case it didn't. A code the page shows reaches the CLI through `accounts.code`.
-   * Resolves with the token. Never an API key: the session env drops those (D-018).
+   * `claude auth login` in a pty, in the account's folder `home` (KERNEL-560). The CLI opens its sign-in in the browser, and
+   * Kernel passes the link on in case it didn't, with the code field at once, since the CLI shows its prompt from the start.
+   * A code the page shows reaches the CLI through `accounts.code`. The folder is linked right after, before any session or
+   * probe makes real folders where the links go. Resolves with who signed in. Never an API key or a token from the Mac (D-018).
    */
-  private async claudeSignIn(): Promise<string> {
-    const env = sessionEnv(process.env, {})
-    delete env.CLAUDE_CODE_OAUTH_TOKEN
-    const capture = captureClaudeToken(this.mustBinary('claude'), {
-      env, cwd: this.home, timeoutMs: SIGN_IN_MS,
+  private async claudeLogin(home: string): Promise<ClaudeLogin> {
+    const bin = this.mustBinary('claude')
+    await mkdir(home, { recursive: true })
+    const run = loginClaude(bin, {
+      env: sessionEnv(process.env, { CLAUDE_CONFIG_DIR: home }), cwd: this.home, timeoutMs: SIGN_IN_MS,
       onLink: (url) => this.step({ provider: 'claude', step: 'browser', url }),
       onCode: () => this.step({ provider: 'claude', step: 'code' })
     })
-    this.adding.set('claude', { cancel: capture.cancel, code: capture.sendCode })
-    try { return await capture.token } finally { this.adding.delete('claude') }
+    this.adding.set('claude', { cancel: run.cancel, code: run.sendCode })
+    try { await run.done } finally { this.adding.delete('claude') }
+    this.readyClaudeHome(home)
+    const who = await claudeStatus(bin, loginEnv(home))
+    if (!who?.signedIn) throw new Error("Claude Code finished the sign-in, but Kernel couldn't read the account.")
+    return who
   }
 
   /** The code the sign-in page showed, for the CLI that asked for it. */
@@ -474,74 +682,145 @@ export class Providers extends Feature {
     return accounts
   }
 
-  /** Sign out: the CLI login signs the CLI out; an added account forgets its credential and stays listed, signed out. */
+  /**
+   * Sign out: the CLI login signs the CLI out. An added login signs out of its own folder or home only, so the CLI's own
+   * login stays signed in (KERNEL-567). A token or key account forgets its credential. Each stays listed, signed out.
+   */
   async signOut(provider: Provider, accountId: string): Promise<AccountProfile[]> {
-    if (accountId !== CLI_ACCOUNT && this.auth(provider, accountId) === 'apiKey') await this.saveKey(accountId, undefined)
+    const a = accountId === CLI_ACCOUNT ? undefined : this.stored(provider, accountId)
+    if (accountId !== CLI_ACCOUNT && !a) throw new Error('That account is no longer in Kernel.')
+    if (a?.auth === 'apiKey') await this.saveKey(a.id, undefined)
     else if (provider === 'claude') {
       const bin = this.mustBinary(provider)
-      if (accountId === CLI_ACCOUNT) await claudeSignOut(bin)
-      else await this.saveToken(accountId, undefined)
-    } else await withCodex(this.mustBinary(provider), accountId === CLI_ACCOUNT ? undefined : this.codexHome(accountId), (rpc) => rpc.request('account/logout'))
+      if (!a) await claudeSignOut(bin)
+      else if (a.home) await logoutClaude(bin, a.home)
+      else await this.saveToken(a.id, undefined)
+    } else await withCodex(this.mustBinary(provider), a ? this.codexHome(a.id) : undefined, (rpc) => rpc.request('account/logout'))
+    // The user signed it out, so no notice says so.
+    if (a?.auth !== 'apiKey' && (provider === 'codex' || !a || a.home)) await this.noteLogin(provider, a?.id, { signedIn: false }, { quiet: true, push: false })
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
     return accounts
   }
 
-  /** Removes an added account and its credential. The provider moves back to the CLI login when it was the active one. */
+  /**
+   * Removes an added account and its credential. The provider moves back to the CLI login when it was the active one. A
+   * Claude login signs out of its folder first, and of the path it signed in with when the data folder moved since, so no
+   * Keychain item is left behind. Its folder then goes without following a link into `~/.claude` (KERNEL-560).
+   */
   async remove(provider: Provider, accountId: string): Promise<AccountProfile[]> {
     if (accountId === CLI_ACCOUNT) throw new Error("The CLI's own login can't be removed. Sign out of it instead.")
     const file = this.load()
-    if (!file[provider].accounts.some((a) => a.id === accountId)) throw new Error('That account is no longer in Kernel.')
-    const key = this.auth(provider, accountId) === 'apiKey'
+    const a = this.stored(provider, accountId)
+    if (!a) throw new Error('That account is no longer in Kernel.')
+    const key = a.auth === 'apiKey'
     if (file[provider].active === accountId) await this.switchTo(provider, CLI_ACCOUNT)
-    file[provider].accounts = file[provider].accounts.filter((a) => a.id !== accountId)
+    file[provider].accounts = file[provider].accounts.filter((x) => x.id !== accountId)
     await this.save()
+    await Promise.allSettled([...(this.reading.get(accountId) ?? [])])
     if (key) await this.saveKey(accountId, undefined)
     else if (provider === 'claude') await this.saveToken(accountId, undefined)
+    if (provider === 'claude' && a.home) {
+      const bin = this.binary('claude').path
+      const home = this.claudeHome(accountId)
+      if (bin) for (const at of new Set([a.home, home])) await logoutClaude(bin, at).catch(() => undefined)
+      await removeClaudeHome(home)
+    }
     if (provider === 'codex') await rm(this.codexHome(accountId)!, { recursive: true, force: true })
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
     return accounts
   }
 
-  /** Run login: the provider's own sign-in for the active account. An API key account signs in again with a new key instead. */
-  async signIn(provider: Provider): Promise<ProviderStatus> {
-    if (this.auth(provider) === 'apiKey') throw new Error('This account runs on an API key. Add a new key to sign it in again.')
+  /**
+   * Rename: any account's nickname, the CLI's own login's included, kept in `accounts.json` (KERNEL-567). An empty one goes
+   * back to the account's email, or keeps the name it has when there is no email to go back to.
+   */
+  async rename(provider: Provider, accountId: string, label: string): Promise<AccountProfile[]> {
+    const name = label.trim()
+    const file = this.load()
+    if (accountId === CLI_ACCOUNT) {
+      const cli = (file[provider].cli ??= {})
+      if (name) cli.label = name
+      else delete cli.label
+    } else {
+      const a = this.stored(provider, accountId)
+      if (!a) throw new Error('That account is no longer in Kernel.')
+      a.label = name || a.email || a.label
+    }
+    await this.save()
+    // The account menu names an added Claude account in use by its nickname.
+    if (provider === 'claude' && accountId !== CLI_ACCOUNT && this.active('claude') === accountId) await this.k.account.accountChanged()
+    const accounts = await this.list()
+    if (!this.stopped) bus.push({ type: 'accounts', accounts })
+    return accounts
+  }
+
+  /**
+   * Run login, or Sign in again on an account's row: the provider's own sign-in for `accountId`, the active account by
+   * default. An added Claude account logs in fully in its folder, and a legacy token account moves to one that way
+   * (KERNEL-567). An API key account signs in again with a new key instead.
+   */
+  async signIn(provider: Provider, accountId?: string): Promise<ProviderStatus> {
+    const id = accountId === undefined ? this.active(provider) : accountId === CLI_ACCOUNT ? undefined : accountId
+    if (id && !this.stored(provider, id)) throw new Error('That account is no longer in Kernel.')
+    if (id && this.auth(provider, id) === 'apiKey') throw new Error('This account runs on an API key. Add a new key to sign it in again.')
+    if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
     if (provider === 'codex') {
-      const id = this.active('codex')
       if (id) await this.linkCodexHome(this.codexHome(id)!)
-      await this.codexSignIn(this.codexHome(id))
+      const who = await this.codexSignIn(id ? this.codexHome(id) : undefined)
+      await this.noteLogin('codex', id, { signedIn: true, ...who }, { push: false })
       this.step({ provider, step: 'done' })
-    } else if (this.active('claude')) {
-      // An added account signs in again with a new token from `claude setup-token`, in place of the old one.
-      const id = this.active('claude')!
-      try {
-        await this.saveToken(id, await this.claudeSignIn())
-        this.step({ provider, step: 'done' })
-      } catch (e) {
-        this.step({ provider, step: 'failed', error: (e as Error).message })
-        throw e
-      }
-      await this.k.account.accountChanged()
-    } else await exec(this.mustBinary('claude'), ['auth', 'login'], { timeoutMs: 5 * 60_000 })
+    } else if (id) await this.signInClaude(id)
+    else await exec(this.mustBinary('claude'), ['auth', 'login'], { timeoutMs: 5 * 60_000 })
     void this.pushAccounts()
     return this.status(provider)
+  }
+
+  /**
+   * Sign in again for an added Claude account: a full login in its folder (KERNEL-567). A legacy token account moves over
+   * this way and keeps its id and nickname, and then its token goes. A folder that moved with the data folder signs in at
+   * the new path, and the old path's Keychain item goes (KERNEL-560).
+   */
+  private async signInClaude(id: string) {
+    const home = this.claudeHome(id)
+    let who: ClaudeLogin
+    try { who = await this.claudeLogin(home) } catch (e) {
+      this.step({ provider: 'claude', step: 'failed', error: (e as Error).message })
+      throw e
+    }
+    const a = this.stored('claude', id)
+    if (!a) throw new Error('That account is no longer in Kernel.')
+    const old = a.home
+    a.home = home
+    await this.noteLogin('claude', id, who, { push: false })
+    await this.save()
+    await this.saveToken(id, undefined)
+    const bin = this.binary('claude').path
+    if (bin && old && old !== home) void logoutClaude(bin, old).catch(() => undefined)
+    this.step({ provider: 'claude', step: 'done' })
+    if (this.active('claude') === id) {
+      // Idle processes on the old token end, so the next turn runs on the login.
+      this.sessions.restartProvider('claude')
+      await this.k.account.accountChanged()
+    }
   }
 
   handlers() {
     return {
       'providers.status': async ({ provider }) => this.status(provider),
       'providers.setPath': async ({ provider, path, useSystem }) => this.setPath(provider, { path, useSystem }),
-      'providers.signIn': async ({ provider }) => this.signIn(provider),
+      'providers.signIn': async ({ provider, accountId }) => this.signIn(provider, accountId),
       'providers.openConfig': async ({ provider }) => { await this.o.openFile?.(this.configFile(provider)); return { ok: true as const } },
       'accounts.list': async () => this.list(),
-      'accounts.add': async ({ provider, label, plan }) => this.add(provider, label, plan),
+      'accounts.add': async ({ provider }) => this.add(provider),
       'accounts.addKey': async (req) => this.addKey(req.provider, req),
       'accounts.code': async ({ provider, code }) => { this.sendCode(provider, code); return { ok: true as const } },
       'accounts.cancelAdd': async ({ provider }) => { this.cancelAdd(provider); return { ok: true as const } },
       'accounts.switch': async ({ provider, accountId }) => this.switchTo(provider, accountId),
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
+      'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
       'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }

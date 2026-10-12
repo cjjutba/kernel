@@ -53,7 +53,7 @@ export interface ClaudeStart {
   prompt: string
   /** The workspace's variables, before `sessionEnv` takes the API keys out. */
   env: Record<string, string>
-  /** The active account's credential (`Providers.claudeEnv`), which `sessionEnv` adds after that (KERNEL-523). */
+  /** The active account's folder or credential (`Providers.claudeEnv`), which `sessionEnv` adds after that (KERNEL-523, KERNEL-567). */
   credential?: Record<string, string>
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
@@ -459,12 +459,15 @@ export async function readUsage(q: Query, merge: (p: LimitPatch[]) => void) {
   try { merge(limitsFromUsage(await withTimeout(ask.call(q, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
 }
 
-/** Claude Code started with no prompt, no settings and no transcript, asked for usage and stopped. It sends no message, so it uses none of the plan. */
-export async function probeClaudeUsage(cwd: string, merge: (p: LimitPatch[]) => void) {
+/**
+ * Claude Code started with no prompt, no settings and no transcript, asked for usage and stopped. It sends no message, so it
+ * uses none of the plan. `env` is the account's (`Providers.claudeEnv`), so an added account reads its own (KERNEL-567).
+ */
+export async function probeClaudeUsage(cwd: string, merge: (p: LimitPatch[]) => void, o: { env?: Record<string, string>; bin?: string } = {}) {
   const input = new InputQueue<SDKUserMessage>()
   const abort = new AbortController()
   try {
-    const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
+    const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, o.env ?? {}), pathToClaudeCodeExecutable: o.bin ?? packagedClaude() } })
     await readUsage(q, merge)
   } catch { /* keep rate_limit_event data */ } finally {
     input.close()
@@ -537,14 +540,14 @@ export function askReason(o: { decisionReason?: string; blockedPath?: string; de
 }
 
 /**
- * Claude Code's own slash commands without a live session: Claude Code starts with no prompt, no settings and no transcript,
- * lists them and stops, which sends no message.
+ * Claude Code's own slash commands without a live session: Claude Code starts on the active account with no prompt, no
+ * settings and no transcript, lists them and stops, which sends no message.
  */
-export async function claudeCommands(cwd: string): Promise<BuiltinCommand[]> {
+export async function claudeCommands(cwd: string, o: { env?: Record<string, string>; bin?: string } = {}): Promise<BuiltinCommand[]> {
   const input = new InputQueue<SDKUserMessage>()
   const abort = new AbortController()
   try {
-    const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
+    const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, o.env ?? {}), pathToClaudeCodeExecutable: o.bin ?? packagedClaude() } })
     return builtinCommands(await withTimeout(q.supportedCommands(), 15_000))
   } finally {
     input.close()
@@ -846,15 +849,15 @@ const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 
 
 /**
  * Sessions bill the account the user picked (D-018, KERNEL-523). An API key or auth token in `base`, from the Mac or the
- * workspace, would bill the API instead, so it goes. `account` is the active account's credential (`Providers.claudeEnv`):
- * nothing for the CLI's own login, a `setup-token` token, or an API key account's key. A key also drops any OAuth token,
- * so the key is what pays.
+ * workspace, would bill the API instead, so it goes. `account` is the active account's (`Providers.claudeEnv`): nothing for
+ * the CLI's own login, an added login's folder as CLAUDE_CONFIG_DIR (KERNEL-567), a legacy `setup-token` token, or an API
+ * key account's key. A folder or a key also drops any OAuth token from `base`, so the account picked is what pays.
  */
 export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
   const env = { ...base } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
-  if (account.ANTHROPIC_API_KEY) delete env.CLAUDE_CODE_OAUTH_TOKEN
+  if (account.ANTHROPIC_API_KEY || account.CLAUDE_CONFIG_DIR) delete env.CLAUDE_CODE_OAUTH_TOKEN
   Object.assign(env, account)
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'

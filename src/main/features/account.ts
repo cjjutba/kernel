@@ -1,4 +1,4 @@
-import type { ClaudeAccount, Provider, RateLimit } from '@shared/types'
+import { PROVIDERS, type ClaudeAccount, type Provider, type RateLimit } from '@shared/types'
 import { nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -21,6 +21,9 @@ const LIMIT_NAME: Record<RateLimit['type'], string> = {
 /** The reason a signed-out Codex holds its chats by. Claude's is 'auth', as it always was. */
 const CODEX_AUTH = 'codex-auth'
 
+/** How often every account's usage is read while any agent works (KERNEL-567). */
+const USAGE_EVERY_MS = 10 * 60_000
+
 /** The Claude account, the connection, and the usage limits that pause the rooms (KERNEL-325). */
 export class Account extends Feature {
   network?: NetworkMonitor
@@ -39,18 +42,25 @@ export class Account extends Feature {
   private authTimer?: NodeJS.Timeout
   /** While Codex is signed out, the check every 10 seconds that lifts the hold once it is signed in again (KERNEL-406). */
   private codexAuthTimer?: NodeJS.Timeout
+  /** Reads every account's usage every USAGE_EVERY_MS while any agent works (KERNEL-567). */
+  private usageTimer?: NodeJS.Timeout
+  /** Providers whose account in use is near or at a limit, so only crossing into it reads the other accounts. */
+  private tight = new Set<Provider>()
 
   start() {
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
       this.network.start()
     }
+    this.usageTimer = setInterval(() => { if (this.sessions.runningIds().length) void this.k.providers.readUsage().catch(() => undefined) }, USAGE_EVERY_MS)
+    this.usageTimer.unref?.()
   }
 
   stop() {
     this.network?.stop()
     clearInterval(this.authTimer)
     clearInterval(this.codexAuthTimer)
+    clearInterval(this.usageTimer)
     for (const t of this.limitTimers.values()) clearTimeout(t.timer)
     this.limitTimers.clear()
     clearInterval(this.limitCheck)
@@ -103,10 +113,11 @@ export class Account extends Feature {
 
   /**
    * Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. An account Kernel
-   * added is what the user said when adding it, since its token can't say (KERNEL-406). The CLI's own login is read from the CLI.
+   * added reads its email and plan from its own login, so the defaults follow its real plan (KERNEL-567). A legacy token
+   * account is what the user said when adding it (KERNEL-406). The CLI's own login is read from the CLI.
    */
   async readAccount(): Promise<ClaudeAccount> {
-    const { subscriptionType, ...account } = this.k.providers.claudeTokenAccount() ?? await this.k.accountReader()
+    const { subscriptionType, ...account } = (await this.k.providers.addedClaudeAccount()) ?? await this.k.accountReader()
     if (!account.signedIn) return account
     this.account = account
     // The defaults follow the plan, so a new plan, or the first read of it, changes what the user never set (KERNEL-225). An
@@ -175,10 +186,26 @@ export class Account extends Feature {
       this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
     }
     this.warnWeekly(limits, now)
+    this.readOthersWhenTight(limits, now)
     // Utilization of a window that holds teammates stays fresh while it holds, so a drop sends what waited.
     const watching = limits.some((l) => l.status === 'rejected') || (holding && !!nearLimit(limits, now))
     if (watching && !this.limitCheck) { this.limitCheck = setInterval(() => void this.checkLimits(), LIMIT_RECHECK_MS); this.limitCheck.unref?.() }
     if (!watching && this.limitCheck) { clearInterval(this.limitCheck); this.limitCheck = undefined }
+  }
+
+  /**
+   * The account in use nearing or hitting a limit reads every account of its provider at once, so a switch has current
+   * numbers to go by (KERNEL-567). Once per crossing, and only when the provider has another account to read. Holds and
+   * pauses still go by the account in use alone.
+   */
+  private readOthersWhenTight(limits: RateLimit[], now: number) {
+    for (const { id: p } of PROVIDERS) {
+      const mine = limits.filter((l) => limitProvider(l) === p && l.accountId === this.k.providers.active(p))
+      const tight = !!blockingLimit(mine, now) || !!nearLimit(mine, now)
+      if (tight && !this.tight.has(p) && this.k.providers.usageReads({ provider: p }).length > 1) void this.k.providers.readUsage({ provider: p, force: true }).catch(() => undefined)
+      if (tight) this.tight.add(p)
+      else this.tight.delete(p)
+    }
   }
 
   /** Settings, Account: "Pause new work when close to the limit" is on, so a window close to its limit holds teammates. */
@@ -226,8 +253,9 @@ export class Account extends Feature {
   checkLimits(): Promise<void> {
     this.limitChecking ??= (async () => {
       for (const [key, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(key)
+      // The accounts in use. Claude's gets a short session of its own while a limit pauses the rooms and none is live.
       const paused = this.store.rooms().some((r) => r.pausedBy === 'limit')
-      await this.sessions.usage({ probeIn: paused ? this.o.dataDir : undefined })
+      await this.sessions.usage([...this.k.providers.usageReads({ active: true, provider: 'claude', probe: paused }), ...this.k.providers.usageReads({ active: true, provider: 'codex' })])
     })().catch(() => undefined).finally(() => { this.limitChecking = undefined })
     return this.limitChecking
   }
@@ -244,7 +272,7 @@ export class Account extends Feature {
       },
       'account.signIn': async () => this.signIn(),
       'app.checkOnline': async () => ({ online: this.network ? await this.network.check() : true }),
-      'usage.get': async () => this.sessions.usage()
+      'usage.get': async () => this.k.providers.readUsage()
     } satisfies Partial<Handlers>
   }
 }

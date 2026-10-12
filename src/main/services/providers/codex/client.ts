@@ -70,15 +70,18 @@ export async function withCodex<T>(bin: string, home: string | undefined, fn: (r
   }
 }
 
-/** The ChatGPT account a Codex home is signed in to, with its rate limits. Never throws: a failed read is signed out. */
-export async function readCodexAccount(bin: string, home: string | undefined): Promise<{ account: GetAccountResponse['account']; limits?: GetAccountRateLimitsResponse }> {
+/**
+ * The ChatGPT account a Codex home is signed in to, with its rate limits. Never throws: a failed read is signed out, with
+ * `failed` set, so sign-in health can tell it from Codex saying so (KERNEL-567).
+ */
+export async function readCodexAccount(bin: string, home: string | undefined): Promise<{ account: GetAccountResponse['account']; limits?: GetAccountRateLimitsResponse; failed?: boolean }> {
   try {
     return await withCodex(bin, home, async (rpc) => {
       const { account } = await rpc.request<GetAccountResponse>('account/read', { refreshToken: false })
       const limits = account ? await rpc.request<GetAccountRateLimitsResponse>('account/rateLimits/read').catch(() => undefined) : undefined
       return { account, limits }
     })
-  } catch { return { account: null } }
+  } catch { return { account: null, failed: true } }
 }
 
 /** Codex's models with their efforts, from `model/list`, hidden ones left out. `apiKey` is a key account's. */
