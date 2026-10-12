@@ -15,7 +15,7 @@ const links = [
 
 export function SiteNav({ current }: { current?: '/changelog' }) {
   return (
-    <header className="relative z-5 border-b border-white/6 bg-canvas/72 backdrop-blur-nav">
+    <header className="sticky top-0 z-5 border-b border-white/6 bg-canvas/72 backdrop-blur-nav">
       <div className="mx-auto flex h-16 max-w-312 items-center gap-2 px-6">
         <Link href="/" className="inline-flex items-center">
           <Wordmark />
