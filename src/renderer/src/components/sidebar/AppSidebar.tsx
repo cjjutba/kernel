@@ -171,7 +171,8 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, run] = useBusy()
   const local = useLocalMerge(ws)
-  const g = workspaceGlyph(ws, { waiting, running, local })
+  const pending = useStore((s) => s.prPending[ws.id])
+  const g = workspaceGlyph(ws, { waiting, running, local, pending })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>

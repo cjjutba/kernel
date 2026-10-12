@@ -2,7 +2,7 @@ import type { AgentStatus, Approval, Workspace } from '@shared/types'
 import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
-import { localStatus, PR_STATUS, type LocalStand, type PrTone } from '../../screens/workspace/pr/model'
+import { busyLabel, localStatus, PR_STATUS, type LocalStand, type PrAction, type PrTone } from '../../screens/workspace/pr/model'
 
 /**
  * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
@@ -41,8 +41,12 @@ const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'T
  */
 const TONE: Record<PrTone, GlyphTone> = { idle: 'muted', ready: 'add', fail: 'del', merged: 'merged' }
 
-/** `local` is set for a branch that merges on the Mac, with where it stands and the branch it merges into (KERNEL-478). */
-export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean; local?: { stand: LocalStand; base: string } }): WorkspaceGlyph {
+/**
+ * `local` is set for a branch that merges on the Mac, with where it stands and the branch it merges into (KERNEL-478). `pending` is
+ * the PR action main runs on the workspace, from whichever button or tool started it: the icon spins in its word, as the PR band
+ * does, until the action ends (KERNEL-520).
+ */
+export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean; local?: { stand: LocalStand; base: string }; pending?: PrAction }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
   // Nothing can run in a worktree deleted outside Kernel (KERNEL-291).
   if (ws.folderGone) return FOLDER_GONE
@@ -50,6 +54,8 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
+  // A merged PR is done, though its pending clears a moment later.
+  if (o.pending && ws.prState !== 'merged') return spin(busyLabel[o.pending])
   // A branch on the Mac takes the branch glyph in the band's tone, never the PR's. What runs and a merged branch read as a PR does (KERNEL-478).
   if (o.local && ['none', 'ready', 'behind', 'dirty', 'conflict'].includes(o.local.stand)) {
     const status = localStatus(o.local.stand, o.local.base, !!ws.stat?.files)

@@ -46,12 +46,14 @@ export function stoppedText(r: MergeAllResult): string | null {
 /**
  * Merge all on the Ready to merge heading, with two or more PRs that can merge. While it runs, the button says which PR of how
  * many is merging, from the run's `pr.queue` pushes. The row merging spins as every place showing it does (KERNEL-417), and the
- * rows still to come say Next. Where a run stopped comes back on the last push, so the tab shows it from the store.
+ * rows still to come say Next. Where a run stopped comes back on the last push, so the tab shows it from the store. A PR with an
+ * action pending, such as a Merge pressed in a Team update a moment ago, is left out of what it sends (KERNEL-520).
  */
 function MergeAll({ roomId, rows }: { roomId: string; rows: LeadPr[] }) {
   const queue = useStore((s) => s.mergeQueues[roomId])
+  const pending = useStore((s) => s.prPending)
   const [busy, run] = useBusy()
-  const ids = rows.filter((r) => r.ws.prState !== 'merging').map((r) => r.ws.id)
+  const ids = rows.filter((r) => r.ws.prState !== 'merging' && !pending[r.ws.id]).map((r) => r.ws.id)
   if (!queue && !busy && ids.length < 2) return null
   const label = queue ? `Merging ${queue.ids.indexOf(queue.current ?? '') + 1} of ${queue.ids.length}` : 'Merging'
   const start = () => void run('all', async () => {

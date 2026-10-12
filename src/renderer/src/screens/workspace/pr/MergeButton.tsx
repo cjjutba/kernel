@@ -6,7 +6,7 @@ import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
-import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrStatus, type Rules } from './model'
+import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrAction, type PrStatus, type Rules } from './model'
 import { request } from './PrHeader'
 import './pr.css'
 
@@ -20,11 +20,12 @@ export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'override
 
 /**
  * Decides from the same rule as the header's Merge PR (`mergeBlock`, KERNEL-349). A PR a Merge all run will get to reads
- * Next until its turn (`queue`, KERNEL-411).
+ * Next until its turn (`queue`, KERNEL-411). A merge pending on the PR reads merging before GitHub's state moves, whoever
+ * pressed it, so a row never offers Merge while one runs, such as the PR Merge all is on (`pending`, KERNEL-520).
  */
-export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name?: (agentId: string) => string, queue?: MergeQueue): MergeView {
+export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name?: (agentId: string) => string, queue?: MergeQueue, pending?: PrAction): MergeView {
   if (ws.prState === 'merged') return { kind: 'merged' }
-  if (ws.prState === 'merging') return { kind: 'merging' }
+  if (ws.prState === 'merging' || pending === 'merge') return { kind: 'merging' }
   if (queue && queue.current !== ws.id && queue.ids.indexOf(ws.id) > queue.ids.indexOf(queue.current ?? '')) return { kind: 'next' }
   const status = prStatus(ws.prState)
   if (status) return ws.prNumber ? { kind: 'state', ...status } : { kind: 'none' }
@@ -41,14 +42,16 @@ const firstSentence = (reason: string) => reason.split(/(?<=\.)\s/)[0]
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
  * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. It reads the rules, the PR and the reviewer's name itself, so a
- * caller knows nothing about when a PR may merge. The click spins the pressed button until the PR reads merging, and from then
- * on every place showing the PR spins (KERNEL-417). Merge anyway asks first, in a confirm of its own (KERNEL-501).
+ * caller knows nothing about when a PR may merge. The click spins the pressed button at once. Main then announces the merge
+ * (`prPending`), which spins every place showing the PR in the same frame, and the PR reading merging keeps them spinning
+ * (KERNEL-417, KERNEL-520). Merge anyway asks first, in a confirm of its own (KERNEL-501).
  */
 export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
   const reviewer = useStore((s) => s.agents[ws.roomId])
   const queue = useStore((s) => s.mergeQueues[ws.roomId])
+  const pending = useStore((s) => s.prPending[ws.id])
   const [busy, run] = useBusy()
   const [confirm, setConfirm] = useState<{ reviewer: string; count: number } | null>(null)
   // The rule reads the PR's checks or head commit from GitHub. Until they arrive there is nothing true to say.
@@ -63,7 +66,7 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   }, [needsPr, ws.id])
   if (needsPr && !read) return null
 
-  const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, queue)
+  const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, queue, pending)
   const merge = () => (view.kind === 'override' ? setConfirm({ reviewer: view.reviewer, count: view.count }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
   return (
     <>
@@ -80,7 +83,8 @@ export async function mergeAndToast(workspaceId: string) {
 
 /**
  * What `MergeButton` draws for a view. `busy` is the label while this button's own merge call runs, such as "Merging". A PR
- * that reads merging spins in every place it shows, whoever started the merge: a button, Rowan or Merge all (KERNEL-417).
+ * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button, Rowan or
+ * Merge all (KERNEL-417, KERNEL-520).
  */
 export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
   switch (view.kind) {
