@@ -595,7 +595,7 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
   const rows = [
     { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('pr.opened', 'Opened PR #162'), ev('pr.merged', 'Merged automatically'), ev('pr.review', 'Reviews approved, checks passed, 84 lines')]), prNumber: 162,
       reply: 'Merged without asking you. Every review passed, checks were green and the change was 84 lines, under your 200 line limit.' },
-    { ...row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed'), ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
+    { ...row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('pr.ready', 'Checks passed'), ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
     { ...row('ws-176', 'ivy', 'Ivy', 'Rowan asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
       reply: 'Your usage is at 91% of the 5-hour limit, so Kernel left out the optional UX review.' }
   ]

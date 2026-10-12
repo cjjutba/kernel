@@ -80,6 +80,8 @@ describe('reading an update from before KERNEL-117', () => {
     expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
     // GitHub lifting its block reads like the PR being ready; a block takes the grey of anything else (KERNEL-401).
     expect([tone('pr.unblocked'), tone('pr.blocked'), tone('pr.blocked', '', true)]).toEqual(['add', 'muted', 'ink2'])
+    // A ready PR its review holds back says its checks passed, in grey beside the review's red (KERNEL-608).
+    expect([tone('pr.ready', 'Ready to merge'), tone('pr.ready', 'Checks passed'), tone('pr.ready', 'Checks passed', true)]).toEqual(['add', 'muted', 'muted'])
   })
 })
 

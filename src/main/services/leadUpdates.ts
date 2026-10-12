@@ -199,11 +199,14 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
   }
 }
 
-/** The event in a few words, for the card. A ready PR's review is a segment of its own (`reviewCard`). */
-function cardText(e: TeamEvent): string {
+/**
+ * The event in a few words, for the card. A ready PR's review is a segment of its own (`reviewCard`). `held`: the review holds
+ * the ready PR back (`reviewHolds`), so it reads as what it is, a PR whose checks passed (KERNEL-608).
+ */
+function cardText(e: TeamEvent, held = false): string {
   switch (e.kind) {
     case 'pr.opened': return e.pr ? `Opened PR #${e.pr}` : 'Opened a pull request'
-    case 'pr.ready': return 'Ready to merge'
+    case 'pr.ready': return held ? 'Checks passed' : 'Ready to merge'
     // Only the card has it, after a ready PR: Kernel never records one as an event.
     case 'pr.review': return ''
     case 'pr.cifail': return 'Checks failed'
@@ -278,7 +281,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
  * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
  * off. `shares` are its shared files, which the card draws apart from `events`.
  */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card: string[]; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card: string[]; held: boolean; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: From; owner?: string }
@@ -314,6 +317,12 @@ export interface ReviewState {
    */
   stillBlocked?: { rounds: number; kinds: ReviewKind[] }
 }
+
+/**
+ * The review holds a ready PR back: blockers on its head commit, read kind by kind as the merge rule reads them, or blockers
+ * left after the last review round Kernel runs (KERNEL-608).
+ */
+const reviewHolds = (review: ReviewState | undefined): boolean => !!review && (review.blockers || !!review.stillBlocked)
 
 /** Every review that looked at the PR approved its latest commit, and none is still to report. */
 const allApproved = (review: ReviewState | undefined): boolean => !!review?.approved.length && !review.waiting.length && !review.blockers && !review.inProgress
@@ -722,7 +731,7 @@ export class LeadUpdates {
         const review = kept.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? this.d.reviewState?.(ws) : undefined
         const reviewer = this.d.reviewer?.(ws.roomId)
         const block: Block = {
-          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdicts.length ? summaries(verdicts) : turn?.reply, summary: verdicts.length > 0, status: reviewStatus(review), card: reviewCard(review),
+          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdicts.length ? summaries(verdicts) : turn?.reply, summary: verdicts.length > 0, status: reviewStatus(review), card: reviewCard(review), held: reviewHolds(review),
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
         }
         if (source.owner) {
@@ -767,7 +776,7 @@ export class LeadUpdates {
         ...(prNumber ? { prNumber } : {}),
         // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411).
         events: b.events.flatMap((e) => [
-          { kind: e.kind, text: cardText(e), actionable: b.wake.has(e) },
+          { kind: e.kind, text: cardText(e, b.held), actionable: b.wake.has(e) },
           ...(e.kind === 'pr.ready' || e.kind === 'pr.unblocked' ? b.card.map((text) => ({ kind: 'pr.review' as const, text, actionable: false })) : []),
           // Why auto-merge allowed it, grey after "Merged automatically" (KERNEL-556).
           ...(e.auto ? [{ kind: 'pr.review' as const, text: e.auto.card, actionable: false }] : []),

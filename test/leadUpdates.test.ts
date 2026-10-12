@@ -589,6 +589,25 @@ describe('review rounds in Team updates (KERNEL-552)', () => {
   })
 })
 
+describe('a ready PR its review holds back (KERNEL-608)', () => {
+  it('says its checks passed, not that it is ready to merge, while blockers stand on its head or the review rounds ran out', async () => {
+    const { u, s, pr, store, nc } = await setup()
+    const card = async (review: ReviewState) => {
+      s.review = review
+      pr('w1', 'checks'); pr('w1', 'ready')
+      u.turnDone(store.workspace('w1')!, nc, done)
+      await wait()
+      return s.updates.at(-1)!.rows[0].events.filter((e) => e.kind === 'pr.ready' || e.kind === 'pr.review').map((e) => e.text)
+    }
+    expect(await card(rs({ blockers: true, blocking: ['ux'] }))).toEqual(['Checks passed', 'UX found blockers'])
+    // A commit after the last round, which Kernel didn't review (KERNEL-558).
+    expect(await card(rs({ stale: true, waiting: ['ux'], stillBlocked: { rounds: 3, kinds: ['ux'] } }))).toEqual(['Checks passed', 'Still blocked after 3 review rounds'])
+    expect(await card(rs({ blockers: true, blocking: ['ux'], stillBlocked: { rounds: 3, kinds: ['ux'] } }))).toEqual(['Checks passed', 'UX found blockers', 'Still blocked after 3 review rounds'])
+    expect(await card(rs({ approved: ['code', 'ux'] }))).toEqual(['Ready to merge', 'Code and UX approved'])
+    expect(s.updates).toHaveLength(4)
+  })
+})
+
 describe('waiting updates (KERNEL-121)', () => {
   it('keeps a block that needs the Lead over newer ones that do not, when it has to leave some out', async () => {
     const { store, u, s, pr, ws, chat } = await setup()

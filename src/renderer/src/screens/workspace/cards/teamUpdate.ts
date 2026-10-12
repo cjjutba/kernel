@@ -90,7 +90,8 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
     case 'error': case 'crash': case 'setup.failed': case 'pr.cifail': case 'pr.changes': case 'pr.conflict': return 'del'
     case 'pr.merged': return 'merged'
     // GitHub no longer blocking a ready PR reads like the PR being ready (KERNEL-401). A block takes the default below.
-    case 'pr.ready': case 'pr.unblocked': return 'add'
+    // A ready PR its review holds back says "Checks passed" in grey, beside the review's red (KERNEL-608).
+    case 'pr.ready': case 'pr.unblocked': return e.text === 'Checks passed' ? 'muted' : 'add'
     // "Approved PR #7", or with the kind of review in front since KERNEL-549: "Code review approved PR #7". Blockers are red.
     case 'review': return /^(?:\S+ review )?approved\b/i.test(e.text) ? 'add' : 'del'
     // A ready PR's review in the PRs tab's colors: an approval green, blockers red, the rest grey (KERNEL-411). Still blocked after the review rounds is red too (KERNEL-557).

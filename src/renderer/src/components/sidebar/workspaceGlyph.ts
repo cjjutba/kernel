@@ -1,8 +1,9 @@
 import type { AgentStatus, Approval, Workspace } from '@shared/types'
+import { headBlockers, kindStates } from '@shared/merge'
 import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
-import { busyLabel, localStatus, PR_STATUS, type LocalStand, type PrAction, type PrTone } from '../../screens/workspace/pr/model'
+import { BLOCKERS_STATUS, busyLabel, localStatus, PR_STATUS, type LocalStand, type PrAction, type PrTone } from '../../screens/workspace/pr/model'
 
 /**
  * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
@@ -35,6 +36,17 @@ const FOLDER_GONE: WorkspaceGlyph = { icon: 'warning', tone: 'del', label: 'Fold
 /** A workspace held in `trust` waits on you as much as an approval does, until you trust the room's scripts (KERNEL-209, KERNEL-342). */
 const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'Trust scripts' }
 
+const PR_OPEN: WorkspaceGlyph = { icon: 'pr', tone: 'add', label: 'PR open' }
+
+/**
+ * The PR's last review round was the last one Kernel runs, and it left blockers on that round's head, so Kernel reviews the PR
+ * no more by itself (KERNEL-552). The same reading as the Team update's "Still blocked after 3 review rounds" (KERNEL-608).
+ */
+const roundsRanOut = (ws: Workspace): boolean => {
+  const r = ws.reviewRound
+  return !!r && r.prNumber === ws.prNumber && r.n >= r.rounds && kindStates({ ...ws, prHead: r.head }).blocking.length > 0
+}
+
 /**
  * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, something that needs you, or scripts to trust), then what is running, then the pull request.
  * Every input is a real signal: a pending approval, the workspace's status, a running chat, the PR state from GitHub.
@@ -64,9 +76,12 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   switch (ws.prState) {
     // What runs spins, and every state says the word the PR band, the PRs tab and a Team update row say (KERNEL-417).
     case 'creating': case 'checks': case 'resolving': case 'merging': return spin(PR_STATUS[ws.prState].label)
-    // A ready PR GitHub won't merge yet reads open, as the header does (KERNEL-401).
-    case 'ready': return ws.prBlocked ? { icon: 'pr', tone: 'add', label: 'PR open' } : { icon: 'pr', tone: 'add', label: 'Ready to merge' }
-    case 'open': return { icon: 'pr', tone: 'add', label: 'PR open' }
+    // A ready PR GitHub won't merge yet reads open, as the header does (KERNEL-401). Blockers on the head commit hold it as
+    // they hold the header and the PRs tab, and a PR still blocked after the last review round isn't ready either (KERNEL-608).
+    case 'ready': case 'open':
+      if (ws.prBlocked) return PR_OPEN
+      if (headBlockers(ws)) return { icon: 'pr', tone: 'del', label: BLOCKERS_STATUS.label }
+      return ws.prState === 'ready' && !roundsRanOut(ws) ? { icon: 'pr', tone: 'add', label: 'Ready to merge' } : PR_OPEN
     case 'conflict': case 'cifail': case 'changes': return { icon: 'pr', tone: 'del', label: PR_STATUS[ws.prState].label }
     case 'draft': return { icon: 'prDraft', tone: 'muted', label: PR_STATUS.draft.label }
     case 'merged': return { icon: 'merged', tone: 'merged', label: 'Merged' }
