@@ -654,7 +654,7 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
   const asks = [
     { tool: 'ask_user', args: { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, kind: 'question', reply: 'No answer yet.' },
     { tool: 'request_plan_approval', args: { title: 'Raise the workspace limit', plan: '## Plan\nRaise it to 8.', steps: ['Raise the limit · Kai'] }, kind: 'plan', reply: 'No answer yet. Wait and ask again later.' },
-    { tool: 'hire_agent', args: { id: 'qa', description: 'Tests releases.', prompt: 'You are QA.' }, kind: 'agent', reply: 'The user did not approve this agent.' }
+    { tool: 'create_agent', args: { id: 'qa', description: 'Tests releases.', prompt: 'You are QA.' }, kind: 'agent', reply: 'The user did not approve this agent.' }
   ] as const
 
   for (const ask of asks) {
