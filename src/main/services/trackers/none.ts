@@ -1,0 +1,13 @@
+import type { Tracker } from '@shared/types'
+
+export const NO_TRACKER = 'This room has no issue tracker.'
+
+/** A room with no issue tracker (KERNEL-462): no issues to list, none to read, nothing to move. */
+export function noneTracker(): Tracker {
+  return {
+    kind: 'none',
+    search: async () => [],
+    issue: async () => { throw new Error(NO_TRACKER) },
+    start: async () => undefined
+  }
+}

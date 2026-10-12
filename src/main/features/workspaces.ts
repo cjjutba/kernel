@@ -40,7 +40,8 @@ export class Workspaces extends Feature {
 
   /** A workspace for the room's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
   async createWorkspace(roomId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
-    const { ws, room, repo, chat } = await this.cutWorkspace(roomId, o)
+    // An issue picked in New workspace comes without its tracker, which the room's tells (KERNEL-462).
+    const { ws, room, repo, chat } = await this.cutWorkspace(roomId, { ...o, source: await this.k.integrations.trackedSource(roomId, o.source) })
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     return this.setUpWorkspace(ws, room, repo, chat, { brief: messageOf(o.prompt, o.parts), prompt: o.prompt, from: o.leadChatId ? 'lead' : undefined, leadChatId: o.leadChatId })
   }
@@ -98,11 +99,11 @@ export class Workspaces extends Feature {
         const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
-        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(issue.id) : [])
+        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(roomId, issue.id) : [])
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
-        const made = await this.newBranchWorktree(room, wanted, baseRef)
+        const made = await this.newBranchWorktree(room, wanted, baseRef, remote)
         branch = made.branch
         path = made.path
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
@@ -285,8 +286,9 @@ export class Workspaces extends Feature {
 
   /** The fork's worktree and record: a branch at `from` whose files are made to match `files`, and the workspace in setup. */
   private async forkTree(src: Workspace, room: Room, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
+    const remote = await this.k.config.remoteFor(room.path, repo)
     const ws = await this.withPort(async (port) => {
-      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from)
+      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from, remote)
       try {
         await writeTree(path, `${from}^{tree}`, files)
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -317,10 +319,13 @@ export class Workspaces extends Feature {
     try { return await run } finally { if (this.branchLocks.get(roomId) === run) this.branchLocks.delete(roomId) }
   }
 
-  /** A worktree on a new branch: `wanted`, or the first free name after it, in the room's worktree folder. */
-  private newBranchWorktree(room: Room, wanted: string, baseRef: string): Promise<{ branch: string; path: string }> {
+  /**
+   * A worktree on a new branch: `wanted`, or the first free name after it, here and on `remote` (KERNEL-479), in the room's
+   * worktree folder.
+   */
+  private newBranchWorktree(room: Room, wanted: string, baseRef: string, remote: string): Promise<{ branch: string; path: string }> {
     return this.withBranchLock(room.id, async () => {
-      const branch = await freeBranch(room.path, wanted)
+      const branch = await freeBranch(room.path, wanted, remote)
       return { branch, path: await createWorktree({ repo: room.path, root: roomWorktreeRoot(this.settings.worktreeRoot, room), branch, baseRef }) }
     })
   }

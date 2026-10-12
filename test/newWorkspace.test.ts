@@ -1,17 +1,18 @@
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { fakeGh, tempRepo } from './helpers'
 import { exec, git } from '../src/main/services/exec'
 import { defaultBranch, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
 import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import { Kernel } from '../src/main/kernel'
 import { fetchedAt } from '../src/main/features/workspaces'
-import { kernelTools } from '../src/main/services/kernelMcp'
+import { kernelTools, takenWarning } from '../src/main/services/kernelMcp'
+import { issueTaken, keyInBranch, keyInText } from '../src/main/services/issueTaken'
 import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
-import type { AgentDef, ChatPart } from '../src/shared/types'
+import type { AgentDef, ChatPart, IssueTaken } from '../src/shared/types'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -107,6 +108,161 @@ describe('createWorkspace from a source', () => {
     expect(ws.source).toEqual(source)
     expect(sent).toEqual([['text', 'file']])
     await k.stop()
+  })
+})
+
+describe('a workspace from a GitHub issue (KERNEL-462)', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
+  const team = {
+    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor. Open a PR for each task.'
+  }
+  const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
+
+  /** A kernel with one room, on GitHub when `repo` is set. Linear is offline and LINEAR_API_KEY is empty. */
+  async function kernel(repo?: string) {
+    vi.stubEnv('LINEAR_API_KEY', '')
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
+    await k.start()
+    onTestFinished(() => k.stop())
+    k.sessions.send = async () => ({ queued: false })
+    const added = await k.rooms.addRoom(await tempRepo(team))
+    return { k, room: repo ? k.store.saveRoom({ ...added, repo }) : added }
+  }
+
+  it("names the branch from the issue's number and labels when Rowan hands it off, and records GitHub as its tracker", async () => {
+    const gh = await fakeGh({ view: crash })
+    const { k, room } = await kernel('acme/app')
+    const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
+    const deps = k.lead.leadToolDeps(room.id, lead, await k.lead.leadChat(room.id))
+    await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41' } as never, {})
+    const ws = k.store.workspaces(room.id).find((w) => w.agentId === 'noor')!
+    expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', url: crash.url, tracker: 'github' })
+    expect(ws.branch).toBe('fix/41-crash-on-save')
+    // Once to see whether someone else is on it, once to link it (KERNEL-479).
+    expect(await gh.calls()).toEqual(['issue view 41 --json number,title,url,body,labels,comments,assignees', 'issue view 41 --json number,title,url,body,labels,comments,assignees'])
+  })
+
+  it('records the tracker of an issue picked in New workspace, and none in a room without one', async () => {
+    await fakeGh({})
+    const github = await kernel('acme/app')
+    const picked = await github.k.workspaces.createWorkspace(github.room.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
+    expect(picked.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'github' })
+    const none = await kernel()
+    const own = await none.k.workspaces.createWorkspace(none.room.id, { prompt: 'Build it', source: { kind: 'issue', id: 'APP-7', title: 'Settings page' } })
+    expect(own.source).toEqual({ kind: 'issue', id: 'APP-7', title: 'Settings page' })
+    expect(own.branch).toBe('feat/app-7-settings-page')
+  })
+
+  describe('someone else on the issue (KERNEL-479)', () => {
+    const assigned = { ...crash, assignees: [{ login: 'mchen' }] }
+    const prs = [
+      { number: 52, title: 'Fix saving on slow disks', url: 'https://github.com/acme/app/pull/52', headRefName: 'mchen/save', body: 'Fixes #41' },
+      { number: 53, title: 'Export rework', url: 'https://github.com/acme/app/pull/53', headRefName: 'feat/410-export', body: 'See #410' }
+    ]
+    /** A GitHub room whose origin is `remote`, fetched, and Rowan's create_workspace in it. */
+    async function room(remote: string) {
+      const { k, room } = await kernel('acme/app')
+      await git(room.path, 'remote', 'add', 'origin', remote)
+      await exec('git', ['-C', room.path, 'fetch', '-q', 'origin'])
+      const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
+      const tool = kernelTools(k.lead.leadToolDeps(room.id, lead, await k.lead.leadChat(room.id))).find((t) => t.name === 'create_workspace')!
+      const create = async (args: object) => {
+        const r = await tool.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41', ...args } as never, {})
+        return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+      }
+      return { k, room, create }
+    }
+
+    it('finds a pushed branch, an open PR and another assignee, and create_workspace starts only once the user confirms', async () => {
+      await fakeGh({ view: assigned, prs, login: 'cjjutba' })
+      // Someone else pushed the branch Kernel would pick, and an unrelated one for #410.
+      const remote = await tempRepo()
+      await git(remote, 'branch', 'fix/41-crash-on-save')
+      await git(remote, 'branch', 'feat/410-export')
+      const { k, room: r, create } = await room(remote)
+      const taken = { findings: [{ kind: 'branch', ref: 'origin/fix/41-crash-on-save' }, { kind: 'pr', number: 52, title: 'Fix saving on slow disks', url: prs[0].url }, { kind: 'assignee', name: 'mchen' }], notes: [] }
+      // New workspace reads the same, for ConfirmIssueTaken.png.
+      expect(await k.handlers()['issues.taken']({ roomId: r.id, issue: '41' })).toEqual(taken)
+      // Named as Rowan passed it, as the refusal for a task already handed off does.
+      expect(await create({})).toEqual({ isError: true, text: takenWarning('41', taken as IssueTaken) })
+      expect(takenWarning('41', taken as IssueTaken)).toContain('Kernel found the branch origin/fix/41-crash-on-save, the open PR #52 (Fix saving on slow disks) and mchen assigned to it.')
+      expect(k.store.workspaces(r.id).filter((w) => w.agentId === 'noor')).toEqual([])
+      const started = await create({ confirm: true })
+      expect(started.isError).toBe(false)
+      // The name origin has is taken, so Kernel never pushes over someone else's branch.
+      expect(k.store.workspaces(r.id).find((w) => w.agentId === 'noor')?.branch).toBe('fix/41-crash-on-save-2')
+    })
+
+    it("leaves out the user's own assignment and the room's own workspaces", async () => {
+      await fakeGh({ view: { ...crash, assignees: [{ login: 'CJJutba' }] }, prs, login: 'cjjutba' })
+      const remote = await tempRepo()
+      const { k, room: r } = await room(remote)
+      const ws = await k.workspaces.createWorkspace(r.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
+      await git(remote, 'branch', ws.branch)
+      k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 52 })
+      expect(await k.integrations.issueTaken(r.id, '41')).toEqual({ findings: [], notes: [] })
+    })
+
+    it('starts anyway when no check can answer, and says which ones it skipped', async () => {
+      // gh can't list PRs and isn't signed in, and origin is gone.
+      await fakeGh({ view: assigned })
+      const { k, room: r, create } = await room(join(tmpdir(), 'kernel-no-such-remote'))
+      const started = await create({})
+      expect(started.isError).toBe(false)
+      expect(started.text).toMatch(/^Created \S+ on fix\/41-crash-on-save for noor\./)
+      expect(started.text).toContain("Couldn't check origin for a branch named after #41: fatal:")
+      expect(started.text).toContain("Couldn't check for an open pull request that names #41: not stubbed.")
+      expect(started.text).toContain("Couldn't tell whether mchen, assigned to #41, is you.")
+      expect(k.store.workspaces(r.id).some((w) => w.agentId === 'noor')).toBe(true)
+    })
+  })
+})
+
+describe('what says someone else is on an issue (KERNEL-479)', () => {
+  it('finds the key in branch names the way Kernel and the trackers name them', () => {
+    expect(keyInBranch('KERNEL-31', 'feat/kernel-31-export-pdf')).toBe(true)
+    expect(keyInBranch('KERNEL-31', 'mchen/KERNEL-31')).toBe(true)
+    expect(keyInBranch('KERNEL-31', 'feat/kernel-310-export')).toBe(false)
+    expect(keyInBranch('KERNEL-31', 'feat/xkernel-31')).toBe(false)
+    expect(keyInBranch('#41', 'feat/41-crash-on-save')).toBe(true)
+    expect(keyInBranch('#41', '41-crash-on-save')).toBe(true)
+    expect(keyInBranch('#41', 'feat/v2-41-crash')).toBe(false)
+    expect(keyInBranch('#41', 'feat/410-export')).toBe(false)
+  })
+
+  it('finds the key in a PR title or description', () => {
+    expect(keyInText('KERNEL-31', 'feat(pdf): export invoices (kernel-31)')).toBe(true)
+    expect(keyInText('KERNEL-31', 'Linear: KERNEL-310')).toBe(false)
+    expect(keyInText('#41', 'Fixes #41')).toBe(true)
+    expect(keyInText('41', 'Fixes #41.')).toBe(true)
+    expect(keyInText('#41', 'Fixes #410, bumps to v41')).toBe(false)
+  })
+
+  it('notes a check that runs out of time and keeps what the others found', async () => {
+    const own = { branches: new Set<string>(), prs: new Set<number>() }
+    const taken = await issueTaken('KERNEL-31', {
+      remote: 'origin', own, timeoutMs: 50,
+      branches: () => new Promise(() => {}),
+      prs: async () => [{ number: 7, title: 'Export PDF', branch: 'feat/kernel-31-export-pdf' }],
+      assignees: async () => { throw new Error("Linear rejected the token. Reconnect it in Settings > Integrations.") },
+      tracker: 'Linear'
+    })
+    expect(taken).toEqual({
+      findings: [{ kind: 'pr', number: 7, title: 'Export PDF' }],
+      notes: [
+        "Couldn't check origin for a branch named after KERNEL-31: no answer in 1 second.",
+        "Couldn't check who KERNEL-31 is assigned to in Linear: Linear rejected the token. Reconnect it in Settings > Integrations."
+      ]
+    })
+  })
+
+  it('reads no branches from a room without the remote, and says nothing about it', async () => {
+    const taken = await issueTaken('KERNEL-31', { remote: 'origin', own: { branches: new Set(), prs: new Set() }, branches: async () => undefined })
+    expect(taken).toEqual({ findings: [], notes: [] })
   })
 })
 

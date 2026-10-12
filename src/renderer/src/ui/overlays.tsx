@@ -15,6 +15,8 @@ export interface MenuEntry {
   checked?: boolean
   /** Shown on the right, for example "⌘N". */
   shortcut?: string
+  /** A short word after the label, before the check, that says something about the item ("Detected", SettingsRoomTracker.png). */
+  note?: string
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
   disabled?: boolean
@@ -59,7 +61,8 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
             >
               {m.leading ?? (m.icon && <Icon name={m.icon} />)}
               <span className="grow ellipsis">{m.label}</span>
-              {m.checked && <Icon name="check" size={14} stroke={1.5} />}
+              {m.note && <span className="menu-note">{m.note}</span>}
+              {m.checked ? <Icon name="check" size={14} stroke={1.5} /> : m.note ? <span className="menu-check-slot" aria-hidden="true" /> : null}
               {m.shortcut && <span className="menu-kbd">{m.shortcut}</span>}
               {sub ? <Icon name="right" size={12} /> : null}
             </button>

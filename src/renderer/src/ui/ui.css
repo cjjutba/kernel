@@ -36,6 +36,8 @@
 .menu-item[aria-checked='true'] { background: var(--hover); }
 .menu-item[aria-checked='true'] > svg:last-child { color: var(--ink); }
 .menu-kbd { font: 11.5px var(--mono); color: var(--muted); }
+.menu-note { font-size: 12px; color: var(--muted); }
+.menu-check-slot { width: 14px; height: 14px; flex-shrink: 0; }
 .menu-head { padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
 .popover { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }

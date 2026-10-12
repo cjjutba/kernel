@@ -1,5 +1,5 @@
 import { EFFORTS, isRunName, MODELS } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
@@ -134,6 +134,16 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
     'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'issues.taken': async () => f.issueTaken ?? { findings: [], notes: [] },
+    'issues.tracker': async ({ roomId }) => f.trackers?.[roomId] ?? { kind: 'linear' },
+    'github.issueList': async ({ roomId, query }) => (f.githubIssues?.[roomId] ?? [])
+      .filter((i) => !query || `${i.id} ${i.title} ${i.author ?? ''}`.toLowerCase().includes(query.replace(/^#/, '').toLowerCase()))
+      .map(({ body: _b, comments: _c, ...issue }): GithubIssue => issue),
+    'github.issue': async ({ roomId, id }) => {
+      const issue = f.githubIssues?.[roomId]?.find((i) => i.id === id)
+      if (!issue) throw new Error(`Unknown issue ${id}`)
+      return issue
+    },
     'linear.issues': async ({ filter }) => (f.linear?.issues ?? []).filter((i) => {
       const q = filter.query?.trim().toLowerCase()
       return (!filter.mine || i.assignee?.me) && (!filter.teamId || i.team.id === filter.teamId) && (!filter.projectId || i.project?.id === filter.projectId)

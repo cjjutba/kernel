@@ -349,16 +349,16 @@ describe('who gets share_file (KERNEL-302)', () => {
     const lead = names(on, on.leadWs, 'rowan')
     expect(lead).toEqual(expect.arrayContaining(['create_workspace', 'message_agent', 'share_file']))
     expect(lead.at(-1)).toBe('share_file')
-    expect(names(on, on.review, 'theo')).toEqual(['submit_review', 'share_file'])
-    expect(names(on, on.kai, 'kai')).toEqual(['wait_for_merge', 'share_file'])
+    expect(names(on, on.review, 'theo')).toEqual(['submit_review', 'get_issue', 'share_file'])
+    expect(names(on, on.kai, 'kai')).toEqual(['wait_for_merge', 'get_issue', 'share_file'])
     const mcp = (s: typeof on, ws: Workspace, id: string) => (s.k().sessions as unknown as { d: { mcpFor: (w: Workspace, a: AgentDef, c: Chat) => Record<string, { name: string; tools: string[] }> } }).d.mcpFor(ws, s.agent(id), s.chatOf(ws))
-    expect(mcp(on, on.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'share_file'] } })
+    expect(mcp(on, on.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'get_issue', 'share_file'] } })
     expect(mcp(on, on.leadWs, 'rowan').kernel.tools).toEqual(lead)
 
     const off = await setup({ sharing: false })
     expect(names(off, off.leadWs, 'rowan')).toEqual(lead.slice(0, -1))
-    expect(mcp(off, off.review, 'theo')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review'] } })
-    expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge'] } })
+    expect(mcp(off, off.review, 'theo')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
+    expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'get_issue'] } })
     expect(mcp(off, off.leadWs, 'rowan').kernel.tools).toEqual(lead.slice(0, -1))
 
     // The Lead's prompt names shared files only while sharing is on. With it off, each session starts as on main: the
@@ -370,9 +370,9 @@ describe('who gets share_file (KERNEL-302)', () => {
     expect(offLead.systemPrompt?.append).toContain(LEAD_RULE)
     expect(offLead.mcpServers).toEqual({ kernel: { name: 'kernel', tools: lead.slice(0, -1) } })
     const offReview = await started(off, off.review)
-    expect(offReview.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['submit_review'] } })
+    expect(offReview.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
     const offKai = await started(off, off.kai)
-    expect(offKai.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge'] } })
+    expect(offKai.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'get_issue'] } })
     for (const c of [offLead, offReview, offKai]) {
       expect(c.systemPrompt?.append).not.toContain(LEAD_SHARING_RULE)
       expect(c.systemPrompt?.append).not.toMatch(/share_file|shared/i)

@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, Room, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -10,6 +10,7 @@ import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './
 // Check copy matches src/main/services/preflight.ts.
 
 const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
+const permissionStep = { route: { name: 'onboarding', step: 'permissions' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -166,6 +167,18 @@ const settingsRoom = (f: Fixture): Partial<Fixture> => ({
   linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
   ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
 })
+
+/**
+ * A room's General page with its issue tracker row (SettingsRoomTracker.png, SettingsRoomTrackerNone.png, KERNEL-472). Linear isn't
+ * connected in either room, so the row follows the remote. `menu` opens the tracker menu.
+ */
+const trackerRoom = (id: string, crew: string[], room: Partial<Room>, menu = false) => scene((f) => ({
+  roomSettings: { [id]: kernelFiles },
+  rooms: f.rooms.map((r) => (r.id === id ? { ...r, ...room } : r)),
+  agents: { ...f.agents, [id]: sixAgents.filter((a) => crew.includes(a.id)) },
+  integrations: integrationRows,
+  ui: { route: { name: 'settings', page: 'room', roomId: id }, ...(menu ? { menu: 'roomTracker' as const } : {}) }
+}))
 
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
@@ -352,6 +365,10 @@ export const platformFixtures: Record<string, Fixture> = {
       ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA }, menu: 'roomIcon' }
     }
   }),
+  // KERNEL-472: Client B's repo is on GitHub and Linear isn't connected, so detection says GitHub Issues, and the menu marks it.
+  SettingsRoomTracker: trackerRoom(ids.roomB, ['rowan', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
+  // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
+  SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['rowan', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),
@@ -382,6 +399,9 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupGhToken: setup(passing({ ...ghOk, detail: 'Signed in as cjjutba-bot, from `GH_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })),
   SetupShellTimeout: setup([{ id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out', detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.', note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.', fix: { action: 'recheck' } }, ...allOk]),
   SetupBedrock: setup(passing({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })),
+  // KERNEL-457: the step after the checks. The Lead runs on Claude Code in the first and on Codex in the second, where the fixture's availability answer turns Auto off (src/main/fixtures.ts).
+  SetupPermissions: scene(() => ({ ...empty, ui: permissionStep })),
+  SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has room.
@@ -409,17 +429,6 @@ export const platformFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  // KERNEL-224: 160k tokens in a 1M window is 16% of it, long enough to cost more with every turn. No PNG.
-  WorkspaceContextHigh: scene((f) => ({
-    chats: withChat(f, {
-      context: 16,
-      contextUsage: { used: 160_000, max: 1_000_000, rows: [
-        { name: 'System prompt', tokens: 3_200, kind: 'used' }, { name: 'System tools', tokens: 11_800, kind: 'used' }, { name: 'MCP tools', tokens: 6_400, kind: 'used' },
-        { name: 'Memory files', tokens: 2_600, kind: 'used' }, { name: 'Messages', tokens: 136_000, kind: 'used' }, { name: 'Free space', tokens: 800_000, kind: 'free' }, { name: 'Autocompact buffer', tokens: 40_000, kind: 'buffer' }
-      ] }
-    }),
-    ui: open
-  })),
   // The retry is between attempts, so the turn shows as the canvas draws it: no Stop button.
   WorkspaceOverloaded: scene((f) => ({
     items: { [ids.tableChat]: [...tableItems, { kind: 'user', id: 'u-shorten', ts: at(10, 40), parts: [{ type: 'text', text: 'Shorten the empty state copy.' }] }] },

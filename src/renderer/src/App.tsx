@@ -23,10 +23,12 @@ import './screens/floor/floor.css'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
+import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { Issues } from './screens/issues/Issues'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
+import { Permissions } from './screens/onboarding/Permissions'
 import { Welcome } from './screens/onboarding/Welcome'
 import { ConfirmRemoveRoom } from './screens/rooms/ConfirmRemoveRoom'
 import { TrustScripts } from './screens/rooms/TrustScripts'
@@ -86,10 +88,11 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'onboarding':
       if (route.step === 'welcome') return <Welcome />
       if (route.step === 'room') return <RoomSetup roomId={route.roomId} />
+      if (route.step === 'permissions') return <Permissions />
       return <Checks />
     case 'home': return <Home />
     case 'inbox': return <Inbox />
-    case 'issues': return <Issues issueId={route.issueId} />
+    case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'floor': return <Floor roomId={route.roomId} />
@@ -125,6 +128,8 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
+      // KERNEL-479 makes Start anyway retry create_workspace with its confirm. Nothing opens this until it does.
+      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={actions.ui.closeModal} />
       if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }

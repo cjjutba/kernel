@@ -98,6 +98,9 @@
 .link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }
 .link-note { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
+.link-none { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 6px; }
+.link-none .link-note { margin-bottom: 4px; }
+.link-none .btn { margin-left: 10px; }
 .link-foot { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 8px 0 14px; border-top: 1px solid var(--card-line); font-size: 12px; color: var(--muted); }
 
 .queue { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
