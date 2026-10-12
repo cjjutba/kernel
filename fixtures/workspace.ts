@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -661,6 +661,57 @@ const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
+
+/**
+ * KERNEL-515: the panel's strip for each tab, as design/redesign/PanelToolbar*.png and PanelFilter.png draw it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
+ * All files tree marks and the Checks tab counts. Its run script is on port 4303.
+ */
+const PANEL_CHANGES: ChangedFile[] = [
+  { path: '.changes/unreleased/inbox-stale-rows.md', status: 'A', added: 5, removed: 0 },
+  { path: 'docs/decisions/KERNEL-155.md', status: 'A', added: 7, removed: 0 },
+  { path: 'src/main/db.ts', status: 'M', added: 24, removed: 1 },
+  { path: 'src/main/features/inbox.ts', status: 'M', added: 31, removed: 12 },
+  { path: 'src/main/features/wiring.ts', status: 'M', added: 6, removed: 2 },
+  { path: 'src/main/services/approvals.ts', status: 'M', added: 24, removed: 9 },
+  { path: 'src/main/services/notifications.ts', status: 'M', added: 18, removed: 6 },
+  { path: 'src/renderer/src/screens/home/Home.tsx', status: 'M', added: 9, removed: 11 },
+  { path: 'src/renderer/src/screens/inbox/Inbox.tsx', status: 'M', added: 22, removed: 14 },
+  { path: 'src/renderer/src/screens/inbox/InboxRow.tsx', status: 'M', added: 8, removed: 5 },
+  { path: 'src/renderer/src/store.ts', status: 'M', added: 3, removed: 1 },
+  { path: 'src/shared/inbox.ts', status: 'M', added: 4, removed: 0 },
+  { path: 'src/shared/ipc.ts', status: 'M', added: 2, removed: 0 },
+  { path: 'test/inbox.test.ts', status: 'M', added: 31, removed: 9 },
+  { path: 'test/leadArchive.test.ts', status: 'M', added: 12, removed: 0 },
+  { path: 'test/notifications.test.ts', status: 'M', added: 0, removed: 5 }
+]
+
+/** The repo's files: the changed ones above with their status, and the rest as the canvas lists them. */
+const PANEL_TREE: FileEntry[] = [
+  ...['.changes', '.changes/unreleased', '.github', 'design', 'docs', 'docs/decisions', 'fixtures', 'scripts', 'src', 'src/main', 'src/main/features', 'src/main/services', 'src/preload', 'src/renderer', 'src/renderer/src', 'src/renderer/src/screens', 'src/renderer/src/screens/home', 'src/renderer/src/screens/inbox', 'src/shared', 'test'].map((path) => ({ path, dir: true })),
+  ...['docs/ARCHITECTURE.md', 'docs/PRODUCT.md', 'docs/SCREENS.md', 'src/main/bus.ts', 'src/main/kernel.ts', '.gitignore', 'CLAUDE.md', 'DESIGN.md', 'package.json'].map((path) => ({ path, dir: false })),
+  ...PANEL_CHANGES.map((c): FileEntry => ({ path: c.path, dir: false, status: c.status }))
+]
+
+/** What the table workspace's run script has printed, so its Run tab is running (PanelToolbarChecks). */
+const PANEL_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
+  .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
+
+const PANEL_CHECKS: PrCheck[] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'pass', meta: '2m 4s' }]
+
+/** PR #147 on `right`, the bottom folded to its tab bar unless `open`, and its run script idle unless `running`. */
+const panelScene = (right: 'files' | 'changes' | 'checks', o: { tree?: boolean; open?: boolean; running?: boolean } = {}): Fixture => {
+  const f = headerScene('ready', [], { panel: true })
+  const idle = idleRun(f)
+  return {
+    ...(o.running ? f : idle),
+    workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, port: 4303, prTitle: 'fix(inbox): keep asking about requests', stat: { files: 16, added: 206, removed: 75 } } : w)),
+    changes: { ...f.changes, [ids.table]: PANEL_CHANGES },
+    tree: { ...f.tree, [ids.table]: PANEL_TREE },
+    prs: { ...f.prs, [ids.table]: { ...f.prs![ids.table], title: 'fix(inbox): keep asking about requests', checks: PANEL_CHECKS } },
+    push: o.running ? [...f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'), ...PANEL_RUN] : idle.push,
+    ui: { ...f.ui, workspace: { ...f.ui!.workspace!, right, ...(o.tree ? { changesView: 'tree' as const } : {}) }, bottomCollapsed: { lead: !o.open, teammate: !o.open } }
+  }
+}
 
 /** A ready PR, then one PR in each state the band, the PRs tab, a Team update row and the sidebar all say the same way (KERNEL-417). */
 const PR_STATES: OpenPr[] = [
@@ -1339,17 +1390,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
   PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
-  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The canvas draws the top strip beside the toolbar, which takes the room Checks needs; until the toolbar is built
-  // the Shared tab takes it instead. The bottom's two terminals past Run are stand-ins the shot adds.
+  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar, Merge all and refresh, which takes the room the tabs need.
+  // The bottom's two terminals past Run are stand-ins the shot adds.
   PanelTabsOverflow: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
-    return {
-      ...s,
-      settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
-      ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } }
-    }
+    return { ...s, ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
   PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
+  // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has Merge all and refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
+  // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
+  PanelToolbarPrs: scene((f) => {
+    const s = leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', LEAD_PRS_REPLY)
+    return { ...s, workspaces: s.workspaces!.map((w) => (w.id === ids.lead ? { ...w, port: 4303 } : w)), ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
+  }),
+  PanelToolbarFiles: panelScene('files'),
+  PanelToolbarChanges: panelScene('changes', { tree: true }),
+  PanelToolbarChecks: panelScene('checks', { open: true, running: true }),
+  PanelFilter: panelScene('changes', { open: true }),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
