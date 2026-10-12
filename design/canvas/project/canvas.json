@@ -1961,6 +1961,69 @@
       "w": 1440,
       "x": 28880,
       "y": 20800
+    },
+    "IssuesGitHub.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 GitHub Issues",
+      "w": 1440,
+      "x": 0,
+      "y": 28600
+    },
+    "IssuesNoTracker.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 room with no tracker",
+      "w": 1440,
+      "x": 1520,
+      "y": 28600
+    },
+    "SettingsRoomTracker.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 issue tracker picker",
+      "w": 1440,
+      "x": 3040,
+      "y": 28600
+    },
+    "SettingsRoomTrackerNone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 no tracker",
+      "w": 1440,
+      "x": 4560,
+      "y": 28600
+    },
+    "NewWorkspaceFromGitHub.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Start from \u00b7 GitHub issues",
+      "w": 1440,
+      "x": 6080,
+      "y": 28600
+    },
+    "NewWorkspaceFromNone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Start from \u00b7 room with no tracker",
+      "w": 1440,
+      "x": 7600,
+      "y": 28600
+    },
+    "ConfirmIssueTaken.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Someone is already on the issue",
+      "w": 1440,
+      "x": 9120,
+      "y": 28600
     }
   },
   "createdOnFiles": {
@@ -2147,6 +2210,14 @@
       "w": 600,
       "x": 0,
       "y": 27000
+    },
+    "row22": {
+      "kind": "title1",
+      "maxW": 10560,
+      "text": "23 \u00b7 Issue trackers",
+      "w": 600,
+      "x": 0,
+      "y": 28300
     }
   },
   "order": [
@@ -2366,7 +2437,14 @@
     "WorkspaceToolsGate.dc.html",
     "WorkspaceHireServers.dc.html",
     "RoomSetupRoster.dc.html",
-    "RoomSetupConflicts.dc.html"
+    "RoomSetupConflicts.dc.html",
+    "IssuesGitHub.dc.html",
+    "IssuesNoTracker.dc.html",
+    "SettingsRoomTracker.dc.html",
+    "SettingsRoomTrackerNone.dc.html",
+    "NewWorkspaceFromGitHub.dc.html",
+    "NewWorkspaceFromNone.dc.html",
+    "ConfirmIssueTaken.dc.html"
   ],
   "pages": [],
   "title": "Kernel"

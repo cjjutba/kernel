@@ -72,6 +72,13 @@ const noCanvas = [
   'WorkspacePlanTyping',
   'WorkspacePlanApproved', // a plan once approved, with its Plan approved line in the chat
   'WorkspacePlanExit', // Kai's ExitPlanMode plan, which looks as it did before the Lead's write-up and rows (KERNEL-374)
+  // The hire card's servers row in the states WorkspaceHireServers.png doesn't draw: needs sign-in is the PNG's (KERNEL-484).
+  'WorkspaceHireServersReached',
+  'WorkspaceHireServersFailed',
+  'WorkspaceHireServersOff',
+  'WorkspaceHireServersDisabled',
+  'WorkspaceHireServersMissing',
+  'WorkspaceHireServersMany',
   // A new chat waiting for setup, drawn in design/redesign/ (KERNEL-430).
   'SetupRunning',
   'SetupFollowUp',

@@ -8,6 +8,7 @@ export const KERNEL_VARS = {
   KERNEL_WORKSPACE: 'The workspace\'s folder.',
   KERNEL_ROOT_PATH: 'The room\'s main checkout.',
   KERNEL_WORKSPACE_NAME: 'The workspace\'s name, as the sidebar shows it.',
+  KERNEL_WORKSPACE_SLUG: 'kernel_ and the start of the workspace\'s id. Name a database or a Docker Compose project after it to give each workspace its own.',
   KERNEL_BRANCH: 'The branch the workspace started on.',
   KERNEL_BASE_REF: 'The ref the workspace started from, like origin/main.',
   KERNEL_DEFAULT_BRANCH: 'The room\'s default branch.'
@@ -20,6 +21,13 @@ export const SCRIPT_VARS = {
   PORT: 'The same as KERNEL_PORT, for tools that read PORT.',
   FORCE_COLOR: 'Set to 0, so the output panel gets plain text.'
 } as const
+
+/**
+ * `KERNEL_WORKSPACE_SLUG` (KERNEL-449): `kernel_` and the first 12 letters and digits of the workspace's id, in lowercase.
+ * The id is fixed when the workspace is made, so the name holds through a rename and a folder move, which a chat with Rowan
+ * makes after setup ran (KERNEL-424). It is a valid Postgres or MySQL database name and Docker Compose project name.
+ */
+export const workspaceSlug = (ws: { id: string }): string => `kernel_${ws.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'workspace'}`
 
 /** A variable's name: a letter or `_`, then letters, digits and `_`. */
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/

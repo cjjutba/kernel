@@ -84,6 +84,8 @@ export interface Workspace {
   stat?: DiffStat
   createdAt: number
   mergedAt?: number
+  /** The commit a local merge left on the base branch, for "Squashed into main as 4e1b9c2" (KERNEL-467). */
+  mergeCommit?: string
   archivedAt?: number
   /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
   waitsFor?: WaitsFor

@@ -8,6 +8,7 @@ import { hookCommand } from '@shared/hookEntry'
 import { ghUser, parseGhAuth, prStateOf } from '../src/main/services/github'
 import { CLAUDE_INSTALL, compareVersions, nextFreePort, parseClaudeVersion, parseLsof, planName, runPreflight, sessionClaude } from '../src/main/services/preflight'
 import type { ExecResult } from '../src/main/services/exec'
+import type { ShellRead } from '../src/main/services/shellPath'
 import type { PreflightCheck } from '@shared/types'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool, Approvals } from '../src/main/services/approvals'
@@ -271,12 +272,13 @@ describe('preflight checks', () => {
     'gh --version': ok('gh version 2.62.0 (2024-11-14)\n'),
     'lsof -nP -iTCP:7420 -sTCP:LISTEN -Fpc': ok('p4821\ncnode\n')
   }
-  /** Runs preflight with every command answered from `healthy`, overridden by `answers`. */
-  const preflight = (answers: Record<string, ExecResult> = {}, o: { hookServerUp?: boolean; claude?: string | null } = {}) => {
+  /** Runs preflight with every command answered from `healthy`, overridden by `answers`. The environment is empty unless `env` says. */
+  const preflight = (answers: Record<string, ExecResult> = {}, o: { hookServerUp?: boolean; claude?: string | null; shell?: ShellRead; env?: NodeJS.ProcessEnv } = {}) => {
     const table = { ...healthy, ...answers }
     const run = async (cmd: string, args: string[]) => table[[cmd, ...args].join(' ')] ?? missing
-    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p })
+    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p, shell: o.shell, env: o.env ?? {} })
   }
+  const zsh = (o: Partial<ShellRead> = {}): ShellRead => ({ shell: '/bin/zsh', timeoutMs: 10_000, timedOut: false, ...o })
   const blockers = (checks: PreflightCheck[]) => checks.filter((c) => !c.ok && c.blocking).map((c) => c.id)
   const warnings = (checks: PreflightCheck[]) => checks.filter((c) => !c.ok && !c.blocking).map((c) => c.id)
   const byId = (checks: PreflightCheck[], id: PreflightCheck['id']) => checks.find((c) => c.id === id)!
@@ -319,6 +321,39 @@ describe('preflight checks', () => {
     expect(await ghUser(run)).toBe('samrivera')
     const signedOut = async (_cmd: string, args: string[]) => args.includes('--json') ? fail(1, 'unknown flag: --json') : fail(1, 'You are not logged into any GitHub hosts.')
     expect(await ghUser(signedOut)).toBeNull()
+  })
+  it('puts a shell read that timed out first, as a warning with Check again (KERNEL-448)', async () => {
+    const checks = await preflight({}, { shell: zsh({ timedOut: true }) })
+    expect(checks.map((c) => c.id)).toEqual(['shell', 'claude', 'auth', 'git', 'gh', 'hooks'])
+    expect(blockers(checks)).toEqual([])
+    expect(byId(checks, 'shell')).toEqual({
+      id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out',
+      detail: 'Kernel reads PATH and proxy settings from your login shell and gave up after 10 seconds. Tools from nvm, or a proxy set in `.zshrc`, may be missing until it can.',
+      note: 'Look in `.zshrc` for a slow command, or one that waits for an answer, like an update prompt.',
+      fix: { action: 'recheck' }
+    })
+    expect(byId(await preflight({}, { shell: zsh({ shell: '/bin/bash', timedOut: true }) }), 'shell').note).toContain('`.bash_profile`')
+    expect((await preflight({}, { shell: zsh() })).map((c) => c.id)).not.toContain('shell')
+  })
+  it('shows Bedrock or Vertex from the shell in place of the Claude sign-in (KERNEL-448)', async () => {
+    const signedOut = { [`${BIN} auth status`]: ok(JSON.stringify({ loggedIn: false })) }
+    const bedrock = await preflight(signedOut, { env: { CLAUDE_CODE_USE_BEDROCK: '1', AWS_REGION: 'us-east-1' } })
+    expect(blockers(bedrock)).toEqual([])
+    expect(byId(bedrock, 'auth')).toEqual({ id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', meta: 'us-east-1' })
+    const vertex = await preflight(signedOut, { env: { CLAUDE_CODE_USE_VERTEX: 'true', CLOUD_ML_REGION: 'us-east5' } })
+    expect(byId(vertex, 'auth')).toMatchObject({ ok: true, title: 'Using Vertex AI from your shell', note: '`CLAUDE_CODE_USE_VERTEX` is set in your shell.', meta: 'us-east5' })
+    // Claude Code reads "0" as off, so the sign-in counts again.
+    expect(byId(await preflight(signedOut, { env: { CLAUDE_CODE_USE_BEDROCK: '0' } }), 'auth')).toMatchObject({ ok: false, title: 'Not signed in to Claude' })
+  })
+  it('says where the gh login comes from, and what Kernel did with a token in the shell (KERNEL-448)', async () => {
+    const status = (entry: object) => ({ 'gh auth status --hostname github.com --json hosts': gh({ state: 'success', ...entry }) })
+    const keyring = status({ login: 'cjjutba', tokenSource: 'keyring' })
+    expect(byId(await preflight(keyring), 'gh')).toEqual({ id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as cjjutba, from the keyring', meta: 'gh 2.62.0' })
+    expect(byId(await preflight(keyring, { shell: zsh({ ghToken: { name: 'GH_TOKEN', passed: false } }) }), 'gh').note)
+      .toBe('`GH_TOKEN` is set in your shell. Kernel leaves it out, because gh would use it instead of this login.')
+    const token = await preflight(status({ login: 'cjjutba-bot', tokenSource: 'GITHUB_TOKEN' }), { shell: zsh({ ghToken: { name: 'GITHUB_TOKEN', passed: true } }) })
+    expect(byId(token, 'gh')).toMatchObject({ detail: 'Signed in as cjjutba-bot, from `GITHUB_TOKEN` in your shell', note: 'Kernel passes it on because gh has no stored login.' })
+    expect(byId(await preflight(status({ login: 'sam', tokenSource: '/Users/sam/.config/gh/hosts.yml' })), 'gh').detail).toBe("Signed in as sam, from gh's config file")
   })
   it('gives ghUser a login only when GitHub confirmed it', async () => {
     expect(parseGhAuth('{"hosts":{"github.com":[{"state":"success","active":true,"login":"sam"}]}}')).toEqual({ state: 'ok', login: 'sam' })
