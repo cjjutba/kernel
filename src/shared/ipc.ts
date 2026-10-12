@@ -1,6 +1,6 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
-  ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -304,6 +304,10 @@ export interface KernelApi {
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
+  /**
+   * Every subscription account's usage windows on both providers, each read now unless Kernel read it in the last minute.
+   * The account menu and Settings, Providers ask when they open (KERNEL-567).
+   */
   'usage.get': { req: void; res: RateLimit[] }
   /** "Notify me" on a limit banner: one notification when the limit resets. */
   'usage.notifyOnReset': { req: { type: RateLimit['type'] }; res: Ok }
@@ -317,17 +321,21 @@ export interface KernelApi {
   'providers.status': { req: { provider: Provider }; res: ProviderStatus }
   /** The executable path field and "Use system Claude" / "Use system Codex" / "Use bundled". An empty path clears the override. */
   'providers.setPath': { req: { provider: Provider; path?: string; useSystem?: boolean }; res: ProviderStatus }
-  /** Run login: the provider's own sign-in for the active account, in the browser. */
-  'providers.signIn': { req: { provider: Provider }; res: ProviderStatus }
+  /**
+   * Run login, or Sign in again on an account's row: the provider's own sign-in in the browser, for `accountId` or else the
+   * active account. A legacy token account signs in fully and keeps its id and nickname (KERNEL-567).
+   */
+  'providers.signIn': { req: { provider: Provider; accountId?: string }; res: ProviderStatus }
   /** Opens the CLI's own config file: Claude Code's user settings, or Codex's config.toml. */
   'providers.openConfig': { req: { provider: Provider }; res: Ok }
   /** Every account of both providers, the CLI's own logins first. */
   'accounts.list': { req: void; res: AccountProfile[] }
   /**
-   * Add account. Claude runs `claude setup-token` and keeps the token it prints; Codex signs in with ChatGPT in the account's
-   * own home. Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
+   * Add account. Claude runs `claude auth login` in a folder of the account's own, and Codex signs in with ChatGPT in a home
+   * of its own. Its email and plan are read from the account, and its email is its name until it is renamed (KERNEL-567).
+   * Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
    */
-  'accounts.add': { req: { provider: Provider; label?: string; plan?: Exclude<ClaudePlan, 'unknown'> }; res: AccountProfile }
+  'accounts.add': { req: { provider: Provider }; res: AccountProfile }
   /**
    * Adds an API key account with the name given (KERNEL-523). Kernel checks the key with one request to Anthropic or
    * OpenAI, keeps it encrypted, and rejects with a plain reason when it doesn't work. Like any added account, it isn't used
@@ -335,15 +343,26 @@ export interface KernelApi {
    * it in again.
    */
   'accounts.addKey': { req: { provider: Provider; label: string; key: string } | { provider: Provider; accountId: string; key: string }; res: AccountProfile }
-  /** The code the sign-in page shows, when `claude setup-token` asks for one (an `account.add` step of `code`). */
+  /** The code the sign-in page shows, for `claude auth login`'s prompt (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /** Closes the Add account sheet: stops the sign-in that is running. */
   'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
   /** Use: the account runs the provider's next turns. A running turn finishes on the account it started on. */
   'accounts.switch': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
-  /** Sign out of an account. The CLI's own login signs the CLI out; an added account forgets its credential. */
+  /**
+   * Sign out of an account. The CLI's own login signs the CLI out. An added login signs out of its own folder or home, and
+   * a token or key account forgets its credential. Every other account stays signed in.
+   */
   'accounts.signOut': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
-  /** Removes an added account and its credential. The CLI's own login can't be removed. */
+  /**
+   * Rename: the account's nickname, the CLI's own login's included, kept in `accounts.json`. An empty label goes back to
+   * its email (KERNEL-567).
+   */
+  'accounts.rename': { req: { provider: Provider; accountId: string; label: string }; res: AccountProfile[] }
+  /**
+   * Removes an added account: it signs out, and its credential and its folder or home go. A Claude account's folder goes
+   * without following its links into `~/.claude`. The CLI's own login can't be removed.
+   */
   'accounts.remove': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
   /** A provider's models with their efforts: Claude's from MODELS, Codex's from `model/list`, read once per launch. */
   'models.list': { req: { provider: Provider }; res: ProviderModel[] }
