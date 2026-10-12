@@ -28,7 +28,9 @@ const ROOTS = [
   'v2/LoginAccountParams', 'v2/LoginAccountResponse', 'v2/AccountLoginCompletedNotification',
   'v2/ModelListParams', 'v2/ModelListResponse',
   'v2/ConfigReadParams', 'v2/ConfigReadResponse',
-  'v2/McpServerStatusUpdatedNotification'
+  'v2/McpServerStatusUpdatedNotification',
+  'v2/ListMcpServerStatusParams', 'v2/ListMcpServerStatusResponse',
+  'v2/McpServerOauthLoginParams', 'v2/McpServerOauthLoginResponse', 'v2/McpServerOauthLoginCompletedNotification'
 ]
 
 const pkg = createRequire(import.meta.url).resolve('@openai/codex/package.json')

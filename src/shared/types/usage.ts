@@ -76,7 +76,8 @@ export interface AccountProfile {
   legacyToken?: boolean
   /**
    * Claude only: the MCP servers that need a sign-in on this account, as `accounts.checkMcp` last found them, an empty list
-   * when none do. Undefined until checked (KERNEL-616).
+   * when none do. Undefined until checked (KERNEL-616). Servers ignored on the account, or switched off in every room, are
+   * left out, so they don't warn (KERNEL-646).
    */
   mcpSignIns?: McpSignIn[]
   /**
@@ -122,11 +123,12 @@ export interface MissingModel {
 }
 
 /**
- * Where a sign-in to one MCP server on one Claude account is (`accounts.mcpSignIn`, KERNEL-616). `browser` carries the
- * page Claude Code opened, for a link in case it didn't open. A claude.ai connector is `done` once the page is open: the
- * user finishes on claude.ai, and the connector loads from the account's next session.
+ * Where a sign-in to one MCP server on one account is (`accounts.mcpSignIn`, KERNEL-616). `browser` carries the page Claude
+ * Code or Codex opened, for a link in case it didn't open. A claude.ai connector is `done` once the page is open: the user
+ * finishes on claude.ai, and the connector loads from the account's next session. `provider` is unset for Claude (KERNEL-646).
  */
 export interface McpSignInStep {
+  provider?: Provider
   accountId: string
   server: string
   step: 'browser' | 'done' | 'failed'
@@ -136,22 +138,44 @@ export interface McpSignInStep {
 }
 
 /**
- * One MCP server's state on one account (`mcp.accounts`, KERNEL-626). `not-installed` is a server another account of the
- * same provider has and this one doesn't.
+ * One MCP server's state on one account (`mcp.accounts`, KERNEL-626, KERNEL-646). Every server any account of the provider
+ * has gets one on every account of it:
+ * - `ready`: it starts and lists its tools there, or a claude.ai connector of the account covers it (`note` says which).
+ * - `needs-sign-in`: it waits on an OAuth sign-in there (`accounts.mcpSignIn`).
+ * - `failed`: it didn't start, with the provider's reason in one line (`error`).
+ * - `not-set-up`: the account doesn't have it. `note` says why, and a claude.ai connector carries `connectUrl`.
+ * - `ignored`: the user chose to ignore it on that account (`accounts.mcpIgnore`), whatever its state would be.
  */
-export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-installed'
+export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-set-up' | 'ignored'
 
-/** One MCP server on one account, as `mcp.accounts` last checked it (KERNEL-626). */
+/**
+ * Where an MCP server comes from (KERNEL-646). `user`: one the user added, which Kernel shares with every account of the
+ * provider, its sign-in included. `connector`: a claude.ai connector, set up per claude.ai account, which Kernel can't copy.
+ * `plugin`: a plugin's server, shared with the plugin.
+ */
+export type McpServerKind = 'user' | 'connector' | 'plugin'
+
+/** One MCP server on one account, as `mcp.accounts` last checked it (KERNEL-626, KERNEL-646). */
 export interface McpAccountServer {
   name: string
-  /**
-   * A claude.ai connector, set up per claude.ai account, which Kernel never copies. Otherwise a server the user added, which
-   * Kernel shares with every account of the provider, its sign-in included.
-   */
+  kind: McpServerKind
+  /** `kind` is `connector`. Kept for the screens built before KERNEL-646. */
   connector: boolean
   state: McpAccountState
-  /** Why it failed, as the provider said. Only on `failed`. */
+  /** Why it failed, as the provider said, in one line. Only on `failed`. */
   error?: string
+  /**
+   * One line on a state that needs a why: what keeps a `not-set-up` server off the account, or the connector that stands in
+   * for a plugin's server on a `ready` one ("Covered by claude.ai Vercel on this account.").
+   */
+  note?: string
+  /**
+   * A claude.ai connector that isn't set up on the account: claude.ai's connector settings, where only the account's owner can
+   * add it. The account's `email` says who to be signed in to claude.ai as. A re-check picks it up once added.
+   */
+  connectUrl?: string
+  /** Switched off in every room, so it never warns: not on the account's row, the notice after adding, or Sign in to all. */
+  roomOff?: boolean
 }
 
 /** One signed-in subscription account's MCP servers (`mcp.accounts`, KERNEL-626). */
@@ -159,6 +183,8 @@ export interface McpAccount {
   provider: Provider
   accountId: string
   label: string
+  /** The account's email, for "Sign in to claude.ai as cj@example.com first" before a connector's `connectUrl` (KERNEL-646). */
+  email?: string
   /** When Kernel last checked it. Undefined while the first check runs or after it failed. */
   checkedAt?: number
   /** Why the last check failed. The account then has no servers. */
@@ -167,11 +193,12 @@ export interface McpAccount {
 }
 
 /**
- * Where Sign in to all on one Claude account is (`accounts.mcpSignInAll`, KERNEL-626). `servers` is the queue in order and
+ * Where Sign in to all on one account is (`accounts.mcpSignInAll`, KERNEL-626). `servers` is the queue in order and
  * `current` the one signing in now, whose own steps come as `account.mcpSignIn` pushes. `finished` is set once the queue
- * ends, with `canceled` when Cancel stopped it.
+ * ends, with `canceled` when Cancel stopped it. `provider` is unset for Claude, as before Codex could sign in (KERNEL-646).
  */
 export interface McpSignInAll {
+  provider?: Provider
   accountId: string
   servers: string[]
   current?: string

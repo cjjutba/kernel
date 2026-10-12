@@ -1,7 +1,7 @@
 import { readFile, realpath } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
-import type { McpAccount, McpAccountServer, McpServer, McpStatus, Provider } from '@shared/types'
+import type { McpAccount, McpAccountServer, McpServer, McpServerKind, McpStatus, Provider } from '@shared/types'
 
 // Which MCP servers a room's agents can reach, and whether each is working (KERNEL-464). Kernel only reads the files.
 
@@ -106,48 +106,117 @@ export function withStatus(found: McpServer[], reports: McpReport[], disabled: s
   return out
 }
 
+/** claude.ai's connector settings, where the account's owner adds a connector (KERNEL-646). */
+export const CONNECT_URL = 'https://claude.ai/settings/connectors'
+
+/** The longest reason `mcp.accounts` carries. */
+const REASON_MAX = 160
+
+/**
+ * A provider's reason in one line (KERNEL-646): terminal codes out, the first line with something on it, spaces collapsed,
+ * and cut at REASON_MAX characters. Undefined when nothing is left.
+ */
+export function oneLine(text: string | null | undefined): string | undefined {
+  // Terminal codes go the way `plainText` (claudeToken.ts) takes them out, without loading the pty that file needs.
+  const plain = (text ?? '').replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '').replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\x1b[@-Z\\-_]/g, '')
+  const line = plain.split(/\r\n|\n|\r/).map((l) => l.replace(/\s+/g, ' ').trim()).find(Boolean)
+  if (!line) return undefined
+  return line.length > REASON_MAX ? `${line.slice(0, REASON_MAX - 1).trimEnd()}\u2026` : line
+}
+
+/** Where a Claude server comes from, by its name or the source Claude Code reports (KERNEL-646). */
+export function claudeKind(name: string, source?: string): McpServerKind {
+  if (name.startsWith('claude.ai ') || source === 'claudeai') return 'connector'
+  if (name.startsWith('plugin:') || source === 'plugin') return 'plugin'
+  return 'user'
+}
+
+const server = (name: string, kind: McpServerKind, rest: Omit<McpAccountServer, 'name' | 'kind' | 'connector'>): McpAccountServer => ({ name, kind, connector: kind === 'connector', ...rest })
+
 /**
  * A Claude login's servers as `mcp.accounts` reports them (KERNEL-626), from a probe on it (`probeClaudeMcp`). A server
- * still starting when the probe gave up failed to start. A switched-off one is left out.
+ * still starting when the probe gave up failed to start. A switched-off one is left out. A reason is one line (KERNEL-646).
  */
 export function claudeAccountServers(list: { name: string; status: string; error?: string; scope?: string; source?: string }[]): McpAccountServer[] {
   return list.flatMap((s): McpAccountServer[] => {
-    const connector = s.name.startsWith('claude.ai ') || (s.source ?? s.scope) === 'claudeai'
-    if (s.status === 'connected') return [{ name: s.name, connector, state: 'ready' }]
-    if (s.status === 'needs-auth') return [{ name: s.name, connector, state: 'needs-sign-in' }]
-    if (s.status === 'failed') return [{ name: s.name, connector, state: 'failed', error: s.error || 'It failed to start.' }]
-    if (s.status === 'pending') return [{ name: s.name, connector, state: 'failed', error: 'It was still starting after 30 seconds.' }]
+    const kind = claudeKind(s.name, s.source ?? s.scope)
+    if (s.status === 'connected') return [server(s.name, kind, { state: 'ready' })]
+    if (s.status === 'needs-auth') return [server(s.name, kind, { state: 'needs-sign-in' })]
+    if (s.status === 'failed') return [server(s.name, kind, { state: 'failed', error: oneLine(s.error) ?? 'It failed to start, and Claude Code gave no reason.' })]
+    if (s.status === 'pending') return [server(s.name, kind, { state: 'failed', error: 'It was still starting after 30 seconds.' })]
     return []
   })
 }
 
+/** "vercel" for Codex's plugin id "vercel@claude-plugins-official". */
+const pluginName = (id: string) => id.split('@')[0]
+
 /**
- * A Codex home's servers as `mcp.accounts` reports them (KERNEL-626), from `mcpServerStatus/list`. `notLoggedIn` is a server
- * with an OAuth sign-in Codex has no token for. One that listed tools is ready. Codex lists the ones `config.toml` switches
- * off too (`off`), and they are left out. Codex has no claude.ai connectors.
+ * A Codex home's servers as `mcp.accounts` reports them (KERNEL-626), from `mcpServerStatus/list` and, for one with no tools,
+ * how its start went on a thread (`startup`, KERNEL-646). `notLoggedIn`, or a start that needs a new sign-in, is a server
+ * waiting on its OAuth sign-in. One that listed tools or started is ready. A failed one carries Codex's reason in one line,
+ * or what Kernel saw when Codex gave none. A server `config.toml` switches off (`off`) is not set up, and says so. Codex has
+ * no claude.ai connectors, and a server from a plugin has a `pluginId`.
  */
-export function codexAccountServers(list: { name: string; authStatus: string; runtimeStatus: string | null; tools: Record<string, unknown> | null }[], off: string[]): McpAccountServer[] {
-  return list.flatMap((s): McpAccountServer[] => {
-    if (off.includes(s.name) || s.runtimeStatus === 'disabled') return []
-    const base = { name: s.name, connector: false }
-    if (s.authStatus === 'notLoggedIn' || s.runtimeStatus === 'authenticationRequired') return [{ ...base, state: 'needs-sign-in' }]
-    if (Object.keys(s.tools ?? {}).length || s.runtimeStatus === 'connected') return [{ ...base, state: 'ready' }]
-    return [{ ...base, state: 'failed', error: 'Codex could not list its tools.' }]
+export function codexAccountServers(list: { name: string; authStatus: string; runtimeStatus: string | null; pluginId?: string | null; tools: Record<string, unknown> | null }[], off: string[], startup: Record<string, { status: string; error?: string }> = {}): McpAccountServer[] {
+  const out = list.map((s): McpAccountServer => {
+    const kind: McpServerKind = s.pluginId ? 'plugin' : 'user'
+    const started = startup[s.name]
+    if (off.includes(s.name) || s.runtimeStatus === 'disabled') return server(s.name, kind, { state: 'not-set-up', note: 'Switched off in Codex\u2019s config.toml.' })
+    if (s.authStatus === 'notLoggedIn' || s.runtimeStatus === 'authenticationRequired' || /\bcodex mcp login\b/.test(started?.error ?? '')) return server(s.name, kind, { state: 'needs-sign-in' })
+    if (Object.keys(s.tools ?? {}).length || s.runtimeStatus === 'connected' || started?.status === 'ready') return server(s.name, kind, { state: 'ready' })
+    const error = oneLine(started?.error)
+      ?? (started?.status === 'starting' ? 'It was still starting after 30 seconds.' : undefined)
+      ?? (started ? 'It failed to start, and Codex gave no reason.' : undefined)
+      ?? (s.pluginId ? `Codex lists it from the ${pluginName(s.pluginId)} plugin but didn\u2019t start it.` : 'Codex listed no tools for it and didn\u2019t start it.')
+    return server(s.name, kind, { state: 'failed', error })
   })
+  const listed = new Set(list.map((s) => s.name))
+  for (const name of off) if (!listed.has(name)) out.push(server(name, 'user', { state: 'not-set-up', note: 'Switched off in Codex\u2019s config.toml.' }))
+  return out
+}
+
+/** A server's name with only its letters and digits, lowercased, so `plugin:vercel:vercel` meets `claude.ai Vercel`. */
+const bare = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * The claude.ai connector ready on an account that stands in for a plugin's server there, by name: Claude Code leaves out a
+ * plugin's server that points where a connector of the account does (KERNEL-646.md). Undefined when none matches.
+ */
+function coveringConnector(plugin: string, on: McpAccountServer[]): string | undefined {
+  const own = bare(plugin.split(':').at(-1) ?? plugin)
+  return on.find((s) => s.kind === 'connector' && s.state === 'ready' && bare(s.name.slice('claude.ai '.length)) === own)?.name
 }
 
 /**
- * Fills in `not-installed` (KERNEL-626): a server one checked account of a provider has goes on each other checked account
- * of that provider that lacks it, a claude.ai connector included, since each account sets those up on its own. Servers
- * are sorted by name.
+ * Every server any checked account of a provider has goes on each other checked account of it (KERNEL-626, KERNEL-646), so
+ * no account lacks a row:
+ * - a claude.ai connector is `not-set-up` with claude.ai's connector settings (`connectUrl`), since only the account's owner
+ *   adds one there;
+ * - a plugin's server that a ready connector of the account covers is `ready`, with a note naming it, and otherwise `not-set-up`;
+ * - a server the user added is `not-set-up` until the next check, since Kernel shares it with every account.
+ * Servers are sorted by name.
  */
 export function withMissing(accounts: McpAccount[]): McpAccount[] {
-  const seen = new Map<Provider, Map<string, boolean>>()
-  for (const a of accounts) for (const s of a.servers) seen.set(a.provider, (seen.get(a.provider) ?? new Map()).set(s.name, s.connector))
+  const seen = new Map<Provider, Map<string, McpServerKind>>()
+  for (const a of accounts) for (const s of a.servers) {
+    const kinds = seen.get(a.provider) ?? new Map<string, McpServerKind>()
+    if (!kinds.has(s.name)) kinds.set(s.name, s.kind)
+    seen.set(a.provider, kinds)
+  }
+  const tool = (p: Provider) => (p === 'claude' ? 'Claude Code' : 'Codex')
   return accounts.map((a) => {
     if (a.checkedAt === undefined) return a
     const has = new Set(a.servers.map((s) => s.name))
-    const missing = [...seen.get(a.provider) ?? []].filter(([name]) => !has.has(name)).map(([name, connector]): McpAccountServer => ({ name, connector, state: 'not-installed' }))
+    const missing = [...seen.get(a.provider) ?? []].filter(([name]) => !has.has(name)).map(([name, kind]): McpAccountServer => {
+      if (kind === 'connector') return server(name, kind, { state: 'not-set-up', note: 'claude.ai connectors are set up on claude.ai, for each account.', connectUrl: CONNECT_URL })
+      if (kind === 'plugin') {
+        const by = coveringConnector(name, a.servers)
+        if (by) return server(name, kind, { state: 'ready', note: `Covered by ${by} on this account.` })
+        return server(name, kind, { state: 'not-set-up', note: `${tool(a.provider)} didn\u2019t load its plugin on this account.` })
+      }
+      return server(name, kind, { state: 'not-set-up', note: 'Not on this account yet. Kernel shares it, so check again to pick it up.' })
+    })
     return { ...a, servers: [...a.servers, ...missing].sort((x, y) => x.name.localeCompare(y.name)) }
   })
 }

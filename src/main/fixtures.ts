@@ -309,6 +309,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.checkMcp': async () => f.accounts ?? [],
     'accounts.mcpSignIn': async () => f.accounts ?? [],
     'accounts.mcpSignInAll': async ({ accountId }) => ({ accountId, servers: [], done: [], failed: [], finished: true }),
+    'accounts.mcpIgnore': async () => f.mcpAccounts ?? [],
     'accounts.rename': async ({ accountId, label }) => (f.accounts ?? []).map((a) => (a.id === accountId ? { ...a, label: label.trim() || a.email || a.label } : a)),
     'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
     'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),

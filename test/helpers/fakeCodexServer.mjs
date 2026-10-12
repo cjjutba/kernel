@@ -67,7 +67,17 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   const { id, method, params } = msg
   if (id === undefined) return
   if (method === 'initialize') return send({ id, result: { userAgent: 'fake', codexHome: process.env.CODEX_HOME ?? '', platformFamily: 'unix', platformOs: 'macos' } })
-  if (method === 'thread/start') { const threadId = `thread-${++threads}`; return send({ id, result: { thread: { id: threadId }, model: params.model } }) }
+  if (method === 'thread/start') {
+    const threadId = `thread-${++threads}`
+    send({ id, result: { thread: { id: threadId }, model: params.model } })
+    // How each MCP server starts on a thread, a JSON table by CODEX_HOME ('' for none) of name to `{ status, error }` in
+    // FAKE_CODEX_MCP_STARTUP: each says it is starting, then how it ended, as Codex 0.153.4 does (KERNEL-646).
+    const startup = Object.entries(JSON.parse(process.env.FAKE_CODEX_MCP_STARTUP ?? '{}')[home ?? ''] ?? {})
+    const note = (name, status, error = null) => send({ method: 'mcpServer/startupStatus/updated', params: { threadId, name, status, error, failureReason: null } })
+    for (const [name] of startup) note(name, 'starting')
+    setTimeout(() => { for (const [name, s] of startup) if (s.status !== 'starting') note(name, s.status, s.error ?? null) }, 20)
+    return
+  }
   if (method === 'thread/resume') {
     if (params.threadId === 'gone') return send({ id, error: { code: -32600, message: `no rollout found for thread id ${params.threadId}` } })
     return send({ id, result: { thread: { id: params.threadId }, model: params.model } })
@@ -139,6 +149,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (method === 'thread/compact/start') return send({ id, result: {} })
   // Each home's MCP servers for `mcpServerStatus/list`, a JSON table by CODEX_HOME ('' for none) in FAKE_CODEX_MCP_STATUS (KERNEL-626).
   if (method === 'mcpServerStatus/list') return send({ id, result: { data: JSON.parse(process.env.FAKE_CODEX_MCP_STATUS ?? '{}')[home ?? ''] ?? [], nextCursor: null } })
+  // Codex's MCP OAuth (KERNEL-646): the page at once, then the login completes. A server named in FAKE_MCP_FAIL fails with
+  // Codex's reason, FAKE_CODEX_MCP_LOGIN=wait never completes, and FAKE_CODEX_MCP_NO_OAUTH refuses the server outright.
+  if (method === 'mcpServer/oauth/login') {
+    if (process.env.FAKE_CODEX_MCP_NO_OAUTH === params.name) return send({ id, error: { code: -32600, message: `OAuth login is only supported for streamable HTTP servers.` } })
+    send({ id, result: { authorizationUrl: `https://${params.name}.example.com/authorize?client=codex` } })
+    if (process.env.FAKE_CODEX_MCP_LOGIN === 'wait') return
+    const failed = process.env.FAKE_MCP_FAIL === params.name
+    setTimeout(() => send({ method: 'mcpServer/oauthLogin/completed', params: { name: params.name, threadId: null, success: !failed, ...(failed ? { error: 'access denied' } : {}) } }), 20)
+    return
+  }
   // Codex's MCP servers, a JSON table in FAKE_CODEX_MCP. `error` fails the request.
   if (method === 'config/read') {
     if (process.env.FAKE_CODEX_MCP === 'error') return send({ id, error: { code: -32603, message: 'failed to load configuration' } })

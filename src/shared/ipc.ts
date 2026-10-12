@@ -355,8 +355,8 @@ export interface KernelApi {
   /** The code the sign-in page shows, for `claude auth login`'s prompt (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /**
-   * Closes the Add account sheet: stops the sign-in that is running, an MCP server's (`accounts.mcpSignIn`) included. On
-   * Claude it also stops Sign in to all (`accounts.mcpSignInAll`).
+   * Closes the Add account sheet: stops the sign-in that is running, an MCP server's (`accounts.mcpSignIn`) included, and
+   * the provider's Sign in to all (`accounts.mcpSignInAll`).
    */
   'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
   /**
@@ -388,19 +388,27 @@ export interface KernelApi {
    */
   'accounts.checkMcp': { req: { provider: 'claude'; accountId: string }; res: AccountProfile[] }
   /**
-   * Signs one MCP server in on a Claude account: `claude mcp login <server>` in the account's folder, which opens the
-   * browser. A user-added server's sign-in then reaches every account. Progress arrives as `account.mcpSignIn` pushes, and
-   * `accounts.cancelAdd` stops it. Resolves once Claude Code finishes, with the server off the account's `mcpSignIns`
-   * unless it is a claude.ai connector, which the user finishes on claude.ai (KERNEL-616).
+   * Signs one MCP server in on an account. Claude: `claude mcp login <server>` in the account's folder, which opens the
+   * browser, and the server leaves the account's `mcpSignIns` unless it is a claude.ai connector, which the user finishes on
+   * claude.ai (KERNEL-616). Codex: Codex's own MCP OAuth login in the account's home, whose page Kernel opens (KERNEL-646).
+   * A user-added server's sign-in then reaches every account of the provider. Progress arrives as `account.mcpSignIn`
+   * pushes, and `accounts.cancelAdd` stops it. Resolves once the sign-in finishes.
    */
-  'accounts.mcpSignIn': { req: { provider: 'claude'; accountId: string; server: string }; res: AccountProfile[] }
+  'accounts.mcpSignIn': { req: { provider: Provider; accountId: string; server: string }; res: AccountProfile[] }
   /**
-   * Sign in to all: signs in every MCP server that needs a sign-in on a Claude account, one after another, through
-   * `accounts.mcpSignIn`. It checks the account first when `mcp.accounts` hasn't. Progress arrives as `account.mcpSignInAll`
-   * pushes, with each server's own steps as `account.mcpSignIn`. A failed sign-in moves on to the next server.
-   * `accounts.cancelAdd` stops the queue. Resolves when it ends, with what was signed in and what failed (KERNEL-626).
+   * Sign in to all: signs in every MCP server that needs a sign-in on an account, one after another, through
+   * `accounts.mcpSignIn`. Servers ignored there or switched off in every room are skipped. It checks the account first when
+   * `mcp.accounts` hasn't. Progress arrives as `account.mcpSignInAll` pushes, with each server's own steps as
+   * `account.mcpSignIn`. A failed sign-in moves on to the next server. `accounts.cancelAdd` stops the queue. Resolves when it
+   * ends, with what was signed in and what failed (KERNEL-626, Codex since KERNEL-646).
    */
-  'accounts.mcpSignInAll': { req: { provider: 'claude'; accountId: string }; res: McpSignInAll }
+  'accounts.mcpSignInAll': { req: { provider: Provider; accountId: string }; res: McpSignInAll }
+  /**
+   * Ignore, or stop ignoring, one MCP server on one account, kept in `accounts.json` across restarts. An ignored server reads
+   * `ignored` in `mcp.accounts` and doesn't count toward the account's row warning (`mcpSignIns`), the notice after adding an
+   * account or Sign in to all. Resolves with `mcp.accounts`, also pushed (KERNEL-646).
+   */
+  'accounts.mcpIgnore': { req: { provider: Provider; accountId: string; server: string; ignored: boolean }; res: McpAccount[] }
   /** A provider's models with their efforts: Claude's from MODELS, Codex's from `model/list`, read once per launch. */
   'models.list': { req: { provider: Provider }; res: ProviderModel[] }
 
@@ -446,7 +454,8 @@ export interface KernelApi {
    */
   'mcp.list': { req: { roomId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
   /**
-   * Every signed-in subscription account of both providers with each MCP server's state on it (KERNEL-626). Kernel keeps
+   * Every signed-in subscription account of both providers with each MCP server's state on it (KERNEL-626): every server
+   * any account of the provider has, on each of its accounts, in one of five states (KERNEL-646). Kernel keeps
    * what it last found: only an account it hasn't checked yet is checked, and the call waits for it. `refresh` checks again,
    * every account or only `provider`'s, or only `accountId`. A Claude check starts Claude Code on the account and stops it,
    * as `accounts.checkMcp` does. A Codex check lists the servers in the account's home. Changes arrive as `mcp.accounts`.
@@ -640,9 +649,9 @@ export type PushEvent =
   | { type: 'accounts'; accounts: AccountProfile[] }
   /** Where Add account is, for its sheet (KERNEL-406). */
   | { type: 'account.add'; add: AccountAddStep }
-  /** Where a sign-in to an MCP server on a Claude account is (`accounts.mcpSignIn`, KERNEL-616). */
+  /** Where a sign-in to an MCP server on an account is (`accounts.mcpSignIn`, KERNEL-616). */
   | { type: 'account.mcpSignIn'; signIn: McpSignInStep }
-  /** Where Sign in to all on a Claude account is (`accounts.mcpSignInAll`, KERNEL-626). */
+  /** Where Sign in to all on an account is (`accounts.mcpSignInAll`, KERNEL-626). */
   | { type: 'account.mcpSignInAll'; run: McpSignInAll }
   /** MCP servers need a sign-in on an account just added, after its first check. Once per account (KERNEL-626). */
   | { type: 'account.mcpNeeded'; needed: McpNeeded }

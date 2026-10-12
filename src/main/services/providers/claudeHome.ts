@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { lstat, readdir, rmdir, unlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
@@ -183,6 +183,72 @@ function syncLocked(home: string, file: string, from: string) {
   if (!SHARED_KEYS.every((key) => same(next[key], own[key])) || !lstatOf(file)) writeJson(file, next, 0o600)
   const now = serversOf(merged)
   if (!same(now, base)) writeJson(join(home, MCP_BASE), now, 0o600)
+}
+
+// ---------- plugins (KERNEL-646)
+// Claude Code 2.1.292 writes `plugins/installed_plugins.json` and `plugins/known_marketplaces.json` through a temp file and a
+// rename, which puts a file of the account's own where `linkClaudeHome` left a link. From then on a plugin installed,
+// updated or removed on the account stayed there, and one on the CLI login never reached it.
+
+/** The plugin files Claude Code replaces, each with where its plugins sit in it: `plugins`, or the whole file. */
+const PLUGIN_FILES: { name: string; key?: string }[] = [{ name: 'installed_plugins.json', key: 'plugins' }, { name: 'known_marketplaces.json' }]
+
+/** What the plugin files held after Kernel's last sync of an account, kept in its folder. */
+const PLUGINS_BASE = 'kernel-plugins-base.json'
+
+/**
+ * Keeps an account's plugins and the CLI login's (`root`, `~/.claude`) one set (KERNEL-646). For each plugin file the account
+ * has a file of its own in place of the link: a plugin or marketplace it added, changed or removed since the last sync goes
+ * to `~/.claude`, through Claude Code's own locks, unless the CLI login changed that one too, which wins, as MCP servers
+ * merge (`mergeServers`). Paths into the account's folder become paths into `~/.claude`, which they reach through the
+ * links anyway. Then the file is a link to `~/.claude`'s again, so the CLI login's changes reach the account at once. A
+ * file that doesn't parse whole, or a lock a CLI holds, leaves both as they are until the next sync.
+ */
+export function syncClaudePlugins(home: string, root: string) {
+  let base: Record<string, Servers> = {}
+  try { base = record(JSON.parse(readFileSync(join(home, PLUGINS_BASE), 'utf8'))) as Record<string, Servers> ?? {} } catch { /* none yet */ }
+  let changed = false
+  for (const f of PLUGIN_FILES) {
+    const own = join(home, 'plugins', f.name)
+    const shared = join(root, 'plugins', f.name)
+    if (!lstatOf(own)?.isFile()) continue
+    mkdirSync(join(root, 'plugins'), { recursive: true })
+    const unlockShared = lockConfig(shared)
+    if (!unlockShared) continue
+    try {
+      const unlockOwn = lockConfig(own)
+      if (!unlockOwn) continue
+      try {
+        const merged = mergePluginFile(own, shared, base[f.name], { home, root, key: f.key })
+        if (!merged) continue
+        base[f.name] = merged
+        changed = true
+      } finally { unlockOwn() }
+    } finally { unlockShared() }
+  }
+  if (changed) writeJson(join(home, PLUGINS_BASE), base, 0o600)
+}
+
+/** One plugin file's merge and link (`syncClaudePlugins`). Returns the plugins both logins now share, or undefined when it left the file as it was. */
+function mergePluginFile(own: string, shared: string, base: Servers | undefined, o: { home: string; root: string; key?: string }): Servers | undefined {
+  // A path is a JSON string, so its prefix is swapped as JSON writes it.
+  const from = JSON.stringify(join(o.home, 'plugins') + '/').slice(1, -1)
+  const to = JSON.stringify(join(o.root, 'plugins') + '/').slice(1, -1)
+  let mine: Record<string, unknown> | undefined
+  let theirs: Record<string, unknown> | undefined
+  try { mine = record(JSON.parse(readFileSync(own, 'utf8').split(from).join(to))) } catch { return undefined }
+  if (!mine) return undefined
+  try { theirs = record(JSON.parse(readFileSync(shared, 'utf8'))) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return undefined }
+  const pick = (v: Record<string, unknown> | undefined) => (o.key ? record(v?.[o.key]) : v)
+  const plugins = mergeServers(pick(theirs), pick(mine), base)
+  if (!theirs || !same(plugins, pick(theirs) ?? {})) {
+    const next = o.key ? { ...(theirs ?? mine), [o.key]: plugins } : plugins
+    const real = theirs ? realpathSync(shared) : shared
+    writeJson(real, next, theirs ? statSync(real).mode & 0o777 : 0o644)
+  }
+  unlinkSync(own)
+  symlinkSync(shared, own)
+  return plugins
 }
 
 /** Deletes an account's folder. A link goes as a link, so nothing in `~/.claude` it points to is touched. */
