@@ -99,7 +99,7 @@ export function Permissions() {
       <div className="ob-page">
         <div className="ob-col">
           <h1 className="ob-h1">Choose how agents ask</h1>
-          <p className="ob-sub">Pick the mode new chats start in. You can change it later in Settings, Permissions, for a room, or for one chat with Shift+Tab.</p>
+          <p className="ob-sub">Pick the mode new chats start in. You can change it later in Settings, Permissions, or for a room.</p>
           {avail ? (
             <div role="radiogroup" aria-label="Permission mode" className="ob-list ob-modes">
               {MODES.map((m, i) => {
