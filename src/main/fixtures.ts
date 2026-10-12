@@ -43,6 +43,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
+  /** The fixture's personal and plugin agents, once each, as `agents.listGlobal` gives them with no room (KERNEL-640). */
+  const globalAgents = (): AgentDef[] => {
+    const all = Object.values(f.agents).flat().filter((a) => a.origin === 'personal' || a.origin === 'plugin')
+    return [...new Map(all.map((a) => [a.id, a])).values()].sort((a, b) => Number(a.origin === 'plugin') - Number(b.origin === 'plugin'))
+  }
   /** The workspace of the room's newest open chat with Rowan, the one `lead.open` finds (KERNEL-405). */
   const leadWs = (roomId: string) => {
     const lead = f.agents[roomId]?.find((a) => a.lead)
@@ -103,6 +108,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.list': async ({ roomId, retired }) => (f.agents[roomId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ roomId }) => f.status[roomId] ?? {},
     'agents.save': async ({ roomId, agentId, patch }) => ({ ...agentOf(roomId, agentId), ...patch }),
+    'agents.listGlobal': async () => globalAgents(),
+    'agents.saveGlobal': async ({ agentId, patch }) => {
+      const a = globalAgents().find((x) => x.id === agentId)
+      if (!a) throw new Error(`${agentId} is not in ~/.claude/agents.`)
+      return { ...a, ...patch }
+    },
     'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
     'agents.create': async ({ draft }) => ({ ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }),
     'agents.retire': async () => ok,
