@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, HeldChat, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
@@ -537,6 +537,13 @@ const newWorkspaceFromIssues = (f: Fixture, roomId: string, issues: GithubIssueD
   ui: { route: { name: 'team', roomId }, modal: { name: 'newWorkspace', roomId }, menu: 'from' }
 })
 
+/** The New chat the issue check held back in ConfirmIssueTaken (KERNEL-500). */
+const invoicePdfPrompt = 'KERNEL-31: Export invoices as PDF'
+const invoicePdfChat: HeldChat = {
+  roomId: ids.roomA, source: { kind: 'issue', id: 'KERNEL-31', title: 'Export invoices as PDF' }, parts: [{ type: 'text', text: invoicePdfPrompt }],
+  picks: { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: false, baseRef: '', pickedRef: '', filled: invoicePdfPrompt }
+}
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
@@ -595,10 +602,10 @@ export const teamFixtures: Record<string, Fixture> = {
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
-  // KERNEL-438: someone else may be on the issue. Nothing opens it in the app until KERNEL-479, so only this fixture does.
+  // KERNEL-438: someone else may be on the issue. New chat opens it when the issue it starts from has findings (KERNEL-500).
   ConfirmIssueTaken: scene((f) => ({
     ...teamScene(f),
-    ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }] } }
+    ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
