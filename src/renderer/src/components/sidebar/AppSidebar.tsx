@@ -23,6 +23,7 @@ import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
+import { workspaceRowLabel } from './workspaceRowLabel'
 
 /** Routes hold only strings, so equal fields mean the same page. An unset field and a missing one are the same. */
 const same = (a: Route, b: Route) => {
@@ -165,7 +166,7 @@ async function archiveFromSidebar(ws: Workspace) {
   }
   try {
     await archiveByHand({ workspaceId: ws.id })
-  } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: cleanError(e) }) }
+  } catch (e) { actions.ui.toast({ title: `Could not archive ${workspaceRowLabel(ws)}`, sub: cleanError(e) }) }
 }
 
 /**
@@ -183,10 +184,11 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   const current = useStore((s) => same(s.ui.route, { name: 'workspace', workspaceId: ws.id }))
   const unread = useStore((s) => workspaceRowUnread(s.chats[ws.id], current))
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
+  const label = workspaceRowLabel(ws)
   return (
     <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
-        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} slot={slot} unread={unread ? (g.label ? `${ws.name}, ${g.label}` : ws.name) : undefined}
+        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
@@ -194,7 +196,7 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
       />
       <div className="more ws-archive">
         {/* Just the icon, with no spinner or word (DESIGN.md, Busy buttons). useBusy still ignores a second click. */}
-        <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={!!busy} onClick={archive} />
+        <IconButton icon="archive" size={14} label={`Archive ${label}`} style={{ width: 24, height: 24 }} disabled={!!busy} onClick={archive} />
       </div>
     </div>
   )
