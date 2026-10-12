@@ -4,6 +4,7 @@ import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
 import { actionKey, afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { useLocalMerge } from './useLocalMerge'
 import { openRoom } from '../../../lead'
 import { archivedByHand } from '../byHand'
 import './pr.css'
@@ -14,7 +15,8 @@ export const request: Record<PrAction,(workspaceId: string) => Promise<unknown>>
   resolve: (workspaceId) => call('pr.resolve', { workspaceId }),
   merge: (workspaceId) => call('pr.merge', { workspaceId }),
   ready: (workspaceId) => call('pr.ready', { workspaceId }),
-  reopen: (workspaceId) => call('pr.reopen', { workspaceId })
+  reopen: (workspaceId) => call('pr.reopen', { workspaceId }),
+  update: (workspaceId) => call('pr.update', { workspaceId })
 }
 
 /** Also what the workspace header's title does on click. */
@@ -42,7 +44,9 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
   const changed = hasChanges(ws)
-  const view = headerView(ws.prState, changed, !!ws.prBlocked)
+  // A room with no GitHub merges the branch on the Mac, and its header keeps the band with a `→ main` pill in place of the PR link (KERNEL-478).
+  const local = useLocalMerge(ws)
+  const view = headerView(ws.prState, changed, !!ws.prBlocked, local)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
@@ -51,12 +55,14 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const createDraft = () => void act(busyLabel.create, failTitle.create, () => call('pr.create', { workspaceId: id, draft: true }))
 
   // Checks, review comments and conflicts for the Checks tab and the review card. Main pushes fresh ones on every refresh.
+  // A local merge has no number, and its read is what says ahead, behind and what is in the way.
+  const reads = !!ws.prNumber || !!local
   useEffect(() => {
-    if (!ws.prNumber) return
+    if (!reads) return
     let live = true
     call('pr.get', { workspaceId: id }).then((info) => { if (live && info) actions.prs.set(info) }).catch(() => undefined)
     return () => { live = false }
-  }, [id, ws.prNumber])
+  }, [id, reads, ws.prState])
 
   // Archive goes through the archive confirmation; once the workspace is archived, it lives in History. A workspace Kernel
   // archived on its own while on screen, after its PR or the work it reviewed merged, opens the Lead's chat instead, with
@@ -94,9 +100,10 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     return () => window.removeEventListener('keydown', onKey)
   }, [listen, action, canArchive, id])
 
+  // Where the PR number was: its link to GitHub, or for a branch that merges here, a plain pill with nothing to open.
   const link = view.link && ws.prNumber && ws.prUrl
     ? <a className="pr-link" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}><span className="pr-num">#{ws.prNumber}</span><span className="pr-ext"><Icon name="ext" size={11} stroke={1.8} /></span></a>
-    : null
+    : view.pill ? <span className="pr-pill" role="img" aria-label={`Merges into ${view.pill}`}><Icon name="arrowRight" size={11} /><span className="mono">{view.pill}</span></span> : null
   // The state always shows, busy or not: only the busy button spins (KERNEL-274).
   const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
   const spinner = (label: string) => <Button busy>{label}</Button>

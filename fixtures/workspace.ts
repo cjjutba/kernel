@@ -52,6 +52,55 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
     ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   }))
 
+/**
+ * KERNEL-478: a branch that merges on the Mac, as design/redesign/PrLocal*.png draws it. Noor's discount code branch in the Shop room, a local
+ * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The room's merge
+ * method is a squash, and `merged` is the commit it left on main.
+ */
+type LocalState = 'ready' | 'behind' | 'conflict' | 'merging' | 'merged' | 'dirty'
+const SHOP = '/Users/you/Projects/shop'
+const localFiles: ChangedFile[] = [
+  { path: 'src/checkout/DiscountField.tsx', status: 'A', added: 58, removed: 0 },
+  { path: 'src/checkout/CheckoutForm.tsx', status: 'M', added: 21, removed: 4 },
+  { path: 'src/checkout/cart.ts', status: 'M', added: 34, removed: 6 },
+  { path: 'src/db/discounts.ts', status: 'A', added: 41, removed: 0 },
+  { path: 'src/db/schema.ts', status: 'M', added: 12, removed: 0 },
+  { path: 'src/api/checkout.ts', status: 'M', added: 18, removed: 2 },
+  { path: 'test/discounts.test.ts', status: 'A', added: 76, removed: 0 },
+  { path: 'test/cart.test.ts', status: 'M', added: 44, removed: 3 }
+]
+const localScene = (state: LocalState) => scene((f) => {
+  const behind = { ready: 0, merging: 0, merged: 0, dirty: 0, behind: 4, conflict: 2 }[state]
+  const conflicts = state === 'conflict' ? ['src/checkout/cart.ts', 'src/db/schema.ts'] : []
+  const dirty = state === 'dirty' ? [{ status: 'M', path: 'package.json' }, { status: 'M', path: 'src/app/layout.tsx' }, { status: '??', path: 'notes.md' }] : []
+  const prState: Workspace['prState'] = state === 'behind' || state === 'dirty' ? 'ready' : state
+  const merged = state === 'merged'
+  return {
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Shop', path: SHOP, repo: undefined, host: 'local' as const } : r)),
+    workspaces: withWorkspace(f, ids.table, {
+      name: 'add-discount-code-checkout', branch: 'feat/add-discount-code-to-checkout', baseRef: 'main', agentId: 'noor', title: 'Add a discount code to checkout', prState,
+      stat: { files: 8, added: 304, removed: 15 }, ...(merged ? { mergedAt: at(10, 44), mergeCommit: '4e1b9c2f0a7d3b5c8e1a9d6f2b4c7e0a3d5f8b1c' } : {})
+    }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Discount code field' } : c)),
+    items: { [ids.tableChat]: [
+      userMsg('lm-u', 'Add a discount code field to checkout. It takes a code, checks it against a discounts table and shows the new total under the subtotal. Keep the cart tests passing, and add tests for a percent code, a fixed code and an unknown code.'),
+      ...folded('lm', 14, 3),
+      { kind: 'text', id: 'lm-x', ts: at(10, 42), text: 'Checkout has a discount code field now. A valid code shows the new total under the subtotal, and an unknown code says "Code not found".\n\nThe branch has 3 commits. This repo has no GitHub remote, so there is no pull request. Kernel merges the branch into `main` on this Mac.' },
+      { kind: 'result', id: 'lm-r', ts: at(10, 43), durationMs: 72_000, ok: true },
+      ...(merged ? [{ kind: 'note' as const, id: 'lm-note', ts: at(10, 44), text: 'Squashed into main as 4e1b9c2.', pr: 'merged' as const }] : [])
+    ] },
+    changes: { [ids.table]: localFiles },
+    // The Run tab before the script has run, as the PNGs draw it (WorkspaceRunEmpty).
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+    prs: { [ids.table]: {
+      workspaceId: ids.table, number: 0, url: '', title: '', state: state === 'conflict' ? 'conflict' : 'ready', baseRef: 'main', checks: [], comments: [], conflicts, head: 'a'.repeat(40),
+      local: { ahead: 3, behind, stat: { files: 8, added: 304, removed: 15 }, method: 'squash', checkout: { path: SHOP, dirty } }
+    } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  }
+})
+
 /** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
 function runScripts(): Fixture {
   const open = prScene('open', [], { prs: prInfo('open') })
@@ -1381,6 +1430,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
+  // A branch that merges on the Mac, in a room with no GitHub (KERNEL-478, design/redesign/PrLocal*.png).
+  PrLocalReady: localScene('ready'),
+  PrLocalBehind: localScene('behind'),
+  PrLocalConflict: localScene('conflict'),
+  PrLocalMerging: localScene('merging'),
+  PrLocalMerged: localScene('merged'),
+  PrLocalDirty: localScene('dirty'),
   // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the chat header in both states (KERNEL-425).
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
