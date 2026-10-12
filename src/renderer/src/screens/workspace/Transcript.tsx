@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
@@ -35,6 +35,25 @@ const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>,
 
 /** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
 export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user' && !item.from && userView(item) === 'bubble'
+
+/** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
+export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
+
+const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
+
+/**
+ * Whether the chat keeps following its end after a scroll event (KERNEL-605). `before` is where the view was at the last one, and `byHand` is
+ * whether the reader's own input (wheel, touch, keys, the scrollbar, a jump from the chat rail) started this scroll.
+ * - The view moving up unpins when the reader did it, even by a little, or the next streamed line would pull them straight back. A move nobody
+ *   asked for unpins once it lands past PIN_PX, which is how the plan card opening a long plan at its top stops the following.
+ * - Anything else only ever follows. The end within PIN_PX means following, and a thread that grew under a view at its end moves no scroll
+ *   position, only the distance, which the thread's size observer closes. Our own scroll to the end and the browser clamping or anchoring
+ *   the view after rows resize therefore never unpin.
+ */
+export function followsAfterScroll(pinned: boolean, view: ScrollView, before: number, byHand: boolean): boolean {
+  if (view.scrollTop < before && (byHand || distFromEnd(view) > PIN_PX)) return false
+  return distFromEnd(view) <= PIN_PX ? true : pinned
+}
 
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
@@ -370,43 +389,84 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   }, [approvals, items, workspaceId, chat.id])
   // The chat follows its end only while the reader is at it. Scrolling up to read stops it, scrolling back down starts it again.
   const scroller = useRef<HTMLDivElement>(null)
+  const thread = useRef<HTMLDivElement>(null)
   const end = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
-  // The Scroll to bottom button mirrors `pinned`. State changes only when it flips, so scrolling doesn't render the transcript on every event.
+  // The Scroll to bottom button shows while the reader is away from the end and not following it. State changes only when it flips, so scrolling doesn't render the transcript on every event.
   const [away, setAway] = useState(false)
   const awayNow = useRef(false)
-  const pin = (at: boolean) => {
-    pinned.current = at
-    if (awayNow.current === at) { awayNow.current = !at; setAway(!at) }
+  const show = (on: boolean) => { if (awayNow.current !== on) { awayNow.current = on; setAway(on) } }
+  const pin = (at: boolean) => { pinned.current = at; show(!at) }
+  // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
+  const byHand = useRef(false)
+  const lastTop = useRef(0)
+  const onScroll = () => {
+    const el = scroller.current
+    if (!el) return
+    const before = lastTop.current
+    lastTop.current = el.scrollTop
+    pinned.current = followsAfterScroll(pinned.current, el, before, byHand.current)
+    show(!pinned.current && distFromEnd(el) > PIN_PX)
   }
-  const sync = () => { const el = scroller.current; if (el) pin(el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX) }
-  // The button's smooth scroll passes through "away" on its way down, which must not unpin or bring the button back.
-  // It ends when the scroll lands, or when the reader takes over.
+  // A smooth scroll the page runs itself (the button's, or a jump from the chat rail) must not be cut short by following. It ends when the scroll
+  // lands, or when the reader takes over. The button's scroll passes through "away" on its way down, which never unpins since it only moves toward the end.
   const gliding = useRef(false)
-  const onScroll = () => { if (!gliding.current) sync() }
   const release = () => { gliding.current = false }
-  const landed = () => { gliding.current = false; sync() }
+  const take = () => { release(); byHand.current = true }
+  const frame = useRef(0)
+  // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
+  const follow = () => {
+    if (gliding.current) return 0
+    end.current?.scrollIntoView({ block: 'end' })
+    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) end.current?.scrollIntoView({ block: 'end' }) })
+  }
+  const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
+  const landed = () => {
+    release()
+    byHand.current = false
+    if (pinned.current) followNow()
+  }
   const toEnd = () => {
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
     gliding.current = smooth
+    byHand.current = false
     pin(true)
     end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
   }
-  // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
-  const follow = () => {
-    end.current?.scrollIntoView({ block: 'end' })
-    return requestAnimationFrame(() => { if (pinned.current) end.current?.scrollIntoView({ block: 'end' }) })
-  }
+  // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
+  const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) byHand.current = true }, [])
   // A chat opens at its end.
-  useLayoutEffect(() => { gliding.current = false; pin(true); const frame = follow(); return () => cancelAnimationFrame(frame) }, [chat.id])
+  useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); lastTop.current = scroller.current?.scrollTop ?? 0; return () => cancelAnimationFrame(frame.current) }, [chat.id])
+  // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
+  // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
+  const opening = useRef(false)
+  const opened = (e: MouseEvent<HTMLDivElement>) => {
+    if (!(e.target as Element).closest('[aria-expanded]')) return
+    opening.current = true
+    requestAnimationFrame(() => requestAnimationFrame(() => { opening.current = false }))
+  }
+  // The thread grows without gaining a row: a reply streaming text into the one it has, a step opening, a turn folding into its summary. Follow its size, not its row count.
+  const height = useRef(0)
+  useEffect(() => {
+    const el = thread.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height
+      if (opening.current && h > height.current) pinned.current = false
+      opening.current = false
+      height.current = h
+      if (pinned.current) followNow()
+      else if (scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
+    })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
   // Sending a message follows it even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const sent = followsSend(last)
   useEffect(() => {
-    if (sent) pin(true)
-    if (!pinned.current) return
-    const frame = follow()
-    return () => cancelAnimationFrame(frame)
+    if (sent) { release(); pin(true) }
+    if (pinned.current) followNow()
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
   // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
@@ -449,13 +509,13 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
 
   return (
     <div className="ws-chat" data-rail={rail.current.length >= RAIL_MIN || undefined}>
-      <ChatRail key={chat.id} entries={rail.current} scroller={scroller} />
-      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onWheel={release} onTouchStart={release} onPointerDown={release} onKeyDown={release}>
+      <ChatRail key={chat.id} entries={rail.current} scroller={scroller} onGlide={jumping} />
+      <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll} onScrollEnd={landed} onClick={opened} onWheel={take} onTouchStart={take} onPointerDown={(e) => (e.target === e.currentTarget ? take() : release())} onKeyDown={take}>
         {empty && (
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
         )}
-        <div className="thread" style={empty ? { display: 'none' } : undefined}>
+        <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
