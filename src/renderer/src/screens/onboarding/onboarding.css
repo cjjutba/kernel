@@ -17,7 +17,7 @@
 .ob-check + .ob-check { border-top: 1px solid var(--line); }
 .ob-ico { width: 15px; margin-top: 2px; flex-shrink: 0; display: inline-flex; color: var(--add); }
 .ob-check[data-ok="false"] .ob-ico { color: var(--del); }
-.ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--needs); }
+.ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--ink); }
 .ob-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ob-name { font-weight: 500; }
 .ob-detail { font-size: 12.5px; color: var(--muted); }
