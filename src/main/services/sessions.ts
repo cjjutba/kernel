@@ -145,6 +145,11 @@ export interface SessionDeps {
   usageReads?: () => UsageRead[]
   /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
   authOf?: (provider: Provider, accountId: string | undefined) => AccountAuth
+  /**
+   * The note a chat gets when its turn starts on another account than its last one, `cli` for the CLI's own login: "Now on
+   * Personal", and why when a limit moved it (KERNEL-568). Without it the chat says nothing.
+   */
+  switchNote?: (provider: Provider, accountId: string) => string
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -781,6 +786,7 @@ export class Sessions {
     const carrying = this.cutOff.get(chat.id) === 'quit'
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
+    chat = this.noteAccount(chat)
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
     for (const m of more) this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
@@ -795,6 +801,22 @@ export class Sessions {
     live.sent = [...parts, ...more.flatMap((m) => m.parts)]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+  }
+
+  /**
+   * The turn about to start runs on another account than the chat's last one, as after a switch: a note says which, and why
+   * when a limit moved it (KERNEL-568). The turn runs in the chat's live process when it has one, else on the account its
+   * provider runs on now. A chat's first turn says nothing.
+   */
+  private noteAccount(chat: Chat): Chat {
+    const live = this.live.get(chat.id)
+    const provider = chatProvider(chat)
+    const on = (live ? live.account : this.d.accountFor?.(provider)) ?? 'cli'
+    if (chat.ranOn === on) return chat
+    if (chat.ranOn && this.d.switchNote) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: this.d.switchNote(provider, on) })
+    const next = { ...chat, ranOn: on }
+    this.d.store.saveChat(next)
+    return next
   }
 
   /**
@@ -915,17 +937,17 @@ export class Sessions {
 
   /**
    * A known usage limit stops this chat: one on the whole account, or on the chat's model. Only the windows of its provider,
-   * on the account that provider runs on now, count (KERNEL-406).
+   * on the account that provider runs on now, count (KERNEL-406), or on `live`'s account when given.
    */
-  private limitHolds(chat: Chat) {
-    const limits = this.limitsFor(chat)
+  private limitHolds(chat: Chat, live?: Pick<Live, 'account'>) {
+    const limits = this.limitsFor(chat, live)
     return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
   }
 
-  /** The usage windows that count for a chat: its own provider's, on the account in use (KERNEL-406). */
-  private limitsFor(chat: Chat) {
+  /** The usage windows that count for a chat: its own provider's, on the account in use (KERNEL-406), or on `live`'s account. */
+  private limitsFor(chat: Chat, live?: Pick<Live, 'account'>) {
     const provider = chatProvider(chat)
-    const account = this.d.accountFor?.(provider)
+    const account = live ? live.account : this.d.accountFor?.(provider)
     return [...this.limits.values()].filter((l) => limitProvider(l) === provider && l.accountId === account)
   }
 
@@ -1418,8 +1440,9 @@ export class Sessions {
     const interrupted = live.interrupted
     // Stop and Send now end the cards the turn put up, on either provider. One answered first keeps its answer (KERNEL-563).
     if (interrupted) this.expireCards(live.cards)
-    // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
-    if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
+    // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop. The limit is the
+    // account's the turn ran on, which a switch at the limit may already have left (KERNEL-568).
+    if (live.limited && !stopped && this.limitHolds(chat, live)) this.setCutOff(chatId, 'limit')
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
     // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
     if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')

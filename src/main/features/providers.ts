@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type SwitchReason } from '@shared/types'
+import { limitProvider } from '@shared/providers'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
 import { exec } from '../services/exec'
-import type { LimitPatch } from '../services/providers/limits'
+import { blockingLimit } from '../services/health'
+import { LIMIT_NAME, type LimitPatch } from '../services/providers/limits'
 import type { UsageRead } from '../services/sessions'
 import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
@@ -83,6 +85,11 @@ export class Providers extends Feature {
   private usageReadAt = new Map<string, number>()
   /** Usage reads running, by account id, which Remove waits for so none writes to a folder it deleted. */
   private reading = new Map<string, Set<Promise<void>>>()
+  /**
+   * Each provider's last switch, by account id, for the note a chat gets when its next turn starts on the new account
+   * (KERNEL-568). `limit` is the window the account it left had hit, when the banner or Kernel moved it off a limit.
+   */
+  private switches = new Map<Provider, { to: string; from: string; limit?: RateLimit['type'] }>()
 
   // ---------- models
 
@@ -518,7 +525,8 @@ export class Providers extends Feature {
   /**
    * Add account. Claude runs `claude auth login` in a new folder of the account's own, and Codex signs in with ChatGPT in a
    * new home of its own (KERNEL-406, KERNEL-567). Each reads its email and plan from the account, and its email names it until
-   * it is renamed. The new account is added but not used until the user switches to it: switching is always a click.
+   * it is renamed. The new account is added but not used until the user switches to it, or Kernel does at a limit once the
+   * user turned that on (KERNEL-568).
    */
   async add(provider: Provider): Promise<AccountProfile> {
     if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
@@ -662,15 +670,23 @@ export class Providers extends Feature {
   /**
    * Use: the provider runs on this account from its next turn. A running turn finishes on the account it started on, and
    * idle processes end now (`restartProvider`). A limit on the account switched to holds its chats; one on the old account
-   * no longer does.
+   * no longer does. `reason` says who switched (KERNEL-568). From the limit banner or by Kernel at a limit, the account it
+   * left had hit a window: the chats' next turns say so, and its reset sends a notification. `from` is the account it
+   * left, the one in use by default.
    */
-  async switchTo(provider: Provider, accountId: string): Promise<AccountProfile[]> {
+  async switchTo(provider: Provider, accountId: string, o: { reason?: SwitchReason; from?: string } = {}): Promise<AccountProfile[]> {
     const file = this.load()
     const next = accountId === CLI_ACCOUNT ? undefined : file[provider].accounts.find((a) => a.id === accountId)?.id
     if (accountId !== CLI_ACCOUNT && !next) throw new Error('That account is no longer in Kernel.')
+    const from = o.from ?? file[provider].active ?? CLI_ACCOUNT
+    const to = next ?? CLI_ACCOUNT
+    const limits = this.store.meta<RateLimit[]>('limits') ?? []
+    const hit = o.reason === 'banner' || o.reason === 'limit' ? blockingLimit(limits.filter((l) => limitProvider(l) === provider && (l.accountId ?? CLI_ACCOUNT) === from)) : undefined
     if (provider === 'codex' && next) await this.linkCodexHome(this.codexHome(next)!)
     file[provider].active = next
     await this.save()
+    if (to !== from) this.switches.set(provider, { to, from, ...(hit ? { limit: hit.type } : {}) })
+    this.k.account.switched(provider, next, hit)
     if (provider === 'codex') this.codexModels = undefined
     this.sessions.restartProvider(provider)
     this.k.account.applyLimits(this.store.meta<RateLimit[]>('limits') ?? [])
@@ -680,6 +696,38 @@ export class Providers extends Feature {
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
     return accounts
+  }
+
+  /** What an account is called, by its id in `accounts.*`: its nickname or email, or the CLI login's, undefined or `cli` (KERNEL-568). */
+  label(provider: Provider, accountId?: string): string {
+    const file = this.load()[provider]
+    if (!accountId || accountId === CLI_ACCOUNT) return file.cli?.label ?? file.cli?.email ?? OWN_LOGIN[provider]
+    return this.stored(provider, accountId)?.label ?? 'another account'
+  }
+
+  /**
+   * The account Kernel moves `provider` to when the one in use hits its limit (KERNEL-568): a signed-in subscription account
+   * with no rejected 5-hour or weekly window in `limits`, the lowest 5-hour use first and an account never read last. Never
+   * an API key account, which bills per token, and never the one in use. Sign-ins are as Kernel last read them.
+   */
+  spareAccount(provider: Provider, limits: RateLimit[], now = Date.now()): string | undefined {
+    const file = this.load()[provider]
+    const signedIn = (a: StoredAccount) => a.auth !== 'apiKey' && (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
+      : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
+    const ids = [...(file.cli?.signedIn !== false ? [CLI_ACCOUNT] : []), ...file.accounts.filter(signedIn).map((a) => a.id)].filter((id) => id !== (file.active ?? CLI_ACCOUNT))
+    const of = (id: string) => limits.filter((l) => limitProvider(l) === provider && (l.accountId ?? CLI_ACCOUNT) === id)
+    const used = (id: string) => of(id).find((l) => l.type === 'five_hour')?.utilization ?? Infinity
+    return ids.filter((id) => !blockingLimit(of(id), now)).sort((a, b) => used(a) - used(b))[0]
+  }
+
+  /**
+   * The note a chat gets when its turn starts on another account than its last one (KERNEL-568): "Now on Personal", with
+   * "(Work hit its 5-hour limit)" after it when the provider's last switch, to this account, left Work at its limit.
+   */
+  switchNote(provider: Provider, accountId: string): string {
+    const s = this.switches.get(provider)
+    const why = s?.to === accountId && s.limit ? ` (${this.label(provider, s.from)} hit its ${LIMIT_NAME[s.limit]})` : ''
+    return `Now on ${this.label(provider, accountId)}${why}`
   }
 
   /**
@@ -817,7 +865,7 @@ export class Providers extends Feature {
       'accounts.addKey': async (req) => this.addKey(req.provider, req),
       'accounts.code': async ({ provider, code }) => { this.sendCode(provider, code); return { ok: true as const } },
       'accounts.cancelAdd': async ({ provider }) => { this.cancelAdd(provider); return { ok: true as const } },
-      'accounts.switch': async ({ provider, accountId }) => this.switchTo(provider, accountId),
+      'accounts.switch': async ({ provider, accountId, reason }) => this.switchTo(provider, accountId, { reason }),
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),

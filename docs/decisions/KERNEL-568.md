@@ -1,0 +1,12 @@
+**Kernel switches accounts on its own only when the user turned it on, and only between subscription accounts.** Amends KERNEL-406, which said Kernel never switches on its own, even at a limit, and the rule KERNEL-524 gave the limit banner, which still applies to the banner. `accounts.switchAtLimit` has one switch per provider, both off by default. With a provider's switch off, a limit pauses the rooms exactly as before.
+
+- With it on, a 5-hour or weekly rejection on the account in use first reads every account of that provider, so the pick goes by fresh numbers. Then Kernel moves to the signed-in subscription account with no rejected 5-hour or weekly window and the lowest 5-hour use. An account never read comes last. A rejected per-model window doesn't rule an account out, since other models still run there.
+- Never to an API key account. A key bills per token, and a switch the user didn't make shouldn't start that.
+- Once per rejection, kept by window. A reading can put the reset time a second off, so reset times a minute apart count as the same rejection, or each fresh reading would read every account again. When no account has room the rooms stay paused, and a later reading that finds one, such as another account's window resetting, moves then.
+- Never back. When the old account resets, Kernel stays where it is and sends one notification instead: "Work's 5-hour limit reset. You can switch back any time." The same goes for an account the limit banner's Switch to left.
+- The chats the limit held or cut off carry on through `drainWaiting` and `carryOn`, as when a limit lifts. A turn the limit cut off counts the account it ran on, so a switch that lands mid-turn still carries the chat on.
+
+**Every switch has a reason, and each chat says when its account changed.** `switchTo` takes `user`, `banner` or `limit`. Main works out the account a switch left, so the renderer only names the reason. Each chat keeps the account its last turn started on as `ranOn`. A turn that starts on another account adds a note, "Now on Personal", with "(Work hit its 5-hour limit)" after it when the banner or Kernel moved off a limit. A chat's first turn adds none, and neither does a chat's first turn after this change. Kernel keeps the last switch per provider in memory only, so after a restart the note says where the chat is now without saying why.
+
+**Reset notifications are kept by `limitKey`, not by window type.** "Notify me" and an account left at a limit are both per provider and per account, and each reset notifies once.
+KERNEL-568.

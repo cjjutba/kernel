@@ -18,6 +18,14 @@ export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: 
   return { ...prev, status: reset || room || !prev ? 'allowed' : prev.status, ...defined(patch) }
 }
 
+/**
+ * What notifications and chat notes call each window: "Notify me", a reset of an account left at its limit, and the note
+ * after a switch (KERNEL-568). Claude Code calls `seven_day_overage_included` the Fable limit.
+ */
+export const LIMIT_NAME: Record<RateLimit['type'], string> = {
+  five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
+}
+
 /** The object without its undefined values. */
 export const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
 

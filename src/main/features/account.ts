@@ -6,20 +6,18 @@ import { signOut } from '../services/account'
 import { exec } from '../services/exec'
 import { blockingLimit, NetworkMonitor } from '../services/health'
 import { planOf } from '../services/settings'
-import { limitKey } from '../services/providers/limits'
+import { LIMIT_NAME, limitKey } from '../services/providers/limits'
 import { limitProvider } from '@shared/providers'
 import { Feature } from './feature'
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
 const LIMIT_RECHECK_MS = 90_000
 
-/** What the "Notify me" notification calls each window. Claude Code calls `seven_day_overage_included` the Fable limit. */
-const LIMIT_NAME: Record<RateLimit['type'], string> = {
-  five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
-}
-
 /** The reason a signed-out Codex holds its chats by. Claude's is 'auth', as it always was. */
 const CODEX_AUTH = 'codex-auth'
+
+/** A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). */
+interface Move { at?: number; state: 'reading' | 'waiting' | 'done' }
 
 /** How often every account's usage is read while any agent works (KERNEL-567). */
 const USAGE_EVERY_MS = 10 * 60_000
@@ -34,8 +32,18 @@ export class Account extends Feature {
   private limitTimers = new Map<string, { at: number; timer: NodeJS.Timeout; rejected: boolean }>()
   /** The last account read, so a sign-out keeps the name on the account menu. */
   private account?: ClaudeAccount
-  /** Windows the user asked to hear about when they reset ("Notify me"). */
-  private notifyReset = new Set<RateLimit['type']>()
+  /**
+   * Windows whose reset sends a notification, by `limitKey`: one the user asked about with "Notify me", and one an account
+   * was left at by the limit banner or by Kernel's own switch (`left`, KERNEL-568). Each sends one.
+   */
+  private notifyReset = new Map<string, { limit: Pick<RateLimit, 'type' | 'provider' | 'accountId' | 'resetsAt'>; left: boolean }>()
+  /**
+   * Rejections Kernel moves a provider off, by `limitKey`, with the reset time that tells one rejection from the next, so each
+   * moves it once (KERNEL-568). A reading can put the reset a second off, so times a minute apart count as the same. `reading`
+   * while every account of the provider is read, `waiting` when none had room, which each new reading looks at again, and
+   * `done` once it switched.
+   */
+  private moving = new Map<string, Move>()
   /** Runs `checkLimits` while any window is rejected, or close to its limit with teammates held. */
   private limitCheck?: NodeJS.Timeout
   private limitChecking?: Promise<void>
@@ -152,7 +160,9 @@ export class Account extends Feature {
    * stopped mid-turn carry on (`Sessions.carryOn`). The limits are saved, so a restart keeps the pause. Each rejected
    * window, and each one close to its limit while teammates are held, gets a timer at its reset time, which marks it allowed
    * again and sends what it held. While any such window stands, `checkLimits` also runs every LIMIT_RECHECK_MS. A window
-   * lifting by any route sends "Notify me". With "Warn me before the weekly limit" on, the weekly window crossing 80% warns once (KERNEL-220).
+   * lifting by any route sends "Notify me", and the reset of an account left at its limit (KERNEL-568). With "Warn me before
+   * the weekly limit" on, the weekly window crossing 80% warns once (KERNEL-220). With "switch at a limit" on, a rejection
+   * moves the provider to another account (`switchAtLimit`, KERNEL-568).
    */
   applyLimits(limits: RateLimit[]) {
     const now = Date.now()
@@ -180,17 +190,85 @@ export class Account extends Feature {
       timer.unref?.()
       this.limitTimers.set(key, { at, timer, rejected })
     }
-    for (const type of this.notifyReset) {
-      if (limits.some((l) => l.type === type && limitProvider(l) === 'claude' && l.accountId === this.k.providers.active('claude') && l.status === 'rejected')) continue
-      this.notifyReset.delete(type)
-      this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
+    for (const [key, w] of this.notifyReset) {
+      if (limits.some((l) => limitKey(l) === key && l.status === 'rejected')) continue
+      this.notifyReset.delete(key)
+      this.resetNotice(key, w, now)
     }
     this.warnWeekly(limits, now)
+    // Before `readOthersWhenTight`, whose read a move off a limit makes itself.
+    this.switchAtLimit(limits, now)
     this.readOthersWhenTight(limits, now)
     // Utilization of a window that holds teammates stays fresh while it holds, so a drop sends what waited.
     const watching = limits.some((l) => l.status === 'rejected') || (holding && !!nearLimit(limits, now))
     if (watching && !this.limitCheck) { this.limitCheck = setInterval(() => void this.checkLimits(), LIMIT_RECHECK_MS); this.limitCheck.unref?.() }
     if (!watching && this.limitCheck) { clearInterval(this.limitCheck); this.limitCheck = undefined }
+  }
+
+  /**
+   * A window someone waited on reset. "Notify me" says agents can run again. An account left at its limit says the user can
+   * switch back, in the Inbox too, once per window (KERNEL-568).
+   */
+  private resetNotice(key: string, w: { limit: Pick<RateLimit, 'type' | 'provider' | 'accountId' | 'resetsAt'>; left: boolean }, now: number) {
+    const name = LIMIT_NAME[w.limit.type]
+    if (!w.left) {
+      this.o.showNotification?.({ id: `limit-${key}-${now}`, kind: 'system', title: `Your ${name} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
+      return
+    }
+    const title = `${this.k.providers.label(limitProvider(w.limit), w.limit.accountId)}'s ${name} reset`
+    this.notifications.notice({ id: `n-reset-${key}-${w.limit.resetsAt ?? now}`, title, sub: 'You can switch back any time.', heading: title, body: `${title}. You can switch back any time.` })
+  }
+
+  /**
+   * `provider` now runs on `to`, undefined for the CLI's own login (KERNEL-568). That account's windows no longer notify as
+   * left behind, since it is in use again. `hit` is the window the account it left had hit, when the limit banner or Kernel
+   * moved it off a limit, and its reset sends one notification.
+   */
+  switched(provider: Provider, to: string | undefined, hit?: RateLimit) {
+    for (const [key, w] of this.notifyReset) if (w.left && limitProvider(w.limit) === provider && w.limit.accountId === to) this.notifyReset.delete(key)
+    if (hit) this.notifyReset.set(limitKey(hit), { limit: hit, left: true })
+  }
+
+  /**
+   * "Switch at a limit" for each provider that has it on (KERNEL-568). A 5-hour or weekly rejection on the account in use
+   * reads every account of the provider, then moves to the one `spareAccount` picks, where the chats the limit held or cut
+   * off carry on (`switchTo`, `Sessions.drainWaiting`). Once per rejection, and never back when the old account resets. With
+   * no account to move to the rooms stay paused, and a later reading that finds one moves then.
+   */
+  private switchAtLimit(limits: RateLimit[], now: number) {
+    for (const key of this.moving.keys()) if (!limits.some((l) => l.status === 'rejected' && limitKey(l) === key)) this.moving.delete(key)
+    for (const { id: p } of PROVIDERS) {
+      if (!this.settings?.accounts?.switchAtLimit?.[p]) continue
+      const from = this.k.providers.active(p)
+      const hit = blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === from), now)
+      if (!hit) continue
+      const key = limitKey(hit)
+      const seen = this.moving.get(key)
+      if (seen && Math.abs((seen.at ?? 0) - (hit.resetsAt ?? 0)) <= 60) {
+        if (seen.state === 'waiting') this.moveOff(p, from, seen, limits)
+        continue
+      }
+      const move: Move = { at: hit.resetsAt, state: 'reading' }
+      this.moving.set(key, move)
+      // The read covers every account, so `readOthersWhenTight` doesn't read them again.
+      this.tight.add(p)
+      void this.k.providers.readUsage({ provider: p, force: true }).catch(() => undefined).then((fresh) => {
+        if (this.moving.get(key) !== move) return
+        move.state = 'waiting'
+        this.moveOff(p, from, move, fresh ?? this.store.meta<RateLimit[]>('limits') ?? [])
+      })
+    }
+  }
+
+  /** Moves `p` off the rejection on `from` to the account with the most room, unless the user moved it or turned the switch off meanwhile. */
+  private moveOff(p: Provider, from: string | undefined, move: Move, limits: RateLimit[]) {
+    if (this.stopped || !this.settings?.accounts?.switchAtLimit?.[p] || this.k.providers.active(p) !== from) return
+    // A fresh reading can find the limit lifted.
+    if (!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === from))) return
+    const to = this.k.providers.spareAccount(p, limits)
+    if (!to) return
+    move.state = 'done'
+    void this.k.providers.switchTo(p, to, { reason: 'limit' }).catch(() => undefined)
   }
 
   /**
@@ -264,10 +342,13 @@ export class Account extends Feature {
     return {
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(this.k.providers.binary('claude').path),
-      'usage.notifyOnReset': async ({ type }) => {
-        // Claude's window on the account in use, the one the banner offering this shows.
-        if (!this.limitTimers.get(limitKey({ type, provider: 'claude', accountId: this.k.providers.active('claude') }))?.rejected) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
-        this.notifyReset.add(type)
+      'usage.notifyOnReset': async ({ type, provider = 'claude' }) => {
+        // The window on the provider's account in use, the one the banner offering this shows.
+        const accountId = this.k.providers.active(provider)
+        const key = limitKey({ type, provider, accountId })
+        const held = this.limitTimers.get(key)
+        if (!held?.rejected) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
+        this.notifyReset.set(key, { limit: { type, provider, accountId, resetsAt: held.at / 1000 }, left: false })
         return { ok: true }
       },
       'account.signIn': async () => this.signIn(),
