@@ -381,6 +381,8 @@ for n,pg in [
     ('SettingsProvidersRename','providers-rename'),
     ('SettingsProvidersLegacy','providers-legacy'),
     ('SettingsAccountApiKey','account-apikey'),
+    ('SettingsAccountCodex','account-codex'),
+    ('SettingsAccountCodexSignedOut','account-codex-out'),
     # KERNEL-617: MCP sign-ins, the Keychain wait and a shared organization on an account row, and the duplicate message in the Add account sheet.
     ('SettingsProvidersMcp','providers-mcp'),
     ('SettingsProvidersKeychain','providers-keychain'),
