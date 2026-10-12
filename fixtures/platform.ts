@@ -518,7 +518,7 @@ export const platformFixtures: Record<string, Fixture> = {
     }
   }),
   // KERNEL-472: Client B's repo is on GitHub and Linear isn't connected, so detection says GitHub Issues, and the menu marks it.
-  SettingsRoomTracker: trackerRoom(ids.roomB, ['rowan', 'noor', 'ivy', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
+  SettingsRoomTracker: trackerRoom(ids.roomB, ['rowan', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
   SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['rowan', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
   DevUi: gallery('components'),
