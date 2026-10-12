@@ -1,6 +1,6 @@
 # Kernel
 
-Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team. The user briefs Rowan (the Lead) in Rowan's chat, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. The floor and the Board were removed (KERNEL-606), so don't build toward them, and don't describe Kernel as a virtual office in docs, release notes, the website or the repo description. Read `docs/PRODUCT.md` once per session if you are new to it.
+Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team. The user briefs Rowan (the Lead) in Rowan's chat, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. The floor and the Board were removed (KERNEL-606), so don't build toward them, and don't describe Kernel as an office or a place where agents sit at desks in docs, release notes, the website or the repo description. Read `docs/PRODUCT.md` once per session if you are new to it.
 
 ## Commands
 
