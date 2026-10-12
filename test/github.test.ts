@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PrInfo } from '@shared/types'
 import {
   batchQuery, blockedOf, checksOf, fingerprintOf, ghCanPush, infoOf, matchesCheck, parseBatch, prNote, prQuery, prStateOf, readFailure, resolveFile,
-  type PrView, type RollupItem
+  reviewsOf, type PrView, type RollupItem
 } from '../src/main/services/github'
 import { DEFAULT_SETTINGS, loadRepoSettings, prInstructions, saveRepoSettings } from '../src/main/services/settings'
 import type { Workspace } from '@shared/types'
@@ -49,6 +49,22 @@ describe('the batch read', () => {
     expect(views.get(7)?.statusCheckRollup).toEqual([])
     expect(rate).toEqual({ remaining: 4100, limit: 5000, resetAt: Date.parse('2026-10-11T09:00:00Z'), cost: 1 })
     expect(parseBatch(null)).toEqual({ views: new Map() })
+  })
+})
+
+describe('review threads (KERNEL-564)', () => {
+  it("reads each thread's id with its comment, so the agent can reply in the thread", () => {
+    expect(prQuery(42)).toContain('reviewThreads(first:100){nodes{id isResolved')
+    const comment = { id: 'c1', body: 'Rename it.', authorAssociation: 'MEMBER', author: { login: 'theo' } }
+    expect(reviewsOf({
+      reviewThreads: { nodes: [{ id: 'PRRT_kw1', isResolved: false, path: 'src/a.ts', line: 3, comments: { nodes: [comment] } }, { isResolved: false, path: 'src/b.ts', line: 1, comments: { nodes: [{ ...comment, id: 'c2' }] } }] },
+      latestReviews: { nodes: [{ id: 'r1', state: 'CHANGES_REQUESTED', body: 'Two things.', authorAssociation: 'MEMBER', author: { login: 'theo' } }] }
+    })).toEqual([
+      // A review's own body has no thread.
+      { id: 'r1', author: 'theo', body: 'Two things.', resolved: false, association: 'trusted' },
+      { id: 'c1', author: 'theo', path: 'src/a.ts', line: 3, body: 'Rename it.', resolved: false, association: 'trusted', threadId: 'PRRT_kw1' },
+      { id: 'c2', author: 'theo', path: 'src/b.ts', line: 1, body: 'Rename it.', resolved: false, association: 'trusted' }
+    ])
   })
 })
 

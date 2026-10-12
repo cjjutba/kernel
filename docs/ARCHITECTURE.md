@@ -70,7 +70,7 @@ Sessions started outside Kernel (a normal terminal, the big terminal) report thr
 
 ## Pull requests
 
-Creating, fixing and resolving PRs is delegated to the agent with instruction files (`create-pr.md`, `resolve-conflicts.md`, fix checks, address review). Kernel reads PR state with `gh pr view` and maps it to one header state (`github.ts`, `prStateOf`).
+Kernel hands creating, fixing and resolving PRs to the agent with instruction files (`create-pr.md`, `resolve-conflicts.md`, `fix-checks.md`, `address-review.md`). The text in each comes from the room, else Settings, Pull requests. When it is Kernel's own default, `prTextFor` (`services/conventions.ts`) fits it to the workspace: the branch, the base, the remote, the PR number, and the repo's PR template, contributing guide, commitlint config and PR skills or commands, each named by path. A text someone wrote goes out as written (KERNEL-468, KERNEL-564). `resolveFile` (`github.ts`) adds what GitHub reported under the text: conflicting files, failing checks, or the review comments of people in the repo with their thread ids and the command that replies in a thread. Kernel reads PR state with `gh pr view` and maps it to one header state (`github.ts`, `prStateOf`).
 
 ## Storage
 
