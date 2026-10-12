@@ -17,7 +17,7 @@ const MOVE_MS = 80
  * a note is written. What a point means is the surface's business, so a page, an image and Markdown share this. Esc cancels the popover
  * first and then leaves comment mode, since the popover is the newer layer.
  */
-export function CommentLayer({ layerRef, kind, file, version, by, archived, surface, onExit, onWheel }: {
+export function CommentLayer({ layerRef, kind, file, version, by, archived, surface, onExit, onWheel, watch }: {
   layerRef: RefObject<HTMLDivElement | null>
   kind: SharedFile['kind']
   file: SharedFile
@@ -30,6 +30,8 @@ export function CommentLayer({ layerRef, kind, file, version, by, archived, surf
   onExit: () => void
   /** A page scrolls under the pointer, since the layer covers the native view. */
   onWheel?: (dx: number, dy: number) => void
+  /** Changes whenever the file under the layer moves or scales, so every pin, and the one being written, is placed again (an image that zoomed or scrolled, KERNEL-598). */
+  watch?: unknown
 }) {
   const [all, setAll] = useState<SharedComment[]>([])
   const [spots, setSpots] = useState<(Spot | null)[]>([])
@@ -71,7 +73,15 @@ export function CommentLayer({ layerRef, kind, file, version, by, archived, surf
     let live = true
     void surface.spots(mine).then((s) => { if (live) setSpots(s) })
     return () => { live = false }
-  }, [surface, mine, again])
+  }, [surface, mine, again, watch])
+
+  // The pin being written goes with its spot too, by the anchor it was left at.
+  useEffect(() => {
+    if (watch === undefined || !draft) return
+    let live = true
+    void surface.spots([{ anchor: draft.anchor }]).then(([s]) => { if (live && s) setDraft((d) => (d && d.anchor === draft.anchor ? { ...d, at: s } : d)) })
+    return () => { live = false }
+  }, [watch])
 
   // Pointer moves are many and the answer comes from the page, so ask at most every MOVE_MS about the latest point.
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

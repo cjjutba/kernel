@@ -23,6 +23,7 @@ import { refreshPath } from './services/shellPath'
 import { muteShadowedWarning } from './services/providers/claude'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
+import { handZoom, zoomStepOf } from './windowZoom'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
@@ -195,8 +196,11 @@ function createWindow() {
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless }
   })
   // The default menu would close the window on Cmd+W and reload it on Cmd+R. Kernel closes the open tab and runs the dev
-  // script instead, so the page hears about them (KERNEL-539). View, Reload stays in the menu.
+  // script instead, so the page hears about them (KERNEL-539). View, Reload stays in the menu. The menu also zooms the window on
+  // Cmd+Plus, Minus and 0: the page gets those first, for a shared image's tab, and the window zooms when the page leaves them (KERNEL-598).
   win.webContents.on('before-input-event', (e, input) => {
+    const zoom = zoomStepOf(input)
+    if (zoom && win) { e.preventDefault(); void handZoom(win.webContents, zoom); return }
     if (input.type !== 'keyDown' || !input.meta || input.shift || input.alt || input.control) return
     const event = { w: 'kernel:close-tab', r: 'kernel:run-script' }[input.key.toLowerCase()]
     if (!event) return

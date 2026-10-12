@@ -1832,6 +1832,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
+  WorkspaceSharedImageZoom: sharedTab('sh-image'), // the same image at 200%, with the zoom control in the toolbar; the shot presses Zoom in twice (KERNEL-598)
   WorkspaceSharedMarkdown: sharedTab('sh-md'),
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
   WorkspaceSharedCrashed: sharedTab('sh-html'),

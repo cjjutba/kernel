@@ -104,6 +104,16 @@ async function pickPhone(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceSharedImageZoom is the image at 200%. The zoom is local to the tab and starts at Fit, so press Zoom in as a person would: 100, 150, 200 (KERNEL-598).
+async function zoomImage(page: Page) {
+  const zoomIn = page.getByRole('button', { name: 'Zoom in' })
+  await zoomIn.click()
+  await zoomIn.click()
+  await page.getByRole('button', { name: '200%, fit to window' }).waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 async function openVersions(page: Page) {
   await page.getByRole('button', { name: 'Versions' }).click()
   await page.mouse.move(0, 0)
@@ -131,7 +141,7 @@ async function commentAt(page: Page, spot: { x: number; y: number }, note: strin
   await page.getByRole('button', { name: 'Comment', exact: true }).click()
   const layer = page.locator('.cm-layer')
   await layer.waitFor()
-  const picture = page.locator('.shared-area > img')
+  const picture = page.locator('.shared-zoom > img')
   const image = (await picture.count()) ? await picture.boundingBox() : null
   const box = (await layer.boundingBox())!
   // Over an image the spot is in its picture, inside the 1px border.
@@ -278,6 +288,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedCommentOlder: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
   WorkspaceSharedCrashed: crashPage,
   WorkspaceSharedPhone: pickPhone,
+  WorkspaceSharedImageZoom: zoomImage,
   WorkspaceSharedVersions: openVersions,
   WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionSteps: stepToSecondQuestion,

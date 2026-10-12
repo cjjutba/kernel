@@ -8,6 +8,7 @@ const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
   'WorkspaceTabStates',
+  'WorkspaceSharedImageZoom', // the shared image zoomed to 200%, with the zoom control beside Comment (KERNEL-598)
   'RoomSetupTeamNoReviewer', // Room setup's team in a repo whose `[team] reviewer = "none"` turned review off: the picker says No reviewer (KERNEL-590)
   'IssuesJira', // a room on Jira, whose issues Kernel can't list yet: the plain state in NoTracker's layout (KERNEL-503)
   'WorkspaceRunEmpty', // the Run tab before the script has run, with the empty state's Run as its only button (KERNEL-423, KERNEL-512)
