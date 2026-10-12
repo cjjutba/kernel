@@ -2,20 +2,25 @@ import { useState, type HTMLAttributes, type ReactNode } from 'react'
 import type { BannerKind } from '@shared/types'
 import { Icon, type IconName } from '../icons'
 import { Button, IconButton } from './controls'
+import { useSwipeDismiss } from './useSwipeDismiss'
 
 /** One icon per failure type (DESIGN.md Patterns). */
 export const bannerIcon: Record<BannerKind, IconName> = {
   limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history', trust: 'shield'
 }
 
-/** A banner: neutral surface, an icon for its type, never a red background. */
+/**
+ * A banner: neutral surface, an icon for its type, never a red background. With `onDismiss` it has a close button that shows on
+ * hover or focus, and dragging it right, or swiping right on a trackpad, closes it too, as it does a toast.
+ */
 export function Banner({ kind, title, children, actions, onDismiss }: { kind: BannerKind; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
+  const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
   return (
-    <div role="alert" className="banner" data-kind={kind}>
+    <div role="alert" className="banner" data-kind={kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
       {kind === 'retry' ? <span className="spin" aria-hidden="true" /> : <Icon name={bannerIcon[kind]} />}
       <div className="grow"><div className="banner-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
       {actions}
-      {onDismiss && <IconButton icon="close" label="Dismiss" size={14} onClick={onDismiss} />}
+      {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Chat, Workspace } from '@shared/types'
-import { bannerFor, setupCommand, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
+import { bannerFor, limitBannerExpired, limitBannerKey, setupCommand, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
 
 const now = new Date(2026, 9, 7, 11, 0).getTime()
 const S = (ms: number) => Math.round(ms / 1000)
@@ -78,7 +78,7 @@ describe('workspace banners', () => {
     it('says new work waits at 90% of the 5-hour window, with when it resumes, and blocks nothing', () => {
       const b = bannerFor(input({ usage: [near('five_hour', 0.91, at340)] }))
       expect(b).toMatchObject({ id: 'nearLimit', kind: 'limit', title: 'Close to your 5-hour limit', sub: 'New work from teammates waits until 3:40 PM. Rowan can still answer you.', blocks: false })
-      expect(b?.actions).toEqual([{ id: 'usage', label: 'Open /usage' }])
+      expect(b?.actions).toEqual([{ id: 'usage', label: 'View usage' }])
       expect(bannerFor(input({ usage: [near('five_hour', 0.9, at340)] }))?.id).toBe('nearLimit')
       expect(bannerFor(input({ usage: [near('five_hour', 0.89, at340)] }))).toBeNull()
     })
@@ -113,6 +113,80 @@ describe('workspace banners', () => {
       expect(bannerFor(input({ usage: [near('seven_day', 0.97, monday)] }))?.id).toBe('nearLimit')
       // The 5-hour window decides first when both are close.
       expect(bannerFor(input({ usage: [near('seven_day', 0.85, monday), near('five_hour', 0.92, at340)] }))?.id).toBe('nearLimit')
+    })
+
+    describe('closing the information-only banners (KERNEL-595)', () => {
+      const weeklyWarn = near('seven_day', 0.85, monday)
+      const hooks = { port: 7420, listening: false, installed: true, events: [] }
+      const keyed = (u: ReturnType<typeof near>) => limitBannerKey(u.type === 'five_hour' ? 'nearLimit' : 'weeklyWarn', u.resetsAt)
+
+      it('keys the 80% and near-limit banners by banner and window, and no other banner', () => {
+        expect(bannerFor(input({ usage: [weeklyWarn] }))?.dismissKey).toBe(`weeklyWarn:${S(monday)}`)
+        expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340)] }))?.dismissKey).toBe(`nearLimit:${S(at340)}`)
+        const others = [
+          input({ usage: [{ type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] }),
+          input({ usage: [{ type: 'five_hour', status: 'rejected', resetsAt: S(at340) }] }),
+          input({ usage: [{ type: 'seven_day_opus', status: 'rejected', model: 'claude-sonnet-5-5', resetsAt: S(monday) }] }),
+          input({ account: { signedIn: false } }),
+          input({ online: false }),
+          input({ ws: { ...ws, status: 'trust' } }),
+          input({ ws: { ...ws, status: 'failed' } }),
+          input({ retry: { attempt: 1, of: 5, nextAt: now + 5000 } }),
+          input({ chat: { ...chat, context: 95 } }),
+          input({ hooks })
+        ]
+        for (const o of others) expect(bannerFor(o)?.dismissKey, bannerFor(o)?.id).toBeUndefined()
+      })
+
+      it('hides a closed banner and shows the next one in line in its place', () => {
+        const dismissed = new Set([keyed(weeklyWarn)])
+        expect(bannerFor(input({ usage: [weeklyWarn], dismissed }))).toBeNull()
+        expect(bannerFor(input({ usage: [weeklyWarn], dismissed, hooks }))?.id).toBe('hooks')
+        expect(bannerFor(input({ usage: [weeklyWarn], dismissed, retry: { attempt: 1, of: 5, nextAt: now + 5000 } }))?.id).toBe('overloaded')
+        const five = near('five_hour', 0.95, at340)
+        expect(bannerFor(input({ usage: [five], dismissed: new Set([keyed(five)]) }))).toBeNull()
+        expect(bannerFor(input({ usage: [five], dismissed: new Set([keyed(five)]), hooks }))?.id).toBe('hooks')
+      })
+
+      it('closes one banner and not the other', () => {
+        const five = near('five_hour', 0.95, at340)
+        expect(bannerFor(input({ usage: [five, weeklyWarn], dismissed: new Set([keyed(five)]) }))?.id).toBe('weeklyWarn')
+        expect(bannerFor(input({ usage: [five, weeklyWarn], dismissed: new Set([keyed(weeklyWarn)]) }))?.id).toBe('nearLimit')
+        // At 96% the hold is the one banner for the week. Closing it does not bring the 80% line for the same week back.
+        const week = near('seven_day', 0.96, monday)
+        expect(bannerFor(input({ usage: [week] }))?.id).toBe('nearLimit')
+        expect(bannerFor(input({ usage: [week], dismissed: new Set([limitBannerKey('nearLimit', week.resetsAt)]) }))).toBeNull()
+      })
+
+      it('shows a closed banner again when its window resets', () => {
+        const dismissed = new Set([keyed(weeklyWarn)])
+        const nextWeek = near('seven_day', 0.85, monday + 7 * 86_400_000)
+        expect(bannerFor(input({ usage: [nextWeek], dismissed }))).toMatchObject({ id: 'weeklyWarn', dismissKey: `weeklyWarn:${nextWeek.resetsAt}` })
+        const five = near('five_hour', 0.95, at340)
+        expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340 + 5 * 3600_000)], dismissed: new Set([keyed(five)]) }))?.id).toBe('nearLimit')
+      })
+
+      it('never hides a blocking banner or any other, whatever was closed', () => {
+        const dismissed = new Set([limitBannerKey('weeklyWarn', S(monday)), limitBannerKey('nearLimit', S(at340)), `weekly:${S(monday)}`, `session:${S(at340)}`])
+        expect(bannerFor(input({ dismissed, usage: [{ type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] }))?.id).toBe('weekly')
+        expect(bannerFor(input({ dismissed, usage: [{ type: 'five_hour', status: 'rejected', resetsAt: S(at340) }] }))?.id).toBe('session')
+        expect(bannerFor(input({ dismissed, account: { signedIn: false } }))?.id).toBe('signedOut')
+        expect(bannerFor(input({ dismissed, hooks }))?.id).toBe('hooks')
+        expect(bannerFor(input({ dismissed, chat: { ...chat, context: 95 } }))?.id).toBe('context')
+      })
+
+      it('forgets the key of a window that has reset', () => {
+        expect(limitBannerExpired(`weeklyWarn:${S(monday)}`, monday - 1000)).toBe(false)
+        expect(limitBannerExpired(`weeklyWarn:${S(monday)}`, monday)).toBe(true)
+        expect(limitBannerExpired('nearLimit:not-a-time', monday)).toBe(false)
+      })
+    })
+
+    it('says View usage on every banner that has it, and no other action runs a terminal for it', () => {
+      const usage = (b: ReturnType<typeof bannerFor>) => b?.actions.filter((a) => a.id === 'usage')
+      expect(usage(bannerFor(input({ usage: [{ type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] })))).toEqual([{ id: 'usage', label: 'View usage' }])
+      expect(usage(bannerFor(input({ usage: [near('five_hour', 0.95, at340)] })))).toEqual([{ id: 'usage', label: 'View usage' }])
+      expect(usage(bannerFor(input({ usage: [near('seven_day', 0.85, monday)] })))).toEqual([{ id: 'usage', label: 'View usage' }])
     })
 
     it('comes after the blocking banners, and before overloaded, context and hooks', () => {

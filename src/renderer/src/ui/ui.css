@@ -77,6 +77,14 @@
 .banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: 12.5px; }
 .banner > svg, .banner > .spin { color: var(--ink-2); flex-shrink: 0; }
 .banner-title { color: var(--ink); font-weight: 500; }
+/* A dismissible banner follows a swipe, then slides out. Its close button sits on the top right corner, out of the row, so the row looks the same at rest. */
+.banner[data-dismissible] { position: relative; transition: transform 200ms ease-out; }
+.banner[data-dismissible][data-swiping] { transition: none; }
+.banner[data-leaving] { animation: banner-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+.banner > .banner-close { position: absolute; top: -10px; right: -10px; width: 20px; height: 20px; border-radius: 999px; border: 1px solid var(--line-3); background: var(--surface-3); opacity: 0; pointer-events: none; transition: opacity 120ms ease-out; }
+.banner:hover > .banner-close, .banner:focus-within > .banner-close { opacity: 1; pointer-events: auto; }
+@keyframes banner-out { to { transform: translateX(calc(100% + 32px)); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .banner[data-dismissible], .banner > .banner-close { transition: none; } .banner[data-leaving] { animation: none; visibility: hidden; } }
 
 /* chip */
 .chip[data-kind='mention'], .chip[data-kind='skill'] { color: var(--ink); }
