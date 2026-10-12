@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { baseMessage, listFiles } from '../src/main/features/baseWatch'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { git, run } from '../src/main/services/exec'
-import { behindCount, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
+import { behindCount, FETCH_REUSE_MS, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
 import { tempRepo } from './helpers'
 
 // KERNEL-180: Kernel tells a teammate with no PR when main moves under its branch in a way that would conflict.
@@ -275,6 +275,7 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
   it("never messages the Lead, even when its worktree would conflict, and doesn't wake it", async () => {
     const s = await setUp()
     const leadChat = await s.k.lead.leadChat(s.room.id)
+    await s.k.workspaces.worktreeMade(leadChat.workspaceId)
     const lead = s.k.store.workspace(leadChat.workspaceId)!
     await writeFile(join(lead.path, 'src/a.ts'), SAME_LINE('lead, not committed'))
     await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
@@ -376,6 +377,10 @@ describe('what starts a check', () => {
     expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false })
     check.mockClear()
     await run('git', ['-C', s.repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote')])
+    // Past the minute a fetch that passed is reused for (KERNEL-542).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    onTestFinished(() => { vi.useRealTimers() })
+    vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
     await s.k.createWorkspace(s.room.id, { prompt: 'Again', agentId: 'kai', title: 'Again' })
     expect(check).not.toHaveBeenCalled()
   })

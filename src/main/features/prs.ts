@@ -207,7 +207,8 @@ export class Prs extends Feature {
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
-    if (asked.status === 'archived') return asked
+    // A chat with Rowan whose worktree isn't made yet has no branch on GitHub to read (KERNEL-542).
+    if (asked.status === 'archived' || asked.worktreePending) return asked
     const remote = await this.k.config.remoteOfWs(asked)
     let read: PrInfo | null
     try {
@@ -469,7 +470,8 @@ export class Prs extends Feature {
    */
   async syncBranch(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
-    if (ws.mode !== 'worktree' || ws.status === 'archived') return ws
+    // A chat with Rowan whose worktree isn't made yet is on the branch it picked (KERNEL-542).
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return ws
     const now = await currentBranch(ws.path).catch(() => null)
     if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)
     const next = this.updateWs(id, { branch: now, prState: ws.prState === 'creating' ? 'creating' : 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })

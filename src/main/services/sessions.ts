@@ -600,6 +600,12 @@ export class Sessions {
     return { queued: false }
   }
 
+  /**
+   * A chat with Rowan whose worktree Kernel hasn't made yet has nowhere to run a turn either. Its tabs are held until it is, and
+   * this keeps any other message waiting with them (KERNEL-542).
+   */
+  private unmade(chat: Chat) { return !!this.d.store.workspace(chat.workspaceId)?.worktreePending }
+
   /** A workspace whose folder was deleted outside Kernel has nowhere to run a turn, so nothing is sent or queued there (KERNEL-291). */
   private mustHaveFolder(chat: Chat) {
     const ws = this.d.store.workspace(chat.workspaceId)
@@ -615,6 +621,7 @@ export class Sessions {
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
+    if (this.unmade(chat)) return 'setup'
     if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.nearLimitHolds(chat.id)) return 'limit'
@@ -631,7 +638,7 @@ export class Sessions {
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
     // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
-    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || this.unmade(chat) || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
@@ -748,7 +755,7 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.unmade(chat) || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))

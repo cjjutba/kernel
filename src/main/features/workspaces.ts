@@ -1,11 +1,12 @@
-import { join } from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { Chat, ChatPart, CompareTarget, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, hasCommit, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
+import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
@@ -29,6 +30,21 @@ export interface CutWorkspace {
   labels?: string[]; waitFor?: string[]; lead?: { threadId: string }
   /** Start from the remote as last fetched, as the chats with Rowan that move at startup do (KERNEL-405). */
   noFetch?: boolean
+  /**
+   * Save the record before the worktree exists, with `worktreePending`, for a new chat with Rowan (KERNEL-542). The fetch, the
+   * worktree and node_modules wait for `makeWorktree`.
+   */
+  worktreeLater?: boolean
+}
+
+/**
+ * Why git failed, without the command `run` puts before it: its `fatal:` or `error:` line, "fatal: invalid reference: main",
+ * after the progress lines git prints first, such as "Preparing worktree (new branch 'rowan/plan')".
+ */
+function gitSaid(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e)
+  const lines = (/^git .* failed \(\d+\): ([\s\S]*)$/.exec(m)?.[1] ?? m).split('\n').map((l) => l.trim()).filter(Boolean)
+  return lines.find((l) => /^(fatal|error):/.test(l)) ?? lines[0] ?? m
 }
 
 /** Creating workspaces, their ports, and what they changed (KERNEL-328). */
@@ -50,7 +66,8 @@ export class Workspaces extends Feature {
    * Makes a workspace and its first chat, in `setup`: the ports, the fetch, the worktree on a new branch, and the record. A chat
    * with Rowan (`lead`) gets one too (KERNEL-405), always a worktree whatever "Default workspace type" says, on a branch named by
    * the Lead branch pattern, from `<remote>/<default>` or the target branch picked in New chat. A room with no commit keeps Rowan
-   * on the checkout. Nothing from the repo's settings runs here.
+   * on the checkout. Nothing from the repo's settings runs here. With `worktreeLater` only the checks that need no network run
+   * before the record is saved, and `makeWorktree` does the rest (KERNEL-542).
    */
   async cutWorkspace(roomId: string, o: CutWorkspace): Promise<{ ws: Workspace; room: Room; repo: RepoSettings; chat: Chat }> {
     const room = this.mustRoom(roomId)
@@ -66,32 +83,47 @@ export class Workspaces extends Feature {
     const reviewed = o.reviewOf && this.store.workspace(o.reviewOf) ? await this.k.prs.syncBranch(o.reviewOf) : undefined
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const remote = await this.k.config.remoteFor(room.path, repo)
-    const mode = reviewed ? 'worktree' : o.lead ? (await leadBase(room.path, remote) ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    const main = o.lead ? await leadBase(room.path, remote) : undefined
+    const mode = reviewed ? 'worktree' : o.lead ? (main ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     // A room Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
-    if (mode === 'worktree' && !(await hasCommit(room.path))) throw new Error(`${room.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${room.path}, then try again.`)
+    // Rowan's base was found above, so its room has one.
+    if (mode === 'worktree' && !o.lead && !(await hasCommit(room.path))) throw new Error(`${room.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${room.path}, then try again.`)
+    const later = !!o.worktreeLater && mode === 'worktree' && !reviewed
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     // A base nobody set is the repo's default branch, the one PRs go into (KERNEL-400). Rowan starts from it or the branch picked
     // in New chat, never the workspace base from Settings (KERNEL-405).
     const set = o.baseRef ?? (o.lead ? undefined : repo.workspace.baseRef ?? (s.workspace.baseRef === DEFAULT_BASE_REF ? undefined : s.workspace.baseRef))
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
-    const wanted = set ?? `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}`
+    // Rowan's base already named the default branch.
+    const wanted = set ?? `${remote}/${main ? stripRemote(main, remote) : await defaultBranch(room.path, remote).catch(() => 'main')}`
     const picked = o.source?.kind === 'branch' || (!!o.lead && !!o.baseRef)
     const want = picked ? wanted : onRemote(wanted, remote)
     // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
-    // without that remote has nothing to fetch, so it says nothing.
-    const fetched = !reviewed && !o.noFetch && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
+    // without that remote has nothing to fetch, so it says nothing. One whose worktree waits for `makeWorktree` fetches there.
+    const fetched = !reviewed && !o.noFetch && !later && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
       ? await fetchOrigin(room.path, remote) : undefined
     // The fetch may have moved the base under the room's other workspaces (KERNEL-180).
     if (fetched?.ok) void this.k.baseWatch.check(roomId, { fetch: false }).catch(() => undefined)
+    // A base on the remote waits for the fetch, which may bring it, and `makeWorktree` reads it then. Any other must be here
+    // now, so New chat still says when it isn't (KERNEL-542).
     const baseRef = reviewed ? await this.k.reviews.reviewBase(room.path, reviewed.branch, remote)
       : mode === 'current' && o.lead ? room.defaultBranch
+      : later && want.startsWith(`${remote}/`) ? want
       : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || picked, remote })
-    // A local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
-    const stale = fetched?.ok === false && baseRef.startsWith(`${remote}/`) ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
+    const stale = this.staleBase(fetched, baseRef, remote)
     // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
     const ws: Workspace = await this.withPort(async (port) => {
-      let path: string, branch: string, baselineRef: string | undefined
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105), with the Lead
+      // chat that tab belongs to, which outlasts the tab (KERNEL-337). A review the Lead started with base_ref keeps the Lead's
+      // base and branch, and is only linked (KERNEL-299). A chat with Rowan's own workspace carries that chat (KERNEL-405).
+      const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
+      const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
+      const save = (path: string, branch: string, baselineRef?: string) => {
+        const w: Workspace = { id: newId(), roomId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: stale.text } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), ...(later ? { worktreePending: {} } : {}), prState: 'none', createdAt: Date.now() }
+        this.store.saveWorkspace(w)
+        return w
+      }
       if (mode === 'worktree') {
         // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
         // 60 characters (KERNEL-275), for a review too (KERNEL-265). A taken name gets a suffix. A chat with Rowan's follows
@@ -103,38 +135,34 @@ export class Workspaces extends Feature {
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        if (later) {
+          // git makes this one after, so a pattern git won't take is caught now, while New chat can still say so (KERNEL-542).
+          if (!asked && !(await validBranchName(room.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the Lead branch pattern in Settings.`)
+          // The record is saved inside the room's lock, so the next pick sees its branch and folder taken before git makes them.
+          return this.withBranchLock(room.id, async () => {
+            const taken = this.pendingNames(roomId)
+            const branch = await freeBranch(room.path, wanted, remote, taken.branches)
+            const root = roomWorktreeRoot(s.worktreeRoot, room)
+            await mkdir(root, { recursive: true })
+            return save(await freeWorktreePath(room.path, root, branch, taken.paths), branch)
+          })
+        }
         const made = await this.newBranchWorktree(room, wanted, baseRef, remote)
-        branch = made.branch
-        path = made.path
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
-        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
-      } else if (o.lead) {
-        // A room with no commit to start from keeps Rowan on the checkout, with no baseline, as before KERNEL-355.
-        path = room.path
-        branch = await currentBranch(room.path).catch(() => room.defaultBranch)
-      } else {
-        if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
-          throw new Error('Another workspace is already working on the current branch in this room.')
-        path = room.path
-        branch = await currentBranch(room.path)
-        if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
+        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, made.path)
+        return save(made.path, made.branch)
       }
-
-      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105), with the Lead
-      // chat that tab belongs to, which outlasts the tab (KERNEL-337). A review the Lead started with base_ref keeps the Lead's
-      // base and branch, and is only linked (KERNEL-299). A chat with Rowan's own workspace carries that chat (KERNEL-405).
-      const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
-      const threadId = o.lead?.threadId ?? (o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined)
-      const w: Workspace = { id: newId(), roomId, name: slugify(title || 'chat'), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, ...(o.lead ? { lead: true as const } : {}), port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
-      this.store.saveWorkspace(w)
-      return w
+      // A room with no commit to start from keeps Rowan on the checkout, with no baseline, as before KERNEL-355.
+      if (o.lead) return save(room.path, await currentBranch(room.path).catch(() => room.defaultBranch))
+      if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+        throw new Error('Another workspace is already working on the current branch in this room.')
+      return save(room.path, await currentBranch(room.path), s.workspace.baselineCurrentBranch ? (await snapshotBaseline(room.path)).ref : undefined)
     })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118). Nobody messages Rowan's own workspace.
     if (!o.lead) this.k.setup.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     if (!o.lead) bus.track({ name: 'workspace.created', by: o.leadChatId ? 'lead' : 'user', review: !!(o.reviewOf ?? o.linkReviewOf) })
-    if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
     // The issue goes to In Progress in the room's tracker, when it came from there.
     if (!o.lead && o.source?.kind === 'issue' && o.source.id) void this.k.integrations.startIssue(ws, o.source)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -146,8 +174,100 @@ export class Workspaces extends Feature {
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
     // A chat with Rowan's first tab is auto-named, and the chat takes its name (KERNEL-337).
     const chat = o.lead ? this.newChat(ws.id, NEW_TAB, { ...pick, threadId: o.lead.threadId }) : this.newChat(ws.id, title, pick)
-    if (stale) this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
+    if (stale) this.sayStale(ws, remote, stale)
     return { ws, room, repo, chat }
+  }
+
+  /**
+   * A fetch that failed, for a base on the remote: git's reason, how old the base is, and the sentence `fetchFailed` keeps. A
+   * local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
+   */
+  private staleBase(fetched: Awaited<ReturnType<typeof fetchOrigin>> | undefined, baseRef: string, remote: string) {
+    if (fetched?.ok !== false || !baseRef.startsWith(`${remote}/`)) return undefined
+    const when = fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch)
+    return { error: fetched.error, when, text: `Fetching ${remote} failed (${fetched.error}), so it started from ${baseRef} as of ${when ?? 'its last fetch'}.` }
+  }
+
+  /** The feed and the chat say the workspace started from the remote as last fetched (KERNEL-179). */
+  private sayStale(ws: Workspace, remote: string, stale: { error: string; when?: string }) {
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `started ${ws.name} from ${ws.baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
+    this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${ws.baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
+  }
+
+  /** The branches and folders that chats with Rowan hold before git makes them, so no other pick takes them (KERNEL-542). */
+  pendingNames(roomId: string, except?: string): { branches: Set<string>; paths: Set<string> } {
+    const held = this.store.workspaces(roomId).filter((w) => w.worktreePending && w.status !== 'archived' && w.id !== except)
+    return { branches: new Set(held.map((w) => w.branch)), paths: new Set(held.map((w) => w.path)) }
+  }
+
+  /** Worktrees being made for chats with Rowan, by workspace (KERNEL-542). */
+  private making = new Map<string, Promise<Workspace>>()
+
+  /** Once the worktree being made for the workspace exists, or making it failed. At once when none is being made. */
+  async worktreeMade(id: string): Promise<void> { await this.making.get(id)?.catch(() => undefined) }
+
+  /**
+   * Makes the worktree a new chat with Rowan's record waits for (KERNEL-542): the fetch, the base read again after it, the
+   * worktree on the branch and in the folder the record picked, or the next free ones when someone took them meanwhile, and
+   * the node_modules link. A failed fetch starts from the remote as last fetched and says so (KERNEL-179). When git won't make
+   * the worktree, the workspace is failed with git's reason in `worktreePending`, and calling this again tries again. A worktree
+   * git made before a quit cut this short is taken as it is. One call at a time per workspace. Returns the workspace.
+   */
+  makeWorktree(id: string): Promise<Workspace> {
+    const running = this.making.get(id)
+    if (running) return running
+    const run = this.makeNow(id).finally(() => { if (this.making.get(id) === run) this.making.delete(id) })
+    this.making.set(id, run)
+    return run
+  }
+
+  private async makeNow(id: string): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (!ws.worktreePending || ws.status === 'archived') return ws
+    if (ws.worktreePending.error) this.updateWs(id, { status: 'setup', worktreePending: {} })
+    const room = this.mustRoom(ws.roomId)
+    try {
+      const repo = await loadRepoSettings(room.path)
+      const remote = await this.k.config.remoteFor(room.path, repo)
+      const fetched = ws.baseRef.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
+        ? await fetchOrigin(room.path, remote) : undefined
+      // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
+      if (this.stopped) return ws
+      if (fetched?.ok) void this.k.baseWatch.check(room.id, { fetch: false }).catch(() => undefined)
+      // A base other than the default branch was picked in New chat, and a picked base never falls back to another (KERNEL-405).
+      const main = `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}`
+      const baseRef = await resolveBaseRef(room.path, ws.baseRef, { strict: ws.baseRef !== main, remote })
+      const made = await this.withBranchLock(room.id, async () => {
+        const now = this.mustWs(id)
+        if (this.stopped || now.status === 'archived') return undefined
+        if (await isWorktreeOf(room.path, now.path) && await currentBranch(now.path).catch(() => undefined) === now.branch) return { branch: now.branch, path: now.path }
+        const taken = this.pendingNames(room.id, id)
+        const branch = await freeBranch(room.path, now.branch, remote, taken.branches)
+        const root = dirname(now.path)
+        await mkdir(root, { recursive: true })
+        const path = branch === now.branch && !taken.paths.has(now.path) && await folderGone(now.path) ? now.path : await freeWorktreePath(room.path, root, branch, taken.paths)
+        await createWorktree({ repo: room.path, root, branch, baseRef, path })
+        return { branch, path }
+      })
+      if (this.stopped) return ws
+      if (!made) return this.mustWs(id)
+      try {
+        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, made.path)
+      } catch (e) {
+        await removeWorktree(room.path, made.path, { deleteBranch: made.branch, force: true }).catch(() => undefined)
+        throw e
+      }
+      if (this.stopped) return ws
+      const stale = this.staleBase(fetched, baseRef, remote)
+      const done = this.updateWs(id, { ...made, baseRef, worktreePending: undefined, fetchFailed: stale?.text })
+      if (stale) this.sayStale(done, remote, stale)
+      return done
+    } catch (e) {
+      if (this.stopped) return ws
+      const error = gitSaid(e)
+      bus.push({ type: 'script.output', workspaceId: id, kind: 'setup', lines: [{ line: `Kernel couldn't make the worktree: ${error}`, stream: 'stderr' }] })
+      return this.updateWs(id, { status: 'failed', worktreePending: { error } })
+    }
   }
 
   /**
@@ -321,12 +441,15 @@ export class Workspaces extends Feature {
 
   /**
    * A worktree on a new branch: `wanted`, or the first free name after it, here and on `remote` (KERNEL-479), in the room's
-   * worktree folder.
+   * worktree folder. Names a chat with Rowan holds before git makes them are taken (KERNEL-542).
    */
   private newBranchWorktree(room: Room, wanted: string, baseRef: string, remote: string): Promise<{ branch: string; path: string }> {
     return this.withBranchLock(room.id, async () => {
-      const branch = await freeBranch(room.path, wanted, remote)
-      return { branch, path: await createWorktree({ repo: room.path, root: roomWorktreeRoot(this.settings.worktreeRoot, room), branch, baseRef }) }
+      const taken = this.pendingNames(room.id)
+      const branch = await freeBranch(room.path, wanted, remote, taken.branches)
+      const root = roomWorktreeRoot(this.settings.worktreeRoot, room)
+      await mkdir(root, { recursive: true })
+      return { branch, path: await createWorktree({ repo: room.path, root, branch, baseRef, path: await freeWorktreePath(room.path, root, branch, taken.paths) }) }
     })
   }
 
@@ -345,11 +468,12 @@ export class Workspaces extends Feature {
 
   /**
    * Whether a worktree workspace's folder was deleted outside Kernel (KERNEL-291). The flag is set or cleared to match, and pushed
-   * when it changes. A current-branch workspace is the room's own checkout, so it is never flagged. An archived one has no folder.
+   * when it changes. A current-branch workspace is the room's own checkout, so it is never flagged. An archived one has no folder,
+   * and neither has a chat with Rowan whose worktree isn't made yet (KERNEL-542).
    */
   async checkFolder(id: string): Promise<boolean> {
     const ws = this.mustWs(id)
-    if (ws.mode !== 'worktree' || ws.status === 'archived') return false
+    if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return false
     const gone = await folderGone(ws.path).catch(() => false)
     if (gone !== !!this.mustWs(id).folderGone) this.updateWs(id, { folderGone: gone ? true : undefined })
     return gone
@@ -357,8 +481,8 @@ export class Workspaces extends Feature {
 
   /** The files a workspace changed. Their totals are saved on the workspace too, for the sidebar and Home (+412 -38). */
   async changes(id: string) {
-    // A folder deleted outside Kernel has no changes to read, and the workspace says so (KERNEL-291).
-    if (await this.checkFolder(id)) return []
+    // A folder deleted outside Kernel has no changes to read, and the workspace says so (KERNEL-291). One not made yet has none.
+    if (this.unmade(id) || await this.checkFolder(id)) return []
     const ws = this.mustWs(id)
     const files = ws.mode === 'current'
       ? await changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
@@ -368,6 +492,12 @@ export class Workspaces extends Feature {
     if (!old || old.files !== stat.files || old.added !== stat.added || old.removed !== stat.removed) this.updateWs(id, { stat })
     return files
   }
+
+  /** A chat with Rowan whose worktree isn't made yet: nothing reads its folder, and the right panel gets empty lists (KERNEL-542). */
+  private unmade(id: string) { return !!this.mustWs(id).worktreePending }
+
+  /** Refuses what needs the folder of a chat with Rowan whose worktree isn't made yet (KERNEL-542). */
+  private mustBeMade(id: string) { if (this.unmade(id)) throw new Error("This chat's worktree isn't made yet.") }
 
   /** What the diff compares against: the baseline for current-branch workspaces, the merge base with the base branch otherwise. */
   private async since(ws: Workspace) {
@@ -433,21 +563,24 @@ export class Workspaces extends Feature {
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.fork': async ({ chatId, itemId }) => this.forkWorkspace(chatId, itemId),
-      'workspaces.changes': async ({ workspaceId, target }) => target && target.kind !== 'base' ? this.compareFiles(workspaceId, target) : this.changes(workspaceId),
-      'workspaces.diff': async ({ workspaceId, file, target }) => target && target.kind !== 'base' ? this.compareDiff(workspaceId, target, file) : this.diff(workspaceId, file),
-      'workspaces.commits': async ({ workspaceId }) => this.commits(workspaceId),
+      // A chat with Rowan whose worktree isn't made yet reads as empty, and refuses what would change its files (KERNEL-542).
+      'workspaces.changes': async ({ workspaceId, target }) => this.unmade(workspaceId) ? [] : target && target.kind !== 'base' ? this.compareFiles(workspaceId, target) : this.changes(workspaceId),
+      'workspaces.diff': async ({ workspaceId, file, target }) => this.unmade(workspaceId) ? '' : target && target.kind !== 'base' ? this.compareDiff(workspaceId, target, file) : this.diff(workspaceId, file),
+      'workspaces.commits': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : this.commits(workspaceId),
       'workspaces.compareBranches': async ({ workspaceId }) => this.compareBranches(workspaceId),
-      'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
-      'workspaces.readFile': async ({ workspaceId, path }) => readWorkspaceFile(this.mustWs(workspaceId).path, path),
+      'workspaces.tree': async ({ workspaceId }) => this.unmade(workspaceId) ? [] : listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
+      'workspaces.readFile': async ({ workspaceId, path }) => { this.mustBeMade(workspaceId); return readWorkspaceFile(this.mustWs(workspaceId).path, path) },
       'workspaces.readImage': async ({ workspaceId, path, at, target }) => {
         const ws = this.mustWs(workspaceId)
+        if (ws.worktreePending) return null
         if (!target || target.kind === 'base') return readImage(ws.path, path, at === 'base' ? await this.since(ws) : undefined)
         const range = await compareRange(ws.path, target)
         return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },
-      'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
-      'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),
+      'workspaces.files': async ({ workspaceId, query, limit }) => this.unmade(workspaceId) ? [] : searchFiles(this.mustWs(workspaceId).path, query, limit),
+      'workspaces.hunks': async ({ workspaceId, path }) => this.unmade(workspaceId) ? [] : this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
+        this.mustBeMade(workspaceId)
         const picked = (await this.hunks(workspaceId)).filter((h) => hunkIds.includes(h.id))
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)

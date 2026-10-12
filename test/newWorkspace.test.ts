@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fakeGh, tempRepo } from './helpers'
 import { exec, git } from '../src/main/services/exec'
-import { defaultBranch, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
+import { defaultBranch, FETCH_REUSE_MS, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
 import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import { Kernel } from '../src/main/kernel'
@@ -402,8 +402,32 @@ describe('the base a workspace starts from', () => {
       const before = fetchTimesOut.fetches
       expect(await Promise.all([fetchOrigin(repo), fetchOrigin(repo)])).toEqual([{ ok: true }, { ok: true }])
       expect(fetchTimesOut.fetches - before).toBe(1)
-      await fetchOrigin(repo)
+      await fetchOrigin(repo, 'origin', { fresh: true })
       expect(fetchTimesOut.fetches - before).toBe(2)
+    })
+
+    // KERNEL-542: New chat fetches when it opens, and Create reuses that fetch.
+    it('reuses a fetch that passed in the last minute, and a fresh one always fetches', async () => {
+      const repo = await cloneOf(await tempRepo(team))
+      const before = fetchTimesOut.fetches
+      expect(await fetchOrigin(repo)).toEqual({ ok: true })
+      expect(await fetchOrigin(repo)).toEqual({ ok: true })
+      expect(fetchTimesOut.fetches - before).toBe(1)
+      // After a merge, `syncLead` needs what merged a moment ago.
+      await fetchOrigin(repo, 'origin', { fresh: true })
+      expect(fetchTimesOut.fetches - before).toBe(2)
+      vi.useFakeTimers({ toFake: ['Date'] })
+      onTestFinished(() => { vi.useRealTimers() })
+      vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
+      await fetchOrigin(repo)
+      expect(fetchTimesOut.fetches - before).toBe(3)
+      // A failed fetch is never reused.
+      fetchTimesOut.on = true
+      onTestFinished(() => { fetchTimesOut.on = false })
+      vi.setSystemTime(Date.now() + FETCH_REUSE_MS + 1)
+      expect(await fetchOrigin(repo)).toMatchObject({ ok: false })
+      expect(await fetchOrigin(repo)).toMatchObject({ ok: false })
+      expect(fetchTimesOut.fetches - before).toBe(5)
     })
 
     it('says nothing when the base fell back to a local branch, which no fetch updates', async () => {
@@ -508,20 +532,23 @@ describe('New chat message (KERNEL-147)', () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    // The message goes at once, while setup runs (KERNEL-405).
+    // The message waits for the chat's worktree, then goes while setup runs (KERNEL-405, KERNEL-542).
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    const sent: ChatPart[][] = []
-    k.sessions.send = async (_chatId, parts) => { sent.push(parts); return { queued: false } }
     const room = await k.addRoom(repo)
     const start = k.handlers()['lead.start']
 
-    await start({ roomId: room.id, ...leadMessage([file]) })
-    await start({ roomId: room.id, ...leadMessage([issue]) })
+    // Each waits in its own chat's queue until that chat's worktree exists.
+    const send = async (parts: ChatPart[]) => {
+      const chat = await start({ roomId: room.id, ...leadMessage(parts) })
+      expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([parts])
+      return chat
+    }
     const typed: ChatPart[] = [issue, { type: 'text', text: 'Take this one' }]
-    await start({ roomId: room.id, ...leadMessage(typed) })
-    expect(sent).toEqual([[file], [issue], typed])
+    const chats = [await send([file]), await send([issue]), await send(typed)]
+    const said = (id: string) => k.store.items(id).flatMap((i) => (i.kind === 'user' ? [i.parts] : []))
+    await vi.waitFor(() => expect(chats.map((c) => said(c.id))).toEqual([[[file]], [[issue]], [typed]]))
     await k.stop()
   })
 })

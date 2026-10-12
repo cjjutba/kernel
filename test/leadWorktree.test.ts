@@ -80,7 +80,7 @@ async function pushElsewhere(bare: string, file: string, branch = 'main') {
 }
 
 describe('a workspace per chat with Rowan (KERNEL-405)', () => {
-  it('fetches, then makes a worktree on rowan/<slug> from the latest origin/main, and sends the first message at once', async () => {
+  it('fetches, then makes a worktree on rowan/<slug> from the latest origin/main, and sends the first message once it exists', async () => {
     const { repo, bare } = await withOrigin()
     const where = await dirs()
     const k = await boot(where)
@@ -93,10 +93,12 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     const ws = k.store.workspace(chat.workspaceId)!
     expect(ws).toMatchObject({ lead: true, threadId: chat.threadId, agentId: 'rowan', mode: 'worktree', branch: 'rowan/plan-wave-3-of-invoices', baseRef: 'origin/main', status: 'setup' })
     expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'rowan-plan-wave-3-of-invoices'))
+    // lead.start answers before the fetch and the worktree, and the message waits for them (KERNEL-542).
+    await k.workspaces.worktreeMade(ws.id)
     expect(await sha(ws.path, 'HEAD')).toBe(merged)
     expect(await branchOf(ws.path)).toBe(ws.branch)
     // Nothing waits for setup by default (KERNEL-490).
-    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    await vi.waitFor(() => expect(k.sessions.isHeld(chat.id)).toBe(false))
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
     expect(k.sessions.queued(chat.id)).toEqual([])
     await setUp(k, chat.id)
@@ -247,9 +249,12 @@ describe('what waits for setup (KERNEL-490)', () => {
     return { k, room: r }
   }
 
-  /** Rowan's message went out, so the chat isn't empty and shows the turn, not the "Running setup" line. */
+  /**
+   * Rowan's message went out once the worktree existed, without waiting for setup, so the chat isn't empty and shows the turn,
+   * not the "Running setup" line (KERNEL-542).
+   */
   const sentAtOnce = async (k: Kernel, chat: Chat) => {
-    expect(k.sessions.isHeld(chat.id)).toBe(false)
+    await vi.waitFor(() => expect(k.sessions.isHeld(chat.id)).toBe(false))
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(1)
     await vi.waitFor(() => expect(callIn(k.store.workspace(chat.workspaceId)!.path)).toHaveLength(1))
@@ -258,8 +263,8 @@ describe('what waits for setup (KERNEL-490)', () => {
   it("sends Rowan's first message at once by default, while the setup script runs", async () => {
     const { k, room: r } = await room(SETUP)
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
-    expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
     await sentAtOnce(k, chat)
+    expect(k.store.workspace(chat.workspaceId)!.status).toBe('setup')
     expect((await setUp(k, chat.id)).setupRun).toMatchObject({ end: 0 })
   })
 
