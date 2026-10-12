@@ -1,4 +1,4 @@
-import type { PermissionMode, ReviewKind } from './settings'
+import type { PermissionMode, ReviewKind, RunMode } from './settings'
 import type { TrackerKind } from './trackers'
 import type { ChangedFile } from './workspaces'
 
@@ -199,6 +199,33 @@ export interface QueuedMessage {
  * Computed, never saved (KERNEL-271, KERNEL-361).
  */
 export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit'
+
+/** Where a chat's permission mode was picked: in the chat's composer, for its room, or in Settings, Permissions. */
+export type ModeScope = 'chat' | 'room' | 'app'
+
+/**
+ * Why a chat runs in another mode than the one picked (KERNEL-572). When more than one applies, the first that moved it counts.
+ * - `plan`: the chat is planning
+ * - `agentFile`: the agent file's `permissionMode` is stricter
+ * - `noAuto`: Auto isn't available for the chat's provider or model, or Kernel hasn't read yet whether it is
+ * - `noBypass`: Claude Code's settings turn Bypass permissions off, or Kernel hasn't read them yet
+ * - `worktreesOnly`: Only in worktrees is on and the chat works on the current branch
+ * - `turnRunning`: Bypass permissions starts once the running turn and its background tasks end. Until then the chat runs in
+ *   the mode it was in
+ */
+export type ModeReason = 'plan' | 'agentFile' | 'noAuto' | 'noBypass' | 'worktreesOnly' | 'turnRunning'
+
+/**
+ * The permission mode a chat runs in, as main works it out, so the composer doesn't work it out again (KERNEL-572). `picked`
+ * is the chat's own mode, else its room's, else Settings, Permissions', and `pickedIn` says which. `why` is set exactly when
+ * `mode` isn't `picked`. Right for a chat with no process too. Computed, never saved.
+ */
+export interface ChatRunMode {
+  mode: RunMode
+  picked: PermissionMode
+  pickedIn: ModeScope
+  why?: ModeReason
+}
 
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'
