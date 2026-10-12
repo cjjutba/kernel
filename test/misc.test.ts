@@ -278,10 +278,10 @@ describe('preflight checks', () => {
     'lsof -nP -iTCP:7420 -sTCP:LISTEN -Fpc': ok('p4821\ncnode\n')
   }
   /** Runs preflight with every command answered from `healthy`, overridden by `answers`. The environment is empty unless `env` says. */
-  const preflight = (answers: Record<string, ExecResult> = {}, o: { hookServerUp?: boolean; claude?: string | null; shell?: ShellRead; env?: NodeJS.ProcessEnv } = {}) => {
+  const preflight = (answers: Record<string, ExecResult> = {}, o: { hookServerUp?: boolean; claude?: string | null; shell?: ShellRead; env?: NodeJS.ProcessEnv; gh?: boolean; asked?: string[] } = {}) => {
     const table = { ...healthy, ...answers }
-    const run = async (cmd: string, args: string[]) => table[[cmd, ...args].join(' ')] ?? missing
-    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p, shell: o.shell, env: o.env ?? {} })
+    const run = async (cmd: string, args: string[]) => { o.asked?.push(cmd); return table[[cmd, ...args].join(' ')] ?? missing }
+    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p, shell: o.shell, env: o.env ?? {}, gh: o.gh })
   }
   const zsh = (o: Partial<ShellRead> = {}): ShellRead => ({ shell: '/bin/zsh', timeoutMs: 10_000, timedOut: false, ...o })
   const blockers = (checks: PreflightCheck[]) => checks.filter((c) => !c.ok && c.blocking).map((c) => c.id)
@@ -295,6 +295,14 @@ describe('preflight checks', () => {
     expect(byId(checks, 'claude').meta).toBe('v2.1.292')
     expect(byId(checks, 'gh')).toMatchObject({ detail: 'Signed in as samrivera', meta: 'gh 2.62.0' })
     expect(byId(checks, 'git').meta).toBe('git 2.39.5')
+  })
+  it("leaves gh out, asking it nothing, when no room's PRs go to GitHub (KERNEL-477)", async () => {
+    const asked: string[] = []
+    const none = { 'gh auth status --hostname github.com --json hosts': missing, 'gh --version': missing }
+    const checks = await preflight(none, { gh: false, asked })
+    expect(checks.map((c) => c.id)).toEqual(['claude', 'auth', 'git', 'hooks'])
+    expect(warnings(checks)).toEqual([])
+    expect(asked).not.toContain('gh')
   })
   it('only warns when GitHub is out of reach', async () => {
     const offline = gh({ state: 'error', error: 'Get "https://api.github.com/": dial tcp: lookup api.github.com: no such host', login: 'samrivera' })
@@ -530,7 +538,7 @@ describe('push check (KERNEL-460)', () => {
     const noLogin: ExecResult = { code: 128, stdout: '', stderr: "fatal: could not read Username for 'https://github.com': terminal prompts disabled\n" }
     const signedIn = ok(JSON.stringify({ hosts: { 'github.com': [{ active: true, state: 'success', login: 'sam', tokenSource: 'keyring' }] } }))
     /** A real checkout whose origin is on GitHub, with the network calls answered here. */
-    const github = async (o: { ls?: ExecResult; push?: ExecResult; auth?: ExecResult; perm?: ExecResult }) => {
+    const github = async (o: { ls?: ExecResult; push?: ExecResult; auth?: ExecResult; perm?: ExecResult; gh?: boolean }) => {
       const repo = await tempRepo()
       await exec('git', ['-C', repo, 'remote', 'add', 'origin', URL])
       const calls: string[] = []
@@ -543,13 +551,24 @@ describe('push check (KERNEL-460)', () => {
         if (line === 'gh api repos/acme/app --jq .permissions.push') return o.perm ?? ok('true\n')
         return isolated(cmd, args, opts)
       }
-      return { check: await checkPush(repo, 'origin', { run, now }), calls }
+      return { check: await checkPush(repo, 'origin', { run, now, gh: o.gh }), calls }
     }
 
     it("says gh can push when git's own login can too", async () => {
       const { check, calls } = await github({})
       expect(check).toEqual({ remote: 'origin', repo: 'acme/app', login: 'sam', at: 1_000, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: 'From gh, signed in as sam' } })
       expect(calls.find((c) => c.startsWith('git push'))).toMatch(/^git push --dry-run --no-verify --recurse-submodules=no origin HEAD:refs\/heads\/kernel-push-check-\d+$/)
+    })
+
+    it("never asks gh for a room that merges locally, and reads the remote as git's alone (KERNEL-477)", async () => {
+      const { check, calls } = await github({ gh: false })
+      expect(check).toEqual({ remote: 'origin', at: 1_000, reach: { state: 'ok', detail: 'git ls-remote origin' }, push: { state: 'ok', detail: "From git's saved login" } })
+      expect(calls.some((c) => c.startsWith('gh '))).toBe(false)
+      // A refused login gets git's own words, not a gh fix.
+      const refused = await github({ gh: false, push: noLogin })
+      expect(refused.check?.push).toMatchObject({ state: 'fail', detail: "The remote refused git's login." })
+      expect(refused.check?.push.fix).toBeUndefined()
+      expect(refused.calls.some((c) => c.startsWith('gh '))).toBe(false)
     })
 
     it('names gh auth setup-git when gh is signed in and git has no login (KERNEL-437)', async () => {
