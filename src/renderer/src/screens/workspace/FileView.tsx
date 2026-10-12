@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ChangedFile, Workspace } from '@shared/types'
+import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
 import { addToComposer } from './composer/bus'
+import { compareTitle, targetKey, useCompared } from './compare'
 import { parseDiff } from './diff'
 import { gitDecoration } from './gitStatus'
 
@@ -30,23 +31,24 @@ function DiffFileName({ path, status }: { path: string; status?: ChangedFile['st
 const IMAGE_PATH = /\.(png|jpe?g|gif|webp|svg)$/i
 export const isImagePath = (path: string) => IMAGE_PATH.test(path)
 
-/** The picture at a path, from the worktree or from the base the diff is against. `undefined` while it loads, `null` when there is none. */
-function useImage(wsId: string, path: string, at: 'worktree' | 'base') {
+/** The picture at a path, from the worktree or from the base the diff is against, or the compare `target` the Changes menu picked (KERNEL-517). `undefined` while it loads, `null` when there is none. */
+function useImage(wsId: string, path: string, at: 'worktree' | 'base', target?: CompareTarget) {
   const [url, setUrl] = useState<string | null | undefined>(undefined)
+  const key = target ? targetKey(target) : ''
   useEffect(() => {
     let live = true
     setUrl(undefined)
-    call('workspaces.readImage', { workspaceId: wsId, path, at }).then((r) => { if (live) setUrl(r?.dataUrl ?? null) }).catch(() => { if (live) setUrl(null) })
+    call('workspaces.readImage', { workspaceId: wsId, path, at, ...(target && target.kind !== 'base' && { target }) }).then((r) => { if (live) setUrl(r?.dataUrl ?? null) }).catch(() => { if (live) setUrl(null) })
     return () => { live = false }
-  }, [wsId, path, at])
+  }, [wsId, path, at, key])
   return url
 }
 
 const sizeText = (s: { w: number; h: number } | null) => (s ? `${s.w}×${s.h}` : '')
 
 /** One picture of a file. With a `label` ("Before", "After") it carries a caption with its size, without one the parent shows the size through `onSize`. */
-function ImagePane({ wsId, path, at, label, onSize }: { wsId: string; path: string; at: 'worktree' | 'base'; label?: string; onSize?: (s: { w: number; h: number }) => void }) {
-  const url = useImage(wsId, path, at)
+function ImagePane({ wsId, path, at, label, target, onSize }: { wsId: string; path: string; at: 'worktree' | 'base'; label?: string; target?: CompareTarget; onSize?: (s: { w: number; h: number }) => void }) {
+  const url = useImage(wsId, path, at, target)
   const [loaded, setLoaded] = useState<{ url: string; w: number; h: number } | null>(null)
   const size = loaded && loaded.url === url ? loaded : null
   return (
@@ -60,15 +62,15 @@ function ImagePane({ wsId, path, at, label, onSize }: { wsId: string; path: stri
 }
 
 /** The pictures of a changed image: the worktree's for an added one, the base's for a deleted one, and both for a changed one. */
-function ImageChange({ wsId, path, status, onSize, inline }: { wsId: string; path: string; status?: ChangedFile['status']; onSize?: (s: { w: number; h: number }) => void; inline?: boolean }) {
+function ImageChange({ wsId, path, status, target, onSize, inline }: { wsId: string; path: string; status?: ChangedFile['status']; target?: CompareTarget; onSize?: (s: { w: number; h: number }) => void; inline?: boolean }) {
   const both = status === 'M'
   return (
     <div className="image-view" data-inline={inline || undefined}>
       {status === 'D'
-        ? <ImagePane wsId={wsId} path={path} at="base" onSize={onSize} />
+        ? <ImagePane wsId={wsId} path={path} at="base" target={target} onSize={onSize} />
         : both
-          ? <div className="image-pair"><ImagePane wsId={wsId} path={path} at="base" label="Before" /><ImagePane wsId={wsId} path={path} at="worktree" label="After" /></div>
-          : <ImagePane wsId={wsId} path={path} at="worktree" onSize={onSize} />}
+          ? <div className="image-pair"><ImagePane wsId={wsId} path={path} at="base" label="Before" target={target} /><ImagePane wsId={wsId} path={path} at="worktree" label="After" target={target} /></div>
+          : <ImagePane wsId={wsId} path={path} at="worktree" target={target} onSize={onSize} />}
     </div>
   )
 }
@@ -157,46 +159,56 @@ function sendHunk(path: string, lines: { mark: string; code: string; hunk?: bool
   addToComposer({ type: 'file', name: `${path.slice(path.lastIndexOf('/') + 1)}:${start}-${start + Math.max(len, 1) - 1}`, path, lines: end - at - 1, text: `${path}\n${text}` })
 }
 
-/** The diff of one file, or of every changed file when `path` is empty. It is a tab, so the tab's close button and Cmd+W close it. */
-export function DiffView(props: { ws: Workspace; path: string; changes: ChangedFile[] }) {
-  return isImagePath(props.path) ? <ImageDiff {...props} /> : <TextDiff {...props} />
+/**
+ * The diff of one file, or of every changed file when `path` is empty. It is a tab, so the tab's close button and Cmd+W close it. It follows what the
+ * Changes menu compares with (KERNEL-517), so the files, the counts and the diffs are the list's, and `changes` is the workspace's own.
+ */
+export function DiffView({ ws, path, changes: base }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+  const { compare, target, files, error } = useCompared(ws, base)
+  // A pick whose files haven't arrived draws nothing yet, so a picture isn't shown against the wrong status.
+  if (files === null && !error) return <div className="col grow" style={{ minHeight: 0 }} />
+  const changes = files ?? NO_FILES
+  return isImagePath(path) ? <ImageDiff ws={ws} path={path} changes={changes} target={target} /> : <TextDiff ws={ws} path={path} changes={changes} target={target} title={compareTitle(compare)} />
 }
 
+const NO_FILES: ChangedFile[] = []
+
 /** The diff tab of one image: git only says the binary files differ, so it shows the pictures. */
-function ImageDiff({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+function ImageDiff({ ws, path, changes, target }: { ws: Workspace; path: string; changes: ChangedFile[]; target: CompareTarget }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
   const status = changes.find((c) => c.path === path)?.status
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted" style={{ fontSize: 12 }}>{sizeText(size)}</span>}</ViewHead>
-      <ImageChange wsId={ws.id} path={path} status={status} onSize={setSize} />
+      <ImageChange wsId={ws.id} path={path} status={status} target={target} onSize={setSize} />
     </div>
   )
 }
 
-function TextDiff({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+function TextDiff({ ws, path, changes, target, title }: { ws: Workspace; path: string; changes: ChangedFile[]; target: CompareTarget; title: string }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const key = targetKey(target)
   useEffect(() => {
     let live = true
     setText(null); setError(null)
-    call('workspaces.diff', { workspaceId: ws.id, file: path || undefined }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(cleanError(e)) })
+    call('workspaces.diff', { workspaceId: ws.id, file: path || undefined, ...(target.kind !== 'base' && { target }) }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(cleanError(e)) })
     return () => { live = false }
-  }, [ws.id, path])
+  }, [ws.id, path, key])
   const files = useMemo(() => parseDiff(text ?? ''), [text])
   const stat = path ? changes.find((c) => c.path === path) : undefined
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       {path
         ? <ViewHead path={path} trailing={null}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
-        : <div className="view-head"><span style={{ fontWeight: 500 }}>All changes</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
+        : <div className="view-head"><span style={{ fontWeight: 500 }}>{title}</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
       <div className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
         {error && <div className="panel-empty"><span>{error}</span></div>}
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (
           <div key={f.path}>
             {!path && <div className="diff-file"><DiffFileName path={f.path} status={changes.find((c) => c.path === f.path)?.status} />{!isImagePath(f.path) && <span><span className="add">+{f.added}</span> <span className="del">-{f.removed}</span></span>}</div>}
-            {isImagePath(f.path) && <ImageChange wsId={ws.id} path={f.path} status={changes.find((c) => c.path === f.path)?.status} inline />}
+            {isImagePath(f.path) && <ImageChange wsId={ws.id} path={f.path} status={changes.find((c) => c.path === f.path)?.status} target={target} inline />}
             {!isImagePath(f.path) && f.lines.map((l, i) => (
               <div key={i} className="diff-line" data-mark={l.hunk ? 'hunk' : l.mark}>
                 <span className="ln">{l.a}</span><span className="ln">{l.b}</span>

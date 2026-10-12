@@ -23,6 +23,8 @@ import { gitDecoration } from './gitStatus'
 import { changesToEntries, openByDefault } from './tree'
 import { filterEntries, matchRanges, matchesPath } from './panelFilter'
 import { FilterButton, FilterField, Marked, PanelTools, RefreshButton, ToolButton, ToolSlot, usePanelFilter } from './PanelTools'
+import { compareEmpty, compareNote, useCompared } from './compare'
+import { CompareButton } from './CompareMenu'
 
 const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: i < 0 ? '' : path.slice(0, i), name: path.slice(i + 1) } }
 
@@ -76,13 +78,13 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
 
 // ---------- Changes
 
-/** One changed file the way VS Code's Source Control lists it: icon, name in its git color, the folder after it, the counts, then the letter. */
+/** One changed file the way VS Code's Source Control lists it: icon, name in its git color, the folder after it, the counts, then the letter. A renamed file says where it came from. */
 function ChangeRow({ f, active, conflicted, ranges, onOpen }: { f: ChangedFile; active: boolean; conflicted?: boolean; ranges: [number, number][]; onOpen: () => void }) {
   const { dir, name } = split(f.path)
   // A file a local merge would conflict in reads C in the diff's red, the letter the merge note lists it with (KERNEL-478).
   const deco = conflicted ? { letter: 'C', label: 'Conflict', color: 'var(--del)', struck: false } : gitDecoration(f.status)
   return (
-    <button type="button" className="tree-row change-row" aria-current={active || undefined} onClick={onOpen}>
+    <button type="button" className="tree-row change-row" aria-current={active || undefined} data-tip={f.from ? `Renamed from ${f.from}` : undefined} onClick={onOpen}>
       <FileIcon path={f.path} />
       <span className="tree-name ellipsis">
         <span data-struck={deco?.struck || undefined} style={deco ? { color: deco.color } : undefined}><Marked text={name} from={dir ? dir.length + 1 : 0} ranges={ranges} /></span>
@@ -90,12 +92,21 @@ function ChangeRow({ f, active, conflicted, ranges, onOpen }: { f: ChangedFile; 
       </span>
       <Counts f={f} />
       {deco && <span className="tree-letter" style={{ color: deco.color }} aria-label={deco.label}>{deco.letter}</span>}
+      {f.from && <span className="sr-only">, renamed from {f.from}</span>}
     </button>
   )
 }
 
-function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; changes: ChangedFile[]; onOpenDiff: (path: string) => void; activePath?: string }) {
+const NO_FILES: ChangedFile[] = []
+
+/**
+ * `base` is the workspace's changed files. The list shows them, or the files of what the ⋯ menu compares with instead (PanelCompare, KERNEL-517),
+ * which the menu's pick and the diff tabs it opens share (compare.ts).
+ */
+function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Workspace; changes: ChangedFile[]; onOpenDiff: (path: string) => void; activePath?: string }) {
   const view = useStore((s) => s.ui.workspace.changesView ?? 'list')
+  const { compare, files, error } = useCompared(ws, base)
+  const changes = files ?? NO_FILES
   const entries = useMemo(() => changesToEntries(changes), [changes])
   const byPath = useMemo(() => new Map(changes.map((f) => [f.path, f])), [changes])
   const local = useLocalMerge(ws)
@@ -114,30 +125,48 @@ function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; c
     if (next.has(path)) next.delete(path); else next.add(path)
     setClosed(next)
   }
-  if (!changes.length) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No file changes yet</span><span>Changes appear here.</span></div>
   const added = changes.reduce((n, f) => n + f.added, 0)
   const removed = changes.reduce((n, f) => n + f.removed, 0)
+  const note = compareNote(compare)
+  const empty = compareEmpty(compare)
+  // The ⋯ stays whatever the list holds, so a pick with no files can be changed. A pick still being read, or one that failed, has no list to act on.
+  const listed = files !== null && !error && changes.length > 0
   return (
     <>
       <PanelTools>
-        <Button className="tool-text" onClick={() => onOpenDiff('')}>Review all</Button>
-        <FilterButton filter={filter} label="Filter changed files" />
-        <ToolButton icon="listTree" label="View as tree" aria-pressed={view === 'tree'} onClick={() => actions.ui.setChangesView(view === 'tree' ? 'list' : 'tree')} />
+        {listed && (
+          <>
+            <Button className="tool-text" onClick={() => onOpenDiff('')}>Review all</Button>
+            <FilterButton filter={filter} label="Filter changed files" />
+            <ToolButton icon="listTree" label="View as tree" aria-pressed={view === 'tree'} onClick={() => actions.ui.setChangesView(view === 'tree' ? 'list' : 'tree')} />
+          </>
+        )}
+        <CompareButton ws={ws} compare={compare} />
       </PanelTools>
-      <FilterField filter={filter} label="Filter changed files" />
-      <div className="panel-scroll" style={{ padding: '4px 10px' }}>
-        <div className="changes-head">
-          <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
-          <span className="grow" />
-          <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
-        </div>
-        {filter.filtering && !shown.length
-          ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No changes match</span><span>Try another name or folder.</span></div>
-          : view === 'tree'
-            ? <FileTree label="Changed files" entries={treeEntries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
-            : shown.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} ranges={matchRanges(f.path, filter.query)} onOpen={() => onOpenDiff(f.path)} />)}
-        {ws.mode === 'current' && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
-      </div>
+      {error
+        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not compare</span><span>{error}</span></div>
+        : files === null
+          ? null
+          : !changes.length
+            ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>{empty.title}</span><span>{empty.sub}</span></div>
+            : (
+              <>
+                <FilterField filter={filter} label="Filter changed files" />
+                <div className="panel-scroll" style={{ padding: '4px 10px' }}>
+                  <div className="changes-head">
+                    <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed{note && ` ${note}`}</span>
+                    <span className="grow" />
+                    <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
+                  </div>
+                  {filter.filtering && !shown.length
+                    ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No changes match</span><span>Try another name or folder.</span></div>
+                    : view === 'tree'
+                      ? <FileTree label="Changed files" entries={treeEntries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
+                      : shown.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} ranges={matchRanges(f.path, filter.query)} onOpen={() => onOpenDiff(f.path)} />)}
+                  {ws.mode === 'current' && !note && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
+                </div>
+              </>
+            )}
     </>
   )
 }
