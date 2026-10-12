@@ -120,7 +120,8 @@ export interface NewAgentPrefill {
 
 /** One line of the room setup progress (RoomSetup.png). */
 export interface RoomSetupStep {
-  id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'agents'
+  /** `push` is there only when the room has a remote (KERNEL-460). */
+  id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'push' | 'agents'
   title: string
   detail: string
   /** `warn` finished with something to look at, which never blocks the room (KERNEL-437). */
@@ -128,6 +129,10 @@ export interface RoomSetupStep {
   /** Duration or "running". */
   meta?: string
   error?: string
+  /** A tool's own error, shown in a box under the detail. */
+  output?: string
+  /** A warning's one fix: a command to copy, and `recheck` for a Check again button. */
+  fix?: { command?: string; action?: 'recheck' }
   /** On the copy step: the files to copy that look like production, by path. The step warns (KERNEL-449). */
   production?: string[]
   /** On the agents step: how many agent files the repo already had, so Room setup shows the team for review (KERNEL-397). */
@@ -137,6 +142,38 @@ export interface RoomSetupStep {
    * and plugin agents too, since they join every room (KERNEL-463).
    */
   roster?: RosterAdvice
+}
+
+/**
+ * One row of a room's push check (SettingsRoomGit*.png). `unchecked` is a row that couldn't be asked, like Permission to
+ * push while the remote is out of reach.
+ */
+export interface PushCheckRow {
+  state: 'ok' | 'fail' | 'unchecked'
+  /** Under the label: what was asked, or why it failed. */
+  detail: string
+  /** git's own error, shown in a box. */
+  output?: string
+  /** A line under the box, like "Check your connection or VPN, then check again." */
+  note?: string
+  /** The one command that fixes it, to copy. */
+  fix?: string
+}
+
+/**
+ * Whether git can push from a room's checkout (KERNEL-460). `reach` is `git ls-remote <remote>`. `push` is gh's permission
+ * on the repo and a dry-run push with git's own login.
+ */
+export interface PushCheck {
+  remote: string
+  /** owner/name, when the remote is on GitHub. */
+  repo?: string
+  /** Who gh is signed in as, when the remote is on GitHub and gh has a login. */
+  login?: string
+  reach: PushCheckRow
+  push: PushCheckRow
+  /** When it ran, epoch ms. */
+  at: number
 }
 
 /** A repo on the user's GitHub account (ConnectRepo.png). */

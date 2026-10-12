@@ -1,4 +1,4 @@
-import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookProblem, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, PushCheck, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -36,6 +36,13 @@ const eventsAgo = (m: number | null) => (m === null ? undefined : Date.now() - m
 const hookEvents: HookStatus['events'] = [
   ['SessionStart', 2], ['UserPromptSubmit', 12], ['PreToolUse', 0], ['PostToolUse', 0], ['PermissionRequest', 2], ['Notification', 2], ['Stop', 6], ['TaskCreated', 6], ['TaskCompleted', 18], ['TeammateIdle', null]
 ].map(([name, m]) => ({ name: name as string, installed: true, lastSeen: eventsAgo(m as number | null) }))
+
+/** Check hooks when the hooks can't be written or can't run (KERNEL-461). The paths, disk and commands are the drawings' examples. */
+const hooksProblem = (problem: HookProblem, installed = false) => scene((f) => ({
+  ...sixRunning(f),
+  hooks: { port: 7420, listening: true, installed, events: hookEvents.map((e) => ({ name: e.name, installed })), problem },
+  ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
+}))
 
 /** `resetsAt` is epoch seconds, as rate_limit_event sends it. */
 const secs = (ms: number) => Math.round(ms / 1000)
@@ -108,6 +115,24 @@ const kernelFiles: RoomSettings = {
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
+/**
+ * Client A's push check (KERNEL-460): both rows pass, gh can push but git isn't using its login, or origin is out of reach.
+ * Checked two minutes before the shot, or just now for the unreachable one, as the drawings say.
+ */
+const pushCheck = (state: 'ok' | 'failed' | 'unreachable'): Pick<Fixture, 'pushChecks'> => {
+  const check: PushCheck = {
+    remote: 'origin', repo: 'samrivera/client-a', login: 'samrivera', at: Date.now() - (state === 'unreachable' ? 0 : 2 * 60_000),
+    reach: { state: 'ok', detail: 'git ls-remote origin' },
+    push: state === 'failed'
+      ? { state: 'fail', detail: 'gh is signed in as samrivera, but git isn\u2019t using that login.', fix: 'gh auth setup-git' }
+      : { state: 'ok', detail: 'From gh, signed in as samrivera' }
+  }
+  if (state === 'unreachable') {
+    check.reach = { state: 'fail', detail: 'git ls-remote origin', output: 'fatal: unable to access \'https://github.com/samrivera/client-a.git/\': Could not resolve host: github.com', note: 'Check your connection or VPN, then check again.' }
+    check.push = { state: 'unchecked', detail: 'Needs a reachable remote' }
+  }
+  return { pushChecks: { [ids.roomA]: check } }
+}
 /** Client A's Environment page: two variables and two env files from its personal file, `src/backend/.env` missing. */
 const envFiles = ['.env', 'src/backend/.env']
 const envRoomA: Partial<Fixture> = {
@@ -261,8 +286,21 @@ export const platformFixtures: Record<string, Fixture> = {
       pr: { ...kernelFiles.pr, optionalChecks: ['Vercel*', 'codecov/patch'] },
       sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override', 'pr.optionalChecks': 'shared' }
     }),
-    branches: ['origin/main', 'origin/dev', 'main']
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('ok')
   }, 'settingsFiles'),
+  // KERNEL-460: gh can push, but git has no login of its own, so the fix is gh auth setup-git.
+  SettingsRoomGitPushFailed: roomPage('git', {
+    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('failed')
+  }),
+  // KERNEL-460: git ls-remote couldn't resolve github.com, so the permission wasn't asked.
+  SettingsRoomGitUnreachable: roomPage('git', {
+    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    branches: ['origin/main', 'origin/dev', 'main'],
+    ...pushCheck('unreachable')
+  }),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
   SettingsRoomScripts: roomPage('scripts', clientA({
@@ -327,6 +365,11 @@ export const platformFixtures: Record<string, Fixture> = {
     hooks: { port: 7420, listening: true, installed: true, events: hookEvents },
     ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
   })),
+  CheckHooksNotWritable: hooksProblem({ kind: 'not-writable', code: 'EACCES', file: '~/.claude/settings.json', dir: '~/.claude', fix: 'sudo chown -R "$USER" ~/.claude' }),
+  CheckHooksReadOnly: hooksProblem({ kind: 'read-only', code: 'EROFS', dir: '~/.claude', disk: 'Work', fix: 'sudo mount -uw /Volumes/Work' }),
+  CheckHooksSymlink: hooksProblem({ kind: 'symlink', code: 'EROFS', file: '~/.claude/settings.json', store: '/nix/store', nix: true, fix: 'rm ~/.claude/settings.json &&\ncp /nix/store/p3v8kq-settings.json ~/.claude/settings.json' }),
+  CheckHooksManaged: hooksProblem({ kind: 'managed', setting: 'allowManagedHooksOnly', source: '/Library/Application Support/ClaudeCode/managed-settings.json', block: '{\n  "hooks": {}\n}' }, true),
+  CheckHooksOff: hooksProblem({ kind: 'off', file: '~/.claude/settings.json' }, true),
   // The four Setup PNGs below draw a failing check as a blocking one (red x, Continue off), so these fixtures mark theirs blocking. preflight.ts decides which checks block in real runs (KERNEL-213).
   SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
   SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),

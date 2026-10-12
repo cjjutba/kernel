@@ -89,6 +89,7 @@
 .meter[data-hot='true'] span { background: var(--ink); }
 
 /* code block */
+.code.boxed { border: 1px solid var(--line-2); overflow-wrap: anywhere; }
 .codeblock { position: relative; }
 .codeblock .code { margin: 0; padding-right: 96px; }
 .codeblock .btn { position: absolute; top: 5px; right: 5px; height: 24px; font-size: 12px; }

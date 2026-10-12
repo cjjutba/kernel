@@ -94,6 +94,7 @@
 .rs-acts .btn { height: 30px; }
 .rs-dash { display: inline-block; width: 15px; text-align: center; line-height: 15px; }
 .rs-error { color: var(--del); white-space: pre-wrap; }
+.rs-out { margin: 10px 0 0; }
 .ob-check[data-state='wait'] .ob-detail { color: var(--muted); }
 .rm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: 12px; }
 .rm-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
