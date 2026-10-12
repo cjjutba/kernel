@@ -11,7 +11,7 @@ import { bottomKindOf } from './bottomSplit'
 
 const NO_QUEUE: QueuedMessage[] = []
 
-/** A duration as M:SS, the way main writes "Setup finished in M:SS". */
+/** A duration as M:SS, for the live setup timer and the failed card. */
 export const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 
 /** Time since `from`, redrawn each second while it counts. The start is main's, from when the setup script started. */

@@ -9,9 +9,6 @@ import { head } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
-/** A duration as M:SS, the way the chat's setup line counts it (KERNEL-430). */
-export const clock = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
-
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 export interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
@@ -24,8 +21,6 @@ export class Setup extends Feature {
   readonly setups = new Map<string, SetupHold>()
   /** How a workspace's last failed setup ended: its exit code, null when it was stopped, or `timeout`. Cleared when setup passes. */
   readonly setupFailures = new Map<string, ScriptEnd>()
-  /** Workspaces whose setup script just passed, so the brief that follows it gets "Setup finished in M:SS" above it (KERNEL-430). */
-  private readonly justPassed = new Set<string>()
 
   /**
    * Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its
@@ -41,10 +36,8 @@ export class Setup extends Feature {
     const done = this.updateWs(ws.id, { status: 'ready' })
     if (done.status === 'archived') return done
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
-    // The line above the brief says how setup ended: how long it took, or that it was skipped (KERNEL-430).
-    const run = this.justPassed.delete(ws.id) ? done.setupRun : undefined
-    const note = o.note ?? (run?.endedAt ? `Setup finished in ${clock(run.endedAt - run.startedAt)}` : undefined)
-    if (note) this.note(ws.id, note)
+    // Only a skipped setup leaves a line above the brief. A passed one is silent (KERNEL-430, KERNEL-533).
+    if (o.note) this.note(ws.id, o.note)
     if (this.settings.scripts.runAfterSetup && repo.scripts.run && !(await this.k.trust.untrusted(room, repo))) this.startRun(done, room, repo)
     await start()
     return done
@@ -251,7 +244,7 @@ export class Setup extends Feature {
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
   private setupPassed(ws: Workspace, code: ScriptEnd) {
-    if (code === 0) { this.setupFailures.delete(ws.id); this.justPassed.add(ws.id); this.sayLoaded(ws); return true }
+    if (code === 0) { this.setupFailures.delete(ws.id); this.sayLoaded(ws); return true }
     this.setupFailures.set(ws.id, code)
     const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
     bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line, stream: 'stderr' }] })

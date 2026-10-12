@@ -1123,7 +1123,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   SetupDone: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'ready', title: 'Fix duplicate Run in the script panel', setupRun: { startedAt: at(10, 0), endedAt: at(10, 1, 12), end: 0 } }),
-    items: { [ids.tableChat]: [{ kind: 'note', id: 'sd-note', ts: at(10, 1, 12), text: 'Setup finished in 1:12' }, { kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
+    items: { [ids.tableChat]: [{ kind: 'user', id: 'sd-u', ts: Date.now() - 20_000, parts: [...setupAsk.parts, ...setupFollow.parts] }] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
