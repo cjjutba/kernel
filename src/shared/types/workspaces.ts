@@ -90,7 +90,12 @@ export interface Workspace {
   archivedAt?: number
   /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
   waitsFor?: WaitsFor
+  /** The setup script's last run, for the chat's setup line and the note when it passes (KERNEL-430). */
+  setupRun?: SetupRun
 }
+
+/** When the setup script started and how it ended: an exit code, null when it was stopped, or `timeout`. No `endedAt` while it runs. */
+export interface SetupRun { startedAt: number; endedAt?: number; end?: number | null | 'timeout' }
 
 /**
  * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't

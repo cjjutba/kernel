@@ -134,6 +134,18 @@ describe('loadAppSettings', () => {
     await saveAppSettings(file, deepMerge(saved, { pr: { leadMerge: true } }))
     expect((await loadAppSettings(file, '/home/cj')).resolved.pr).toMatchObject({ leadMerge: true, mergeMethod: 'rebase' })
   })
+  it("drops one stack's commands from the default Always ask list, and keeps a list the user saved (KERNEL-444)", async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    // settings.json is sparse, so a file that never changed the list follows the new default.
+    await writeFile(file, JSON.stringify({ version: 2, permissions: { mode: 'acceptEdits' } }))
+    expect((await loadAppSettings(file, '/home/cj')).resolved.permissions.alwaysAsk).toEqual(['rm -rf', 'git push --force'])
+    const mine = ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset']
+    await writeFile(file, JSON.stringify({ version: 2, permissions: { mode: 'acceptEdits', alwaysAsk: mine } }))
+    expect((await loadAppSettings(file, '/home/cj')).resolved.permissions.alwaysAsk).toEqual(mine)
+    // A file from before KERNEL-225 saved the old list on every launch. It no longer equals the default, so it stays.
+    await writeFile(file, JSON.stringify({ permissions: { alwaysAsk: mine } }))
+    expect((await loadAppSettings(file, '/home/cj')).resolved.permissions.alwaysAsk).toEqual(mine)
+  })
 
   describe('permission modes (KERNEL-432)', () => {
   const load = async (data?: unknown) => {

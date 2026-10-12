@@ -4,7 +4,6 @@ import type { Handlers } from '../kernel'
 import { kernelHooksPresent } from '../services/hooksInstaller'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
-import { discoverMcp } from '../services/integrations'
 import { discoverSkills } from '../services/files'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { listBranches } from '../services/worktrees'
@@ -130,11 +129,6 @@ export class Config extends Feature {
       'files.preview': async ({ roomId, patterns }) => {
         const { path } = this.mustRoom(roomId)
         return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
-      },
-      'mcp.list': async ({ roomId }) => {
-        const room = roomId ? this.mustRoom(roomId) : undefined
-        const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []
-        return discoverMcp(room?.path ?? this.home, this.home, off)
       }
     } satisfies Partial<Handlers>
   }

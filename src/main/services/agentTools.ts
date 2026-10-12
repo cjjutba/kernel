@@ -1,6 +1,8 @@
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
+import type { AgentWarning, McpStatus } from '@shared/types'
+import { toolServerName } from './mcp'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
 
@@ -67,6 +69,30 @@ export type ServerAccess = { on: false } | { on: true; only?: string[]; except?:
 /** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
 const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
+/**
+ * The room's `[mcp.aliases]` as tool names: each name agent files use, and the server's name as its tools carry it. An
+ * alias to or from Kernel's own server, or `*`, is left out (KERNEL-464).
+ */
+function aliasMap(aliases: Record<string, string> | undefined): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const [from, to] of Object.entries(aliases ?? {})) {
+    const a = toolServerName(from.trim())
+    const b = toolServerName(to.trim())
+    if (a && b && a !== b && ![a, b].some((n) => n === 'kernel' || n === '*' || /^_+$/.test(n))) out.set(a, b)
+  }
+  return out
+}
+
+/** A line's entries, each MCP one followed by the same entry on the server its name stands for in this room (KERNEL-464). */
+function withAliases(entries: string[], aliases: Map<string, string>): string[] {
+  return entries.flatMap((entry) => {
+    const name = toolName(entry)
+    const e = mcpEntry(name)
+    const to = e && aliases.get(e.server)
+    return to ? [name, e.tool ? `mcp__${to}__${e.tool}` : `mcp__${to}`] : [name]
+  })
+}
+
 /** A tools or disallowedTools line as the tools it names, the servers it names whole, and the MCP tools it names one by one. */
 function readLine(entries: string[]) {
   const names = new Set(entries.map(toolName))
@@ -79,12 +105,15 @@ function readLine(entries: string[]) {
  * as Bash, and `mcp__linear` or `mcp__linear__*` for every tool of that server, where `mcp__*` names nothing. With no tools
  * line every tool is in. disallowedTools then takes away what it names, the same way, and there `mcp__*` takes every MCP
  * server. Kernel's own tools and the session's stay whatever the file says. Nothing for a file that limits nothing.
+ * `aliases` is the room's `[mcp.aliases]`: an entry naming `linear` names the server it stands for as well, in both lines
+ * (KERNEL-464).
  */
-export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string } = {}): ToolPolicy | undefined {
+export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string[]; plans?: string; aliases?: Record<string, string> } = {}): ToolPolicy | undefined {
   if (!tools && !o.disallowed?.length) return undefined
   const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
-  const line = tools && readLine(tools)
-  const off = readLine(o.disallowed ?? [])
+  const aliases = aliasMap(o.aliases)
+  const line = tools && readLine(withAliases(tools, aliases))
+  const off = readLine(withAliases(o.disallowed ?? [], aliases))
   const offAll = off.servers.has('*')
   const own = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool)
   // A background command's output and its stop belong to Bash.
@@ -109,25 +138,56 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
   return { hidden: [...HIDEABLE.filter((t) => !usable(t)), ...named], allows, disallows, server }
 }
 
-/** A server the tools line names that the session doesn't have, and a connected one whose name contains it. */
-export interface MissingServer { server: string; entry: string; suggestion?: string }
+/**
+ * A server the tools line names that the session can't use. With no `status`, no server by its name, or by the name it
+ * stands for in this room, is there, and `suggestion` is a usable one whose name contains it, as its tools name it.
+ * Otherwise `name` is the server that is there and `status` why it can't be used: it `failed`, `needs-auth`, Claude Code or
+ * Codex has it `disabled`, or the room switched it `off` (KERNEL-464).
+ */
+export interface MissingServer { server: string; entry: string; status?: 'failed' | 'needs-auth' | 'disabled' | 'off'; name?: string; suggestion?: string }
+
+/** A server as `missingServers` reads it: its name, what its provider said, and whether the room has it on. */
+export type KnownServer = { name: string; status?: McpStatus | string; enabled?: boolean }
+
+/** Why a server can't be used, or undefined when it can. Pending and unknown servers count as there. */
+const unusable = (s: KnownServer): MissingServer['status'] =>
+  s.enabled === false ? 'off' : s.status === 'failed' || s.status === 'needs-auth' || s.status === 'disabled' ? s.status : undefined
 
 /**
- * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that aren't among the
- * session's connected servers. Kernel's own server is always there. A server that failed or needs auth still counts as
- * connected: its name matches, so the gate lets its tools through and the problem is elsewhere.
+ * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that the session can't
+ * use. `servers` are the ones it knows of, by their names or their tools', a later entry for the same server winning.
+ * Kernel's own server is always there. A server that failed, needs sign-in or is switched off no longer counts as there,
+ * since its tools fail in the same way a missing one's do (amends KERNEL-397). `aliases` is the room's `[mcp.aliases]`.
  */
-export function missingServers(tools: string[] | undefined, connected: string[]): MissingServer[] {
-  const have = new Set(connected)
+export function missingServers(tools: string[] | undefined, servers: KnownServer[], aliases?: Record<string, string>): MissingServer[] {
+  const known = new Map(servers.map((s) => [toolServerName(s.name), s]))
+  const alias = aliasMap(aliases)
   const missing = new Map<string, MissingServer>()
   for (const entry of tools ?? []) {
     const server = mcpEntry(toolName(entry))?.server
     // `mcp__*` names no server in a tools line.
-    if (!server || server === '*' || server === 'kernel' || have.has(server) || missing.has(server)) continue
-    const suggestion = connected.find((c) => c !== 'kernel' && c.toLowerCase().includes(server.toLowerCase()))
+    if (!server || server === '*' || server === 'kernel' || missing.has(server)) continue
+    const there = [server, alias.get(server)].flatMap((n) => (n && known.get(n)) || [])
+    if (there.some((s) => !unusable(s))) continue
+    if (there.length) { missing.set(server, { server, entry: toolName(entry), status: unusable(there[0]), name: there[0].name }); continue }
+    const suggestion = [...known.entries()].find(([n, s]) => n !== 'kernel' && !unusable(s) && n.toLowerCase().includes(server.toLowerCase()))?.[0]
     missing.set(server, { server, entry: toolName(entry), ...(suggestion ? { suggestion } : {}) })
   }
   return [...missing.values()]
+}
+
+/**
+ * What an agent's tools line needs from the room's MCP servers that it doesn't have, as warnings for Team (KERNEL-464). A
+ * missing server's `detail` is the name its file uses, else the server's own name. `complete` says the list holds every
+ * server the agent could reach, so one it lacks is missing. Claude's isn't until a probe or a session has reported, since
+ * claude.ai's connectors are in no file.
+ */
+export function mcpWarnings(tools: string[] | undefined, servers: KnownServer[], o: { aliases?: Record<string, string>; complete?: boolean } = {}): AgentWarning[] {
+  const kind = { failed: 'mcp-failed', 'needs-auth': 'mcp-needs-auth', disabled: 'mcp-off', off: 'mcp-off' } as const
+  return missingServers(tools, servers, o.aliases).flatMap((m): AgentWarning[] => {
+    if (m.status) return [{ kind: kind[m.status], detail: m.name }]
+    return o.complete ? [{ kind: 'mcp-missing', detail: m.server, ...(m.suggestion ? { suggestion: m.suggestion } : {}) }] : []
+  })
 }
 
 /** A tool as usage data names it: a built-in by name, any MCP tool as `mcp`, since server names are the user's own. */
