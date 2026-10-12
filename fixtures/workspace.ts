@@ -269,6 +269,18 @@ const foldedRowsItems: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** A finished turn and a turn in progress that each read screenshots from .kernel/attachments, next to a Read of a source file (KERNEL-546). */
+const readImageItems: ChatItem[] = [
+  { kind: 'user', id: 'ri-u1', ts: at(10, 27), parts: [{ type: 'text', text: 'Match the empty state to this mock.' }, { type: 'image', name: 'image.png' }] },
+  tool('ri-t1', 'Read image.png', '.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '.kernel/attachments/image.png' } }),
+  tool('ri-t2', 'Read empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/empty-state.tsx' } }),
+  { kind: 'text', id: 'ri-x1', ts: at(10, 28), text: 'The mock centres the message and puts the button under it. I will change the empty state to match.' },
+  { kind: 'user', id: 'ri-u2', ts: at(10, 30), parts: [{ type: 'text', text: 'Now the loading state, with these two.' }, { type: 'image', name: 'image.png' }, { type: 'image', name: 'image-2.png' }] },
+  tool('ri-t3', 'Read image.png', '.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '.kernel/attachments/image.png' } }),
+  tool('ri-t4', 'Read image-2.png', '.kernel/attachments/image-2.png', { name: 'Read', durationMs: 80, input: { file_path: '.kernel/attachments/image-2.png' } }),
+  tool('ri-t5', 'Read skeleton.tsx', 'src/app/invoices/skeleton.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/skeleton.tsx' } })
+]
+
 /** The invoice table chat followed by six more rounds, so the transcript runs well past the window (WorkspaceScrolledUp, KERNEL-532). */
 const longChat: ChatItem[] = [
   ...tableItems,
@@ -1203,6 +1215,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** The folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198). */
   WorkspaceRowsFolded: scene(() => ({
     items: { [ids.tableChat]: foldedRowsItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** Read rows on image files say "Read image" with the image chip, in the folded list and in the turn in progress (KERNEL-546). */
+  WorkspaceReadImage: scene(() => ({
+    items: { [ids.tableChat]: readImageItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
   })),
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */

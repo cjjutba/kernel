@@ -105,8 +105,8 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * its chevron stays hidden, but keeps its room so the right-hand notes line up. Open state is local, so a tool going from running
  * to done keeps it. `compact` is the row inside the folded list: no icon, a right-hand note.
  */
-/** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. */
-function StepRow({ icon, glyph, failed, label, detail, mono, meta, compact, children }: { icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
+/** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
+function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, children }: { icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const panel = useId()
   const can = !!children
@@ -115,7 +115,7 @@ function StepRow({ icon, glyph, failed, label, detail, mono, meta, compact, chil
       <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
         {glyph ? <span className="step-glyph">{glyph}</span> : icon && <span style={{ color: failed ? 'var(--del)' : 'var(--muted)' }}><Icon name={icon} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} /></span>}
         <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
-        <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>
+        {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
         <span className="chev step-chev" data-open={open} data-idle={can ? undefined : true} aria-hidden="true"><Icon name="right" size={12} /></span>
       </button>
@@ -175,9 +175,27 @@ function toolBody(item: Tool): ReactNode {
 /** The tools whose detail is a file. Their rows show the file's icon in place of the terminal glyph (KERNEL-399). */
 const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit'])
 
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i
+
+/** The image a Read row opened, by its file's path. Codex's view_image calls are Read rows too, so the provider doesn't matter. */
+function readImage(item: Tool): string | undefined {
+  if (item.name !== 'Read') return undefined
+  const path = text(item.input?.file_path) ?? item.detail
+  return path && IMAGE_FILE.test(path) ? path : undefined
+}
+
 const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
   const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
-  return <StepRow icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'} label={item.label} detail={item.detail} mono meta={meta} compact={compact}>{toolBody(item)}</StepRow>
+  const image = readImage(item)
+  return (
+    <StepRow
+      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
+      label={image ? 'Read image' : item.label} detail={item.detail} chip={image && <PartChip part={{ type: 'image', name: image.split(/[\\/]/).pop() ?? image }} />}
+      mono meta={meta} compact={compact}
+    >
+      {toolBody(item)}
+    </StepRow>
+  )
 })
 
 /** Edit and Write calls show what they added and removed, read from the changed files. */
