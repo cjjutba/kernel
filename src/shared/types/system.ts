@@ -40,6 +40,8 @@ export interface AppUpdate {
   notes?: { title: string; body: string }[]
   progress?: number
   error?: string
+  /** Why this copy can't update itself, as a sentence: it runs from outside Applications, so Kernel never checks (KERNEL-443). */
+  blocked?: string
   /** True on the first `update.get` after Kernel starts on a newly installed version, so What's new opens once. `notes` are that version's. */
   installed?: boolean
   /** The running version's notes, for What's new when no update is ready (KERNEL-154). Release builds carry them; dev runs have none. */

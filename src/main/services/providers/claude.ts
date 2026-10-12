@@ -77,8 +77,8 @@ export class ClaudeRunner implements Runner {
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
-    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
-    const tools = toolPolicy(agent?.tools)
+    // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     const options: Options = {
       cwd: ws.path,
@@ -155,7 +155,7 @@ export class ClaudeRunner implements Runner {
     } catch { /* the composer keeps the last number */ }
   }
 
-  private baseMode(): NonNullable<Options['permissionMode']> { return this.host.settings().permissions.mode === 'ask' ? 'default' : 'acceptEdits' }
+  private baseMode(): NonNullable<Options['permissionMode']> { return this.host.settings().permissions.mode === 'default' ? 'default' : 'acceptEdits' }
 
   private async consume() {
     let ended: string | null = null
@@ -288,7 +288,7 @@ export class ClaudeRunner implements Runner {
       const verdict = command ? bashVerdict(command, p, host.roomAllow()) : undefined
       if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
       if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassPermissions' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
@@ -487,7 +487,10 @@ function kernelHooks(o: {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
+      const why = tools.disallows(tool)
+        ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`
+        : `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.`
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
     }
     hooks.PreToolUse!.push({ hooks: [gate] })
   }

@@ -1,3 +1,4 @@
+import type { TrackerKind } from './trackers'
 import type { PrState } from './workspaces'
 
 export interface PrCheck {
@@ -79,5 +80,5 @@ export interface IssueSummary {
   id: string
   title: string
   url?: string
-  source?: 'linear' | 'github'
+  source?: TrackerKind
 }

@@ -1846,6 +1846,78 @@
       "w": 1440,
       "x": 9120,
       "y": 27300
+    },
+    "SetupPermissions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Choose how agents ask",
+      "w": 1440,
+      "x": 10640,
+      "y": 1300
+    },
+    "SetupPermissionsNoAuto.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Choose how agents ask, Auto unavailable",
+      "w": 1440,
+      "x": 12160,
+      "y": 1300
+    },
+    "ComposerModes.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission mode label in the composer",
+      "w": 1440,
+      "x": 12160,
+      "y": 13000
+    },
+    "ComposerModeMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission mode menus",
+      "w": 1440,
+      "x": 13680,
+      "y": 13000
+    },
+    "WorkspacePermReason.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission request with its reason",
+      "w": 1440,
+      "x": 15200,
+      "y": 15600
+    },
+    "WorkspacePermReasonCodex.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission request, outside Codex’s sandbox",
+      "w": 1440,
+      "x": 16720,
+      "y": 15600
+    },
+    "ConfirmBypass.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Turn on Bypass permissions",
+      "w": 1440,
+      "x": 7600,
+      "y": 18200
+    },
+    "SettingsRoomPermissionsMode.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room · Permissions · mode menu",
+      "w": 1440,
+      "x": 28880,
+      "y": 20800
     }
   },
   "createdOnFiles": {
@@ -2057,6 +2129,8 @@
     "RoomSetup.dc.html",
     "RoomSetupTeam.dc.html",
     "RoomSetupWarnings.dc.html",
+    "SetupPermissions.dc.html",
+    "SetupPermissionsNoAuto.dc.html",
     "Home.dc.html",
     "Inbox.dc.html",
     "InboxEmpty.dc.html",
@@ -2133,6 +2207,8 @@
     "WorkspaceHunks.dc.html",
     "WorkspaceLead.dc.html",
     "WorkspaceHire.dc.html",
+    "ComposerModes.dc.html",
+    "ComposerModeMenu.dc.html",
     "WorkspacePRMenu.dc.html",
     "WorkspaceDraftPR.dc.html",
     "WorkspaceCIFailed.dc.html",
@@ -2144,6 +2220,8 @@
     "WorkspaceRunning.dc.html",
     "WorkspacePlan.dc.html",
     "WorkspacePerm.dc.html",
+    "WorkspacePermReason.dc.html",
+    "WorkspacePermReasonCodex.dc.html",
     "WorkspaceQuestion.dc.html",
     "WorkspaceQuestionSteps.dc.html",
     "WorkspaceQuestionOther.dc.html",
@@ -2167,6 +2245,7 @@
     "ConfirmRemoveRoom.dc.html",
     "ConfirmRetire.dc.html",
     "TelemetryAsk.dc.html",
+    "ConfirmBypass.dc.html",
     "Settings.dc.html",
     "SettingsAppearance.dc.html",
     "SettingsNotifications.dc.html",
@@ -2197,6 +2276,7 @@
     "SettingsRoomScripts.dc.html",
     "SettingsRoomInstructions.dc.html",
     "SettingsRoomPermissions.dc.html",
+    "SettingsRoomPermissionsMode.dc.html",
     "SettingsEnvironment.dc.html",
     "SettingsRoomEnvironment.dc.html",
     "SettingsEnvironmentAdd.dc.html",
