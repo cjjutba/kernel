@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
@@ -9,6 +9,7 @@ import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
+import { mcpStatus, type McpReport } from '../mcp'
 import { IMAGE_DATA_URL } from '../plans'
 import { decide, guardVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
@@ -54,6 +55,8 @@ export interface ClaudeStart {
   env: Record<string, string>
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
+  /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
+  aliases?: Record<string, string>
   /** The mode the session starts in (`effectiveMode`). */
   mode: RunMode
   /**
@@ -98,8 +101,8 @@ export class ClaudeRunner implements Runner {
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
-    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
-    const tools = toolPolicy(agent?.tools)
+    // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
@@ -266,8 +269,9 @@ export class ClaudeRunner implements Runner {
         if (msg.subtype === 'init') {
           this.report(msg.permissionMode)
           this.resume = undefined
-          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init.
-          host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: (msg.mcp_servers ?? []).map((s) => s.name) })
+          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init. Each
+          // init's statuses keep the room's fresh (KERNEL-464).
+          host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: mcpReports(msg.mcp_servers ?? []) })
         }
         if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) host.blocked(msg.hook_event, msg.stderr || msg.output || msg.stdout)
         // The SDK's level signal for background work, which replaces the whole set. Ambient tasks are housekeeping, not work.
@@ -433,6 +437,44 @@ export async function probeClaudeUsage(cwd: string, merge: (p: LimitPatch[]) => 
     const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
     await readUsage(q, merge)
   } catch { /* keep rate_limit_event data */ } finally {
+    input.close()
+    abort.abort()
+  }
+}
+
+/** A session's or a probe's MCP servers as reports. A status Kernel doesn't know is left out. */
+export function mcpReports(list: { name: string; status: string; source?: string; scope?: string; error?: string }[]): McpReport[] {
+  return list.flatMap((s) => {
+    const status = mcpStatus(s.status)
+    const source = s.source ?? s.scope
+    return status ? [{ name: s.name, status, ...(source ? { source } : {}), ...(s.error ? { error: s.error } : {}) }] : []
+  })
+}
+
+/**
+ * Claude Code's MCP servers for a folder, each with its status, as a session there would load them (KERNEL-464). Claude
+ * Code starts with the user's settings and no prompt, so it sends no message, and with every hook off, so nothing the
+ * user's settings run at SessionStart fires and Kernel's own hooks never see an outside session. The room's switched-off
+ * servers (`denied`) never start. Servers connect on their own time, and claude.ai's connectors join a few seconds in, so
+ * the list counts once two reads in a row agree and none is pending, or after `ms` as it stands.
+ */
+export async function probeClaudeMcp(cwd: string, o: { env: Record<string, string>; executable?: string; denied?: string[]; ms?: number; every?: number }): Promise<McpServerStatus[]> {
+  const input = new InputQueue<SDKUserMessage>()
+  const abort = new AbortController()
+  const denied = [...new Set(o.denied ?? [])].map((serverName) => ({ serverName }))
+  try {
+    const settings = { disableAllHooks: true, ...(denied.length ? { deniedMcpServers: denied } : {}) }
+    const q = query({ prompt: input, options: { cwd, settingSources: ['user', 'project', 'local'], settings, persistSession: false, abortController: abort, env: o.env, pathToClaudeCodeExecutable: o.executable } })
+    const until = Date.now() + (o.ms ?? 30_000)
+    let last: string | undefined
+    for (;;) {
+      const list = await withTimeout(q.mcpServerStatus(), 15_000)
+      const shape = JSON.stringify(list.map((s) => [s.name, s.status]))
+      if ((shape === last && !list.some((s) => s.status === 'pending')) || Date.now() >= until) return list
+      last = shape
+      await new Promise((resolve) => setTimeout(resolve, o.every ?? 1500))
+    }
+  } finally {
     input.close()
     abort.abort()
   }
@@ -606,7 +648,10 @@ function kernelHooks(o: {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
+      const why = tools.disallows(tool)
+        ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`
+        : `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.`
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: why } }
     }
     hooks.PreToolUse!.push({ hooks: [gate] })
   }

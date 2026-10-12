@@ -82,15 +82,36 @@ export type AgentOrigin = 'project' | 'personal' | 'plugin'
  * - `mcp-failed`: a server it lists failed to start.
  * - `mcp-needs-auth`: a server it lists needs the user to sign in.
  * - `mcp-off`: a server it lists is switched off in this room.
+ *
+ * And since KERNEL-465:
+ * - `looks-like-subagent`: it reads as a subagent with no pull request workflow (its file names neither Edit nor Write, and
+ *   never mentions a branch, a pull request or a worktree), so it starts as a helper.
  */
 export type AgentWarningKind =
   | 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
-  | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off'
+  | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off' | 'looks-like-subagent'
 
 export interface AgentWarning {
   kind: AgentWarningKind
   /** Shown on Team. Never sent anywhere. */
   detail?: string
+  /**
+   * For `mcp-missing`: a server the room has whose name contains the one the file lists. Kernel only offers it. The user
+   * confirms it as `[mcp.aliases]` with `settings.setRoom` (KERNEL-464).
+   */
+  suggestion?: string
+}
+
+/**
+ * The MCP servers an agent's tools line reaches in a room, for the hire card's servers row and hire_agent's result
+ * (KERNEL-476). `reach` holds the servers it may use that are connected, starting or not reported on yet, by the room's
+ * name for each. `blocked` holds the ones its line names that it can't use: the server `failed`, `needs-auth`, is
+ * `disabled` in Claude Code or Codex, is switched `off` in the room, or is `missing` from the room, with `suggestion` a
+ * working server whose name contains the missing one. A server is only called missing once the room's list is whole.
+ */
+export interface AgentReach {
+  reach: string[]
+  blocked: { name: string; why: 'failed' | 'needs-auth' | 'disabled' | 'off' | 'missing'; suggestion?: string }[]
 }
 
 /**
@@ -106,8 +127,21 @@ export interface TeamConfig {
   members?: string[]
   /** Agents that never take tasks. */
   helpers?: string[]
-  /** The agents on this room's team, for a repo with more agent files than one team needs. Unset, every agent is on it (KERNEL-432). */
+  /**
+   * The agents on this room's team, for a repo with more agent files than one team needs. Unset, every agent is on it
+   * (KERNEL-432). The Lead and the reviewer are on it either way (KERNEL-465).
+   */
   roster?: string[]
+}
+
+/** What Room setup reads to ask for a roster (KERNEL-465). */
+export interface RosterAdvice {
+  /** The room's agent files, Kernel's own Lead and reviewer left out. */
+  agents: number
+  /** More than about a dozen of them and no `[team] roster` yet, so Room setup asks who joins. */
+  needed: boolean
+  /** The ids Kernel picks to start with: the agents that take tasks. */
+  suggested: string[]
 }
 
 /** A change to `[team]`. `null` removes the key, so Kernel works it out from the files again. */
