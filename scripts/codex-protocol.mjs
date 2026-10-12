@@ -26,7 +26,8 @@ const ROOTS = [
   'v2/DynamicToolSpec', 'v2/DynamicToolCallParams', 'v2/DynamicToolCallResponse',
   'v2/GetAccountParams', 'v2/GetAccountResponse', 'v2/GetAccountRateLimitsResponse', 'v2/AccountRateLimitsUpdatedNotification',
   'v2/LoginAccountParams', 'v2/LoginAccountResponse', 'v2/AccountLoginCompletedNotification',
-  'v2/ModelListParams', 'v2/ModelListResponse'
+  'v2/ModelListParams', 'v2/ModelListResponse',
+  'v2/ConfigReadParams', 'v2/ConfigReadResponse'
 ]
 
 const pkg = createRequire(import.meta.url).resolve('@openai/codex/package.json')
