@@ -315,12 +315,13 @@ export function AppSidebar() {
       <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
         <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
       </div>
-      <div className="row" style={{ height: 36, paddingLeft: 4 }}>
+      {/* Only the rooms list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
+      <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
         <AccountButton />
         <span className="grow" />
         <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
-      <div className="nav-list" style={{ marginTop: 10 }}>
+      <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
@@ -328,7 +329,7 @@ export function AppSidebar() {
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
       <div className="sb-rule" role="separator" />
-      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8 }}>
+      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>
         <span>Your rooms</span>
         <button className="icon-btn more" style={{ width: 24, height: 24, opacity: roomsMenu ? 1 : undefined }} aria-label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')}><Icon name="more" size={14} /></button>
         {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
