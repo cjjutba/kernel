@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { MODELS } from '@shared/types'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
@@ -9,12 +9,11 @@ import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { createAgent, draftAgent, loadAgents, loadPersonalAgents, restoreAgent, retireAgent, teamFiles, updateAgent, watchAgents, watchPersonalAgents, watchTeamSettings } from '../services/agents'
-import { canOpenPr } from '../services/agentTools'
 import { builtinFile, loadBuiltins, type Builtins } from '../services/builtins'
 import { loadPluginAgents } from '../services/pluginAgents'
 import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/rooms'
 import { loadRepoSettings, saveTeamSettings } from '../services/settings'
-import { resolveTeam, type Resolved } from '../services/teamResolve'
+import { adviseRoster, resolveTeam, takesTasksByDefault, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
 
 /** A model id that is Codex's (gpt-6-astra, o4-mini, codex-mini), for an agent file without `provider:` (KERNEL-406). */
@@ -110,6 +109,19 @@ export class Team extends Feature {
     // The plugin list came back while this ran, so the room reads it now.
     if (plugins !== this.plugins) this.reload(roomId, { quiet: true })
     return { ...r, builtins }
+  }
+
+  /** Whether Room setup asks for a roster, and who Kernel would pick, from every agent file whatever `[team] roster` says (KERNEL-465). */
+  async rosterOf(roomId: string): Promise<RosterAdvice> {
+    const team = (await loadRepoSettings(this.mustRoom(roomId).path)).team
+    return adviseRoster((await this.resolve(roomId, { ...team, roster: undefined })).agents, team)
+  }
+
+  /** A new or restored agent joins the room's roster, when it has one, so it doesn't land off the team (KERNEL-465). */
+  async joinRoster(roomId: string, agentId: string) {
+    const room = this.mustRoom(roomId)
+    const roster = (await loadRepoSettings(room.path)).team?.roster
+    if (roster?.length && !roster.includes(agentId)) await saveTeamSettings(room.path, { roster: [...roster, agentId] })
   }
 
   /** The room's own agent files, the user's personal ones and plugin agents, as `resolveTeam` takes them (KERNEL-463). */
@@ -228,6 +240,7 @@ export class Team extends Feature {
     const room = this.mustRoom(roomId)
     const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
     const def = await createAgent(room.path, draft)
+    await this.joinRoster(roomId, def.id)
     if (room.desks && !room.desks.includes(def.id)) await this.k.rooms.updateRoom(roomId, { desks: [...room.desks, def.id] })
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list, was)
@@ -267,7 +280,8 @@ export class Team extends Feature {
   /**
    * Settings, Agents and Room setup: who leads, who reviews and who takes tasks (KERNEL-397). The change goes to `[team]` in
    * the shared settings.toml, holding only what differs from what Kernel works out from the files, so a team that agrees
-   * with Kernel writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept.
+   * with Kernel writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept. `roster` keeps
+   * the agents it lists that have a file (KERNEL-465).
    */
   private async setTeam(roomId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
     const room = this.mustRoom(roomId)
@@ -285,14 +299,24 @@ export class Team extends Feature {
     // A teammate's open work would run as the Lead's, with the Lead's tools and none of its updates.
     const busy = want.lead && want.lead !== repo.team?.lead ? this.store.workspaces(roomId).filter((w) => w.agentId === want.lead && !w.lead && w.status !== 'archived').length : 0
     if (busy) throw new Error(`${files.find((a) => a.id === want.lead)?.name ?? want.lead} has ${busy === 1 ? 'an open workspace' : `${busy} open workspaces`}. Archive ${busy === 1 ? 'it' : 'them'} first, or pick another Lead.`)
+    want.roster = want.roster && [...new Set(want.roster)].filter((id) => ids.has(id))
+    // An agent the roster leaves off can't keep its open work: those workspaces would have no agent to run. A Lead's own
+    // workspace goes to the new Lead.
+    if (want.roster?.length) {
+      const kept = new Set((await this.resolve(roomId, want)).agents.map((a) => a.id))
+      const open = (id: string) => this.store.workspaces(roomId).some((w) => w.agentId === id && !w.lead && w.status !== 'archived')
+      const left = files.filter((a) => !kept.has(a.id) && open(a.id)).map((a) => a.name)
+      const who = left.length > 1 ? `${left.slice(0, -1).join(', ')} and ${left[left.length - 1]}` : left[0]
+      if (left.length) throw new Error(`${who} ${left.length === 1 ? 'has' : 'have'} open work. Archive it first, or keep ${left.length === 1 ? who : 'them'} on the team.`)
+    }
     // A choice Kernel would make anyway is left out, so the file only holds what the team decided.
     if (want.lead && (await this.resolve(roomId, { ...want, lead: undefined })).agents.find((a) => a.lead)?.id === want.lead) delete want.lead
     if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? NO_REVIEWER) === want.reviewer) delete want.reviewer
-    const opens = (id: string) => { const a = files.find((f) => f.id === id); return canOpenPr(a?.tools, a?.disallowedTools) }
-    want.members = want.members?.filter((id) => ids.has(id) && !opens(id))
-    want.helpers = want.helpers?.filter((id) => ids.has(id) && opens(id))
+    const byDefault = (id: string) => { const a = files.find((f) => f.id === id); return !!a && takesTasksByDefault(a) }
+    want.members = want.members?.filter((id) => ids.has(id) && !byDefault(id))
+    want.helpers = want.helpers?.filter((id) => ids.has(id) && byDefault(id))
     const next: TeamPatch = {}
-    for (const k of ['lead', 'reviewer', 'members', 'helpers'] as const) {
+    for (const k of ['lead', 'reviewer', 'members', 'helpers', 'roster'] as const) {
       const value = Array.isArray(want[k]) && !(want[k] as string[]).length ? undefined : want[k]
       if (JSON.stringify(value ?? null) !== JSON.stringify(repo.team?.[k] ?? null)) (next as Record<string, unknown>)[k] = value ?? null
     }
@@ -350,6 +374,7 @@ export class Team extends Feature {
     const was = await this.agents(roomId)
     if (was.some((a) => a.id === id)) throw new Error(`${was.find((a) => a.id === id)!.name} is already on the team.`)
     if (!(await seatStarterTeam(this.o.starterDir, room.path, [id])).length) throw new Error(`.claude/agents already has a file named ${id}.md.`)
+    await this.joinRoster(roomId, id)
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list, was)
     const def = list.find((a) => a.id === id)
@@ -360,6 +385,7 @@ export class Team extends Feature {
   private async restore(roomId: string, agentId: string): Promise<AgentDef> {
     const room = this.mustRoom(roomId)
     await restoreAgent(room.path, agentId)
+    await this.joinRoster(roomId, agentId)
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list)
     const def = list.find((a) => a.id === agentId)
