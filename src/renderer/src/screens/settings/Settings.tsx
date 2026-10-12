@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import type { AppSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
 import { useSettings } from './useSettings'
 import { About } from './pages/About'
+import { AgentEdit } from './pages/AgentEdit'
+import { Agents } from './pages/Agents'
 import { Account } from './pages/Account'
 import { Appearance } from './pages/Appearance'
 import { BigTerminal } from './pages/BigTerminal'
@@ -32,7 +34,7 @@ import { Team } from './pages/Team'
 export { SettingsNav } from './SettingsNav'
 
 /** The page to the right of the Settings nav. A room's pages are `page: 'room'`, and `section` picks one. */
-export function Settings({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
+export function Settings({ page, roomId, section, agentId }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection; agentId?: string }) {
   const settings = useSettings()
   let body: ReactNode
   if (page === 'shortcuts') body = <Shortcuts />
@@ -43,6 +45,7 @@ export function Settings({ page, roomId, section }: { page: SettingsPage; roomId
   else if (page === 'appearance') body = <Appearance s={settings} />
   else if (page === 'notifications') body = <Notifications s={settings} />
   else if (page === 'models') body = <Models s={settings} />
+  else if (page === 'agents') body = agentId ? <AgentEdit key={agentId} agentId={agentId} /> : <Agents />
   else if (page === 'providers') body = <Providers s={settings} />
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'env') body = <Environment />
@@ -53,19 +56,19 @@ export function Settings({ page, roomId, section }: { page: SettingsPage; roomId
   else if (page === 'prs') body = <PRs s={settings} />
   else if (page === 'hooks') body = <Hooks s={settings} />
   else if (page === 'integrations') body = <Integrations />
-  else if (page === 'room') body = <RoomBody roomId={roomId} section={section} s={settings} />
+  else if (page === 'room') body = <RoomBody roomId={roomId} section={section} agentId={agentId} s={settings} />
   return <div className="panel">{body}</div>
 }
 
 /** One of a room's pages. Each reads and writes its own room only. */
-function RoomBody({ roomId, section = 'general', s }: { roomId?: string; section?: RoomSettingsSection; s: AppSettings }) {
+function RoomBody({ roomId, section = 'general', agentId, s }: { roomId?: string; section?: RoomSettingsSection; agentId?: string; s: AppSettings }) {
   switch (section) {
     case 'git': return <RoomGit roomId={roomId} s={s} />
     case 'scripts': return <RoomScripts roomId={roomId} />
     case 'files': return <Files roomId={roomId} />
     case 'instructions': return <RoomInstructions roomId={roomId} s={s} />
     case 'permissions': return <RoomPermissions roomId={roomId} />
-    case 'agents': return <Team roomId={roomId} s={s} />
+    case 'agents': return agentId && roomId ? <AgentEdit key={`${roomId}/${agentId}`} roomId={roomId} agentId={agentId} /> : <Team roomId={roomId} s={s} />
     case 'reviews': return <RoomReviews roomId={roomId} />
     case 'skills': return <Skills roomId={roomId} />
     case 'environment': return <Environment roomId={roomId} />

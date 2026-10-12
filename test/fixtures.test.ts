@@ -8,6 +8,9 @@ const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
   'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
+  'SettingsAgents', // Settings, Agents with no room open: a personal agent and two plugin agents (KERNEL-641)
+  'SettingsAgentEdit', // a personal agent's editor inside Settings, with Back to Agents (KERNEL-641)
+  'SettingsAgentPlugin', // a plugin agent read only, with no Save changes or Retire (KERNEL-641)
   'SettingsSkillsAccounts', // Skills and MCP with each server's state on every account (KERNEL-627)
   'SettingsSkillsSigningIn', // Sign in to all on Personal, Gmail, the second of three, with Cancel (KERNEL-627)
   'SettingsSkillsSignInFailed', // Sign in to all ended with Google Drive not signed in (KERNEL-627)

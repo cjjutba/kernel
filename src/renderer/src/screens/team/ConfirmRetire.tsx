@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
+import { agentListOf } from '../../nav'
 import { shortFile } from './model'
 import './team.css'
 
@@ -26,6 +27,7 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
       actions.agents.set(roomId, (getState().agents[roomId] ?? []).filter((a) => a.id !== agentId))
       const route = getState().ui.route
       if (route.name === 'agent' && route.agentId === agentId) actions.ui.go({ name: 'team', roomId })
+      else if (route.name === 'settings' && route.agentId === agentId) { actions.ui.closeModal(); actions.ui.go(agentListOf(route)) }
       else actions.ui.closeModal()
     } catch (e) { setError(cleanError(e)) }
   })
