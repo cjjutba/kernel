@@ -63,6 +63,23 @@ export function followsAfterScroll(pinned: boolean, view: ScrollView, before: Sc
   return distFromEnd(view) <= PIN_PX ? true : pinned
 }
 
+/**
+ * Whether following may move the view (KERNEL-629). Not while the reader's own gesture or its momentum is under way, and not when the view is already
+ * at its end, since a jump there cuts the native rubber-band bounce short. Following resumes once the scroll lands.
+ */
+export const movesToEnd = (view: ScrollView, byHand: boolean) => !byHand && distFromEnd(view) >= 1
+
+/** How long the reader's input counts as scrolling with no scroll event after it. A pull past the end moves nothing and never fires scrollend. */
+const HAND_MS = 200
+
+/** Calls `fn` once `ms` pass without another call of the returned function, which restarts the wait. `cancel` drops it. */
+export function lapse(ms: number, fn: () => void) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const restart = () => { clearTimeout(timer); timer = setTimeout(fn, ms) }
+  restart.cancel = () => clearTimeout(timer)
+  return restart
+}
+
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 export function PartChip({ part }: { part: ChatPart }) {
@@ -409,9 +426,13 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const byHand = useRef(false)
   const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
   const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
+  const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
+  letGo.current ??= lapse(HAND_MS, () => { byHand.current = false })
+  useEffect(() => () => letGo.current?.cancel(), [])
   const onScroll = () => {
     const el = scroller.current
     if (!el) return
+    if (byHand.current) letGo.current?.()
     pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
     remember(el)
     show(!pinned.current && distFromEnd(el) > PIN_PX)
@@ -420,7 +441,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // lands, or when the reader takes over. The button's scroll passes through "away" on its way down, which never unpins since it only moves toward the end.
   const gliding = useRef(false)
   const release = () => { gliding.current = false }
-  const take = () => { release(); byHand.current = true }
+  const take = () => { release(); byHand.current = true; letGo.current?.() }
   const press = (e: KeyboardEvent) => {
     if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
     else release()
@@ -429,8 +450,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
     if (gliding.current) return 0
-    end.current?.scrollIntoView({ block: 'end' })
-    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) end.current?.scrollIntoView({ block: 'end' }) })
+    const move = () => { const el = scroller.current; if (!el || movesToEnd(el, byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
+    move()
+    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) move() })
   }
   const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
   const landed = () => {
@@ -446,7 +468,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
   }
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) byHand.current = true }, [])
+  const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
   // A chat opens at its end.
   useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); if (scroller.current) remember(scroller.current); return () => cancelAnimationFrame(frame.current) }, [chat.id])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
@@ -477,7 +499,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const last = items[items.length - 1]
   const sent = followsSend(last)
   useEffect(() => {
-    if (sent) { release(); pin(true) }
+    if (sent) { release(); byHand.current = false; pin(true) }
     if (pinned.current) followNow()
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])

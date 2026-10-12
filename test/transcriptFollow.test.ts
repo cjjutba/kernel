@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ChatItem } from '@shared/types'
 
 const user = (o: Partial<Extract<ChatItem, { kind: 'user' }>> = {}): ChatItem => ({ kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build it' }], ...o })
@@ -84,5 +84,62 @@ describe('whether the chat keeps following its end after a scroll (KERNEL-605)',
     const { followsAfterScroll } = await load()
     expect(followsAfterScroll(false, view(900), view(900), false)).toBe(false)
     expect(followsAfterScroll(true, view(900), view(900), false)).toBe(true)
+  })
+})
+
+describe('whether following may move the view (KERNEL-629)', () => {
+  type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ movesToEnd: (view: View, byHand: boolean) => boolean }>
+  const view = (up: number): View => ({ scrollTop: 3000 - 800 - up, scrollHeight: 3000, clientHeight: 800 })
+
+  it('moves when the view is short of the end and nobody is scrolling', async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(300), false)).toBe(true)
+    expect(movesToEnd(view(1), false)).toBe(true)
+  })
+
+  it('stays put at the end, so the native bounce finishes', async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(0), false)).toBe(false)
+    expect(movesToEnd(view(0.4), false)).toBe(false)
+  })
+
+  it("stays put while the reader's gesture or its momentum is going", async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(300), true)).toBe(false)
+    expect(movesToEnd(view(0), true)).toBe(false)
+  })
+})
+
+describe('the reader\'s input letting go when no scroll follows it (KERNEL-629)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ lapse: (ms: number, fn: () => void) => { (): void; cancel: () => void } }>
+
+  it('fires once after the wait, so a pull past the end does not block following for good', async () => {
+    vi.useFakeTimers()
+    const { lapse } = await load()
+    const fn = vi.fn()
+    const input = lapse(200, fn)
+    input()
+    vi.advanceTimersByTime(199)
+    expect(fn).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(fn).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('waits again while scroll events keep restarting it, and not at all once cancelled', async () => {
+    vi.useFakeTimers()
+    const { lapse } = await load()
+    const fn = vi.fn()
+    const input = lapse(200, fn)
+    input()
+    vi.advanceTimersByTime(150)
+    input()
+    vi.advanceTimersByTime(150)
+    expect(fn).not.toHaveBeenCalled()
+    input.cancel()
+    vi.advanceTimersByTime(500)
+    expect(fn).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
