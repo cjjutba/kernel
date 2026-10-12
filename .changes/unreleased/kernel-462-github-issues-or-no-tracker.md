@@ -2,4 +2,4 @@
 type: new
 issue: KERNEL-462
 ---
-Rooms on GitHub that don't use Linear now list their GitHub issues in New workspace, and Rowan can start work from one.
+Rowan can start work from a GitHub issue in a room that uses GitHub Issues.
