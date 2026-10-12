@@ -102,6 +102,7 @@ export function warningText(w: AgentWarning): string {
     // RoomSetupRoster.png's words (KERNEL-465).
     case 'looks-like-subagent': return 'Written as a subagent with no pull request workflow, so it starts as a helper.'
     case 'model-unavailable': return 'Pins a model you’re not signed in for.'
+    case 'model-unknown': return 'Pins a model Kernel doesn’t recognize.'
   }
 }
 

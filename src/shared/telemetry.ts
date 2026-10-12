@@ -16,7 +16,8 @@ export const TOOL_KINDS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'Web
 
 const WARNING_KINDS = [
   'no-description', 'cant-open-pr', 'second-lead', 'setting-missing', 'reserved-id', 'duplicate-id', 'looks-like-lead',
-  'unreadable-file', 'mcp-missing', 'mcp-failed', 'mcp-needs-auth', 'mcp-off', 'looks-like-subagent', 'model-unavailable'
+  'unreadable-file', 'mcp-missing', 'mcp-failed', 'mcp-needs-auth', 'mcp-off', 'looks-like-subagent', 'model-unavailable',
+  'model-unknown'
 ] as const satisfies readonly AgentWarningKind[]
 // A warning kind added to AgentWarningKind and not here fails to compile.
 export const EVERY_WARNING: [Exclude<AgentWarningKind, (typeof WARNING_KINDS)[number]>] extends [never] ? true : never = true
