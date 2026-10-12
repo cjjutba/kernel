@@ -272,7 +272,12 @@ export class Account extends Feature {
       },
       'account.signIn': async () => this.signIn(),
       'app.checkOnline': async () => ({ online: this.network ? await this.network.check() : true }),
-      'usage.get': async () => this.k.providers.readUsage()
+      // The windows Kernel has, at once: the window waits on this at launch. Every account's fresh read runs behind it, and
+      // what each finds goes out as a `usage` push (KERNEL-567).
+      'usage.get': async () => {
+        void this.k.providers.readUsage().catch(() => undefined)
+        return this.sessions.usage([])
+      }
     } satisfies Partial<Handlers>
   }
 }

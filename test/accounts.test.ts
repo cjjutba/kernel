@@ -15,7 +15,7 @@ import { tempRepo } from './helpers'
 
 // Claude Code's usage call, answered by the account each short session runs on: its CLAUDE_CONFIG_DIR, '' for the CLI's own
 // login (KERNEL-567). `usage` holds each account's 5-hour use in percent. No Claude Code process starts.
-const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, probes: [] as { dir: string; token?: string }[] }))
+const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, probes: [] as { dir: string; token?: string }[], hold: undefined as Promise<void> | undefined }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
   query: ({ options }: { options: { env?: Record<string, string> } }) => {
@@ -26,6 +26,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
       interrupt: async () => {},
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
+        await sdk.hold
         const used = sdk.usage[dir]
         if (used === undefined) throw new Error('not supported')
         return { rate_limits: { five_hour: window(used), seven_day: window(used / 2) } }
@@ -49,9 +50,10 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 
 let fake: Awaited<ReturnType<typeof fakeCodex>>
 const saved = { log: process.env.FAKE_CODEX_LOG, codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
-beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.probes = [] })
+beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.probes = []; sdk.hold = undefined })
 afterEach(() => {
-  process.env.FAKE_CODEX_LOG = saved.log
+  // Assigning undefined would leave the string "undefined", and a read still running would log to a file of that name.
+  if (saved.log === undefined) delete process.env.FAKE_CODEX_LOG; else process.env.FAKE_CODEX_LOG = saved.log
   if (saved.codexHome) process.env.CODEX_HOME = saved.codexHome
   if (saved.claudeDir) process.env.CLAUDE_CONFIG_DIR = saved.claudeDir
   bus.removeAllListeners('push')
@@ -317,6 +319,30 @@ describe('Claude accounts (KERNEL-567)', () => {
     await claude.setLogin(folder, null)
     await k.providers.readUsage({ force: true })
     expect(sdk.probes.map((x) => x.dir)).toEqual([''])
+    await k.stop()
+  })
+
+  it("answers usage.get with the windows it has at once, and pushes each account's fresh numbers when they arrive", async () => {
+    const { k, h } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    await until(() => new Set(sdk.probes.map((x) => x.dir)).size === 2)
+    sdk.usage = { '': 30, [folder]: 10 }
+    await k.providers.readUsage({ force: true })
+    const hour = (limits: RateLimit[]) => limits.filter((l) => l.type === 'five_hour' && limitProvider(l) === 'claude').map((l) => [l.accountId ?? 'cli', l.utilization]).sort()
+    // Claude Code takes its time answering, and nothing was read in the last minute.
+    let release!: () => void
+    sdk.hold = new Promise((resolve) => { release = resolve })
+    sdk.usage = { '': 50, [folder]: 60 }
+    sdk.probes = []
+    ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
+    const pushed: RateLimit[][] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'usage') pushed.push(e.limits) })
+    expect(hour(await h['usage.get'](undefined))).toEqual([['cli', 0.3], [side.id, 0.1]].sort())
+    await until(() => sdk.probes.length === 2)
+    expect(pushed).toEqual([])
+    release()
+    await until(() => pushed.length && JSON.stringify(hour(pushed.at(-1)!)) === JSON.stringify([['cli', 0.5], [side.id, 0.6]].sort()))
     await k.stop()
   })
 
