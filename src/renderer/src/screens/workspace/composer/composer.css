@@ -148,10 +148,13 @@
    It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
    breathes every 8s while the box waits for input. Focus settles it. The strip opens over --plan-dur and one light crosses it.
    Every plan mode state change reads --plan-dur (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
+   Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-4 in 160ms ease-out like the rest of the app.
+   The blue border is a ring on ::after that fades its opacity and color over --plan-dur, so turning plan mode off fades the blue
+   out over --plan-dur even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
+   on the same style).
    Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
 .cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); --plan-dur: 0.5s; }
-.cmp { transition: border-color var(--plan-dur) var(--ease-plan); }
-.cmp:focus-within { transition: border-color var(--plan-dur) var(--ease-plan); }
+.cmp { transition: border-color 160ms ease-out; }
 .nw { position: relative; }
 .nw > * { position: relative; }
 .cmp::before, .nw::before {
@@ -170,8 +173,13 @@
 .cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity var(--plan-dur) var(--ease-plan); }
 .cmp[data-blocked]::before { animation: none; }
 @keyframes plan-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.62; } }
-.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--input-bg)); transition: border-color var(--plan-dur) var(--ease-plan); }
-.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); transition: border-color var(--plan-dur) var(--ease-plan); }
+.cmp::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--plan) 45%, var(--input-bg)); opacity: 0;
+  transition: opacity var(--plan-dur) var(--ease-plan), border-color var(--plan-dur) var(--ease-plan);
+}
+.cmp[data-plan='true']::after { opacity: 1; }
+.cmp[data-plan='true']:focus-within::after { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); }
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
@@ -190,7 +198,7 @@
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
-  .cmp, .cmp::before, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
+  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
 }
 
 /* context ring and its popover (KERNEL-96) */
