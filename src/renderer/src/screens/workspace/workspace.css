@@ -229,8 +229,38 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .change-dir { margin-left: 8px; color: var(--muted); font-size: 12px; }
 /* "4 files changed" and its totals, with a hairline under it before the files (KERNEL-274). Review all is in the strip (KERNEL-515). */
 .changes-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 40px; margin: 0 -10px 6px; padding: 0 16px; border-bottom: 1px solid var(--line); }
-.changes-count { font-size: 13px; color: var(--ink-2); }
+.changes-count { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink-2); }
 .changes-total { display: inline-flex; gap: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+/* The Changes ⋯ and its menu (PanelCompare.png, KERNEL-517): 332px under the button, 10px clear of it and level with its right edge, narrower in a panel that is. The ⋯ reads pressed while the menu is open. */
+.panel-tools .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.compare-anchor { position: relative; display: inline-flex; }
+.compare-menu { top: calc(100% + 10px); right: 0; display: flex; flex-direction: column; width: min(332px, calc(100cqw - 16px)); max-height: min(480px, calc(100vh - 140px)); }
+.compare-menu > * { flex-shrink: 0; }
+.compare-target { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 8px; font-size: 13px; }
+.compare-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 200px; height: 24px; padding: 0 6px 0 9px; border: 1px solid var(--line-3); border-radius: 6px; background: var(--surface); color: var(--ink-2); }
+.compare-pick .mono { font-size: 12px; }
+.compare-pick svg { flex-shrink: 0; color: var(--muted); }
+.compare-pick:hover, .compare-pick:focus-visible { background: var(--hover); outline: 0; }
+.compare-rule { height: 1px; margin: 6px -6px; background: var(--line-3); }
+.compare-row, .compare-back { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.compare-row:hover, .compare-row:focus-visible, .compare-back:hover, .compare-back:focus-visible { background: var(--hover); outline: 0; }
+.compare-back svg { color: var(--muted); }
+.compare-ck { display: inline-flex; flex-shrink: 0; width: 16px; height: 16px; color: var(--ink); }
+.compare-commit { align-items: flex-start; min-height: 44px; padding: 6px 8px; }
+.compare-commit .compare-ck { margin-top: 1px; }
+.compare-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.compare-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-sub { display: flex; align-items: center; gap: 6px; margin-top: 1px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.compare-sha { font-size: 11.5px; color: var(--faint); }
+.compare-dot { color: var(--faint); }
+.compare-age { margin-left: auto; color: var(--faint); }
+/* The commits and the branches scroll under the rows that stay put. */
+.compare-commits, .compare-list { display: flex; flex-direction: column; flex-shrink: 1; min-height: 0; overflow-y: auto; }
+.compare-note { margin: 0; padding: 6px 8px; font-size: 12px; color: var(--muted); }
+.compare-filter { display: flex; align-items: center; gap: 8px; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 7px; background: var(--input-bg); color: var(--muted); }
+.compare-filter:focus-within { border-color: var(--line-4); }
+.compare-filter input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13px; }
+.compare-filter input::placeholder { color: var(--muted); }
 
 /* The right panel under the PR band: the top pane (tabs and their list) over the bottom pane. `--bottom-ratio` is the bottom's share of this box, one for
    every chat (store.ts, KERNEL-513), a third until it is dragged. It stays between 160px for the top and the tab bar plus 120px for the bottom (bottomSplit.ts), so

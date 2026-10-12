@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -697,6 +697,15 @@ const PANEL_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in
   .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
 
 const PANEL_CHECKS: PrCheck[] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'pass', meta: '2m 4s' }]
+
+/** The five commits PR #147 has on its branch, newest first, as the Changes ⋯ menu lists them (PanelCompare, KERNEL-517). Their ages are from now, so the shot always reads "12 min ago" and "Yesterday". */
+const PANEL_COMMITS: BranchCommit[] = ([
+  ['3e1f9a2', 'Count a workspace waiting on script trust in Inbox', 12 * 60_000],
+  ['b07c4d8', 'Drop Inbox rows for archived chats', 41 * 60_000],
+  ['9a2d6f1', 'Cover the stale-row sweep in tests', 60 * 60_000],
+  ['f565c3d', 'Merge origin/main into the branch', 3 * 3600_000],
+  ['7c2c03f', 'Add the stale-row sweep to the inbox feature', 30 * 3600_000]
+] as const).map(([short, subject, age]) => ({ sha: short.padEnd(40, '0'), subject, author: 'Noor', time: Date.now() - age }))
 
 /** PR #147 on `right`, the bottom folded to its tab bar unless `open`, and its run script idle unless `running`. */
 const panelScene = (right: 'files' | 'changes' | 'checks', o: { tree?: boolean; open?: boolean; running?: boolean } = {}): Fixture => {
@@ -1407,6 +1416,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PanelToolbarChanges: panelScene('changes', { tree: true }),
   PanelToolbarChecks: panelScene('checks', { open: true, running: true }),
   PanelFilter: panelScene('changes', { open: true }),
+  // The Changes ⋯ menu lists the target branch, All changes, Uncommitted changes and the branch's commits. The shot presses the ⋯ to open it (PanelCompare.png, KERNEL-517).
+  PanelCompare: (() => {
+    const f = panelScene('changes', { open: true })
+    return { ...f, commits: { [ids.table]: PANEL_COMMITS }, branches: ['origin/main', 'origin/develop', 'origin/kernel-154-inbox-rows'] }
+  })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
