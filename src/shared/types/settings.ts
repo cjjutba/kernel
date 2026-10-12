@@ -164,8 +164,11 @@ export interface RoomSettings {
    * Their sources are keyed `runScripts.<name>` (KERNEL-244).
    */
   runScripts: { name: string; command: string }[]
-  /** `copy` takes exact paths and patterns like `.env*` (KERNEL-245). */
-  files: { copy: string[]; symlinkNodeModules?: boolean }
+  /**
+   * `copy` takes exact paths and patterns like `.env*` (KERNEL-245). `exclude` takes the same, and a file it matches is
+   * never copied, whatever `copy` says: Don't copy these files on Files to copy adds to it (KERNEL-449).
+   */
+  files: { copy: string[]; exclude?: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
   /** Skills and MCP servers switched off for this room, by name. */
   disabled?: { skills: string[]; mcp: string[] }
@@ -197,7 +200,8 @@ export interface RoomSettings {
   preview: { urls: { name: string; url: string }[] }
   /**
    * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
-   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247).
+   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247). When neither settings file
+   * sets the key, the room reads `.env.kernel` (KERNEL-449).
    */
   env: { files: string[] }
   /**
@@ -225,6 +229,17 @@ export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'env
 export interface FileToCopy {
   path: string
   size: number
+}
+
+/**
+ * A file to copy that looks like production, by the file and the variable that gave it away. The value never leaves the
+ * main process (KERNEL-449). `live-key` is a live payment key, `remote-database` a database URL on a host that isn't this
+ * Mac or its network, `production` an environment name like `NODE_ENV` set to production.
+ */
+export interface ProductionHint {
+  path: string
+  name: string
+  why: 'live-key' | 'remote-database' | 'production'
 }
 
 /**

@@ -309,10 +309,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return roomSettings(roomId)
     },
     'files.preview': async ({ roomId, patterns }) => {
-      const entries = patterns ?? roomSettings(roomId).files.copy
-      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+      const { copy, exclude = [] } = roomSettings(roomId).files
+      const named = (list: string[], path: string) => list.some((e) => (isPattern(e) ? matchesGlob(path, e) : path === e))
+      return (f.localFiles?.[roomId] ?? []).filter((file) => named(patterns ?? copy, file.path) && !named(exclude, file.path))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    'files.production': async ({ roomId }) => f.production?.[roomId] ?? [],
+    'files.keepCopying': async ({ roomId, hints }) => ({ ...room(roomId), keepCopying: hints.map((h) => `${h.path}:${h.name}`) }),
     'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
       .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
