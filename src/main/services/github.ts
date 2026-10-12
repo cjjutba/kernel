@@ -460,6 +460,17 @@ export async function ghUser(cmd: typeof exec = exec): Promise<string | null> {
   return a.state === 'ok' ? a.login ?? null : null
 }
 
+/**
+ * Whether gh's login may push to `repo` (owner/name), from the repo's `permissions.push`. Null when GitHub has no such repo
+ * the login can see, undefined when gh couldn't answer (KERNEL-460).
+ */
+export async function ghCanPush(repo: string, cmd: typeof exec = exec): Promise<boolean | null | undefined> {
+  const r = await cmd('gh', ['api', `repos/${repo}`, '--jq', '.permissions.push'], { timeoutMs: 15000 })
+  if (r.code !== 0) return /HTTP 404|Not Found/.test(r.stderr) ? null : undefined
+  const v = r.stdout.trim()
+  return v === 'true' ? true : v === 'false' ? false : undefined
+}
+
 /** `gh pr list --json number,title,headRefName,author` rows as the From popover shows them. */
 export function parsePrList(json: string): PrSummary[] {
   try {

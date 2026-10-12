@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
-  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
+  workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {
     roles: {
@@ -172,6 +172,8 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
   const workspace = group('workspace')
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
+  // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
+  if (workspace) delete workspace.setUpstream
   // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
   const exp = group('experimental')
   if (exp) {

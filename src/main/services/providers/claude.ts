@@ -5,6 +5,7 @@ import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
+import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
@@ -725,6 +726,8 @@ export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
+  Object.assign(env, NO_PROMPTS)
   // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
   return env
 }
