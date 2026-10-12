@@ -42,7 +42,7 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 - The chat has one line for setup: spinner, "Running setup", the command, and the time since setup started. The log lives only in the Setup tab. The line adds "Show log" only while the right panel is hidden.
 - The composer stays usable and reads "Add a follow up". What you type queues behind the first message.
 - A failed or stopped setup is one card above the composer: what happened and when, then Run again (solid), Send anyway and Edit script. The setup banner doesn't draw it a second time.
-- While setup runs or has failed, the right panel opens on the Setup tab with the files pane folded to its header. After setup it goes back.
+- While setup runs or has failed, the bottom of the right panel opens on the Setup tab, even if it was collapsed, and the top keeps its tabs as they are (`PanelSetup`). After setup the bottom goes back to where it was.
 - No status tags in the sidebar, on tabs or on the bubble.
 - Setup passing leaves one faint line, "Setup finished in M:SS". Send anyway leaves "Setup failed, sent anyway".
 
@@ -92,6 +92,18 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `PrLocalMerging` | A local merge merging: Ready to merge with a busy Merging button (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
 | `PrLocalMerged` | A local merge merged: the violet band, "Squashed into main as 4e1b9c2" (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
 | `PrLocalDirty` | A local merge refused because the main checkout has uncommitted changes: the red band with Try again, and a note with the fix (KERNEL-441) | `pr/model.ts`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PanelSplit` | A teammate's workspace on Changes: the top pane 2/3, the bottom 1/3 on an idle Run tab with a Run button under the play icon (KERNEL-512) | `screens/workspace/Panels.tsx`, `workspace.css` |
+| `PanelSplitLead` | Rowan's chat on PRs with the bottom collapsed to its 40px tab bar: chevron, Setup, Run, Terminal and Run (KERNEL-512) | `screens/workspace/Panels.tsx`, `workspace.css` |
+| `PanelCollapsed` | A teammate's workspace with the bottom collapsed (KERNEL-512) | `screens/workspace/Panels.tsx`, `workspace.css` |
+| `PanelResize` | The handle between the panes lit with the sidebar's edge glow, turned horizontal (KERNEL-512) | `screens/workspace/Panels.tsx`, `components/resize.css` |
+| `PanelTabsOverflow` | A 320px panel: the top strip fades with an arrow on the right, the bottom strip is scrolled with an arrow on each side (KERNEL-512) | `screens/workspace/Panels.tsx`, `workspace.css` |
+| `PanelToolbarPrs` | The PRs toolbar: Merge all, moved up from the Ready to merge heading, and Refresh. The PRs tab has no count (KERNEL-512) | `screens/workspace/pr/LeadPrs.tsx`, `Panels.tsx` |
+| `PanelToolbarFiles` | The All files toolbar: Filter files and Collapse all folders (KERNEL-512) | `screens/workspace/Panels.tsx` |
+| `PanelToolbarChanges` | The Changes toolbar: Review all, Filter, View as tree (on) and Compare. The count line stays in the list (KERNEL-512) | `screens/workspace/Panels.tsx` |
+| `PanelToolbarChecks` | The Checks toolbar: Refresh and Open on GitHub (KERNEL-512) | `screens/workspace/Panels.tsx` |
+| `PanelFilter` | Changes with the filter field open under the strip (KERNEL-512) | `screens/workspace/Panels.tsx` |
+| `PanelSetup` | A chat waiting on setup: the Setup tab open in the bottom third, the top tabs unchanged (KERNEL-512) | `screens/workspace/SetupWait.tsx`, `Panels.tsx` |
+| `PanelCompare` | The Changes ⋯ menu: Target branch, All changes (checked), Uncommitted changes, then one row per commit (KERNEL-512) | `screens/workspace/Panels.tsx` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
 
@@ -127,11 +139,29 @@ A repo with no GitHub remote has no PR. Kernel merges the workspace into the bas
 - **Sidebar and tabs.** A local workspace's row uses the branch glyph in the band's tone (green ready, grey behind, red conflicts and refused, a spinner while merging) and the violet merged glyph once merged. It never shows the PR glyph. The tabs stay as they are, and Checks reads "No checks reported", as it does for a PR with none. With the panel hidden, the capsule holds the same pill, word and button, as `PrReadyHidden` draws for a PR.
 - **Room setup.** `RoomSetupGitHub` and `RoomSetupLocal` are drawn in `design/canvas/`. They add a "Code host" step after the first step (Clone, or Use your folder) and before the worktree folder. GitHub reads "GitHub, cjjutba/client-c", the owner and repo from the remote. Local reads "Local, no GitHub remote. Kernel merges branches on this Mac." It is a normal check row: a spinner while Kernel reads the remote, a check once it knows. A GitHub room keeps "Check push access" before Seat agents, as `RoomSetup` draws it. A Local room has no remote to push to, so it has no such row. `RoomSetup`, `RoomSetupTeam` and the other room setup screens are not redrawn and gain the Code host row when it is built.
 
+## Right panel: split, collapse and toolbar (KERNEL-512)
+
+The `Panel*` screens draw the reworked right panel for KERNEL-510. They use the neutrals in DESIGN.md and a 400px panel, the app's default width at 1440. The older redesign PNGs still use the earlier greys. Sample content (the files, commits, PRs and chat) is not spec.
+
+- **Split.** Under the PR band, the panel is two panes. The top holds the tabs (PRs, All files, Changes, Checks) and takes 2/3. The bottom holds Setup, Run and Terminal and takes 1/3. Under a 44px band at 1440x900 that is 544px and 272px. Rowan's chats start with the bottom collapsed and teammate workspaces start with it open.
+- **Collapse.** The chevron sits left of Setup, pointing down while the bottom is open and up while it is collapsed. A collapsed bottom is its 40px tab bar under a 1px hairline, with no tab underlined. Pressing a tab opens the bottom on it. The Run button stays on the bar, so a collapsed panel can still start the script.
+- **Resize.** An 8px handle sits on the hairline between the panes. Hovering it, focusing it from the keyboard or dragging it lights the hairline with the sidebar's edge glow turned horizontal (`components/resize.css`, KERNEL-419): `--ink` at 45%, about 2px thick at the middle, fading toward both ends. `PanelResize`.
+- **Tabs that don't fit.** Both strips scroll sideways. A side with hidden tabs fades into the panel and shows a 14px arrow button, on the left, the right or both. The toolbar never scrolls. At 320px, the narrowest the panel goes, the top strip needs this on Changes and PRs. The bottom strip still fits its three tabs there, so `PanelTabsOverflow` draws it with two extra terminals as stand-ins. The + for more terminals stays under Not built.
+- **Toolbar per tab.** The right end of the top strip holds icon buttons, 24px with 14px glyphs and an `aria-label` each. A button that is on, or whose menu is open, takes the `surface-3` fill.
+  - PRs: Merge all (the soft green button, moved up from the Ready to merge heading, shown with two or more ready) and Refresh. The PRs tab has no count.
+  - All files: Filter files and Collapse all folders. The root-name row above the tree is gone, since its button moved up.
+  - Changes: Review all (bordered, moved up from the count line), Filter changed files, View as tree (on while the tree shows) and Compare changes, the ⋯. The "16 files changed" line with its +/- totals stays at the top of the list.
+  - Checks: Refresh and Open on GitHub.
+- **Filter.** The filter button opens a 30px field under the strip, focused, with a clear button at its right. The letters that match sit on a faint fill. The count line does not change. `PanelFilter`.
+- **Compare menu.** A 332px menu under the ⋯, in the menu look: `surface-2`, a `line-3` hairline, no shadow. The first row is Target branch with a picker showing `origin/main`. A hairline, then All changes (checked) and Uncommitted changes. A second hairline, then one row per commit: the subject on one line, then the short sha in mono, the author, and the age at the right. A check marks the one choice. `PanelCompare`.
+- **Run empty state.** The play icon, a Run button under it, and the port line. While this state shows, the strip has no Run of its own, so the button isn't on screen twice. The strip shows Stop while the script runs, and Run on the Terminal tab and on the collapsed bar.
+- **Setup wait.** The bottom opens on Setup and the top keeps its tabs, as the Setup wait section says. `PanelSetup`.
+
 ## Not built
 
 The canvas draws a few things KERNEL-274 left out on purpose. Don't treat them as spec:
 
-- The collapse arrow and the + for more terminals in the bottom panel.
+- The + for more terminals in the bottom panel.
 - The close button in the Ask Rowan header. Escape and clicking outside close it.
 - The centered composer on `NewChat`. The composer stays at the bottom, and only the title, subtitle and suggestions are redesigned.
 - Sample copy on the canvas, such as chat text, issue titles and the Kernel notes for PR states the engine doesn't send.
