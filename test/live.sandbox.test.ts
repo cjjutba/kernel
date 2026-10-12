@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs
 import { randomUUID } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { query, type SandboxSettings } from '@anthropic-ai/claude-agent-sdk'
+import { query, type Options, type SandboxSettings } from '@anthropic-ai/claude-agent-sdk'
 import { exec, git, run } from '../src/main/services/exec'
 import { linkNodeModules } from '../src/main/services/scripts'
 import { sessionEnv } from '../src/main/services/providers/claude'
@@ -44,6 +44,19 @@ interface Fixture {
 interface Probe { id: string; run: string; effect?: () => boolean | Promise<boolean> }
 
 const HAIKU = 'claude-haiku-4-5-20251001'
+
+/**
+ * A Haiku turn in Bypass with only the Bash tool, sandboxed as given, and nothing from the user's own setup: no settings, no MCP
+ * servers and no claude.ai connectors. Those come from the account, not a settings source, and hundreds of their tool schemas
+ * overflow Haiku's prompt ("Prompt is too long"). Strict MCP config keeps them out, and the env var stops the CLI fetching them.
+ */
+function haikuInBypass(cwd: string, sandbox: SandboxSettings, maxTurns: number): Options {
+  return {
+    cwd, model: HAIKU, permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
+    settingSources: [], strictMcpConfig: true, persistSession: false, tools: ['Bash'], maxTurns, sandbox,
+    env: { ...sessionEnv(process.env, {}), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }, pathToClaudeCodeExecutable: bundledClaude()
+  }
+}
 const GITHUB = ['github.com', '*.github.com', '*.githubusercontent.com']
 const REGISTRIES = ['registry.npmjs.org', 'registry.yarnpkg.com', 'repo.yarnpkg.com']
 
@@ -210,11 +223,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
         let result: unknown
         const q = query({
           prompt: 'Run exactly `bash .spike/probe.sh` with the Bash tool, once. Some of its checks are meant to fail. Run nothing else, then reply with one word: done.',
-          options: {
-            cwd: f.wt, model: HAIKU, permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
-            settingSources: [], persistSession: false, tools: ['Bash'], maxTurns: 4, sandbox,
-            env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: bundledClaude()
-          }
+          options: haikuInBypass(f.wt, sandbox, 4)
         })
         for await (const m of q) {
           if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') calls.push(b.input)
@@ -264,11 +273,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
     try {
       const q = query({
         prompt: `Run each of these commands with the Bash tool, exactly as written, one call each, in this order, with timeout 600000. Some may fail. Run nothing else, then reply with one word: done.\n\n${commands.map((c) => `\`${c}\``).join('\n')}`,
-        options: {
-          cwd: wt, model: HAIKU, permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
-          settingSources: [], persistSession: false, tools: ['Bash'], maxTurns: 8, sandbox,
-          env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: bundledClaude()
-        }
+        options: haikuInBypass(wt, sandbox, 8)
       })
       for await (const m of q) {
         if (m.type === 'assistant') for (const b of m.message.content) if (b.type === 'tool_use') calls.push(b.input as { command?: string })
