@@ -215,6 +215,14 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       expect(await k.integrations.issueTaken(r.id, '41')).toEqual({ findings: [], notes: [] })
     })
 
+    it("asks GitHub only about its own issues, so a Linear key adds no failed assignee check (KERNEL-504)", async () => {
+      const gh = await fakeGh({ view: assigned, prs, login: 'cjjutba' })
+      const { k, room: r } = await room(await tempRepo())
+      expect(await k.integrations.issueTaken(r.id, 'KERNEL-31')).toEqual({ findings: [], notes: [] })
+      expect((await gh.calls()).filter((c) => c.startsWith('issue view'))).toEqual([])
+      expect((await k.integrations.issueTaken(r.id, '#41')).findings).toContainEqual({ kind: 'assignee', name: 'mchen' })
+    })
+
     it('starts anyway when no check can answer, and says which ones it skipped', async () => {
       // gh can't list PRs and isn't signed in, and origin is gone.
       await fakeGh({ view: assigned })
