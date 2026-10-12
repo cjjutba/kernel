@@ -52,14 +52,15 @@ const KEY = /^[A-Za-z0-9_-]+$/
  * subagent's MCP tools (KERNEL-451). A server the file doesn't reach is switched off, and one it reaches in part keeps
  * only the tools it may use. `servers` is Codex's own `mcp_servers` from config/read: an override that names a server
  * Codex doesn't have fails the thread. Kernel's tools are dynamic tools on Codex, not a server, and every agent keeps them.
+ * A server the room switched off (`off`) is off whatever the file says, as on Claude (KERNEL-464).
  */
-export function mcpOverrides(policy: ToolPolicy | undefined, servers: Record<string, unknown>): Record<string, JsonValue> {
+export function mcpOverrides(policy: ToolPolicy | undefined, servers: Record<string, unknown>, off: string[] = []): Record<string, JsonValue> {
   const out: Record<string, JsonValue> = {}
-  if (!policy) return out
+  if (!policy && !off.length) return out
   for (const [name, raw] of Object.entries(servers)) {
     const own = (raw && typeof raw === 'object' ? raw : {}) as { enabled?: unknown; enabled_tools?: unknown; disabled_tools?: unknown }
     if (!KEY.test(name) || own.enabled === false) continue
-    const access = policy.server(name)
+    const access = off.includes(name) ? { on: false as const } : policy?.server(name) ?? { on: true as const }
     const key = `mcp_servers.${name}`
     // The user's own lists for the server still hold: the file can only narrow them.
     const only = access.on && access.only && Array.isArray(own.enabled_tools) ? access.only.filter((t) => (own.enabled_tools as unknown[]).includes(t)) : access.on ? access.only : []

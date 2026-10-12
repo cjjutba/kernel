@@ -4,6 +4,7 @@ import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
+import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
@@ -127,6 +128,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       // KERNEL-479 makes Start anyway retry create_workspace with its confirm. Nothing opens this until it does.
       if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={actions.ui.closeModal} />
+      if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }

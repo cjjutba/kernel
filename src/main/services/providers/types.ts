@@ -2,7 +2,9 @@ import type { ChildProcess } from 'node:child_process'
 import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import type { AppSettings } from '../settings'
+import type { RunMode } from '../permissions'
 import type { LimitPatch } from './limits'
+import type { McpReport } from '../mcp'
 
 // The seam between Sessions and the CLI a chat runs on (KERNEL-406). Sessions keeps the orchestration: queues, pauses,
 // limits, cut-off, carry-on, the idle stop, pids and hand-offs. A runner speaks one CLI's protocol for one chat's process.
@@ -17,8 +19,11 @@ export interface Runner {
   interrupt(): Promise<void>
   setModel(model: string): Promise<void>
   setEffort(effort: Effort): Promise<void>
-  /** Plan mode on or off. Off puts the session back on Settings, Permissions' mode, so a changed mode goes through here too. */
-  setPlan(on: boolean): Promise<void>
+  /**
+   * Run the next steps in `mode` (KERNEL-447): plan mode on or off, or the chat's permission mode changed. Claude switches the
+   * live session, and a switch it refuses leaves a note in the chat. Codex takes it from its next turn.
+   */
+  setMode(mode: RunMode): Promise<void>
   /** Ask the provider for the usage windows, which arrive through `RunnerHost.mergeLimits`. */
   usage(): Promise<void>
   /** Read the context window use again, which arrives through `RunnerHost.setContext`. */
@@ -45,6 +50,8 @@ export interface Ask {
   questions?: AskedQuestion[]
   /** Shown as the agent's activity while it waits. */
   activity: string
+  /** Why Kernel asked, for the card's reason line (`Approval.reason`). */
+  reason?: string
 }
 
 /** What Sessions does for one chat's runner. Each method acts on that chat and its current process. */
@@ -54,9 +61,14 @@ export interface RunnerHost {
   readonly workspace: Workspace
   readonly agent: AgentDef | undefined
   settings(): AppSettings
+  /** The mode the chat runs in now (`effectiveMode`), read at every step, so a change applies at once (KERNEL-447). */
+  mode(): RunMode
   /** Bash rules the user allowed for the room, and saving one ("Always allow in this room"). */
   roomAllow(): string[]
   allowInRoom(rule: string): void
+  /** The same for MCP and web tools, as Claude Code writes a rule: `mcp__linear__get_issue` (`Room.allowTools`, KERNEL-454). */
+  roomTools(): string[]
+  allowToolInRoom(rule: string): void
   /** The pause or the hold on every room that a tool call waits on, while one stands. */
   held(): Promise<void> | undefined
   /** Starts the CLI as Kernel starts every agent process: its own process group, its pid saved until it exits. */
@@ -69,9 +81,12 @@ export interface RunnerHost {
   /**
    * The session is up under `sessionId`, which the chat resumes by from now on. Starts the turn's working status.
    * `billedBy` is who pays, when the CLI says (Claude's `apiKeySource`, where 'none' means the plan). `mcpServers` are the
-   * session's MCP servers by name, checked once per chat against the agent file's tools line.
+   * session's MCP servers with their status, which the room keeps, checked once per chat against the agent file's tools
+   * line (KERNEL-464).
    */
-  sessionStarted(sessionId: string, o?: { billedBy?: string; mcpServers?: string[] }): void
+  sessionStarted(sessionId: string, o?: { billedBy?: string; mcpServers?: McpReport[] }): void
+  /** The provider reported how some of the session's MCP servers are doing, mid-session (Codex). The room keeps it (KERNEL-464). */
+  mcpStatus(servers: McpReport[]): void
   /** A hook refused the step. */
   blocked(event: string, output: string): void
   /** A tool call went through, which ends a PreToolUse refusal. */
@@ -108,8 +123,8 @@ export interface RunnerHost {
   /** The user stopped this turn. */
   readonly interrupted: boolean
 
-  /** Put a request in front of the user and wait for the answer. Undefined when nobody answered in time. */
-  ask(a: Ask, o: { signal?: AbortSignal }): Promise<Decision | undefined>
+  /** Put a request in front of the user and wait for the answer. Undefined when nobody answered in time, or `timeoutMs` passed. */
+  ask(a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }): Promise<Decision | undefined>
   /**
    * Show a plan for approval and wait. An approved plan takes the chat out of plan mode and starts a Lead's hand-off.
    * `toolName` and `input` are the call that asked, when the plan came from a tool such as ExitPlanMode.

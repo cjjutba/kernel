@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -31,6 +31,8 @@ export interface KernelApi {
   'hooks.restart': { req: { port?: number }; res: HookStatus }
   /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
   'hooks.uninstall': { req: void; res: HookStatus }
+  /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
+  'hooks.turnOn': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
@@ -55,6 +57,11 @@ export interface KernelApi {
   'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
   /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
   'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
+  /**
+   * Whether git can push from the room's checkout (KERNEL-460): the last result, or a new one when there is none or `recheck`
+   * is set. Null when the room has no remote. A recheck also updates the room's Check push access step while setup shows.
+   */
+  'rooms.pushCheck': { req: { roomId: string; recheck?: boolean }; res: PushCheck | null }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
   'rooms.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
@@ -227,6 +234,8 @@ export interface KernelApi {
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
+  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */
@@ -287,15 +296,31 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /**
+   * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
+   * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
+   */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  /**
+   * The files to copy that look like production, one hint per file, without the ones the room chose Keep copying for. Names
+   * only, never values (KERNEL-449).
+   */
+  'files.production': { req: { roomId: string }; res: ProductionHint[] }
+  /** Keep copying: the room stops warning about these files until another variable in them looks like production (KERNEL-449). */
+  'files.keepCopying': { req: { roomId: string; hints: ProductionHint[] }; res: Room }
   // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
   // main through `env.reveal`.
   'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
   /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
   'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
   'env.reveal': { req: { roomId?: string; name: string }; res: string }
-  'mcp.list': { req: { roomId?: string }; res: McpServer[] }
+  /**
+   * The room's MCP servers for one provider, Claude's when `provider` is unset, with the last status Kernel heard. `probe`
+   * waits for a fresh check of Claude's servers. Without it, the first list for a room starts one (KERNEL-464).
+   */
+  'mcp.list': { req: { roomId?: string; provider?: Provider; probe?: boolean }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
   'integrations.connect': { req: { id: Integration['id']; token?: string }; res: Integration }
@@ -439,6 +464,8 @@ export type PushEvent =
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
+  /** A room's MCP servers for one provider, after a probe or a session reported a status that changed them (KERNEL-464). */
+  | { type: 'mcp'; roomId: string; provider: Provider; servers: McpServer[] }
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */

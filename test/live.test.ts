@@ -14,6 +14,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
+import { probeClaudeMcp, sessionEnv } from '../src/main/services/providers/claude'
 import { trustRoom } from './helpers'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
@@ -226,6 +227,23 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live chat name', () => {
 
 // KERNEL-215: a turn a quit cut off carries on when Kernel opens again, in the same conversation. Once through the
 // interrupt a quit sends first, once through the abort that follows when a turn doesn't stop in time. `-t "live relaunch"`.
+// KERNEL-464: the probe asks a Claude Code with no prompt for its MCP servers. That a status comes back with no message sent,
+// and that no hook of the folder's runs meanwhile, are the CLI's behavior, so a bump that changes either fails here.
+describe.skipIf(!process.env.KERNEL_LIVE)('live MCP probe', () => {
+  it("lists a folder's MCP servers with their status, leaves out the switched-off ones and runs none of its hooks", { timeout: 120_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-live-mcp-'))
+    const marker = join(dir, 'hook-ran')
+    await mkdir(join(dir, '.claude'))
+    await writeFile(join(dir, '.claude', 'settings.local.json'), JSON.stringify({ enableAllProjectMcpServers: true, hooks: { SessionStart: [{ hooks: [{ type: 'command', command: `touch ${marker}` }] }] } }))
+    await writeFile(join(dir, '.mcp.json'), JSON.stringify({ mcpServers: { broken: { command: 'false' }, off: { command: 'false' } } }))
+    const list = await probeClaudeMcp(dir, { env: sessionEnv(process.env, {}), denied: ['off'] })
+    expect(list.find((s) => s.name === 'broken')?.status).toBe('failed')
+    expect(list.some((s) => s.name === 'off')).toBe(false)
+    expect(existsSync(marker)).toBe(false)
+    await rm(dir, { recursive: true, force: true })
+  })
+})
+
 describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
   for (const [how, budgetMs] of [['an interrupt', 15_000], ['an abort', 0]] as const) {
     it(`resumes a session cut off by ${how}`, { timeout: 600_000 }, async () => {
@@ -237,7 +255,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
         workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
         models: { engineers: 'claude-sonnet-5-5', effort: 'low' },
-        permissions: { mode: 'bypassInWorktrees', alwaysAsk: [], neverAllow: [] },
+        permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, alwaysAsk: [], neverAllow: [] },
         // The side project's committed setup (install, database push, seed) is not what this test is about.
         scripts: { setupOnCreate: false }
       }))

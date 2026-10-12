@@ -12,6 +12,12 @@ export const KILL_GRACE_MS = 5_000
 /** The most bytes kept of a command's stdout, and of its stderr. The rest is read and dropped. */
 export const MAX_OUTPUT = 10 * 1024 * 1024
 
+/**
+ * Nothing Kernel starts can answer a credential prompt, so git fails at once instead of waiting for one: no terminal prompt,
+ * and no Git Credential Manager window. Applied last, over the caller's variables (KERNEL-460).
+ */
+export const NO_PROMPTS = { GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } as const
+
 /** A stream's first `MAX_OUTPUT` bytes, read as UTF-8 once it ends, so a character split across two chunks stays whole. */
 function capped() {
   const chunks: Buffer[] = []
@@ -24,11 +30,12 @@ function capped() {
 
 /**
  * Run a command without a shell. Never throws on a non-zero exit; callers decide. The command gets its own process group,
- * so when its time runs out the processes it started, such as a git hook or gh's pager, stop with it.
+ * so when its time runs out the processes it started, such as a git hook or gh's pager, stop with it. It never prompts for
+ * a git login (`NO_PROMPTS`).
  */
 export function exec(cmd: string, args: string[], opts: { cwd?: string; env?: NodeJS.ProcessEnv; input?: string; timeoutMs?: number; graceMs?: number } = {}): Promise<ExecResult> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
+    const child = spawn(cmd, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env, ...NO_PROMPTS }, stdio: ['pipe', 'pipe', 'pipe'], detached: true })
     const out = capped(), err = capped()
     let timedOut = false
     let force: NodeJS.Timeout | undefined

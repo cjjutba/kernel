@@ -4,7 +4,7 @@ import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, Icon, Select, Spinner, useBusy } from '../../ui'
+import { Button, CodeBlock, Icon, Select, Spinner, useBusy } from '../../ui'
 import { warningText } from '../team/model'
 import { getDraft } from './draft'
 import '../onboarding/onboarding.css'
@@ -13,8 +13,19 @@ import './rooms.css'
 const NO_AGENTS: AgentDef[] = []
 const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 
+/** "`.env` and `.env.production`": the files by name, in mono, joined the way a sentence lists them. */
+function fileList(paths: string[]) {
+  return paths.map((p, i) => <span key={p}>{i === 0 ? '' : i === paths.length - 1 ? ' and ' : ', '}<code>{p}</code></span>)
+}
+
+/** The copy step's warning (RoomSetupWarnings.png): the copied files that look like production, by name only (KERNEL-449). */
+function ProductionNote({ paths }: { paths: string[] }) {
+  return <span className="ob-detail rs-note">{paths.length} {paths.length === 1 ? 'looks' : 'look'} like production: {fileList(paths)}. Agents run commands in each worktree, so a migration there could reach a live database.</span>
+}
+
 /**
- * RoomSetup.png: clone, folders, install, files, hooks, agents. Progress comes from `room.setup` push events.
+ * RoomSetup.png: clone, folders, install, files, hooks, push access, agents. Progress comes from `room.setup` push events.
+ * RoomSetupWarnings.png: a step that finished with something to fix warns, and the room still opens (KERNEL-460).
  * RoomSetupTeam.png: a repo that brought its own agents shows its team once setup is done, to check who leads and who
  * reviews before the room opens (KERNEL-397).
  */
@@ -22,8 +33,10 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const steps = useStore((s) => (roomId ? s.roomSetup[roomId] : undefined))
   const agents = useStore((s) => (roomId ? s.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
-  const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'fail')
+  const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
+  // A warning never stops the room opening, but it stops Brief Rowan right away, so the user sees it (KERNEL-437).
+  const warned = steps?.filter((s) => s.state === 'warn').length ?? 0
   const seated = steps?.find((s) => s.id === 'agents')
   const team = agents.filter((a) => !a.retired)
   const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
@@ -48,7 +61,15 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   // "Brief Rowan right away" in New room: when setup finishes cleanly, land in Rowan's chat (D-104). A team the repo brought
   // with something to look at waits for Open the room.
   const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
-  useEffect(() => { if (finished && !failed && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (finished && !failed && !warned && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, warned, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const recheck = () => run('recheck', async () => {
+    if (!roomId) return
+    try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
+  })
+  const leadName = team.find((a) => a.lead)?.name ?? 'Rowan'
+  const status = finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.`
+    : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. ${leadName} is waiting for a brief.`
+      : 'You can leave this screen. Kernel keeps going.'
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
@@ -61,6 +82,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
               <div key={s.id} className="ob-check" data-state={s.state} data-ok={s.state !== 'fail'}>
                 <span className="ob-ico rs-ico" data-state={s.state}>
                   {s.state === 'ok' && <Icon name="check" size={15} stroke={1.7} />}
+                  {s.state === 'warn' && <Icon name="warning" size={15} />}
                   {s.state === 'fail' && <Icon name="x" size={15} />}
                   {s.state === 'run' && <Spinner label={`${s.title} is running`} />}
                   {s.state === 'wait' && <span aria-label="Waiting" className="rs-dash">–</span>}
@@ -69,8 +91,21 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   <span className="ob-name" style={s.state === 'wait' ? { color: 'var(--muted)', fontWeight: 400 } : undefined}>{s.title}</span>
                   <span className="ob-detail">{s.detail}</span>
                   {s.error && <span className="ob-detail rs-error" role="alert">{s.error}</span>}
+                  {s.output && <pre className="code boxed rs-out">{s.output}</pre>}
+                  {s.fix?.command && <div className="ob-fix"><CodeBlock>{s.fix.command}</CodeBlock></div>}
+                  {s.fix?.action === 'recheck' && (
+                    <div className="ob-acts rs-acts">
+                      <Button variant="secondary" busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
+                    </div>
+                  )}
+                  {s.state === 'warn' && !!s.production?.length && (
+                    <>
+                      <ProductionNote paths={s.production} />
+                      <div className="ob-acts rs-acts"><Button onClick={() => roomId && actions.ui.go({ name: 'settings', page: 'room', roomId, section: 'files' })}>Review files</Button></div>
+                    </>
+                  )}
                 </div>
-                {s.meta && <span className="ob-meta">{s.meta}</span>}
+                {s.meta && s.state !== 'warn' && <span className="ob-meta">{s.meta}</span>}
               </div>
             ))}
             {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
@@ -93,7 +128,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             </section>
           )}
           <div className="ob-bar">
-            <span role="status">{finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.` : 'You can leave this screen. Kernel keeps going.'}</span>
+            <span role="status">{status}</span>
             <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
           </div>
           {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}

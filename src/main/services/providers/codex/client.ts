@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { NO_PROMPTS } from '../../exec'
 import { initializeParams, Rpc, type RpcHandlers } from './rpc'
 import type { GetAccountResponse } from './protocol/v2/GetAccountResponse'
 import type { GetAccountRateLimitsResponse } from './protocol/v2/GetAccountRateLimitsResponse'
@@ -9,14 +10,15 @@ import type { ModelListResponse } from './protocol/v2/ModelListResponse'
 /** Kernel's own version, for Codex's `initialize`. */
 export const KERNEL_VERSION = process.env.npm_package_version ?? '0.0.0'
 
-/** The environment a Codex process runs with: the account's home, and nothing that would bill an API key (D-018). */
+/** The environment a Codex process runs with: the account's home, nothing that would bill an API key (D-018), and no git prompts. */
 export function codexEnv(base: NodeJS.ProcessEnv, home: string | undefined, extra: Record<string, string> = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.OPENAI_API_KEY
   delete env.CODEX_API_KEY
   if (home) env.CODEX_HOME = home
   else delete env.CODEX_HOME
-  return env
+  // Codex passes these on to the commands it runs, so a push without a login fails instead of hanging (KERNEL-460).
+  return Object.assign(env, NO_PROMPTS)
 }
 
 /**

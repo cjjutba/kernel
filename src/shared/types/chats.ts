@@ -266,8 +266,21 @@ export interface BuiltinCommand {
   aliases?: string[]
 }
 
+/**
+ * An MCP server a room's agents can reach (Settings > Skills and MCP). `enabled` is the room's switch. Since KERNEL-464:
+ * - `source`: where the server is defined. `local` is the user's entry for this repo in `~/.claude.json`, which Claude Code
+ *   reads over `project` (`.mcp.json`) and `user`. `claudeai`, `plugin` and `managed` are only known from a status report.
+ * - `provider`: unset for Claude Code's servers. `codex` for the `[mcp_servers]` in Codex's `config.toml`.
+ * - `status`: what the provider last said, unset until a probe or a session has. `error` is why it failed, when it said.
+ */
 export interface McpServer {
   name: string
   enabled: boolean
-  source: 'user' | 'project'
+  source: 'user' | 'project' | 'local' | 'claudeai' | 'plugin' | 'managed'
+  provider?: Provider
+  status?: McpStatus
+  error?: string
 }
+
+/** An MCP server's connection as Claude Code's `mcpServerStatus()` reports it. Codex's startup states map onto it (KERNEL-464). */
+export type McpStatus = 'connected' | 'pending' | 'failed' | 'needs-auth' | 'disabled'

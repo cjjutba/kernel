@@ -533,7 +533,9 @@ export class Lead extends Feature {
         await this.k.team.joinRoster(roomId, a.id)
         this.k.team.announceTeam(roomId, await this.k.team.agents(roomId), was)
         return file
-      }
+      },
+      // For the hire card and hire_agent's result (KERNEL-476).
+      reach: (agent, o) => this.k.mcp.reach(roomId, agent, o)
     }
   }
 

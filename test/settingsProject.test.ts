@@ -6,8 +6,10 @@ import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
-import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
+import { discoverMcp } from '../src/main/services/mcp'
+import { aliasesInRoom, DEFAULT_SETTINGS, disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { createPrText, readConventions } from '../src/main/services/conventions'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -46,6 +48,55 @@ describe('repo settings files', () => {
     expect(await discoverMcp(repo, repo, next.disabled!.mcp)).toEqual([
       { name: 'Figma', source: 'project', enabled: false }, { name: 'Linear', source: 'project', enabled: true }
     ])
+  })
+
+  // KERNEL-464: every place Claude Code and Codex read MCP servers from, read only.
+  it("finds the user's servers for this repo in ~/.claude.json and Codex's in its config.toml, and writes neither", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    // Claude Code keys a project by its folder with links resolved, which /var is on a Mac.
+    const claude = JSON.stringify({
+      mcpServers: { github: { command: 'gh-mcp' }, linear: { url: 'https://user' } },
+      projects: { [await realpath(repo)]: { mcpServers: { linear: { url: 'https://local' }, sentry: { command: 'sentry-mcp' } } }, '/elsewhere': { mcpServers: { secret: {} } } }
+    })
+    await writeFile(join(home, '.claude.json'), claude)
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: { linear: {}, figma: {} } }))
+    await mkdir(join(home, '.codex'))
+    const codex = ['model = "gpt-6"', '[mcp_servers.linear]', 'command = "linear-mcp"', '[mcp_servers.notion]', 'url = "https://notion"', 'enabled = false', '[profiles.fast]', 'model = "x"', ''].join('\n')
+    await writeFile(join(home, '.codex', 'config.toml'), codex)
+    // The room's own entry wins over the repo's, which wins over the user's list, as in Claude Code.
+    expect(await discoverMcp(repo, home, ['figma', 'notion'])).toEqual([
+      { name: 'linear', source: 'local', enabled: true }, { name: 'sentry', source: 'local', enabled: true },
+      { name: 'figma', source: 'project', enabled: false }, { name: 'github', source: 'user', enabled: true },
+      { name: 'linear', source: 'user', provider: 'codex', enabled: true }, { name: 'notion', source: 'user', provider: 'codex', enabled: false, status: 'disabled' }
+    ])
+    // An account's own Codex home is read instead.
+    const account = await mkdtemp(join(tmpdir(), 'kernel-codex-'))
+    await writeFile(join(account, 'config.toml'), '[mcp_servers.jira]\ncommand = "jira-mcp"\n')
+    expect((await discoverMcp(repo, home, [], { codexHome: account })).filter((s) => s.provider)).toEqual([{ name: 'jira', source: 'user', provider: 'codex', enabled: true }])
+    expect([await readFile(join(home, '.claude.json'), 'utf8'), await readFile(join(home, '.codex', 'config.toml'), 'utf8')]).toEqual([claude, codex])
+  })
+
+  it('finds nothing in a config file that is missing or broken (KERNEL-464)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), '{ "mcpServers": ')
+    await mkdir(join(home, '.codex'))
+    await writeFile(join(home, '.codex', 'config.toml'), '[mcp_servers.linear\n')
+    await writeFile(join(repo, '.mcp.json'), JSON.stringify({ mcpServers: ['not', 'a', 'table'] }))
+    expect(await discoverMcp(repo, home, [])).toEqual([])
+    await writeFile(join(home, '.claude.json'), JSON.stringify({ projects: { [repo]: { mcpServers: { local: {} } } } }))
+    expect(await discoverMcp(repo, home, [])).toEqual([{ name: 'local', source: 'local', enabled: true }])
+  })
+
+  it('reads the room\'s MCP aliases at once, from both files, alias by alias (KERNEL-464)', async () => {
+    const repo = await tempRepo()
+    expect(aliasesInRoom(repo)).toEqual({})
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } } }, true)
+    await saveRepoSettings(repo, { mcp: { aliases: { linear: 'linear-mine' } } })
+    expect(aliasesInRoom(repo)).toEqual({ linear: 'linear-mine', figma: 'Figma' })
+    expect(aliasesInRoom(repo)).toEqual((await loadRepoSettings(repo)).mcp?.aliases)
   })
 
   it('reads what the room switched off at once, from both files, so a toggle reaches the next session (KERNEL-226)', async () => {
@@ -162,6 +213,65 @@ describe('repo settings files', () => {
     expect(remoteOf({ workspace: { remote: 'upstream' } }, { workspace: { remote: 'fork' } as never })).toBe('upstream')
     expect(remoteOf({ workspace: {} }, { workspace: { remote: 'fork' } as never })).toBe('fork')
     expect(remoteOf({ workspace: { remote: ' ' } }, { workspace: { remote: '' } as never })).toBe('origin')
+  })
+})
+
+describe("the repo's PR conventions (KERNEL-468)", () => {
+  it('finds the PR template, the contributing guide and commitlint where GitHub and commitlint look', async () => {
+    expect(await readConventions(await tempRepo())).toEqual({})
+    // .github comes first, whatever the case of the name.
+    expect(await readConventions(await tempRepo({ '.github/PULL_REQUEST_TEMPLATE.md': '## Summary\n', 'pull_request_template.md': '## Root\n', 'docs/CONTRIBUTING.md': '# Contributing\n', 'commitlint.config.js': 'export default {}\n' })))
+      .toEqual({ template: '.github/PULL_REQUEST_TEMPLATE.md', contributing: 'docs/CONTRIBUTING.md', commitlint: 'commitlint.config.js' })
+    expect(await readConventions(await tempRepo({ 'docs/pull_request_template.txt': 'Why:\n', 'Contributing.rst': 'Hi\n', 'package.json': JSON.stringify({ commitlint: { extends: ['@commitlint/config-conventional'] } }) })))
+      .toEqual({ template: 'docs/pull_request_template.txt', contributing: 'Contributing.rst', commitlint: 'package.json' })
+    // A folder of templates counts when there is no single one and it holds a template.
+    expect(await readConventions(await tempRepo({ '.github/PULL_REQUEST_TEMPLATE/feature.md': '## Feature\n', '.commitlintrc.yml': 'extends: []\n', 'package.json': '{}' })))
+      .toEqual({ template: '.github/PULL_REQUEST_TEMPLATE/', commitlint: '.commitlintrc.yml' })
+    expect(await readConventions(await tempRepo({ '.github/pull_request_template/notes': 'x', 'package.json': '{"name": "client"}' }))).toEqual({})
+  })
+
+  it('asks for Conventional Commits only when commitlint is configured, and names the template and the guide', () => {
+    expect(createPrText()).toBe(DEFAULT_SETTINGS('').pr.createInstructions)
+    expect(createPrText()).toBe([
+      '# Create a pull request',
+      '1. Rebase on the base branch and run the test suite.',
+      "2. Title it in the style of the repo's recent commits.",
+      '3. Fill in summary, scope and risk.',
+      '4. Open it with `gh pr create` and print the URL.'
+    ].join('\n'))
+    expect(createPrText({ template: '.github/pull_request_template.md', contributing: 'CONTRIBUTING.md', commitlint: 'commitlint.config.js' })).toBe([
+      '# Create a pull request',
+      '1. Read `CONTRIBUTING.md` and follow what it says about pull requests.',
+      '2. Rebase on the base branch and run the test suite.',
+      '3. Title it and write its commits as Conventional Commits. The repo checks them with commitlint (`commitlint.config.js`).',
+      "4. Write the body from the repo's PR template, `.github/pull_request_template.md`, filling in each of its sections.",
+      '5. Open it with `gh pr create` and print the URL.'
+    ].join('\n'))
+    expect(createPrText({ template: '.github/PULL_REQUEST_TEMPLATE/' })).toContain('3. Write the body from the template in `.github/PULL_REQUEST_TEMPLATE/` that fits the change, filling in each of its sections.')
+  })
+
+  it("sends Kernel's text fitted to the repo on Create PR, and the user's or the room's own text as written", async () => {
+    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
+    await k.start()
+    try {
+      const sent: string[] = []
+      k.sessions.send = async (_chatId, parts) => { for (const p of parts) if (p.type === 'file' && p.name === 'create-pr.md') sent.push(p.text ?? ''); return { queued: false } }
+      const room = await k.addRoom(repo)
+      const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+      const create = async () => { k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'none' }); await k.prs.createPr(ws.id); return sent[sent.length - 1] }
+
+      expect(await create()).toBe(createPrText({ template: '.github/pull_request_template.md', commitlint: 'package.json' }))
+      k.settings = { ...k.settings, pr: { ...k.settings.pr, createInstructions: '# Mine' } }
+      expect(await create()).toBe('# Mine')
+      await saveRepoSettings(repo, { pr: { createInstructions: '# Ours' } }, true)
+      expect(await create()).toBe('# Ours')
+    } finally {
+      await k.stop()
+    }
   })
 })
 
