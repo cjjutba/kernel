@@ -54,6 +54,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
   const leadOptions = [...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Kernel’s Rowan' }]
+  const reviewerPick = reviewerChoice(team, rs?.team)
   const reviewerOptions = [...files.filter((a) => !a.lead).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]
   return (
     <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.">
@@ -63,14 +64,14 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             <Select label="Lead" value={lead?.id ?? KERNEL_LEAD} disabled={busy !== null} options={leadOptions} onChange={(e) => void setTeam('lead', { lead: e.target.value })} />
           </Row>
           <Row label="Reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request before it merges">
-            <Select label="Reviewer" value={reviewerChoice(team, rs?.team)} disabled={busy !== null} options={reviewerOptions} onChange={(e) => void setTeam('reviewer', { reviewer: e.target.value })} />
+            <Select label="Reviewer" value={reviewerPick} disabled={busy !== null} options={reviewerOptions} onChange={(e) => void setTeam('reviewer', { reviewer: e.target.value })} />
           </Row>
         </Section>
       )}
       {files.some((a) => !a.lead) && (
-        <Section title="Who takes tasks" note={`${lead?.name ?? 'The Lead'} hands tasks only to these agents. One whose tools can’t edit files and run git starts off.`}>
+        <Section title="Who takes tasks" note={`${lead?.name ?? 'The Lead'} hands tasks only to these agents. One whose tools can’t edit files and run git starts off. These switches don’t change who reviews pull requests.`}>
           {files.filter((a) => !a.lead).map((a) => (
-            <Row key={a.id} label={`${a.name} · ${a.role}`}>
+            <Row key={a.id} label={`${a.name} · ${a.role}`} desc={a.id === reviewerPick ? 'Reviews pull requests either way. Change that under Reviewer.' : undefined}>
               <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />
             </Row>
           ))}
