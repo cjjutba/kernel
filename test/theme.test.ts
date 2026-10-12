@@ -192,15 +192,17 @@ describe('prefers-contrast: more', () => {
 })
 
 describe('no hardcoded colors', () => {
+  // The character shirt, skin and hair colors are art, not UI chrome.
+  const looks = join(root, 'src/renderer/src/screens/team/looks.ts')
   const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name)
-    if (e.isDirectory()) return p === join(root, 'src/renderer/src/floor') ? [] : files(p)
-    return /\.(tsx?|css)$/.test(e.name) && e.name !== 'tokens.css' ? [p] : []
+    if (e.isDirectory()) return files(p)
+    return /\.(tsx?|css)$/.test(e.name) && e.name !== 'tokens.css' && p !== looks ? [p] : []
   })
-  it('renderer code uses tokens, except tokens.css and the floor art', () => {
+  it('renderer code uses tokens, except tokens.css and the shirt colors in looks.ts', () => {
     const hits: string[] = []
     for (const f of files(join(root, 'src/renderer/src'))) {
-      readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (/#[0-9a-fA-F]{3,8}\b(?![\w-])|\brgba?\(|\bhsla?\(/.test(line.replace(/error #\d+/g, ''))) hits.push(`${f.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 80)}`) })
+      readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (/#[0-9a-fA-F]{3,8}\b(?![\w-])|\brgba?\(|\bhsla?\(/.test(line.replace(/\b(?:error|PR) #\d+/g, ''))) hits.push(`${f.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 80)}`) })
     }
     expect(hits).toEqual([])
   })
