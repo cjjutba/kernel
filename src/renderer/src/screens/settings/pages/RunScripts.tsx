@@ -82,7 +82,7 @@ function RunScriptForm({ roomId, rs, script, onClose }: { roomId: string; rs: Ro
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" data-dismiss>Cancel</Button>
         <Button variant="primary" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
       </>}
     >

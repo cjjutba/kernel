@@ -65,7 +65,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" size="lg" onClick={actions.ui.closeModal}>Cancel</Button>
+        <Button variant="ghost" size="lg" data-dismiss>Cancel</Button>
         <Button variant="primary" size="lg" type="submit" form={`${id}-form`} disabled={busy === 'show'} busy={busy === 'save'} busyLabel="Saving">{editing ? 'Save' : 'Add'}</Button>
       </>}
     >

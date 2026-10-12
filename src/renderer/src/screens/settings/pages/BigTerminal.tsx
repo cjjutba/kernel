@@ -131,7 +131,7 @@ function PresetForm({ s, presets, custom, onClose }: { s: AppSettings; presets: 
       top={200}
       footer={<>
         <span className="grow" />
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" data-dismiss>Cancel</Button>
         <Button variant="primary" type="submit" form="terminal-preset-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
       </>}
     >
