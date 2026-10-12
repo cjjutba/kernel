@@ -19,6 +19,7 @@
 // verdict stamped in the corner by the same loop. Images taken while an outside frame was on screen are named BAD_*.
 //
 // Frames are saved to shots/archive-frames/<before|after>/<path>/ and a summary to shots/archive-frames/<before|after>/summary.txt.
+// A path's folder is replaced when that path runs again, and --only leaves the other paths' folders alone.
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -37,7 +38,7 @@ const FRAME_MS = 16
 
 // ---------- What a frame shows
 
-/** What a screen has to show to count as `old` or `dest`: the sidebar row marked current starts with `label`, and a workspace has tabs. */
+/** What a screen has to show to count as `old` or `dest`: the sidebar row marked current starts with `label`, and a workspace that has tabs keeps them. */
 export type Want = { label: string; tabs: boolean }
 export type Expect = { old: Want; dest: Want }
 export type Seen = 'old' | 'dest' | 'other'
@@ -353,7 +354,10 @@ async function run(def: PathDef, o: { dir: string; out: string; hold: number; ga
     const plan = await def.plan(page, world)
     await simulateMain(app, { ...world.records, hold: o.hold, gap: o.gap, between: 40 })
     await plan.prepare()
-    await page.evaluate(`(${sampler.toString()})(${JSON.stringify(plan.expect)}, ${classify.toString()})`)
+    // A workspace that was handed off may have no chat tabs of its own (GroupedChatArchive's invoice-pdf-button has none), so what the old screen must keep is read off it now.
+    const tabsBefore = await page.locator('.ws-tabs [role="tab"]').count()
+    const expect: Expect = { ...plan.expect, old: { ...plan.expect.old, tabs: plan.expect.old.tabs && tabsBefore > 0 } }
+    await page.evaluate(`(${sampler.toString()})(${JSON.stringify(expect)}, ${classify.toString()})`)
     const stop = capturing(app)
     const t0 = Date.now()
     let settled = false
@@ -374,6 +378,7 @@ async function run(def: PathDef, o: { dir: string; out: string; hold: number; ga
     const summary = summarize(log)
 
     const dir = join(o.out, def.id)
+    rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
     let empty = 0
     shots.forEach((s, i) => {
@@ -386,6 +391,7 @@ async function run(def: PathDef, o: { dir: string; out: string; hold: number; ga
 
     const lines = [`${summary.frames} frames, ${summary.outside} outside the old screen and the destination, screens in order: ${summary.sequence.join(' > ') || 'none'}`]
     for (const r of summary.runs) lines.push(`  frames ${r.first} to ${r.last} (${r.frames} frames, about ${r.ms} ms) showed ${r.what}`)
+    if (plan.expect.old.tabs && !expect.old.tabs) lines.push('  The old screen has no tabs before the click, so none was required of it. Its row in the sidebar and the move off it are what is checked.')
     if (!summary.frames) lines.push('  No animation frames ran, so the window was not painting. Nothing here proves anything.')
     else if (!settled) lines.push(`  The destination never held for ${SETTLE} frames. The last frame showed: ${(log[log.length - 1].labels.join(' | ') || 'no current row')}`)
     lines.push(`  ${shots.length - empty} capturePage images in ${dir}`)
@@ -446,7 +452,6 @@ async function main() {
   try {
     if (!args.includes('--no-build')) build(dir)
     const head = git(['rev-parse', '--short', 'HEAD'], dir).stdout.trim()
-    rmSync(out, { recursive: true, force: true })
     mkdirSync(out, { recursive: true })
     const results: Result[] = []
     for (const def of list) {
@@ -461,7 +466,8 @@ async function main() {
       `Frames: ${out}`,
       'Each folder holds frames.json (every animation frame) and the capturePage images, stamped with the frame they caught. BAD_ images were taken while a frame outside the old screen and the destination was on screen.'
     ].join('\n')
-    writeFileSync(join(out, 'summary.txt'), `${report}\n`)
+    // A run of some paths leaves the other paths' frames and the full summary alone.
+    writeFileSync(join(out, only ? `summary-${list.map((p) => p.id).join('+')}.txt` : 'summary.txt'), `${report}\n`)
     console.log(`\n${report}`)
     if (results.some((r) => r.verdict !== 'PASS')) process.exitCode = 1
   } finally {
