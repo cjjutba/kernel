@@ -200,11 +200,22 @@ details.dd>summary::-webkit-details-marker{display:none}
 <h2 id="set-add-title" style="flex: 1; margin: 0; font-size: 14px; font-weight: 500">{{ modal.title }}</h2>
 <button type="button" aria-label="Close" style="width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button>
 </div>
-<div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
+<sc-if value="{{ modal.isAccount }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
+<div role="radiogroup" aria-label="Account type" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
+<button type="button" role="radio" aria-checked="false" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
+<button type="button" role="radio" aria-checked="true" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #24252a; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-label" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="acct-label" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="Work key" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="display: flex; align-items: baseline; justify-content: space-between"><label for="acct-key" style="font-size: 12px; font-weight: 500; color: #8a8f98">API key</label><button type="button" aria-label="Get a key at console.anthropic.com" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer">Get key</button></div>
+<input id="acct-key" type="password" autocomplete="off" spellcheck="false" value="{{ modal.key }}" placeholder="sk-ant-" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none">
+<span style="font-size: 12.5px; color: #8a8f98">{{ modal.hint }}</span></div>
+</div></sc-if>
+<sc-if value="{{ modal.isForm }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
 <p style="margin: 0; color: #8a8f98">{{ modal.intro }}</p>
 <div style="display: flex; flex-direction: column; gap: 6px"><label for="set-add-name" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="set-add-name" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="VARIABLE_NAME" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"></div>
 <div style="display: flex; flex-direction: column; gap: 6px"><label for="set-add-value" style="font-size: 12px; font-weight: 500; color: #8a8f98">Value</label><input id="set-add-value" type="text" autocomplete="off" spellcheck="false" value="{{ modal.value }}" placeholder="Value" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"><span style="font-size: 12.5px; color: #8a8f98">{{ modal.hint }}</span></div>
-</div>
+</div></sc-if>
 <div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
 <span style="flex: 1"></span>
 <button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button>
@@ -544,6 +555,17 @@ class Component extends DCLogic {
     // KERNEL-435: the room's mode menu: Use app default, then the four modes.
     all['r-permissions-mode'] = Object.assign({}, all['r-permissions'], { nav: 'r-permissions' });
     all['r-permissions-mode'].sections = all['r-permissions'].sections.map(function (sec, i) { return i !== 0 ? sec : Object.assign({}, sec, { rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, true)] }); });
+    // KERNEL-522: an API key is another account in the same list. Where a login row says its plan and usage, the key row says how it is billed.
+    // It has no Sign out and no meters. The Add account sheet opens over the Claude Code tab, with Subscription and API key as its two steps.
+    var keyRow = account('Work key', 'API key · billed per token', false, ['Use', 'Remove']);
+    var withKey = function (page) { return Object.assign({}, page, { sections: page.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: sec.rows.slice(0, 1).concat([keyRow]) }); }) }); };
+    all['providers-apikey'] = Object.assign(withKey(all.providers), { nav: 'providers' });
+    all['providers-codex-apikey'] = withKey(all['providers-codex']);
+    all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
+    all['account-apikey'] = { title: 'Account and usage', nav: 'account', sections: [
+      { title: 'Usage', rows: [text('Work key is billed per token, so there are no limits to show.')] },
+      { title: 'Claude', rows: [val('Plan', 'API key')] }
+    ] };
     return all;
   }
 
@@ -698,7 +720,7 @@ class Component extends DCLogic {
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       groups: groups,
       navShift: inRoom ? '-170px' : '0',
-      modal: P.modal || {},
+      modal: P.modal ? Object.assign({ isAccount: !!P.modal.account, isForm: !P.modal.account }, P.modal) : {},
       page: {
         title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
         hasTabs: !!P.tabs, tabs: (P.tabs || []).map(function (t) { return { label: t[0], selected: t[1] ? 'true' : 'false', bg: t[1] ? '#1c1d21' : 'transparent', color: t[1] ? '#f7f8f8' : '#8a8f98' }; }),
