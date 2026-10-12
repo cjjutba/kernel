@@ -126,6 +126,9 @@ export interface SessionDeps {
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
+  /** Rules the user allowed for the room's MCP and web tools (`Room.allowTools`), and saving one (KERNEL-454). Without them none apply. */
+  roomTools?: (roomId: string) => string[]
+  allowToolInRoom?: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
   /** Claude's API answered: a message with no `error`, or a `success` result without `is_error`. The network works, whatever DNS says (KERNEL-231). */
@@ -1136,6 +1139,8 @@ export class Sessions {
       mode: () => this.modes(this.mustChat(chatId), ws).mode,
       roomAllow: () => this.d.roomAllow(ws.roomId),
       allowInRoom: (rule) => this.d.allowInRoom(ws.roomId, rule),
+      roomTools: () => this.d.roomTools?.(ws.roomId) ?? [],
+      allowToolInRoom: (rule) => this.d.allowToolInRoom?.(ws.roomId, rule),
       held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
       spawn: (command, args, o, proc) => this.spawn(command, args, o, proc),
       managed: (sessionId) => { this.managedIds.add(sessionId) },

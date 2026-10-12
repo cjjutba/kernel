@@ -66,6 +66,9 @@ export interface RunnerHost {
   /** Bash rules the user allowed for the room, and saving one ("Always allow in this room"). */
   roomAllow(): string[]
   allowInRoom(rule: string): void
+  /** The same for MCP and web tools, as Claude Code writes a rule: `mcp__linear__get_issue` (`Room.allowTools`, KERNEL-454). */
+  roomTools(): string[]
+  allowToolInRoom(rule: string): void
   /** The pause or the hold on every room that a tool call waits on, while one stands. */
   held(): Promise<void> | undefined
   /** Starts the CLI as Kernel starts every agent process: its own process group, its pid saved until it exits. */
