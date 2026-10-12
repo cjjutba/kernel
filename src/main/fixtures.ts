@@ -8,6 +8,7 @@ import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf, reviewOf } from './services/settings'
 import { CODEX_AUTO } from './features/permissions'
+import { chatMode } from './services/permissions'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 import { mustBeInside, OPEN_APPS } from './services/openApps'
@@ -195,11 +196,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    // A fixture has no process and reads no policy, so every mode is available and nothing waits for a turn.
     'chats.runMode': async ({ chatId }) => {
       const c = chat(chatId)
-      const roomMode = room(workspace(c.workspaceId).roomId).permissionMode
-      const [picked, pickedIn] = c.mode ? [c.mode, 'chat' as const] : roomMode ? [roomMode, 'room' as const] : [settings.permissions.mode, 'app' as const]
-      return c.plan ? { mode: 'plan', picked, pickedIn, why: 'plan' } : { mode: picked, picked, pickedIn }
+      const ws = workspace(c.workspaceId)
+      return chatMode(c, ws, room(ws.roomId), settings, { auto: true, bypass: true }, f.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
     },
     // A fixture's running chats, retries, script lines and terminal output come from its push events.
     'chats.live': async () => ({ running: [], retry: {} }),
