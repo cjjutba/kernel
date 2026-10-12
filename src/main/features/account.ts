@@ -347,7 +347,7 @@ export class Account extends Feature {
     this.store.saveMeta('weeklyWarned', [...warned, weekly.resetsAt].slice(-8))
     const used = Math.round((weekly.utilization ?? WEEKLY_WARN) * 100)
     const title = `You've used ${used}% of this week's limit`
-    this.notifications.notice({ id: `n-weekly-${weekly.resetsAt}`, title, sub: `Resets ${resetPhrase(weekly.resetsAt, now)}`, heading: title, body: `Your weekly limit resets ${resetPhrase(weekly.resetsAt, now)}.` })
+    this.notifications.notice({ id: `n-weekly-${weekly.resetsAt}`, title, sub: `Resets ${resetPhrase(weekly.resetsAt, now, { notice: true })}`, heading: title, body: `Your weekly limit resets ${resetPhrase(weekly.resetsAt, now, { notice: true })}.` })
   }
 
   private limitReset(key: string) {

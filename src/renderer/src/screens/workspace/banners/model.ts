@@ -80,23 +80,14 @@ export interface BannerInput {
 /** From this much context use the chat offers to compact. */
 export const CONTEXT_WARN = 90
 
-const DAY = 24 * 3600_000
-
 /** `resetsAt` is epoch seconds. A rejection whose reset has passed no longer counts. */
 const rejected = (l: RateLimit, now: number) => l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now)
 const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id
-/** "in 3 days", or "at 3:40 PM" within a day. */
-export function resetIn(resetsAt: number, now: number): string {
-  const ms = resetsAt * 1000
-  if (ms - now < DAY) return `at ${clock(ms)}`
-  const days = Math.ceil((ms - now) / DAY)
-  return `in ${days} days`
-}
 
 /** "Theo", "Theo and Noor", "Theo, Noor and Kai". */
 const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`)
 
-/** "3:40 PM" within a day, else "Monday at 9:00 AM": the time something waits until. */
+/** "3:40 PM" today, else "tomorrow at 4:00 AM", "Monday at 9:00 AM" or "Oct 21 at 9:00 AM": the time something waits until. */
 const untilPhrase = (resetsAt: number, now: number) => resetPhrase(resetsAt, now).replace(/^at /, '')
 
 /** The model to offer when `current` hits its own limit: the first one, in picker order, that is not limited. */
@@ -214,7 +205,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const own = chat && usage.find((l) => l.model === chat.model && rejected(l, now))
   if (chat && own) {
     const to = fallbackModel(chat.model, usage, now)
-    const when = own.resetsAt ? `It resets ${resetIn(own.resetsAt, now)}.` : 'It resets on its own.'
+    const when = own.resetsAt ? `It resets ${resetPhrase(own.resetsAt, now)}.` : 'It resets on its own.'
     return {
       id: 'model', kind: 'limit', title: `You've reached your ${modelLabel(chat.model)} limit`,
       sub: to ? `${when} ${modelLabel(to)} can pick up where this left off.` : when,

@@ -34,7 +34,7 @@ describe('workspace banners', () => {
   it('offers another model in one click when the chat\'s own model is limited', () => {
     // Claude Code calls `seven_day_overage_included` the Fable limit. It is not the weekly limit, so no room is paused.
     const b = bannerFor(input({ chat: { ...chat, model: 'claude-fable-5-1' }, usage: [{ type: 'seven_day_overage_included', status: 'rejected', model: 'claude-fable-5-1', resetsAt: S(now + 3 * 86_400_000 - 3600_000) }] }))
-    expect(b).toMatchObject({ id: 'model', title: "You've reached your Fable 5.1 limit", sub: 'It resets in 3 days. Opus 5.5 can pick up where this left off.', switchTo: 'claude-opus-5-5', blocks: false })
+    expect(b).toMatchObject({ id: 'model', title: "You've reached your Fable 5.1 limit", sub: 'It resets Saturday at 10:00 AM. Opus 5.5 can pick up where this left off.', switchTo: 'claude-opus-5-5', blocks: false })
     expect(b?.actions.map((a) => a.label)).toEqual(['Wait', 'Switch to Opus 5.5'])
     // A limit on another model is not this chat's banner.
     expect(bannerFor(input({ usage: [{ type: 'seven_day_opus', status: 'rejected', model: 'claude-opus-5-5' }] }))).toBeNull()
@@ -107,6 +107,12 @@ describe('workspace banners', () => {
       // The Lead isn't held, but it can still read how much of the week is gone.
       expect(bannerFor(input({ isLead: true, usage: [near('seven_day', 0.85, monday)] }))?.id).toBe('weeklyWarn')
       expect(bannerFor(input({ usageSettings: { warnBeforeWeekly: false }, usage: [near('seven_day', 0.85, monday)] }))).toBeNull()
+    })
+
+    it('says tomorrow when the weekly window resets the next day', () => {
+      const tomorrow = new Date(2026, 9, 8, 4, 0).getTime()
+      expect(bannerFor(input({ usage: [near('seven_day', 0.85, tomorrow)] }))).toMatchObject({ id: 'weeklyWarn', sub: 'It resets tomorrow at 4:00 AM.' })
+      expect(bannerFor(input({ usage: [near('seven_day', 0.96, tomorrow)] }))).toMatchObject({ id: 'nearLimit', sub: 'New work from teammates waits until tomorrow at 4:00 AM. Rowan can still answer you.' })
     })
 
     it('shows the hold rather than the weekly warning once the week is close enough to hold teammates', () => {

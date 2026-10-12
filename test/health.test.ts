@@ -955,6 +955,21 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     await k.stop()
   })
 
+  it('names the day in the weekly notification instead of saying tomorrow', async () => {
+    const { k, room } = await kernel()
+    const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(4, 0, 0, 0)
+    sdk.calls[sdk.calls.length - 1].feed(near('seven_day', 0.85, S(tomorrow.getTime())))
+    await flush()
+    const day = tomorrow.toLocaleDateString('en-US', { weekday: 'long' })
+    expect(weekly(k)[0]).toMatchObject({ sub: `Resets ${day} at 4:00 AM`, body: `Your weekly limit resets ${day} at 4:00 AM.` })
+    await k.stop()
+  })
+
   it('warns about nothing when the switch in Settings, Account is off', async () => {
     const { k, room } = await kernel({}, { settings: { usage: { warnBeforeWeekly: false, pauseNearLimit: true } } })
     const chat = await k.leadChat(room.id)
