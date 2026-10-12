@@ -208,7 +208,7 @@ let state: State = {
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
   askHistory: askHistory(),
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
+  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
 }
 const listeners = new Set<() => void>()
 
@@ -340,6 +340,7 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
   if (history === 'replace' || quiet) return
   past = capped([...past, from])
   future = []
+  syncNav()
 }
 /** The place with the chat you were last on in place of a file, diff, image or text tab. */
 function onChat(place: Place): Place {
@@ -373,17 +374,27 @@ function step(dir: 'back' | 'forward'): boolean {
   const now = leaving()
   const taken = takeNewest(dir === 'back' ? past : future, now)
   // Nothing reachable, so everything in that list is dead or where you already are.
-  if (!taken) { if (dir === 'back') past = []; else future = []; return false }
+  if (!taken) { if (dir === 'back') past = []; else future = []; syncNav(); return false }
   const other = capped([...(dir === 'back' ? future : past), now])
   if (dir === 'back') { past = taken.rest; future = other } else { future = taken.rest; past = other }
   arrive(taken.entry)
+  syncNav()
   return true
 }
 /** Is there a place Back or Forward would reach. */
 export const canBack = () => takeNewest(past, leaving()) !== undefined
 export const canForward = () => takeNewest(future, leaving()) !== undefined
 /** Empties both lists. For tests, which share the module. */
-export function resetHistory() { past = []; future = [] }
+export function resetHistory() { past = []; future = []; syncNav() }
+/** Copies `canBack` and `canForward` into `ui.nav`, writing only when one changed. Fixtures set `ui.nav` themselves. */
+function syncNav() {
+  if (fixtureMode) return
+  const nav = { canBack: canBack(), canForward: canForward() }
+  const was = state.ui.nav
+  if (was.canBack !== nav.canBack || was.canForward !== nav.canForward) setState((s) => ({ ui: { ...s.ui, nav } }))
+}
+// Closing a workspace or tab can make an entry unreachable without a move, so every change to the state is checked too.
+subscribe(syncNav)
 /** `tabs` without the workspaces `gone` picks out. Tabs with nothing to drop keep their identity. */
 function dropTabs(tabs: UiState['tabs'], gone: (workspaceId: string) => boolean): UiState['tabs'] {
   const ids = Object.keys(tabs).filter(gone)

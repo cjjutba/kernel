@@ -374,3 +374,16 @@ describe('the saved place', () => {
     expect(() => go(at('lead'))).not.toThrow()
   })
 })
+
+describe('ui.nav (KERNEL-643)', () => {
+  const nav = () => getState().ui.nav
+  it('follows go, back and forward', () => {
+    expect(nav()).toEqual({ canBack: false, canForward: false })
+    go({ name: 'inbox' })
+    expect(nav()).toEqual({ canBack: true, canForward: false })
+    back()
+    expect(nav()).toEqual({ canBack: false, canForward: true })
+    forward()
+    expect(nav()).toEqual({ canBack: true, canForward: false })
+  })
+})

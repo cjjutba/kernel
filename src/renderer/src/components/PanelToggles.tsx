@@ -30,10 +30,26 @@ export const toggleFocus = () => {
   actions.ui.setRightPanel(!sidebar && !rightPanel)
 }
 
-/** First in every screen header. Shows only while the sidebar is hidden, right of the traffic lights, and brings it back (Cmd+B). */
+/** Back and Forward (⌘[ and ⌘]), each disabled when the history has nowhere reachable to go. In the sidebar's top strip, and in the screen header while the sidebar is hidden (KERNEL-643). */
+export function HistoryButtons() {
+  const { canBack, canForward } = useStore((s) => s.ui.nav)
+  return (
+    <>
+      <IconButton className="nodrag" icon="arrowLeft" size={15} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
+      <IconButton className="nodrag" icon="arrowRight" size={15} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
+    </>
+  )
+}
+
+/** First in every screen header. Shows only while the sidebar is hidden, right of the traffic lights, and brings it back (Cmd+B). Back and Forward follow it. */
 export function SidebarToggle() {
   const open = useStore((s) => s.ui.sidebar)
-  return open ? null : <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
+  return open ? null : (
+    <>
+      <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
+      <HistoryButtons />
+    </>
+  )
 }
 
 /** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
