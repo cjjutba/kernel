@@ -100,10 +100,11 @@ function NoteLink({ link }: { link: { label: string; href: string } }) {
 type Tool = Extract<ChatItem, { kind: 'tool' }>
 
 /**
- * One step of the agent's work: a button that opens in place to what it did (KERNEL-198). The chevron shows on hover and
- * focus and stays while open. A row whose preview is its own text (thinking, a message) drops the preview once open. With nothing to show the row is inert and
- * its chevron stays hidden, but keeps its room so the right-hand notes line up. Open state is local, so a tool going from running
- * to done keeps it. `compact` is the row inside the folded list: no icon, a right-hand note.
+ * One step of the agent's work: a button that opens in place to what it did (KERNEL-198). On hover and focus the row's icon
+ * turns into the chevron, in the same 15px slot, and the chevron stays while the row is open (KERNEL-562). A row whose preview
+ * is its own text (thinking, a message) drops the preview once open. With nothing to show the row is inert and keeps its icon.
+ * Open state is local, so a tool going from running to done keeps it. `compact` is the row inside the folded list: no icon, so no
+ * slot and no chevron, and a right-hand note.
  */
 /** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
 function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, children }: { icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
@@ -113,11 +114,15 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
   return (
     <div className="col" style={{ gap: 4 }}>
       <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
-        {glyph ? <span className="step-glyph">{glyph}</span> : icon && <span style={{ color: failed ? 'var(--del)' : 'var(--muted)' }}><Icon name={icon} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} /></span>}
+        {(glyph || icon) && (
+          <span className={`step-slot${glyph ? ' step-glyph' : ''}`} style={glyph ? undefined : { color: failed ? 'var(--del)' : 'var(--muted)' }}>
+            {glyph || <Icon name={icon!} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} />}
+            {can && <span className="chev step-chev" data-open={open} aria-hidden="true"><Icon name="right" size={12} /></span>}
+          </span>
+        )}
         <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
         {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
-        <span className="chev step-chev" data-open={open} data-idle={can ? undefined : true} aria-hidden="true"><Icon name="right" size={12} /></span>
       </button>
       {open && can && <div id={panel} className="step-body" data-compact={compact || undefined}>{children}</div>}
     </div>
