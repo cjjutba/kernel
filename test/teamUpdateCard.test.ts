@@ -74,6 +74,9 @@ describe('reading an update from before KERNEL-117', () => {
     expect([tone('pr.cifail'), tone('pr.conflict'), tone('crash'), tone('setup.failed')]).toEqual(['del', 'del', 'del', 'del'])
     expect([tone('pr.merged'), tone('pr.ready'), tone('setup.passed')]).toEqual(['merged', 'add', 'muted'])
     expect([tone('review', 'Approved PR #108'), tone('review', 'Found 2 blockers in PR #108')]).toEqual(['add', 'del'])
+    // A review with its kind in front (KERNEL-549) reads the same: approvals green, blockers red (KERNEL-581).
+    expect([tone('review', 'Code review approved PR #491'), tone('review', 'Security review approved PR #491'), tone('review', 'UX review approved PR #491'), tone('review', 'Approved')]).toEqual(['add', 'add', 'add', 'add'])
+    expect([tone('review', 'Code review found 2 blockers in PR #491'), tone('review', 'UX review found 1 blocker in Kai\'s work')]).toEqual(['del', 'del'])
     expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
     // GitHub lifting its block reads like the PR being ready; a block takes the grey of anything else (KERNEL-401).
     expect([tone('pr.unblocked'), tone('pr.blocked'), tone('pr.blocked', '', true)]).toEqual(['add', 'muted', 'ink2'])
@@ -81,7 +84,7 @@ describe('reading an update from before KERNEL-117', () => {
 })
 
 describe('the Team update card', () => {
-  type View = (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest?: (target: string, itemId: string) => boolean }) => React.ReactElement
+  type View = (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest?: (target: string, itemId: string, rowId: string) => boolean }) => React.ReactElement
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: View }>
   const item: ChatItem = {
     kind: 'user', id: 'u', ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }],
@@ -153,17 +156,24 @@ describe('the Team update card', () => {
 })
 
 describe('Merge on a Team update row (KERNEL-351)', () => {
-  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest: (target: string, itemId: string) => boolean }) => React.ReactElement }>
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest: (target: string, itemId: string, rowId: string) => boolean }) => React.ReactElement }>
   const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
-  const card = (id: string, ...rows: [workspaceId: string][]): ChatItem => ({
+  const card = (id: string, ...rows: [workspaceId: string, name?: string][]): ChatItem => ({
     kind: 'user', id, ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update' }],
-    update: { rows: rows.map(([workspaceId]) => ({ workspaceId, agentId: 'kai', name: 'Kai', task: 'T', events: [] })) }
+    update: { rows: rows.map(([workspaceId, name]) => ({ workspaceId, agentId: 'kai', name: name ?? 'Kai', task: 'T', events: [] })) }
   })
-  const workspaces = [ws('w1', { prNumber: 162 }), ws('w2', { prNumber: 161 }), ws('review', { reviewOf: 'w2', prState: 'none', prNumber: undefined })]
+  const workspaces = [ws('w1', { prNumber: 162 }), ws('w2', { prNumber: 161 }), ws('review', { reviewOf: 'w2', prState: 'none', prNumber: undefined }), ws('review2', { reviewOf: 'w2', prState: 'none', prNumber: undefined })]
+  // What the card's store hook answers, from the same map.
+  const newestIn = (items: ChatItem[]) => (target: string, itemId: string, rowId: string) => {
+    const row = newestRows(items, workspaces).get(target)
+    return row?.itemId === itemId && row.workspaceId === rowId
+  }
+  // The rows of a drawn card by the name on them, each with whether it shows Merge.
+  const mergeByName = (html: string) => Object.fromEntries(html.split('<div class="tucard-row">').slice(1).map((r) => [/tucard-name">([^<]+)</.exec(r)?.[1], r.includes('stub-merge')]))
 
   it('maps each PR to the newest card with a row about it, and a reviewer row to the work it reviewed', () => {
     const items = [card('old', ['w1'], ['w2']), card('new', ['w1']), card('review-card', ['review'])]
-    expect([...newestRows(items, workspaces)]).toEqual([['w1', 'new'], ['w2', 'review-card']])
+    expect([...newestRows(items, workspaces)]).toEqual([['w1', { itemId: 'new', workspaceId: 'w1' }], ['w2', { itemId: 'review-card', workspaceId: 'review' }]])
     // The same arrays give the same map, and a chat with no items gives an empty one.
     expect(newestRows(items, workspaces)).toBe(newestRows(items, workspaces))
     expect(newestRows(undefined, workspaces).size).toBe(0)
@@ -172,7 +182,7 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
   it('offers Merge only on the newest row, and a reviewer row merges the reviewed PR', async () => {
     const { TeamUpdateView } = await load()
     const items = [card('old', ['w1']), card('new', ['w1'], ['review'])]
-    const useNewest = (target: string, itemId: string) => newestRows(items, workspaces).get(target) === itemId
+    const useNewest = newestIn(items)
     const draw = (item: ChatItem) => renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest, workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
     expect(draw(items[0])).not.toContain('stub-merge')
     const html = draw(items[1])
@@ -182,10 +192,42 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(html.indexOf('Merge #162')).toBeLessThan(html.indexOf('>Open<'))
   })
 
+  it('offers one Merge for a PR in a card, on the author\'s row when it is there, wherever it sits (KERNEL-581)', async () => {
+    const { TeamUpdateView } = await load()
+    // Two reviewers come first and the author last, the order the card draws its rows in.
+    const items = [card('new', ['review', 'Theo'], ['review2', 'Mira'], ['w2', 'Noor'])]
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
+    expect(html.match(/stub-merge/g)).toHaveLength(1)
+    expect(mergeByName(html)).toEqual({ Theo: false, Mira: false, Noor: true })
+    // Every row still has its Open.
+    expect(html.match(/>Open</g)).toHaveLength(3)
+    // A PR of its own in the same card keeps its Merge.
+    const two = [card('two', ['w1', 'Kai'], ['review', 'Theo'], ['w2', 'Noor'])]
+    expect(mergeByName(renderToStaticMarkup(React.createElement(TeamUpdateView, { item: two[0], useNewest: newestIn(two), workspaceOf: (id) => workspaces.find((w) => w.id === id) })))).toEqual({ Kai: true, Theo: false, Noor: true })
+  })
+
+  it('puts the one Merge on the first reviewer row when the author has none in the card (KERNEL-581)', async () => {
+    const { TeamUpdateView } = await load()
+    const items = [card('new', ['review', 'Theo'], ['review2', 'Mira'])]
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
+    expect(html.match(/stub-merge/g)).toHaveLength(1)
+    expect(mergeByName(html)).toEqual({ Theo: true, Mira: false })
+    expect(html).toContain('Merge #161')
+  })
+
+  it('keeps Merge off an older card, even when only that card has the author row (KERNEL-351, KERNEL-581)', async () => {
+    const { TeamUpdateView } = await load()
+    const items = [card('old', ['w2', 'Noor']), card('new', ['review', 'Theo'])]
+    expect(newestRows(items, workspaces).get('w2')).toEqual({ itemId: 'new', workspaceId: 'review' })
+    const draw = (item: ChatItem) => mergeByName(renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: newestIn(items), workspaceOf: (id) => workspaces.find((w) => w.id === id) })))
+    expect(draw(items[0])).toEqual({ Noor: false })
+    expect(draw(items[1])).toEqual({ Theo: true })
+  })
+
   it('spins a row whose merge is pending, wherever it was pressed, and leaves the other rows on Merge (KERNEL-520)', async () => {
     const { TeamUpdateView } = await load()
     const items = [card('new', ['w1'], ['w2'])]
-    const useNewest = (target: string, itemId: string) => newestRows(items, workspaces).get(target) === itemId
+    const useNewest = newestIn(items)
     const draw = () => renderToStaticMarkup(React.createElement(TeamUpdateView, { item: items[0], useNewest, workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
     expect(draw()).toContain('aria-label="Merge PR #162"')
     pending.w1 = 'merge'
