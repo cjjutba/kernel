@@ -68,3 +68,21 @@
 .sidebar { position: relative; }
 /* A workspace under the chat that started it sits one level in, 12px past the chat's icon: the sub row's 20px plus 12px. Chat rows keep the sub row's padding. */
 .nav-item.nav-nested { padding-left: 32px; }
+
+/* Archive (KERNEL-580, DESIGN.md Motion). A row whose workspace was archived keeps its place and folds: opacity 1 to 0 over --archive-fade while its
+   height and the 3px gap under it (the .nav-list gap, taken up by the negative margin) close to 0 over --archive-fold. The row keeps its size and is
+   clipped, and min-height 0 lets the flex list shrink it below its content. It can't be clicked, and the sidebar drops it when the fold ends. All ease-out,
+   in the frame the screen starts fading in. */
+.row-fold { pointer-events: none; min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: archive-fold var(--archive-fold) ease-out forwards, archive-fade var(--archive-fade) ease-out forwards; }
+@keyframes archive-fold { to { height: 0; margin-bottom: -3px; } }
+@keyframes archive-fade { to { opacity: 0; } }
+/* The Lead's row opens in the chat row's place as that one folds, so the two heights add up to one row and the rows below stay put. */
+.row-open { min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: archive-open var(--archive-fold) ease-out, archive-appear var(--archive-fade) ease-out; }
+@keyframes archive-open { from { height: 0; margin-bottom: -3px; } }
+@keyframes archive-appear { from { opacity: 0; } }
+/* A folding row keeps the fill it had while it fades. The destination's fill fades in over the same --archive-fade, the one selection change that does. */
+.nav-item[data-was-current] { background: var(--surface-3); color: var(--ink); }
+.nav-item[data-was-current] svg { color: var(--ink-2); }
+.nav-item[data-arrive] { animation: archive-arrive var(--archive-fade) ease-out; }
+@keyframes archive-arrive { from { background-color: transparent; color: var(--ink-2); } }
+@media (prefers-reduced-motion: reduce) { .row-fold, .row-open, .nav-item[data-arrive] { animation: none; } .row-fold { display: none; } }

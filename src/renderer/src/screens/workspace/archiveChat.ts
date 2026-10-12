@@ -8,6 +8,11 @@ import { archiveChatByHand } from './byHand'
 /** Whether archiving would stop this workspace's work or lose something on it, which the confirm then names (KERNEL-405). */
 export const stopsSomething = (w: ChatArchivePreview['workspaces'][number]) => w.running || !!w.pr || w.dirty > 0 || w.unpushed > 0 || !!w.unknown
 
+const archiving = new Set<string>()
+
+/** Whether the chat is being archived by hand, from the click to main's answer. Its workspaces' rows wait for its own row, so they fold together (KERNEL-580). */
+export const archivingChat = (threadId: string) => archiving.has(threadId)
+
 /** The room's chat rows as the sidebar lists them, top to bottom. */
 function chatRows(roomId: string) {
   const s = getState()
@@ -24,6 +29,7 @@ function chatRows(roomId: string) {
  * that step, so you stay on the chat.
  */
 export async function archiveChatNow(thread: Thread, workspaceIds: string[]): Promise<void> {
+  archiving.add(thread.id)
   const before = chatRows(thread.roomId)
   const order = before.map((r) => r.thread.id)
   const at = order.indexOf(thread.id)
@@ -49,7 +55,7 @@ export async function archiveChatNow(thread: Thread, workspaceIds: string[]): Pr
     const id = onMine()
     if (id && getState().workspaces.find((w) => w.id === id)?.status === 'archived') leave()
   })
-  try { await archiveChatByHand(thread.id, workspaceIds) } finally { stop() }
+  try { await archiveChatByHand(thread.id, workspaceIds) } finally { stop(); archiving.delete(thread.id) }
   if (!left && onMine()) leave()
 }
 

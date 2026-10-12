@@ -32,8 +32,16 @@ export const useStage = () => useSyncExternalStore(watch, getStage)
 
 export const sameRoute = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
 
-/** Reduced motion jumps: no fold, no fade, no copy. Read at each archive so a change in System Settings counts at once. */
-export const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
+/** True for the sidebar row the app moved to while the beat is on screen, so its fill can fade in (DESIGN.md, Motion: selected fill). A click anywhere else still switches at once. */
+export function useArriving(current: boolean): boolean {
+  const beat = useStage()
+  return current && !!beat && sameRoute(beat.to, getState().ui.route)
+}
+
+let reduced: MediaQueryList | undefined
+
+/** Reduced motion jumps: no fold, no fade, no copy. `matches` follows System Settings, so a change counts at the next archive. */
+export const reducedMotion = () => (reduced ??= window.matchMedia('(prefers-reduced-motion: reduce)')).matches
 
 /** A duration from archiveMotion.css, in ms, so the CSS and the code never carry two copies of the number. */
 export function cssMs(name: string): number {
@@ -103,12 +111,12 @@ function start(): () => void {
     const s = getState()
     const before = last
     last = s
-    if (reducedMotion()) return drop()
+    if (!pending && s.workspaces === before.workspaces) return
     const route = before.ui.route
-    if (!pending && s.workspaces !== before.workspaces && route.name === 'workspace') {
+    if (!pending && route.name === 'workspace') {
       const id = route.workspaceId
       const archivedNow = before.workspaces.find((w) => w.id === id)?.status !== 'archived' && s.workspaces.find((w) => w.id === id)?.status === 'archived'
-      const layers = archivedNow ? snapshot() : undefined
+      const layers = archivedNow && !reducedMotion() ? snapshot() : undefined
       if (layers) {
         const mine: Pending = { from: route, workspaceId: id, layers, timer: window.setTimeout(() => { if (pending === mine) pending = undefined }, 3000) }
         pending = mine
