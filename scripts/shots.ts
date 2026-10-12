@@ -53,6 +53,14 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
+async function scrollToSection(page: Page, title: string) {
+  await page.locator('.set-scroll').evaluate((el, t) => {
+    const h = [...el.querySelectorAll('h2, h3')].find((x) => x.textContent?.trim() === t)
+    if (h) el.scrollTop += h.getBoundingClientRect().top - el.getBoundingClientRect().top - 24
+  }, title)
+  await page.waitForTimeout(300)
+}
+
 // ChatRail and ChatRailOpen are a long chat read from its 14th message, which sits 16px under the tab row, where a jump to it lands (KERNEL-599). The scroll position is the transcript's own, and rows far
 // above measure a frame after they show, so aim again until the message stays put.
 async function readFromMessage(page: Page, text: string) {
@@ -314,6 +322,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
   WorkspaceScrolledUp: scrollUp,
+  SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   ChatRailOpen: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await openRail(page, 'Reword that in plain words') },
   ChatRailLead: (page) => openRail(page, 'Kai, opened PR #162')

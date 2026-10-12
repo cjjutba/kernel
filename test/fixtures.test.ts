@@ -7,6 +7,7 @@ import { fixtureHandlers } from '../src/main/fixtures'
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
+  'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
   'SettingsSkillsAccounts', // Skills and MCP with each server's state on every account (KERNEL-627)
   'SettingsSkillsSigningIn', // Sign in to all on Personal, Gmail, the second of three, with Cancel (KERNEL-627)
   'SettingsSkillsSignInFailed', // Sign in to all ended with Google Drive not signed in (KERNEL-627)
