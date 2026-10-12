@@ -135,6 +135,63 @@ export interface McpSignInStep {
   error?: string
 }
 
+/**
+ * One MCP server's state on one account (`mcp.accounts`, KERNEL-626). `not-installed` is a server another account of the
+ * same provider has and this one doesn't.
+ */
+export type McpAccountState = 'ready' | 'needs-sign-in' | 'failed' | 'not-installed'
+
+/** One MCP server on one account, as `mcp.accounts` last checked it (KERNEL-626). */
+export interface McpAccountServer {
+  name: string
+  /**
+   * A claude.ai connector, set up per claude.ai account, which Kernel never copies. Otherwise a server the user added, which
+   * Kernel shares with every account of the provider, its sign-in included.
+   */
+  connector: boolean
+  state: McpAccountState
+  /** Why it failed, as the provider said. Only on `failed`. */
+  error?: string
+}
+
+/** One signed-in subscription account's MCP servers (`mcp.accounts`, KERNEL-626). */
+export interface McpAccount {
+  provider: Provider
+  accountId: string
+  label: string
+  /** When Kernel last checked it. Undefined while the first check runs or after it failed. */
+  checkedAt?: number
+  /** Why the last check failed. The account then has no servers. */
+  error?: string
+  servers: McpAccountServer[]
+}
+
+/**
+ * Where Sign in to all on one Claude account is (`accounts.mcpSignInAll`, KERNEL-626). `servers` is the queue in order and
+ * `current` the one signing in now, whose own steps come as `account.mcpSignIn` pushes. `finished` is set once the queue
+ * ends, with `canceled` when Cancel stopped it.
+ */
+export interface McpSignInAll {
+  accountId: string
+  servers: string[]
+  current?: string
+  done: string[]
+  failed: { server: string; error: string }[]
+  finished?: boolean
+  canceled?: boolean
+}
+
+/**
+ * MCP servers that need a sign-in on an account just added, after its first check (KERNEL-626). Pushed once per added
+ * account, only when some do. `title` is "3 MCP servers need a sign-in on Personal".
+ */
+export interface McpNeeded {
+  provider: Provider
+  accountId: string
+  servers: string[]
+  title: string
+}
+
 /** Where a provider's executable comes from: Kernel's bundled copy, the one on the PATH, a path from Settings, or none found. */
 export type BinarySource = 'bundled' | 'system' | 'custom' | 'missing'
 

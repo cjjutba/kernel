@@ -6,6 +6,7 @@ import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type Ac
 import { limitProvider } from '@shared/providers'
 import { switchChoices } from '@shared/usage'
 import { joinLabels } from '@shared/waits'
+import { NotImplemented } from '@shared/ipc'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
@@ -1278,6 +1279,7 @@ export class Providers extends Feature {
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
       'accounts.checkMcp': async ({ accountId }) => this.checkMcp(accountId),
       'accounts.mcpSignIn': async ({ accountId, server }) => this.mcpSignIn(accountId, server),
+      'accounts.mcpSignInAll': async () => { throw new NotImplemented('accounts.mcpSignInAll', 'KERNEL-626') },
       'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }

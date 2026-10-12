@@ -1,4 +1,5 @@
 import type { AgentDef, AgentReach, AgentWarning, McpServer, Provider } from '@shared/types'
+import { NotImplemented } from '@shared/ipc'
 import type { Handlers } from '../kernel'
 import { bus } from '../bus'
 import { mcpWarnings, serverReach } from '../services/agentTools'
@@ -121,7 +122,8 @@ export class Mcp extends Feature {
           if (probe) await checked
         }
         return this.servers(roomId, provider)
-      }
+      },
+      'mcp.accounts': async () => { throw new NotImplemented('mcp.accounts', 'KERNEL-626') }
     } satisfies Partial<Handlers>
   }
 }
