@@ -83,3 +83,29 @@
 .lp-review[data-tone='bad'] { color: var(--del); }
 .lp-review[data-tone='faint'] { color: var(--faint); }
 .lp-stat { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* A branch that merges on the Mac: a plain `→ main` pill where the PR link was, in the band's tone, with nothing to open (KERNEL-478). */
+.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: 6px; background: var(--b-soft); color: var(--b-fg); font-size: 11.5px; }
+/* The merge line and its note under the band, above the tabs: how far the branch is from its base, then what is in the way. */
+.lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.lm-line:empty { display: none; }
+.lm-line .n { color: var(--ink-2); }
+.lm-line .hot { color: var(--ink); font-weight: 500; }
+.lm-line .sep { color: var(--faint); }
+.lm-line .meth { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+.lm-note { margin: 10px 12px 0; padding: 10px 12px 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 8px; }
+.lm-note h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+.lm-note p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.lm-note code { font-size: 11.5px; color: var(--ink-2); }
+.lm-files { list-style: none; margin: 8px 0 0; padding: 4px 0 0; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--line); }
+.lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: 11.5px var(--mono); color: var(--ink-2); }
+.lm-file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lm-file .d { color: var(--faint); }
+.lm-file .why { font-family: var(--font); font-size: 11.5px; color: var(--muted); }
+.lm-letter { color: var(--muted); }
+.lm-letter[data-tone='add'] { color: var(--add); }
+.lm-letter[data-tone='del'] { color: var(--del); }
+/* The transcript's last row for a local merge: the branch glyph takes the band's tone, as the PR rows do (KERNEL-478). */
+.note.inline[data-local='ready'] > svg, .note.inline[data-local='merging'] > svg { color: var(--pr-ready-text); }
+.note.inline[data-local='behind'] > svg { color: var(--ink-3); }
+.note.inline[data-local='conflict'] > svg, .note.inline[data-local='dirty'] > svg { color: var(--pr-fail-text); }

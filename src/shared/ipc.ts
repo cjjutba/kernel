@@ -221,6 +221,8 @@ export interface KernelApi {
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
+  /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
+  'pr.update': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
   'pr.reopen': { req: { workspaceId: string }; res: Workspace }
   /** After a merge or close: keep going on a fresh branch from the base, same chat. */

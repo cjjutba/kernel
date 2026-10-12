@@ -25,12 +25,12 @@ async function kernel() {
   return k
 }
 
-/** A room with one workspace whose PR #42 reads ready, on the host given. */
+/** A room with one workspace whose PR #42 reads ready, on the host given. A local one has no number. */
 async function roomWithPr(k: Kernel, host?: Room['host']) {
   const room = await k.addRoom(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI }))
   if (host) k.store.saveRoom({ ...room, host })
   const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
-  k.store.saveWorkspace({ ...ws, prState: 'ready', prNumber: 42 })
+  k.store.saveWorkspace({ ...ws, prState: 'ready', ...(host === 'local' ? {} : { prNumber: 42 }) })
   return k.store.workspace(ws.id)!
 }
 
@@ -51,16 +51,20 @@ function stub(k: Kernel) {
 describe('hostFor', () => {
   it('sends a room with no host, or GitHub, to k.github, read when asked so a swapped stub is the one used', async () => {
     const k = await kernel()
-    expect(k.codeHost.hostFor({})).toBe(gh)
-    expect(k.codeHost.hostFor({ host: 'github' })).toBe(gh)
+    expect(k.codeHost.hostFor({ path: '/repo' })).toBe(gh)
+    expect(k.codeHost.hostFor({ host: 'github', path: '/repo' })).toBe(gh)
     const { host } = stub(k)
-    expect(k.codeHost.hostFor({})).toBe(host)
-    expect(k.codeHost.hostFor({ host: 'github' })).toBe(host)
+    expect(k.codeHost.hostFor({ path: '/repo' })).toBe(host)
+    expect(k.codeHost.hostFor({ host: 'github', path: '/repo' })).toBe(host)
   })
 
-  it('refuses a room that merges locally, which has no host yet', async () => {
+  it('gives a room that merges locally its own host, never GitHub (KERNEL-467)', async () => {
     const k = await kernel()
-    expect(() => k.codeHost.hostFor({ host: 'local' })).toThrow("This room merges locally, which Kernel can't do yet.")
+    const { host } = stub(k)
+    const local = k.codeHost.hostFor({ host: 'local', path: '/repo' })
+    expect(local).not.toBe(host)
+    expect(local).not.toBe(gh)
+    await expect(local.ready('/repo', 'feat/x')).rejects.toThrow('This room merges on this Mac, so it has no pull request.')
   })
 })
 
@@ -71,7 +75,8 @@ describe('the PR feature through hostFor', () => {
     const github = await roomWithPr(k)
     const local = await roomWithPr(k, 'local')
 
-    await expect(k.prs.mergePr(local.id)).rejects.toThrow("This room merges locally, which Kernel can't do yet.")
+    // The local branch has no commits of its own, so git finds nothing to merge.
+    await expect(k.prs.mergePr(local.id)).rejects.toThrow('so there is nothing to merge')
     expect(calls).toEqual([])
 
     await k.prs.mergePr(github.id)
@@ -79,7 +84,7 @@ describe('the PR feature through hostFor', () => {
     expect(calls).not.toContain(`info ${local.id}`)
   })
 
-  it("reads the other rooms' PRs when one room's host can't be reached", async () => {
+  it('reads a local room with git and the GitHub room on GitHub in the same poll', async () => {
     const k = await kernel()
     const { calls } = stub(k)
     const local = await roomWithPr(k, 'local')
@@ -87,6 +92,7 @@ describe('the PR feature through hostFor', () => {
 
     await k.prs.pollPrs({ chores: false })
     expect(calls).toEqual([`info ${github.id}`])
-    expect(k.store.workspace(local.id)?.prState).toBe('ready')
+    // A branch with nothing its base lacks has no PR on the Mac.
+    expect(k.store.workspace(local.id)?.prState).toBe('none')
   })
 })
