@@ -230,7 +230,9 @@ export interface KernelApi {
   /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
-  'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
+  'scripts.stop': { req: { workspaceId: string; kind: 'run' | 'setup'; name?: string }; res: Ok }
+  /** Send anyway: a failed setup is skipped and the messages waiting for it go out (KERNEL-430). */
+  'scripts.skipSetup': { req: { workspaceId: string }; res: Ok }
   /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
   'scripts.replay': { req: { workspaceId: string }; res: Ok }
 
