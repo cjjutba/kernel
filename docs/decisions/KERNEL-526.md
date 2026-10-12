@@ -1,0 +1,3 @@
+**The workspace's right panel sits on the panel color, like the chat.** It used to sit one step darker, on `aside`, which read as a third surface between the sidebar and the chat. Now the chat and the right panel are one surface split by a hairline, as Linear's side panels are. The sticky header of the All files tree follows. `aside` keeps its value and stays the stage behind a shared preview, where the step down is the point. Both themes. KERNEL-526
+
+**Bold text in a reply is full ink at weight 600, and inline code is a bordered chip.** Bold used to render at the body's color and weight 700 from the browser, so labels like "What I did" barely stood apart, and code chips were a fill with no edge. Amends the Type rule that kept 600 for titles and names. KERNEL-526
