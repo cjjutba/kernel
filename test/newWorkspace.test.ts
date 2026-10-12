@@ -525,3 +525,73 @@ describe('New chat message (KERNEL-147)', () => {
     await k.stop()
   })
 })
+
+describe('the New workspace modal starts a chat on its own picks (KERNEL-544)', () => {
+  const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
+  const chat = { id: 'c1', workspaceId: 'w1', threadId: 't1', title: 'Chat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: true, createdAt: 1 }
+
+  /** The renderer with a fake main process: `lead.start` answers with a chat, or fails while `fail` is set. */
+  async function renderer() {
+    vi.resetModules()
+    vi.useFakeTimers()
+    const calls: { channel: string; req: unknown }[] = []
+    const state = { fail: false }
+    vi.doMock('../src/renderer/src/api', () => ({
+      cleanError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+      onPush: () => () => undefined,
+      call: async (channel: string, req: unknown) => {
+        calls.push({ channel, req })
+        if (channel === 'lead.start') { if (state.fail) throw new Error('Rowan is busy'); return chat }
+        if (channel === 'workspaces.list') return []
+        return null
+      }
+    }))
+    onTestFinished(() => { vi.doUnmock('../src/renderer/src/api'); vi.useRealTimers() })
+    const drafts = await import('../src/renderer/src/screens/workspace/composer/draftStore')
+    const { startChat } = await import('../src/renderer/src/screens/new-workspace/start')
+    const send = () => startChat({ roomId: 'r1', parts: words('fix the login'), model: 'claude-sonnet-5-5', effort: 'low', plan: true, baseRef: '' })
+    return { calls, state, drafts, send }
+  }
+
+  it("sends the box's picks, then clears the text and the picks so the next box starts from the Lead", async () => {
+    const { calls, drafts, send } = await renderer()
+    drafts.saveDraft(drafts.NEW_CHAT_DRAFT, words('fix the login'), '')
+    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(await send()).toBeUndefined()
+    expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ roomId: 'r1', model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(drafts.loadDraft(drafts.NEW_CHAT_DRAFT)).toBeUndefined()
+    expect(drafts.loadPicks(drafts.NEW_CHAT_DRAFT)).toBeUndefined()
+  })
+
+  it('keeps the text and the picks when the chat could not be sent', async () => {
+    const { drafts, send, state } = await renderer()
+    drafts.saveDraft(drafts.NEW_CHAT_DRAFT, words('fix the login'), '')
+    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    state.fail = true
+    expect(await send()).toBe('Rowan is busy')
+    expect(drafts.loadDraft(drafts.NEW_CHAT_DRAFT)).toEqual(words('fix the login'))
+    expect(drafts.loadPicks(drafts.NEW_CHAT_DRAFT)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+  })
+
+  it("leaves a room's own New chat box alone when the modal sends", async () => {
+    const { drafts, send } = await renderer()
+    const room = drafts.newChatDraftOf('r1')
+    drafts.saveDraft(room, words('in the room'), '')
+    drafts.savePicks(room, { plan: false })
+    await send()
+    expect([drafts.loadDraft(room), drafts.loadPicks(room)]).toEqual([words('in the room'), { plan: false }])
+  })
+
+  it('hands the warning\'s picks back to the box it reopens', async () => {
+    const { drafts } = await renderer()
+    const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
+    const { getState } = await import('../src/renderer/src/store')
+    const picks = { mode: 'worktree', model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true, baseRef: '', pickedRef: '', filled: '' } as const
+    backToNewChat({ roomId: 'r1', source: { kind: 'issue', id: 'KERNEL-1', title: 'x' }, parts: words('go'), picks })
+    expect(getState().ui.modal).toMatchObject({ name: 'newWorkspace', roomId: 'r1', picks })
+    // The box puts them in its draft as it opens, where they win over the Lead and stay until it sends.
+    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: picks.model, effort: picks.effort, plan: picks.plan })
+    const { boxPick } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+    expect(boxPick({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high', plan: false }, drafts.loadPicks(drafts.NEW_CHAT_DRAFT))).toEqual({ model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true })
+  })
+})

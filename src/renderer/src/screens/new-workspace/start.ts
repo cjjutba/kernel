@@ -3,7 +3,7 @@ import { call, cleanError } from '../../api'
 import { actions, loadWorkspace } from '../../store'
 import { openLeadChat } from '../../lead'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
-import { NEW_CHAT_DRAFT, saveDraft } from '../workspace/composer/draftStore'
+import { clearDraft, NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
 import { briefParts, leadMessage } from './brief'
 import { startAnywayLine } from './taken'
 
@@ -26,7 +26,7 @@ export async function startChat(c: ChatStart): Promise<string | undefined> {
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
   try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.baseRef ? { baseRef: c.baseRef } : {}) }) }
   catch (e) { return cleanError(e) }
-  saveDraft(NEW_CHAT_DRAFT, [], '')
+  clearDraft(NEW_CHAT_DRAFT)
   // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
   try {
     const ws = (await call('workspaces.list', { roomId: c.roomId })).find((w) => w.id === chat.workspaceId)

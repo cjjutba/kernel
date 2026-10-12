@@ -206,3 +206,147 @@ describe('pruning drafts', () => {
     expect(m.loadDraft('c3')).toEqual(words('half a thought'))
   })
 })
+
+describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
+  const KEY = 'new-chat'
+  const picks = { model: 'claude-sonnet-5-5', effort: 'low' as const, plan: true }
+
+  it('keeps picks without any text, and a box emptied by hand keeps them', async () => {
+    const { loadDraft, loadPicks, saveDraft, savePicks } = await launch()
+    savePicks(KEY, picks)
+    expect(loadPicks(KEY)).toEqual(picks)
+    expect(loadDraft(KEY)).toBeUndefined()
+    saveDraft(KEY, words('plan the week'), '')
+    saveDraft(KEY, [], '')
+    expect(loadDraft(KEY)).toBeUndefined()
+    expect(loadPicks(KEY)).toEqual(picks)
+  })
+
+  it('keeps picks and text apart: typing never touches the picks, and a pick never touches the text', async () => {
+    const { loadDraft, loadPicks, saveDraft, savePicks } = await launch()
+    saveDraft(KEY, words('hello'), '')
+    savePicks(KEY, { effort: 'medium' })
+    expect(loadDraft(KEY)).toEqual(words('hello'))
+    saveDraft(KEY, words('hello there'), '')
+    expect(loadPicks(KEY)).toEqual({ effort: 'medium' })
+    savePicks(KEY, { plan: false })
+    expect(loadPicks(KEY)).toEqual({ effort: 'medium', plan: false })
+    expect(loadDraft(KEY)).toEqual(words('hello there'))
+  })
+
+  it('writes a draft with picks and no parts, and brings both back after a relaunch', async () => {
+    const first = await launch()
+    first.savePicks(KEY, picks)
+    first.savePicks('new-chat:room-a', { model: 'gpt-6-astra', effort: 'max' })
+    vi.advanceTimersByTime(500)
+    expect(onDisk().drafts).toEqual({
+      [KEY]: { workspaceId: '', parts: [], picks },
+      'new-chat:room-a': { workspaceId: '', parts: [], picks: { model: 'gpt-6-astra', effort: 'max' } }
+    })
+    const second = await launch()
+    expect(second.loadPicks(KEY)).toEqual(picks)
+    expect(second.loadPicks('new-chat:room-a')).toEqual({ model: 'gpt-6-astra', effort: 'max' })
+    expect(second.loadDraft(KEY)).toBeUndefined()
+  })
+
+  it('writes the text and the picks of one box together', async () => {
+    const first = await launch()
+    first.saveDraft(KEY, words('fix the login'), '')
+    first.savePicks(KEY, { plan: true })
+    vi.advanceTimersByTime(500)
+    expect(onDisk().drafts[KEY]).toEqual({ workspaceId: '', parts: words('fix the login'), picks: { plan: true } })
+    const second = await launch()
+    expect([second.loadDraft(KEY), second.loadPicks(KEY)]).toEqual([words('fix the login'), { plan: true }])
+  })
+
+  it('writes a box whose only text is an image without the image, and keeps its picks', async () => {
+    const { savePicks, saveDraft } = await launch()
+    saveDraft(KEY, [image], '')
+    savePicks(KEY, { effort: 'high' })
+    vi.advanceTimersByTime(500)
+    expect(onDisk().drafts[KEY]).toEqual({ workspaceId: '', parts: [], picks: { effort: 'high' } })
+  })
+
+  it('clears the text and the picks together when a message is sent, in memory and on disk', async () => {
+    const m = await launch()
+    m.saveDraft(KEY, words('go'), '')
+    m.savePicks(KEY, picks)
+    m.saveDraft('new-chat:room-a', words('other'), '')
+    m.savePicks('new-chat:room-a', { plan: true })
+    vi.advanceTimersByTime(500)
+    m.clearDraft(KEY)
+    expect([m.loadDraft(KEY), m.loadPicks(KEY)]).toEqual([undefined, undefined])
+    expect([m.loadDraft('new-chat:room-a'), m.loadPicks('new-chat:room-a')]).toEqual([words('other'), { plan: true }])
+    vi.advanceTimersByTime(500)
+    expect(Object.keys(onDisk().drafts)).toEqual(['new-chat:room-a'])
+    m.clearDraft('new-chat:room-a')
+    vi.advanceTimersByTime(500)
+    expect(disk.has('kernel.drafts')).toBe(false)
+  })
+
+  it('loads a draft saved before picks existed, text only', async () => {
+    disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: { 'new-chat': { workspaceId: '', parts: words('old words') }, c1: { workspaceId: 'w1', parts: words('in a chat') } } }))
+    const m = await launch()
+    expect(m.loadDraft(KEY)).toEqual(words('old words'))
+    expect(m.loadPicks(KEY)).toBeUndefined()
+    expect(m.loadDraft('c1')).toEqual(words('in a chat'))
+    m.savePicks(KEY, { plan: true })
+    expect(m.loadDraft(KEY)).toEqual(words('old words'))
+  })
+
+  it('reads picks field by field and ignores what is not a model, an effort or a boolean', async () => {
+    disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: {
+      'new-chat': { workspaceId: '', parts: words('x'), picks: { model: 'gpt-6-astra', effort: 'toString', plan: 'yes' } },
+      'new-chat:a': { workspaceId: '', parts: [], picks: { model: 5, effort: 'bogus', plan: 1 } },
+      'new-chat:b': { workspaceId: '', parts: [], picks: 'high' },
+      'new-chat:c': { workspaceId: '', parts: [], picks: { model: '  ', effort: 'ultra', plan: false } }
+    } }))
+    const m = await launch()
+    expect(m.loadPicks(KEY)).toEqual({ model: 'gpt-6-astra' })
+    expect(m.loadDraft(KEY)).toEqual(words('x'))
+    expect([m.loadPicks('new-chat:a'), m.loadPicks('new-chat:b')]).toEqual([undefined, undefined])
+    expect(m.loadPicks('new-chat:c')).toEqual({ effort: 'ultra', plan: false })
+  })
+
+  it('tells a box when its picks change, and not when only the text does', async () => {
+    const m = await launch()
+    const seen = vi.fn()
+    const stop = m.onPicksChange(seen)
+    m.saveDraft(KEY, words('typing'), '')
+    expect(seen).not.toHaveBeenCalled()
+    m.savePicks(KEY, { effort: 'low' })
+    expect(seen).toHaveBeenCalledTimes(1)
+    const before = m.loadPicks(KEY)
+    m.saveDraft(KEY, words('typing more'), '')
+    expect(m.loadPicks(KEY)).toBe(before)
+    m.clearDraft(KEY)
+    expect(seen).toHaveBeenCalledTimes(2)
+    m.clearDraft(KEY)
+    expect(seen).toHaveBeenCalledTimes(2)
+    stop()
+    m.savePicks(KEY, { plan: true })
+    expect(seen).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps its picks through a prune, as it keeps its text', async () => {
+    const m = await launch()
+    m.savePicks(KEY, picks)
+    m.savePicks('new-chat:room-a', picks)
+    m.pruneDrafts({ workspaces: [], chats: {} }, () => true)
+    expect([m.loadPicks(KEY), m.loadPicks('new-chat:room-a')]).toEqual([picks, picks])
+  })
+
+  it('neither reads nor writes picks in fixture mode', async () => {
+    const real = await launch()
+    real.savePicks(KEY, picks)
+    vi.advanceTimersByTime(500)
+    const before = disk.get('kernel.drafts')
+    const fixture = await launch()
+    fixture.persistDrafts(false)
+    expect(fixture.loadPicks(KEY)).toBeUndefined()
+    fixture.savePicks(KEY, { effort: 'medium' })
+    vi.advanceTimersByTime(500)
+    expect(disk.get('kernel.drafts')).toBe(before)
+    expect(fixture.loadPicks(KEY)).toEqual({ effort: 'medium' })
+  })
+})

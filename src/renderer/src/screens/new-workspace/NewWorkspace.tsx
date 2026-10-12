@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from '../workspace/composer/providerModels'
-import type { ChatPart, Effort, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
@@ -10,8 +10,7 @@ import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
 import { ModelPicker } from '../workspace/composer/ModelPicker'
-import { effortFor } from '@shared/effort'
-import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
+import { effortLabel as labelOf, useLeadBox } from '../workspace/composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import { sendsOn, useSendWith } from '../workspace/composer/sendKey'
 import '../workspace/composer/composer.css'
@@ -52,13 +51,9 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   const [mode, setMode] = useState<WorkspaceMode>(picks?.mode ?? settings?.workspace.mode ?? 'worktree')
   const codexInUse = useCodexInUse()
   const codexModels = useProviderModels('codex')
-  const [model, setModel] = useState<string>(picks?.model ?? settings?.models.roles.lead.model ?? 'claude-opus-5-5')
   const lead = useStore((s) => leadOf(s.agents, room))
-  const memory = useEffortMemory()
-  const defaultEffort = useDefaultEffort(lead?.effort)
-  // The picker shows each model at its remembered effort, so the modal starts there too.
-  const [effort, setEffort] = useState<Effort>(() => picks?.effort ?? effortFor(model, memory, defaultEffort))
-  const [plan, setPlan] = useState(picks?.plan ?? settings?.models.leadPlanMode ?? false)
+  // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the draft (KERNEL-544). The warning's picks go back in the draft.
+  const { model, effort, plan, fallback: defaultEffort, pickModel, pickEffort, togglePlan: flipPlan } = useLeadBox(NEW_CHAT_DRAFT, lead, picks && { model: picks.model, effort: picks.effort, plan: picks.plan })
   const d = useDraft(undefined, NEW_CHAT_DRAFT)
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
@@ -111,7 +106,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   }
   const clearSource = () => { setSource(null); setBaseRef(''); setPickedRef(''); if (filled && d.text === filled) d.setText(''); setFilled('') }
 
-  const togglePlan = () => { setPlan((p) => !p); actions.ui.closeMenu() }
+  const togglePlan = () => { flipPlan(); actions.ui.closeMenu() }
 
   const create = () => {
     if (!room) { setError({ message: 'Pick a room first.' }); return }
@@ -198,7 +193,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
-            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
+            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { pickModel(m, x); actions.ui.closeMenu() }} onEffort={pickEffort} />}
           </span>
           <span className="grow">
             {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}
