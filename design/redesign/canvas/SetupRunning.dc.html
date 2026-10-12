@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup running, message queued</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+button{font:inherit}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #08090a; color: #f7f8f8; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif; font-size: 13px; display: flex; padding: 8px 8px 30px 0; position: relative">
+
+<nav style="width: 240px; flex: none; display: flex; flex-direction: column; padding: 4px 8px 0 8px; box-sizing: border-box; gap: 2px">
+<div style="height: 32px"></div>
+<div style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px">
+<span style="width: 20px; height: 20px; border-radius: 5px; background: #f7f8f8; color: #08090a; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center">CJ</span>
+<span style="font-weight: 500">CJ Jutba</span>
+</div>
+<div style="height: 10px"></div>
+<div style="padding: 6px 8px; color: #d0d6e0">Search</div><div style="padding: 6px 8px; color: #d0d6e0">Home</div><div style="padding: 6px 8px; color: #d0d6e0">Inbox</div><div style="padding: 6px 8px; color: #d0d6e0">Issues</div><div style="padding: 6px 8px; color: #d0d6e0">History</div>
+<div style="padding: 18px 8px 6px; color: #62666d; font-size: 12px">Your rooms</div>
+<div style="padding: 6px 8px; color: #d0d6e0">Kernel</div>
+<div style="padding: 6px 8px 6px 30px; color: #d0d6e0">Team</div><div style="padding: 6px 8px 6px 30px; color: #d0d6e0">Rowan</div><div style="padding: 6px 8px 6px 30px; color: #d0d6e0">Snippets UI/UX issue</div>
+<div style="padding: 6px 8px 6px 30px; color: #f7f8f8; background: #18191b; border-radius: 6px; display: flex; align-items: center; gap: 8px">
+<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" class="spin"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#3a3c42" stroke-width="1.5"></circle><path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="#d0d6e0" stroke-width="1.5" stroke-linecap="round"></path></svg><span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">New chat</span>
+</div>
+</nav>
+
+<main style="flex: 1; display: flex; background: #0f1011; border: 1px solid #1a1b1e; border-radius: 10px; overflow: hidden">
+<section style="flex: 1; display: flex; flex-direction: column; min-width: 0">
+<header style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<span style="color: #b7bcc4">Kernel</span>
+<span style="color: #62666d">›</span>
+<span style="font-weight: 500">New chat</span>
+<span style="color: #62666d; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px">rowan/in-setup-script-tab-in</span>
+<span style="flex: 1"></span>
+
+</header>
+<div style="height: 38px; display: flex; align-items: stretch; gap: 4px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<div style="display: flex; align-items: center; padding: 0 10px; border-bottom: 2px solid #f7f8f8; font-weight: 500">New chat</div>
+<div style="display: flex; align-items: center; padding: 0 8px; color: #8a8f98">+</div>
+<div style="flex: 1"></div>
+<div style="display: flex; align-items: center; color: #8a8f98">Checkpoints</div>
+</div>
+<div style="flex: 1; display: flex; justify-content: center; padding: 24px 32px 20px">
+<div style="width: 100%; display: flex; flex-direction: column; justify-content: flex-end; gap: 20px">
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px">
+<div style="max-width: 480px; background: #121314; border-radius: 10px; padding: 12px 14px; color: #8a8f98; line-height: 1.7; display: flex; flex-direction: column; gap: 8px"><div><button type="button" aria-label="Open image.png" style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 7px; vertical-align: 1px; border-radius: 4px; border: 1px solid #2e3036; background: #1c1d21; font: 11.5px ui-monospace, 'SF Mono', Menlo, monospace; color: #d0d6e0; margin-right: 4px"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1.5" y="2" width="9" height="8" rx="1.5" fill="none" stroke="#4cb782" stroke-width="1.2"></rect><circle cx="4.3" cy="4.8" r="0.9" fill="#4cb782"></circle><path d="M2 9l2.8-2.6 2 1.8 1.4-1.2L10 8.6" fill="none" stroke="#4cb782" stroke-width="1.2" stroke-linejoin="round"></path></svg>image.png</button>In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?</div></div>
+<div style="display: flex; gap: 14px; align-items: center; font-size: 12px; color: #62666d">
+<span>Queued, sends after setup</span>
+<button style="background: none; border: 0; padding: 0; color: #b7bcc4; font-size: 12px; cursor: pointer">Edit</button>
+<button style="background: none; border: 0; padding: 0; color: #b7bcc4; font-size: 12px; cursor: pointer">Cancel</button>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; color: #8a8f98">
+<svg width="13" height="13" viewBox="0 0 12 12" aria-hidden="true" class="spin"><circle cx="6" cy="6" r="4.5" fill="none" stroke="#3a3c42" stroke-width="1.5"></circle><path d="M6 1.5a4.5 4.5 0 0 1 4.5 4.5" fill="none" stroke="#d0d6e0" stroke-width="1.5" stroke-linecap="round"></path></svg>
+<span style="color: #d0d6e0">Running setup</span>
+<span style="color: #62666d; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px">pnpm install</span>
+<span style="flex: 1"></span>
+<span style="font-variant-numeric: tabular-nums">0:42</span>
+
+</div>
+<div style="background: #0b0c0d; border: 1px solid #23252a; border-radius: 12px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 18px; position: relative">
+<label style="color: #62666d" for="c">Add a follow up</label>
+<input id="c" type="text" style="position: absolute; opacity: 0; width: 1px; height: 1px">
+<div style="display: flex; align-items: center; gap: 12px">
+<span style="border: 1px solid #2e3036; border-radius: 999px; padding: 3px 10px; color: #d0d6e0">Rowan <span style="color: #62666d">Lead</span></span>
+<span style="color: #d0d6e0; display: inline-flex; align-items: center; gap: 4px">Opus 5.5 <span style="color: #62666d">High</span><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 4L5 6.5 7.5 4" fill="none" stroke="#8a8f98" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+<span style="flex: 1"></span>
+<button aria-label="Context used" style="background: none; border: 0; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="#2a2b30" stroke-width="1.6"></circle><path d="M8 2a6 6 0 0 1 5.2 3" fill="none" stroke="#8a8f98" stroke-width="1.6" stroke-linecap="round"></path></svg></button>
+<button aria-label="Attach" style="background: none; border: 0; color: #8a8f98; font-size: 16px; width: 28px; height: 28px">+</button>
+<button aria-label="Send" style="background: #232428; border: 0; color: #d0d6e0; border-radius: 999px; width: 28px; height: 28px">↑</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<aside style="width: 360px; flex: none; border-left: 1px solid #1a1b1e; display: flex; flex-direction: column; background: #0f1011">
+<div style="height: 40px; display: flex; align-items: center; gap: 4px; padding: 0 12px">
+<span style="padding: 4px 8px; color: #8a8f98">All files</span>
+<span style="padding: 4px 8px; color: #8a8f98">Changes <span style="color: #62666d">0</span></span>
+<span style="padding: 4px 8px; color: #8a8f98">Checks</span>
+<span style="flex: 1"></span>
+<button aria-label="Expand files" style="background: none; border: 0; width: 24px; height: 24px; cursor: pointer"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 6.5L5 4l2.5 2.5" fill="none" stroke="#8a8f98" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+</div>
+<div style="height: 40px; display: flex; align-items: stretch; gap: 4px; padding: 0 12px; border-top: 1px solid #1a1b1e; border-bottom: 1px solid #1a1b1e">
+<div style="display: flex; align-items: center; padding: 0 8px; border-bottom: 2px solid #f7f8f8">Setup</div><div style="display: flex; align-items: center; padding: 0 8px; color: #8a8f98">Run</div><div style="display: flex; align-items: center; padding: 0 8px; color: #8a8f98">Terminal</div>
+<div style="flex: 1"></div>
+<div style="display: flex; align-items: center"><button style="background: none; border: 1px solid #2e3036; border-radius: 6px; color: #d0d6e0; padding: 3px 10px; cursor: pointer">Stop</button></div>
+</div>
+<div style="flex: 1; padding: 12px 14px; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11.5px; line-height: 1.75; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end">
+<div style="color: #62666d">$ ./scripts/setup.sh</div>
+<div style="color: #8a8f98">Copying .env from the main checkout</div>
+<div style="color: #8a8f98">Linking node_modules cache</div>
+<div style="color: #62666d">$ pnpm install</div>
+<div style="color: #8a8f98">Lockfile is up to date, resolution step is skipped</div>
+<div style="color: #8a8f98">Packages: +1204</div>
+<div style="color: #8a8f98">++++++++++++++++++++++++++++++++</div>
+<div style="color: #d0d6e0">Progress: resolved 1204, reused 1198, downloaded 6, added 940</div>
+</div>
+</aside>
+</main>
+
+<div style="position: absolute; right: 14px; bottom: 6px; color: #8a8f98; font-size: 12px">Ask Rowan</div>
+<div style="position: absolute; left: 12px; bottom: 6px; border: 1px solid #2e3036; border-radius: 6px; padding: 2px 8px; color: #b7bcc4; font-size: 12px">Claude Max</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
