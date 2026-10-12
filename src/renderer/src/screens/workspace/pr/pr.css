@@ -34,7 +34,6 @@
 .pr-tone .btn.pr-soft:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
 .pr-tone .btn.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
 .pr-tone .btn.pr-solid:hover { background: color-mix(in srgb, var(--b-solid) 88%, var(--b-on)); }
-.btn.continue { border-style: dashed; }
 /* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
 .pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
 .pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
@@ -109,3 +108,24 @@
 .note.inline[data-local='ready'] > svg, .note.inline[data-local='merging'] > svg { color: var(--pr-ready-text); }
 .note.inline[data-local='behind'] > svg { color: var(--ink-3); }
 .note.inline[data-local='conflict'] > svg, .note.inline[data-local='dirty'] > svg { color: var(--pr-fail-text); }
+
+/* The right panel's head is one block in the band's tone (KERNEL-528): the state and the link on a 44px row in line with the chat
+   header, then the actions at full width on a row that ends where the chat's tab row does, so the block's bottom line meets the line
+   under the chat tabs. No line splits the two rows. */
+.ws-aside-head:has(.pr-r1) { height: auto; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+.pr-r1 { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; }
+.pr-r1 .pr-state { font-size: 13px; }
+.pr-r2 { height: 39px; display: flex; align-items: flex-start; gap: 6px; padding: 0 12px; }
+.pr-r2 > .btn, .pr-r2 > .pr-split { flex: 1; min-width: 0; }
+.pr-r2 .btn { justify-content: center; }
+.pr-r2 > .pr-split > .btn { flex: 1; }
+/* The row is wide enough for Continue's word at any panel width. */
+@container (max-width: 336px) { .pr-r2 .pr-btn-label { display: inline; } }
+/* Create PR's menu arrow is a small square of its own beside it, soft like the button, not the far end of a bar. */
+.pr-tone .pr-split { gap: 6px; }
+.pr-cap .pr-split { gap: 4px; }
+.pr-tone .btn.split-main { border-radius: 7px; }
+.pr-tone .split-caret { width: 28px; height: 26px; border: 1px solid var(--b-edge); border-radius: 7px; background: var(--b-soft); color: var(--b-fg); }
+.pr-tone .split-caret:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
+/* The capsule's state word sits on the buttons' centre line. */
+.pr-cap .pr-state { line-height: 16px; }
