@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import type { ModeAvailability, PermissionMode, Provider } from '@shared/types'
+import { PERMISSION_MODES, type ModeAvailability, type PermissionMode, type Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go, launchRoute, useStore } from '../../store'
+import { rememberBypassConfirmed } from '../../bypassConfirm'
+import { MODE_INFO, saveAppMode } from '../../permissionModes'
+import { go, launchRoute, useStore } from '../../store'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { FirstRoom } from './FirstRoom'
 import './onboarding.css'
@@ -16,17 +18,14 @@ interface ModeRow {
   caution?: string
 }
 
-/** The four modes in the order Settings, Permissions lists them. The copy is SetupPermissions.png's. */
-const MODES: ModeRow[] = [
-  { mode: 'default', title: 'Manual', desc: 'Asks before every edit and command.' },
-  { mode: 'acceptEdits', title: 'Accept edits', desc: 'Edits files without asking. Commands still ask unless a rule allows them.' },
-  { mode: 'auto', title: 'Auto', desc: 'A classifier approves routine work and asks you about anything else. Commands on your Always ask list still come to you.' },
-  {
-    mode: 'bypassPermissions', title: 'Bypass permissions', desc: 'Skips every prompt, including your Always ask list.',
-    note: "It still stops for Never allow, pushes to protected branches, network off, an agent's tools line, questions and plan approval.",
-    caution: 'Use it for work you would let run unattended. Only in worktrees stays on, so it never applies to your current branch.'
-  }
-]
+/** What the step adds under Bypass permissions, the warning SetupPermissions.png draws. The rest of each row is the copy Settings, Permissions uses (`MODE_INFO`). */
+const BYPASS_CAUTION = 'Use it for work you would let run unattended. Only in worktrees stays on, so it never applies to your current branch.'
+
+/** The four modes in the order Settings, Permissions lists them. */
+const MODES: ModeRow[] = PERMISSION_MODES.map((mode) => ({
+  mode, title: MODE_INFO[mode].label, desc: MODE_INFO[mode].desc, note: MODE_INFO[mode].note,
+  caution: mode === 'bypassPermissions' ? BYPASS_CAUTION : undefined
+}))
 
 const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex' }
 
@@ -87,12 +86,12 @@ export function Permissions() {
 
   const next = () => run('save', async () => {
     if (!pick) return
-    setError(null)
-    try {
-      actions.settings.set(await call('settings.set', { patch: { permissions: { mode: pick } } }))
-      // Reached with a room already open, which only a launch route or a fixture does: carry on to where the app opens.
-      if (rooms.length) go(launchRoute(), { history: 'replace' }); else setDone(true)
-    } catch (e) { setError(cleanError(e)) }
+    // `saveAppMode` says why on a toast when it can't save, and the step stays where it is.
+    if (!(await saveAppMode(pick))) return
+    // The step shows Bypass permissions with its warning, so choosing it here counts as answering ConfirmBypass (KERNEL-435).
+    if (pick === 'bypassPermissions') rememberBypassConfirmed()
+    // Reached with a room already open, which only a launch route or a fixture does: carry on to where the app opens.
+    if (rooms.length) go(launchRoute(), { history: 'replace' }); else setDone(true)
   })
 
   return (
