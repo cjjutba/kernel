@@ -121,6 +121,9 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'bypassPermiss
 
 export const PERMISSION_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions']
 
+/** The mode a chat's steps run in: one of the app's four, or `plan` while the chat plans (KERNEL-447). */
+export type RunMode = PermissionMode | 'plan'
+
 /**
  * Whether a provider can run Auto and Bypass permissions now (KERNEL-432). Auto on Claude depends on the account and the
  * model, and admin policy can turn either off. `reason` says why one can't, for the line under the mode picker.

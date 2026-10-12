@@ -29,6 +29,8 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 
 `services/sessions.ts` keeps what every chat shares, whatever it runs on: queues, pauses and holds, usage limits, the chats a limit or a quit cut off, carry-on, the idle stop, pids and hand-offs. Each chat's process is a `Runner` (`services/providers/types.ts`): `ClaudeRunner` (`providers/claude.ts`) or `CodexRunner` (`providers/codex/runner.ts`), picked by `Chat.provider`. A runner calls back through its `RunnerHost` for rows, the turn's start and end, limits, approvals and plans. Plan approval is one `requestPlan`, which Claude's ExitPlanMode and a Codex plan-mode turn both call (KERNEL-406).
 
+`Sessions.runMode` answers `chats.runMode` with the mode a chat runs in, the mode picked for it and why they differ (`chatMode` in `services/permissions.ts`). `chat.runMode` pushes each change, for chats with no process too (KERNEL-572).
+
 `ClaudeRunner` runs a chat as a Claude Agent SDK `query()` in streaming input mode, with:
 - `cwd` set to the workspace path, `settingSources: ['user','project','local']` so CLAUDE.md, agents and skills load
 - the agent from the room's resolved team (`features/team.ts`, `services/teamResolve.ts`): the repo's `.claude/agents`, `[team]` in `.kernel/settings.toml`, and Kernel's own Rowan and Theo where the repo has no Lead or reviewer (KERNEL-397), plus the user's `~/.claude/agents` and Claude Code's plugin agents (`services/pluginAgents.ts`, KERNEL-463), with the user's own edits and retires on this Mac laid over them (`features/agentChanges.ts`, KERNEL-466)

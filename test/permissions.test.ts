@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Decision, PermissionMode } from '@shared/types'
 import { DEFAULT_SETTINGS, type AppSettings } from '../src/main/services/settings'
-import { ALWAYS_ASK, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
+import { ALWAYS_ASK, chatMode, decide, effectiveMode, guardVerdict, hookVerdict, matchesToolRule, NETWORK_OFF, neverAllowed, pushOwnBranch, rulesOf, saveAlwaysAllow, stricter, toolRule, type ChatAvailability, type Rules, type RunMode, type Step } from '../src/main/services/permissions'
 
 function rules(o: { mode?: RunMode; network?: boolean; roomAllow?: string[]; roomTools?: string[]; branches?: string[] } = {}): Rules & { reads: number; toolReads: number } {
   const permissions = { mode: 'acceptEdits' as const, bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: o.branches ?? ['main'], approvalTimeoutSec: 300 }
@@ -120,6 +120,48 @@ describe('effectiveMode (KERNEL-447)', () => {
     expect(stricter<RunMode>('bypassPermissions', 'acceptEdits')).toBe('acceptEdits')
     expect(stricter<RunMode>('auto', 'acceptEdits')).toBe('acceptEdits')
     expect(stricter<RunMode>('auto', 'bypassPermissions')).toBe('auto')
+  })
+})
+
+describe('chatMode (KERNEL-572)', () => {
+  const settings = (mode: PermissionMode, bypassOnlyInWorktrees?: boolean) => ({ permissions: { mode, ...(bypassOnlyInWorktrees === undefined ? {} : { bypassOnlyInWorktrees }) } }) as unknown as AppSettings
+  const all: ChatAvailability = { auto: true, bypass: true }
+  const worktree = { mode: 'worktree' as const }
+  const current = { mode: 'current' as const }
+  const chat = (o: { plan?: boolean; mode?: PermissionMode } = {}) => ({ plan: o.plan ?? false, mode: o.mode })
+
+  it('says where the mode was picked: the chat, else the room, else the app', () => {
+    expect(chatMode(chat({ mode: 'acceptEdits' }), worktree, { permissionMode: 'auto' }, settings('default'), all)).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' })
+    expect(chatMode(chat(), worktree, { permissionMode: 'auto' }, settings('default'), all)).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'room' })
+    expect(chatMode(chat(), worktree, undefined, settings('default'), all)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
+    // A mode Kernel doesn't know is no pick, and an unknown app mode is Manual.
+    expect(chatMode({ plan: false, mode: 'ask' as never }, worktree, { permissionMode: 'ask' as never }, settings('ask' as never), all)).toEqual({ mode: 'default', picked: 'default', pickedIn: 'app' })
+  })
+
+  it('says why the chat runs in another mode than the one picked', () => {
+    expect(chatMode(chat({ plan: true, mode: 'auto' }), worktree, undefined, settings('default'), all)).toEqual({ mode: 'plan', picked: 'auto', pickedIn: 'chat', why: 'plan' })
+    expect(chatMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), all, { permissionMode: 'acceptEdits' })).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'agentFile' })
+    expect(chatMode(chat(), worktree, undefined, settings('auto'), { auto: false, bypass: true })).toEqual({ mode: 'acceptEdits', picked: 'auto', pickedIn: 'app', why: 'noAuto' })
+    expect(chatMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), { auto: true, bypass: false })).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'noBypass' })
+    expect(chatMode(chat(), current, { permissionMode: 'bypassPermissions' }, settings('default', true), all)).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'worktreesOnly' })
+  })
+
+  it('names the first step that moved the chat off its pick', () => {
+    // The agent file turns Bypass permissions into Auto, which this chat can't run.
+    expect(chatMode(chat({ mode: 'bypassPermissions' }), worktree, undefined, settings('default'), { auto: false, bypass: true }, { permissionMode: 'auto' })).toMatchObject({ mode: 'acceptEdits', why: 'agentFile' })
+    // Only in worktrees before policy, which Kernel only reads for a workspace that fits Bypass permissions.
+    expect(chatMode(chat({ mode: 'bypassPermissions' }), current, undefined, settings('default', true), { auto: true, bypass: false })).toMatchObject({ mode: 'acceptEdits', why: 'worktreesOnly' })
+  })
+
+  it('gives a reason exactly when the mode differs from the pick, and runs as effectiveMode does', () => {
+    const modes: PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions']
+    const avails: ChatAvailability[] = [all, { auto: false, bypass: true }, { auto: true, bypass: false }]
+    for (const mode of modes) for (const file of [undefined, ...modes]) for (const avail of avails) for (const ws of [worktree, current]) for (const plan of [false, true]) {
+      const args = [chat({ plan, mode }), ws, undefined, settings('default'), avail, file ? { permissionMode: file } : undefined] as const
+      const m = chatMode(...args)
+      expect(m.mode).toBe(effectiveMode(...args))
+      expect(!!m.why).toBe(m.mode !== m.picked)
+    }
   })
 })
 

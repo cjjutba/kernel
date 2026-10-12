@@ -1320,6 +1320,22 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     expect(t.call.modes).toEqual([])
   })
 
+  it('tells the renderer the chat runs in its last mode until the turn ends, then in Bypass permissions (KERNEL-572)', async () => {
+    const t = await setup('acceptEdits')
+    const pushed: unknown[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.runMode') pushed.push(e.mode) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(t.sessions.runMode('chat')).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'turnRunning' })
+    expect(pushed).toEqual([{ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'turnRunning' }])
+    t.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1 })
+    await flush()
+    expect(pushed.at(-1)).toEqual({ mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'chat' })
+  })
+
   it('in Bypass permissions, denies Never allow, a push that might reach a protected branch and network use, and has no opinion on Always ask', async () => {
     const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'] } })
     expect(await t.runGuard('t1', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))

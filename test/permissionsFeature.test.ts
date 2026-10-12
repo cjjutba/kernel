@@ -3,7 +3,9 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelInfo } from '@anthropic-ai/claude-agent-sdk'
-import type { Chat, Room, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatRunMode, Room, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { CODEX_AUTO, RETRY_MS } from '../src/main/features/permissions'
 import { claudePolicy, policyOf, supportsAuto, type ClaudePolicy } from '../src/main/services/claudeSettings'
@@ -134,6 +136,83 @@ describe('what a chat can run (KERNEL-447)', () => {
     expect(moves).not.toHaveBeenCalled()
     await k.handlers()['rooms.update']({ roomId: room.id, patch: { permissionMode: 'bypassPermissions' } })
     expect(moves).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("the mode a chat runs in, for the renderer (KERNEL-572)", () => {
+  /** A chat with no process, in a current-branch workspace unless `worktree`, and every `chat.runMode` push Kernel sends for it. */
+  async function idleChat(o: Parameters<typeof kernel>[0] & { worktree?: boolean } = {}) {
+    const t = await kernel(o)
+    t.k.store.saveWorkspace({ id: 'ws', roomId: t.room.id, name: 'invoices', branch: 'main', baseRef: 'main', path: '/tmp/invoices', mode: o.worktree ? 'worktree' : 'current', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoices', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const pushed: ChatRunMode[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.runMode' && e.chatId === 'chat') pushed.push(e.mode) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    const h = t.k.handlers()
+    return { ...t, h, pushed, runMode: () => h['chats.runMode']({ chatId: 'chat' }) }
+  }
+
+  it('updates a chat that never picked a mode when Settings, Permissions changes, then follows the room and the chat', async () => {
+    const { h, room, pushed, runMode } = await idleChat()
+    await h['settings.set']({ patch: { permissions: { mode: 'acceptEdits' } } })
+    expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'app' })
+    pushed.length = 0
+    await h['settings.set']({ patch: { permissions: { mode: 'default' } } })
+    expect(pushed).toEqual([{ mode: 'default', picked: 'default', pickedIn: 'app' }])
+
+    await h['rooms.update']({ roomId: room.id, patch: { permissionMode: 'bypassPermissions' } })
+    // Kernel reads the room's policy once Bypass permissions fits the workspace, and the chat runs in it when the read lands.
+    await h['settings.set']({ patch: { permissions: { bypassOnlyInWorktrees: false } } })
+    await flush()
+    await h['chats.configure']({ chatId: 'chat', mode: 'default' })
+    expect(pushed.slice(1)).toEqual([
+      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'worktreesOnly' },
+      { mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'room', why: 'noBypass' },
+      { mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'room' },
+      { mode: 'default', picked: 'default', pickedIn: 'chat' }
+    ])
+    expect(await runMode()).toEqual(pushed.at(-1))
+  })
+
+  it('sends nothing when what the renderer has still holds', async () => {
+    const { h, room, pushed, runMode } = await idleChat()
+    await runMode()
+    await h['rooms.update']({ roomId: room.id, patch: { name: 'Invoices' } })
+    await h['settings.set']({ patch: { permissions: { approvalTimeoutSec: 120 } } })
+    await h['chats.configure']({ chatId: 'chat', effort: 'high' })
+    expect(pushed).toEqual([])
+  })
+
+  it('moves a chat on Auto once Kernel learns its model runs it', async () => {
+    const { h, pushed, runMode } = await idleChat({ models: async () => [model('sonnet', { resolvedModel: 'claude-sonnet-5-5', supportsAutoMode: true })] })
+    await h['settings.set']({ patch: { permissions: { mode: 'auto' } } })
+    expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'auto', pickedIn: 'app', why: 'noAuto' })
+    await flush()
+    expect(pushed).toEqual([{ mode: 'auto', picked: 'auto', pickedIn: 'app' }])
+  })
+
+  it("says when Claude Code's settings turn Bypass permissions off", async () => {
+    const { h, runMode } = await idleChat({ worktree: true, policy: async () => ({ bypass: { admin: true } }) })
+    await h['chats.configure']({ chatId: 'chat', mode: 'bypassPermissions' })
+    await flush()
+    expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'bypassPermissions', pickedIn: 'chat', why: 'noBypass' })
+  })
+
+  it("says when the agent file's mode is stricter, once the agent changes", async () => {
+    const { k, h, pushed, runMode } = await idleChat()
+    await h['chats.configure']({ chatId: 'chat', mode: 'acceptEdits' })
+    expect(await runMode()).toEqual({ mode: 'acceptEdits', picked: 'acceptEdits', pickedIn: 'chat' })
+    vi.spyOn(k.team, 'agentOf').mockReturnValue({ id: 'noor', permissionMode: 'default' } as AgentDef)
+    k.sessions.restartIdle(['ws'])
+    expect(pushed.at(-1)).toEqual({ mode: 'default', picked: 'acceptEdits', pickedIn: 'chat', why: 'agentFile' })
+  })
+
+  it('tells a new plan from the mode picked', async () => {
+    const { h, runMode } = await idleChat()
+    await h['settings.set']({ patch: { permissions: { mode: 'acceptEdits' } } })
+    await h['chats.configure']({ chatId: 'chat', plan: true })
+    expect(await runMode()).toEqual({ mode: 'plan', picked: 'acceptEdits', pickedIn: 'app', why: 'plan' })
   })
 })
 
