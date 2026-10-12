@@ -3,7 +3,7 @@ import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { exec, git, gitSlow } from './exec'
-import type { ChangedFile } from '@shared/types'
+import type { BranchCommit, ChangedFile, CompareTarget } from '@shared/types'
 
 /** "Export invoices as PDF" -> "export-invoices-as-pdf" (max 48 chars, no trailing dash). */
 export function slugify(text: string, max = 48): string {
@@ -444,29 +444,132 @@ export async function changedFiles(path: string, since: string, ignoreUntracked:
     const f = files.get(file)
     if (f) f.status = (st[0] as ChangedFile['status']) ?? 'M'
   }
-  const skip = new Set(ignoreUntracked)
-  const untracked = (await untrackedFiles(path)).filter((f) => !skip.has(f))
-  for (const file of untracked) {
-    const lines = (await exec('git', ['-C', path, 'diff', '--no-index', '--numstat', '/dev/null', file])).stdout.split('\t')[0]
-    files.set(file, { path: file, status: 'A', added: Number(lines) || 0, removed: 0 })
-  }
+  for (const f of await untrackedChanges(path, ignoreUntracked)) files.set(f.path, f)
   return [...files.values()].sort((x, y) => x.path.localeCompare(y.path))
+}
+
+/** Each untracked file but those in `skip`, as all added lines. */
+async function untrackedChanges(path: string, skip: string[] = []): Promise<ChangedFile[]> {
+  const ignored = new Set(skip)
+  const out: ChangedFile[] = []
+  for (const file of (await untrackedFiles(path)).filter((f) => !ignored.has(f))) {
+    const lines = (await exec('git', ['-C', path, 'diff', '--no-index', '--numstat', '/dev/null', file])).stdout.split('\t')[0]
+    out.push({ path: file, status: 'A', added: Number(lines) || 0, removed: 0 })
+  }
+  return out
 }
 
 export async function mergeBase(path: string, baseRef: string): Promise<string> {
   return (await git(path, 'merge-base', 'HEAD', baseRef)).trim()
 }
 
-/**
- * The diff since `since`, with every untracked file after it as all added lines, as changedFiles lists them (KERNEL-409).
- * `git diff --no-index` exits 1 when the files differ, so it runs through exec.
- */
+/** The diff since `since`, with every untracked file after it as all added lines, as changedFiles lists them (KERNEL-409). */
 export async function diffText(path: string, since: string, file?: string): Promise<string> {
-  let text = await git(path, 'diff', since, ...(file ? ['--', file] : []))
+  return await git(path, 'diff', since, ...(file ? ['--', file] : [])) + await untrackedDiff(path, file)
+}
+
+/**
+ * The diff of each untracked file, or of `file` alone when it is one, as all added lines. `git diff --no-index` exits 1 when
+ * the files differ, so it runs through exec.
+ */
+async function untrackedDiff(path: string, file?: string): Promise<string> {
+  let text = ''
   for (const f of (await untrackedFiles(path)).filter((f) => !file || f === file)) {
     text += (await exec('git', ['-C', path, 'diff', '--no-index', '/dev/null', f])).stdout
   }
   return text
+}
+
+/**
+ * The two ends a compare target diffs (KERNEL-516): `from` and `to`, two commits, or `from` and the worktree, untracked files
+ * included, when `to` is unset.
+ */
+export interface DiffRange { from: string; to?: string }
+
+/** `ref` as a commit's full sha, or nothing when git finds no commit by that name. A name that starts with `-` would pass as an option. */
+async function commitOf(path: string, ref: string): Promise<string | undefined> {
+  if (!ref || ref.startsWith('-')) return undefined
+  const r = await exec('git', ['-C', path, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])
+  return r.code === 0 ? r.stdout.trim() : undefined
+}
+
+/**
+ * What a compare target other than the base diffs in the worktree at `path` (KERNEL-516). A branch: its merge base with HEAD,
+ * or the branch itself when they share no history, to the worktree. Uncommitted: HEAD to the worktree. A commit: its first
+ * parent to it, so a merge shows what it brought in, and a root commit starts from the empty tree. Throws for a branch or a
+ * commit git can't find.
+ */
+export async function compareRange(path: string, target: Exclude<CompareTarget, { kind: 'base' }>): Promise<DiffRange> {
+  if (target.kind === 'uncommitted') return { from: 'HEAD' }
+  if (target.kind === 'branch') {
+    const sha = await commitOf(path, target.ref)
+    if (!sha) throw new Error(`Kernel can't find ${target.ref} in this repo to compare with.`)
+    return { from: await mergeBase(path, sha).catch(() => sha) }
+  }
+  const sha = /^[0-9a-f]{4,64}$/i.test(target.sha) ? await commitOf(path, target.sha) : undefined
+  if (!sha) throw new Error(`Kernel can't find the commit ${target.sha} in this repo.`)
+  return { from: await commitOf(path, `${sha}^1`) ?? (await git(path, 'hash-object', '-t', 'tree', '/dev/null')).trim(), to: sha }
+}
+
+const rangeEnds = (r: DiffRange) => (r.to ? [r.from, r.to] : [r.from])
+
+/** git's status letter as a ChangedFile's: a copy is a new file, and a type change or an unmerged path is a changed one. */
+const STATUS: Record<string, ChangedFile['status']> = { A: 'A', C: 'A', D: 'D', M: 'M', R: 'R', T: 'M', U: 'M' }
+
+/**
+ * Each file's status in a range, with a renamed file's old path as `from`. With `-z`, git gives each path as it is and
+ * doesn't quote one with unusual characters: the status, then the path, or the old and new paths for a rename or a copy.
+ */
+async function rangeNames(path: string, r: DiffRange): Promise<{ path: string; status: ChangedFile['status']; from?: string }[]> {
+  const fields = (await git(path, 'diff', '--name-status', '-z', ...rangeEnds(r))).split('\0')
+  const out: { path: string; status: ChangedFile['status']; from?: string }[] = []
+  for (let i = 0; i < fields.length - 1; i++) {
+    const st = fields[i][0]
+    const from = st === 'R' || st === 'C' ? fields[++i] : undefined
+    out.push({ path: fields[++i], status: STATUS[st] ?? 'M', ...(st === 'R' ? { from } : {}) })
+  }
+  return out
+}
+
+/**
+ * The files `git diff` lists for a range, with its line counts (KERNEL-516). A rename is one row on the new path, with `from`
+ * the old one. A range that ends at the worktree adds its untracked files as all added lines, as changedFiles does.
+ */
+export async function rangeFiles(path: string, r: DiffRange): Promise<ChangedFile[]> {
+  const files = new Map<string, ChangedFile>()
+  // "<added>\t<removed>\t<path>", or for a rename "<added>\t<removed>\t" with the old and new paths as the next two fields.
+  const counts = (await git(path, 'diff', '--numstat', '-z', ...rangeEnds(r))).split('\0')
+  for (let i = 0; i < counts.length; i++) {
+    const m = /^(-|\d+)\t(-|\d+)\t(.*)$/s.exec(counts[i])
+    if (!m) continue
+    const file = m[3] || counts[i += 2]
+    files.set(file, { path: file, status: 'M', added: m[1] === '-' ? 0 : Number(m[1]), removed: m[2] === '-' ? 0 : Number(m[2]) })
+  }
+  for (const n of await rangeNames(path, r)) {
+    const f = files.get(n.path)
+    if (f) Object.assign(f, { status: n.status }, n.from ? { from: n.from } : {})
+  }
+  if (!r.to) for (const f of await untrackedChanges(path)) files.set(f.path, f)
+  return [...files.values()].sort((x, y) => x.path.localeCompare(y.path))
+}
+
+/**
+ * The diff of a range, or of one file in it, as `git diff` prints it (KERNEL-516). A renamed file's diff takes its old path
+ * too, or git would show it as a new file. A range that ends at the worktree adds its untracked files, as diffText does.
+ */
+export async function rangeDiff(path: string, r: DiffRange, file?: string): Promise<string> {
+  const from = file ? (await rangeNames(path, r)).find((n) => n.path === file)?.from : undefined
+  const text = await git(path, 'diff', ...rangeEnds(r), ...(file ? ['--', ...(from ? [from] : []), file] : []))
+  return r.to ? text : text + await untrackedDiff(path, file)
+}
+
+/** The commits `git log <base>..HEAD` lists, newest first, with their subjects, authors and author times (KERNEL-516). */
+export async function branchCommits(path: string, base: string): Promise<BranchCommit[]> {
+  const out = await git(path, 'log', '-z', '--no-show-signature', '--format=%H%x1f%s%x1f%an%x1f%at', `${base}..HEAD`)
+  return out.split('\0').filter(Boolean).map((line) => {
+    const [sha, subject, author, at] = line.split('\x1f')
+    return { sha, subject, author, time: Number(at) * 1000 }
+  })
 }
 
 /** An author for the commit below, which git won't make in a repo whose user has no git identity. Nothing keeps that commit. */

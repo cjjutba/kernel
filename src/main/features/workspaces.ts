@@ -1,11 +1,11 @@
 import { join } from 'node:path'
-import type { Chat, ChatPart, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { Chat, ChatPart, CompareTarget, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchName, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, hasCommit, leadBase, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
+import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, hasCommit, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
@@ -379,6 +379,37 @@ export class Workspaces extends Feature {
     return diffText(ws.path, await this.since(ws), file)
   }
 
+  /**
+   * The files a compare target other than the base lists (KERNEL-516). The totals `changes` saves stay the work against the
+   * base, so nothing is saved or pushed here.
+   */
+  private async compareFiles(id: string, target: Exclude<CompareTarget, { kind: 'base' }>) {
+    if (await this.checkFolder(id)) return []
+    const ws = this.mustWs(id)
+    return rangeFiles(ws.path, await compareRange(ws.path, target))
+  }
+
+  private async compareDiff(id: string, target: Exclude<CompareTarget, { kind: 'base' }>, file?: string) {
+    const ws = this.mustWs(id)
+    return rangeDiff(ws.path, await compareRange(ws.path, target), file)
+  }
+
+  /** The commits on the branch since its base, newest first. A current-branch workspace counts from its baseline, as its changes do. */
+  private async commits(id: string) {
+    const ws = this.mustWs(id)
+    return branchCommits(ws.path, ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : ws.baseRef)
+  }
+
+  /** The branches to compare with: the base, then `<remote>/<default>`, then the room's others, newest first (KERNEL-516). */
+  private async compareBranches(id: string) {
+    const ws = this.mustWs(id)
+    const { path } = this.mustRoom(ws.roomId)
+    const remote = await this.k.config.remoteOfWs(ws)
+    const all = await listBranches(path, remote)
+    const main = `${remote}/${await defaultBranch(path, remote).catch(() => 'main')}`
+    return [...new Set([ws.baseRef, ...all.filter((b) => b === main), ...all])].filter((b) => b !== ws.branch)
+  }
+
   private async hunks(id: string, path?: string) {
     const ws = this.mustWs(id)
     return listHunks(ws.path, { baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
@@ -402,13 +433,17 @@ export class Workspaces extends Feature {
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.fork': async ({ chatId, itemId }) => this.forkWorkspace(chatId, itemId),
-      'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
-      'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
+      'workspaces.changes': async ({ workspaceId, target }) => target && target.kind !== 'base' ? this.compareFiles(workspaceId, target) : this.changes(workspaceId),
+      'workspaces.diff': async ({ workspaceId, file, target }) => target && target.kind !== 'base' ? this.compareDiff(workspaceId, target, file) : this.diff(workspaceId, file),
+      'workspaces.commits': async ({ workspaceId }) => this.commits(workspaceId),
+      'workspaces.compareBranches': async ({ workspaceId }) => this.compareBranches(workspaceId),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
       'workspaces.readFile': async ({ workspaceId, path }) => readWorkspaceFile(this.mustWs(workspaceId).path, path),
-      'workspaces.readImage': async ({ workspaceId, path, at }) => {
+      'workspaces.readImage': async ({ workspaceId, path, at, target }) => {
         const ws = this.mustWs(workspaceId)
-        return readImage(ws.path, path, at === 'base' ? await this.since(ws) : undefined)
+        if (!target || target.kind === 'base') return readImage(ws.path, path, at === 'base' ? await this.since(ws) : undefined)
+        const range = await compareRange(ws.path, target)
+        return readImage(ws.path, path, at === 'base' ? range.from : range.to)
       },
       'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
       'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),

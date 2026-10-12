@@ -16,8 +16,12 @@ const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n')
 let next = 1000
 const pending = new Map()
 const request = (method, params) => new Promise((resolve) => { const id = next++; pending.set(id, resolve); send({ id, method, params }) })
-log({ started: process.env.CODEX_HOME ?? null, cwd: process.cwd() })
+// What the process started with: its home, its arguments, and whether an API key reached its environment (KERNEL-523).
+log({ started: process.env.CODEX_HOME ?? null, cwd: process.cwd(), args: process.argv.slice(2), keyInEnv: !!(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY) })
 const home = process.env.CODEX_HOME
+// Started with `-c cli_auth_credentials_store="ephemeral"`, an API key login stays in memory, as Codex 0.153.4 does it.
+const ephemeral = process.argv.includes('cli_auth_credentials_store="ephemeral"')
+let apiKey
 let threads = 0
 let turns = 0
 let interrupted
@@ -60,10 +64,19 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     return
   }
   if (method === 'turn/interrupt') { send({ id, result: {} }); interrupted?.(); interrupted = undefined; return }
+  if (method === 'account/rateLimits/read' && apiKey) return send({ id, error: { code: -32600, message: 'chatgpt authentication required to read rate limits' } })
   if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
   // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in.
+  if (method === 'account/read' && apiKey) return send({ id, result: { account: { type: 'apiKey' }, requiresOpenaiAuth: true } })
   if (method === 'account/read') return send({ id, result: { account: !home || existsSync(join(home, 'auth.json')) ? { type: 'chatgpt', email: process.env.FAKE_CODEX_EMAIL ?? 'cj@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true } })
   // The browser step happens at once: the fake writes the account's auth.json and says the login finished.
+  // An API key login checks nothing and finishes at once. Without the ephemeral store it writes the key to auth.json.
+  if (method === 'account/login/start' && params.type === 'apiKey') {
+    apiKey = params.apiKey
+    if (home && !ephemeral) writeFileSync(join(home, 'auth.json'), JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: apiKey }))
+    send({ id, result: { type: 'apiKey' } })
+    return send({ method: 'account/login/completed', params: { loginId: null, success: true, error: null } })
+  }
   if (method === 'account/login/start') {
     send({ id, result: { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/oauth/authorize?fake=1' } })
     if (process.env.FAKE_CODEX_LOGIN !== 'wait') setTimeout(() => { if (home) writeFileSync(join(home, 'auth.json'), '{}'); send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }) }, 20)

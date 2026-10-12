@@ -30,7 +30,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
-| aside | #0b0b0b | the workspace's right panel, one step below panel |
+| aside | #0b0b0b | the stage behind a shared preview. The workspace's right panel sits on panel, like the chat (KERNEL-526) |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
 | pr-merged-* | band #2a2140, line #3c2f5c, soft #372b55, edge #64509c, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
@@ -64,7 +64,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | working | #1a56b0 | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #7a4f00 | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #bd2b2b | destructive confirm buttons |
-| aside | #f7f7f8 | the workspace's right panel |
+| aside | #f7f7f8 | the stage behind a shared preview |
 | plan | #1f5fbf (on-plan #ffffff) | plan mode |
 | pr-merged-* | band #f3effd, line #e2d9fa, soft #ebe4fc, edge #b9a7ef, fg #4f34ad, text #5e3fc6, solid #7c5ce0 | PR header band: merged |
 | pr-ready-* | band #eef7f2, line #d3eadd, soft #e1f1e8, edge #8fc5a7, fg #0f5235, text #166a45, solid #1a7a4f | PR header band: open, ready, merging |
@@ -75,7 +75,8 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 ## Type
 
 - Inter for UI (13px base, 14px in chat and composer, 12px meta), Geist Mono for code, branches, paths, shortcuts. File names in the All files tree and the Changes tab are Inter 13px, as in VS Code's explorer (KERNEL-399)
-- Weights 400 and 500; 600 only for page titles and names on cards
+- Weights 400 and 500; 600 only for page titles, names on cards and bold text in a reply, which also takes full ink (KERNEL-526)
+- Inline code in a reply is a chip: Geist Mono 12.5px in full ink on surface-2, with a line-3 hairline (KERNEL-526)
 - Sentence case everywhere. Plain words. No em dashes.
 
 ## Shape
@@ -122,6 +123,13 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - For me or for the team (KERNEL-440): hire, edit and retire ask with the same two radio rows under a muted question, Just for me and For the team, each saying what it does in a line or two. It starts on Just for me, because For the team opens a pull request. The confirm button names the result: Create agent, Save for me, Retire Kai, or Open pull request once the team is picked. A Personal agent has no team row, because its file isn't in the repo. `WorkspaceHireServers`, `NewAgentDraftScope`, `AgentProfileScope`, `ConfirmRetireScope`.
 - Servers row (KERNEL-440): the hire card and the New agent review list the servers the new agent's file names, one pill each. A server that works shows its name. One that doesn't shows the amber triangle and the problem. A sentence under the row says what that means for Rowan's hand-offs.
 - Roster picker and rule conflicts (KERNEL-440): with more than about 12 agents, room setup asks who joins. The card has a search box, checkbox rows (name, role, tags, one description line, any warning) and "8 of 23 picked" with Clear and Pick the suggested 8. Kernel suggests the agents that can open pull requests. One written as a subagent with no pull request workflow starts unpicked as a Helper, with its warning. The list scrolls inside the card, so a half row shows at the bottom. The conflicts card lists each rule in CLAUDE.md or AGENTS.md that fights Kernel's workflow, with its file and line, next to what Kernel tells agents. Kernel never edits those files. Setup is taller than the window with these cards, so `RoomSetupRoster` and `RoomSetupConflicts` are drawn scrolled to the end.
+
+## No footer (KERNEL-527)
+
+- There is no strip under the main panel. The panel runs to 8px above the window's bottom edge on every screen.
+- The sidebar's bottom row holds the plan chip (or the Update ready pill once an update is ready), then Ask Rowan as a send icon, What's new and Settings. Ask Rowan's popover opens up from it.
+- Hooks down and GitHub paused show as a row just above the bottom row, only while they hold.
+- With the sidebar hidden, Show sidebar starts every screen header, followed by Ask Rowan and, once an update is ready, the pill. The popover opens down from the header. The chat's banners cover hooks and GitHub there.
 
 ## Busy buttons
 

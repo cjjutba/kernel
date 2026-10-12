@@ -1,6 +1,6 @@
 import type {
-  AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem,
+  ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -117,17 +117,22 @@ export interface KernelApi {
   /** History > Delete: forgets archived workspaces for good, with their branches, checkpoints and Claude Code transcripts. `deleteUnpushed` also deletes branches whose commits are pushed nowhere. */
   'workspaces.delete': { req: { workspaceIds: string[]; deleteUnpushed: boolean }; res: DeleteResult }
   'workspaces.gitStatus': { req: { workspaceId: string }; res: WorkspaceGitStatus }
-  'workspaces.changes': { req: { workspaceId: string }; res: ChangedFile[] }
-  'workspaces.diff': { req: { workspaceId: string; file?: string }; res: string }
+  /** `target` is what the Changes ⋯ menu compares with (KERNEL-516). Left out, or `base`, the files and the saved totals are as before. */
+  'workspaces.changes': { req: { workspaceId: string; target?: CompareTarget }; res: ChangedFile[] }
+  'workspaces.diff': { req: { workspaceId: string; file?: string; target?: CompareTarget }; res: string }
+  /** The commits on the workspace's branch since its base, newest first, as `git log <base>..HEAD` lists them (PanelCompare, KERNEL-516). */
+  'workspaces.commits': { req: { workspaceId: string }; res: BranchCommit[] }
+  /** The Target branch picker (KERNEL-516): the workspace's base, then `<remote>/<default>`, then the room's other branches newest first. Never the workspace's own branch. */
+  'workspaces.compareBranches': { req: { workspaceId: string }; res: string[] }
   'workspaces.tree': { req: { workspaceId: string }; res: FileEntry[] }
   /** @ mentions: files matching the query, best first. */
   'workspaces.files': { req: { workspaceId: string; query: string; limit?: number }; res: FileEntry[] }
   'workspaces.readFile': { req: { workspaceId: string; path: string }; res: string }
   /**
    * An image for the diff tab, as a data URL: `worktree` reads the file on disk, `base` the version the diff compares against.
-   * Null when the file isn't there (KERNEL-409).
+   * Null when the file isn't there (KERNEL-409). With a `commit` target, `worktree` is the file in that commit (KERNEL-516).
    */
-  'workspaces.readImage': { req: { workspaceId: string; path: string; at: 'worktree' | 'base' }; res: { dataUrl: string } | null }
+  'workspaces.readImage': { req: { workspaceId: string; path: string; at: 'worktree' | 'base'; target?: CompareTarget }; res: { dataUrl: string } | null }
   'workspaces.hunks': { req: { workspaceId: string; path?: string }; res: Hunk[] }
   /** Commit only the picked hunks (WorkspaceHunks "Commit selected"). */
   'workspaces.commit': { req: { workspaceId: string; hunkIds: string[]; message?: string }; res: Ok }
@@ -298,7 +303,7 @@ export interface KernelApi {
   'account.signIn': { req: void; res: ClaudeAccount }
   'account.signOut': { req: void; res: ClaudeAccount }
 
-  // providers and accounts (KERNEL-406). Subscription logins only: there is no API key option (D-018).
+  // providers and accounts (KERNEL-406). Subscription logins, and API key accounts the user adds (KERNEL-523, amends D-018).
   /** The status table on Settings, Providers: version, executable, login method, plan and email, read through Kernel's own binary. */
   'providers.status': { req: { provider: Provider }; res: ProviderStatus }
   /** The executable path field and "Use system Claude" / "Use system Codex" / "Use bundled". An empty path clears the override. */
@@ -314,6 +319,13 @@ export interface KernelApi {
    * own home. Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
    */
   'accounts.add': { req: { provider: Provider; label?: string; plan?: Exclude<ClaudePlan, 'unknown'> }; res: AccountProfile }
+  /**
+   * Adds an API key account with the name given (KERNEL-523). Kernel checks the key with one request to Anthropic or
+   * OpenAI, keeps it encrypted, and rejects with a plain reason when it doesn't work. Like any added account, it isn't used
+   * until the user switches to it. With `accountId` instead of a name, the key replaces that key account's key, which signs
+   * it in again.
+   */
+  'accounts.addKey': { req: { provider: Provider; label: string; key: string } | { provider: Provider; accountId: string; key: string }; res: AccountProfile }
   /** The code the sign-in page shows, when `claude setup-token` asks for one (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /** Closes the Add account sheet: stops the sign-in that is running. */

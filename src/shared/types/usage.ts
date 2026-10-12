@@ -29,6 +29,12 @@ export interface ClaudeAccount {
 }
 
 /**
+ * How an account signs in (KERNEL-523). `subscription` runs on a Claude or ChatGPT plan: the CLI's own login, a
+ * `claude setup-token` token or a ChatGPT sign-in. `apiKey` runs on an API key the user added, which bills the key.
+ */
+export type AccountAuth = 'subscription' | 'apiKey'
+
+/**
  * One account a provider can run on (Settings, Providers, KERNEL-406). Each provider always has its CLI's own login
  * (`cli`), which is `~/.claude` or `~/.codex` as the user set it up. Added accounts keep only their credential apart. The
  * active one runs the next turn, and switching is always the user's click.
@@ -39,10 +45,15 @@ export interface AccountProfile {
   /** What the user calls it, or its email. */
   label: string
   email?: string
-  /** "Claude Max", "ChatGPT Plus". */
+  /** "Claude Max", "ChatGPT Plus". None for an API key account. */
   plan?: string
   /** The CLI's own login rather than one Kernel added. It can be signed out but not removed. */
   cli: boolean
+  /**
+   * An API key account has no plan and no usage windows, so it never hits a usage limit, and Kernel never switches to it
+   * on its own. A key the API refuses signs it out until the user gives it a new one (KERNEL-523).
+   */
+  auth: AccountAuth
   active: boolean
   signedIn: boolean
   /**

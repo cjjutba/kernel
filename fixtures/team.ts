@@ -563,11 +563,13 @@ export const teamFixtures: Record<string, Fixture> = {
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   // KERNEL-406: an added Claude account and Codex signed in, so the menu names each provider's active account.
   AccountMenu: scene((f) => ({ ...homeScene(f), accounts: [
-    { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-    { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, active: false, signedIn: true, usageFromTurns: true },
-    { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }
+    { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
+    { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, auth: 'subscription', active: false, signedIn: true, usageFromTurns: true },
+    { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
   ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
+  // With the sidebar hidden, Ask Rowan follows Show sidebar in the header and its popover opens down (KERNEL-527).
+  QuickAskNoSidebar: scene((f) => ({ ...homeScene(f), ui: { ...home, sidebar: false, menu: 'quickAsk' } })),
   // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).
   QuickAskAnswered: scene((f) => ({
     ...homeScene(f),
@@ -608,6 +610,8 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
+  // The update pill joins Ask Rowan in the header while the sidebar is hidden (KERNEL-527).
+  UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),

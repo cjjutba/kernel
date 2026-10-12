@@ -33,6 +33,12 @@ describe('redact', () => {
     expect(redact(`header X-Kernel-Token: ${token}; again ${token}`)).not.toContain(token)
   })
 
+  it("hides an API key account's key, Anthropic's or OpenAI's, wherever it shows up (KERNEL-523)", () => {
+    const keys = ['sk-ant-api03-' + 'Ab1_'.repeat(20), 'sk-proj-' + 'Zy9-'.repeat(25), 'sk-svcacct-' + 'q'.repeat(40), 'sk-' + 'm'.repeat(48)]
+    const out = redact(keys.map((k, i) => [`key ${k}`, `x-api-key: ${k}`, `{"apiKey":"${k}"}`, `Codex exited (1): login ${i} ${k}`].join('\n')).join('\n'))
+    for (const k of keys) expect(out).not.toContain(k)
+  })
+
   it('hides GitHub, Anthropic and other tokens, and credentials in URLs and key=value pairs', () => {
     const secrets = [
       'ghp_' + 'a'.repeat(36), 'gho_' + 'B1'.repeat(18), 'ghs_' + 'c'.repeat(36), 'github_pat_' + '11ABC_'.repeat(8),

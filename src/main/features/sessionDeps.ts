@@ -13,7 +13,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     settings: () => k.settings,
     agentFor: (ws) => k.team.agentOf(ws.roomId, ws.agentId),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
-    codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
+    codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), apiKey: k.providers.apiKey('codex'), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
     onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
@@ -62,6 +62,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
     },
     accountFor: (provider) => k.providers.active(provider),
     claudeEnv: () => k.providers.claudeEnv(),
+    // Undefined is the CLI's own login, which is never a key account.
+    authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     onFailure: (failure, _ws, provider) => {
       if (failure === 'auth') k.account.signedOut(provider)
       else if (failure === 'network') void k.account.network?.lost()
