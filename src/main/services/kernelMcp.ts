@@ -49,9 +49,10 @@ export interface KernelToolDeps {
   messageWorkspace: (workspaceId: string, text: string) => Promise<{ ok: boolean; sent?: boolean; note: string }>
   /**
    * `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. `questions` carries a
-   * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407).
+   * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
+   * turn stops, as when the user writes in the message box instead, the card ends as expired and the answer is null (KERNEL-496).
    */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }) => Promise<Decision | null>
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: Approval['agentFile'] }, signal?: AbortSignal) => Promise<Decision | null>
   /** Saves a hired agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /**
@@ -84,6 +85,12 @@ export interface KernelToolDeps {
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/** The abort signal of a tool call, from the handler's `extra`. Claude Code cancels the call when the turn is interrupted (KERNEL-496). */
+const signalOf = (extra: unknown) => {
+  const signal = (extra as { signal?: unknown } | undefined)?.signal
+  return signal instanceof AbortSignal ? signal : undefined
+}
 
 /**
  * The open-workspace cap create_workspace checks, 0 for none. `own` is true when the room's `[agents] open_workspaces` sets
@@ -283,13 +290,13 @@ export function kernelTools(d: KernelToolDeps) {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
       plan: z.string().describe('The full plan as markdown: context, approach, files, checks. The tasks go in steps, not here'),
       steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
-    }, async ({ title, plan, steps }) => {
+    }, async ({ title, plan, steps }, extra) => {
       // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
       if (!d.planMode?.()) return { ...text(PLAN_MODE_OFF), isError: true }
       // Task lines alone hide the write-up, which then never reaches the chat or .kernel/plans/ (KERNEL-373).
       if (!plan?.trim()) return { ...text(NO_PLAN), isError: true }
       bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
-      const decision = await d.askUser({ kind: 'plan', title, detail: plan, steps })
+      const decision = await d.askUser({ kind: 'plan', title, detail: plan, steps }, signalOf(extra))
       if (!decision) return text('No answer yet. Wait and ask again later.')
       // Out of plan mode before the answer goes back, so the hand-off that follows runs outside it.
       if (decision.behavior === 'allow') { await d.planApproved?.(); return text(`approved. ${HANDOFF_NOW}`) }
@@ -299,13 +306,13 @@ export function kernelTools(d: KernelToolDeps) {
       question: z.string(),
       options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional(), recommended: z.boolean().optional() })])).optional()
         .describe(`Each option: label is the answer in a few words (${LABEL_MAX} characters at most), description says what it means or why. Set recommended: true on the option you recommend instead of writing it in the text`)
-    }, async ({ question, options }) => {
+    }, async ({ question, options }, extra) => {
       const asked = options?.map((o) => (typeof o === 'string' ? { label: o } : o))
       // A paragraph in a label squeezes the card's answer row, so the explanation has to go in description (KERNEL-415).
       const long = asked?.find((o) => o.label.length > LABEL_MAX)
       if (long) return { ...text(`Not asked: the label "${long.label.slice(0, 40)}..." is over ${LABEL_MAX} characters. Keep each label to a few words and move the rest into description.`), isError: true }
       const questions = asked && [{ question, options: asked }]
-      const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions })
+      const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions }, signalOf(extra))
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
@@ -512,7 +519,7 @@ export function kernelTools(d: KernelToolDeps) {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
       scope: z.enum(['me', 'team']).optional()
-    }, async ({ scope: asked, ...a }) => {
+    }, async ({ scope: asked, ...a }, extra) => {
       // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
       if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
       // With no tools line, a hire gets its role's, so one that should open PRs names Edit and Write. A line the Lead wrote
@@ -524,7 +531,7 @@ export function kernelTools(d: KernelToolDeps) {
       // The card starts on "Just for me" unless the Lead proposes the team, and the user's choice on it wins (KERNEL-466).
       const proposed = asked ?? 'me'
       const agentFile = { path: `${proposed === 'me' ? '~/' : ''}${path}`, text: body, scope: proposed, ...(servers ? { servers } : {}) }
-      const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
+      const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile }, signalOf(extra))
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
       let done: string | AgentChangePr
       try { done = await d.hireAgent(hire, decision.scope ?? proposed) } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }

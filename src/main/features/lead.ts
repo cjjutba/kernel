@@ -513,14 +513,17 @@ export class Lead extends Feature {
         return { cap: own ?? this.settings.models.agentLimit, own: own !== undefined, room: room?.name ?? 'this room' }
       },
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
-      askUser: async (o) => {
+      askUser: async (o, signal) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.k.team.agents(roomId)
         const reuse = o.kind === 'plan' ? revisedPlanFile(this.store.approvals({ roomId }), chat.id) : undefined
+        // A turn that stopped while the team was read shows no card: an abort that has already fired never fires again.
+        if (signal?.aborted) return null
+        // The turn stopping, as when the user writes in the message box instead, ends the card as expired (KERNEL-496).
         const { approval, decision } = this.approvals.request({
           kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions,
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
-        })
+        }, { signal })
         this.sessions.placeApproval(chat.id, approval.id)
         // Saved like ExitPlanMode's plan, so a chat can build from it after the card is gone (D-092, KERNEL-373).
         const ws = this.store.workspace(chat.workspaceId)
