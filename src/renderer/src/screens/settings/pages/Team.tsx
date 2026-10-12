@@ -5,13 +5,25 @@ import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, Select, Toggle, useBusy } from '../../../ui'
 import { NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { patchRoomSettings } from '../useSettings'
 
 const NO_AGENTS: AgentDef[] = []
+const SAME_AS_APP = ''
+
+/** The open-workspace choices: the app's number first, then 1 to 8, a saved number outside them, and No limit (KERNEL-493). */
+function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
+  const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : [])])].sort((a, b) => a - b)
+  return [
+    { value: SAME_AS_APP, label: `Same as agents working at once (${appLimit > 0 ? appLimit : 'No limit'})` },
+    ...counts.map((n) => ({ value: String(n), label: String(n) })),
+    { value: '0', label: 'No limit' }
+  ]
+}
 
 /**
  * Settings > a room > Agents (SettingsTeam.png): who leads and who reviews, who takes tasks, and the room's agent files,
  * with Edit opening the profile (KERNEL-397). A change goes to `[team]` in the shared settings.toml. The team a new room
- * starts with is on General.
+ * starts with is on General. The Open workspaces row, under the switches, saves the room's own cap to its personal file (KERNEL-493).
  */
 export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const { room, rs } = useRoomPage(roomId)
@@ -63,6 +75,9 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
               <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />
             </Row>
           ))}
+          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`How many workspaces ${lead?.name ?? 'the Lead'} keeps open in this room at once. Reviews don’t count, workspaces you open yourself do.`}>
+            <Select label="Open workspaces" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(e) => void patchRoomSettings(roomId, { agents: { openWorkspaces: e.target.value === SAME_AS_APP ? null : Number(e.target.value) } })} />
+          </Row>
         </Section>
       )}
       <Section title="In this room">
