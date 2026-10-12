@@ -981,6 +981,30 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
   }
 }
 
+/**
+ * SidebarUnread (no PNG, KERNEL-508): `grouped` with a bold title on each row that has a reply you haven't seen, and no dot anywhere. The table chat is on screen,
+ * so its row stays regular although its second tab is unread, and that tab is bold. Under it, invoice-schema is unread and invoice-table is read. The login chat
+ * is unread in one tab and running in the other, so its row is bold and keeps its spinner. The export chat is folded over three workspaces, one of them unread,
+ * so its row is bold. org-invites needs you and is unread, with the amber icon and the bold title together. Client B is collapsed over an unread workspace,
+ * and the demo chat, the other rooms and invoice-table are read.
+ */
+function sidebarUnread(f: Fixture): Partial<Fixture> {
+  const unreadAt = at(10, 40)
+  const unread = new Set(['chat-table-copy', 'chat-login-redirect', ids.schemaChat, ids.invitesChat, 'chat-pdf-button', 'chat-landing'])
+  const owned = (id: string, workspaceId: string, title: string): Chat => ({ id, workspaceId, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 5) })
+  const g = grouped(f, { tab: 'chat-table', running: ['chat-login'] })
+  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'kai', 4330, { roomId: ids.roomB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
+  const question = pending('question', 'kai', { workspaceId: ids.invites, chatId: ids.invitesChat, title: 'Should invites expire after 7 days?', options: ['Yes, 7 days', 'No expiry'] })
+  return {
+    ...g,
+    chats: [...g.chats!, owned('chat-pdf-button', 'ws-pdf-button', 'Download PDF button'), owned('chat-landing', landing.id, 'Landing page copy')].map((c) => (unread.has(c.id) ? { ...c, unreadAt } : c)),
+    workspaces: [...g.workspaces!, landing],
+    approvals: [...g.approvals!, question],
+    items: { ...g.items, 'chat-table': groupedTurn('su', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Kai and Noor can start together.', [], 'Kai has the table and its states. Noor has the schema change the table needs.') },
+    ui: { ...g.ui!, foldedChats: [GROUPED.export] }
+  }
+}
+
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
   const plan = leadPlan(f, { agentId: 'rowan' })
@@ -1371,6 +1395,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // Hovering a chat row shows Archive, like a workspace row's (KERNEL-405). The shot hovers the table chat (scripts/shots.ts).
   GroupedChatArchive: scene((f) => grouped(f, { running: [] })),
+  SidebarUnread: scene(sidebarUnread),
   // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
   ConfirmArchiveChat: scene((f) => {
     const g = grouped(f, { running: [] })
