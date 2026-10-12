@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { lstat, readdir, rmdir, unlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
@@ -14,11 +14,11 @@ import { plainText, TOKEN_COLS } from './claudeToken'
 // so settings, Kernel's hooks, chats, MCP servers, plugins and skills stay one set however many accounts there are.
 
 /**
- * What stays the account's own: its `.claude.json` and the CLI's copies of it, the plain-text login fallback, the MCP
+ * What stays the account's own: its `.claude.json`, its lock and the CLI's copies of it, the plain-text login fallback, the MCP
  * servers that wait on its sign-in, its org's policy and managed settings, and the CLI's daemon.
  */
 const CLAUDE_OWN = new Set([
-  '.claude.json', '.credentials.json', 'backups', 'mcp-needs-auth-cache.json', 'policy-limits.json', 'policy-limits.json.stamp.json',
+  '.claude.json', '.claude.json.lock', '.credentials.json', 'backups', 'mcp-needs-auth-cache.json', 'policy-limits.json', 'policy-limits.json.stamp.json',
   'remote-settings.json', 'daemon', 'daemon.log', 'daemon-auth-cooldown', 'daemon-auth-status.json'
 ])
 
@@ -55,23 +55,134 @@ function link(target: string, at: string) {
   symlinkSync(target, at)
 }
 
+/** What Kernel last left of the MCP servers in an account's `.claude.json`, kept in its folder (KERNEL-618). */
+const MCP_BASE = 'kernel-mcp-base.json'
+
+/** How old a `.claude.json.lock` is before it counts as left behind: Claude Code's lock library renews its own every 5 seconds and calls 10 stale. */
+const LOCK_STALE_MS = 10_000
+
+type Servers = Record<string, unknown>
+/** The MCP servers of a `.claude.json`: the user ones, and the local ones of each project that has any. */
+interface McpServers { mcpServers?: Servers; projects?: Record<string, Servers> }
+
+const record = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : undefined)
+
+/** JSON with every object's keys sorted, so two servers compare by what they hold. */
+const canon = (v: unknown) => JSON.stringify(v, (_k, x: unknown) => (record(x) ? Object.fromEntries(Object.entries(x as object).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : x))
+const same = (a: unknown, b: unknown) => canon(a) === canon(b)
+
 /**
- * Copies `mcpServers` and `projects` from the CLI login's `.claude.json` (`from`) into the account's, in place of its own,
- * so it has the same MCP servers. Every other key describes the account's login and stays. Written through a temp file at
- * mode 600. Nothing changes when either file can't be read whole, as when the CLI is writing it.
+ * One set of MCP servers after a sync: the CLI login's (`cli`) with what the account changed since `base`, what Kernel last
+ * left it. A server the account added, changed or removed since then goes the same way on the CLI login, unless the CLI login
+ * changed it too, which wins. Without a base, a server only the account has counts as one it added. An account with no
+ * servers object changed nothing: `claude mcp remove` leaves an empty one, and only a file that was reset has none, which
+ * must not remove every server from the CLI login (KERNEL-618).
  */
-export function copyClaudeConfig(home: string, from: string) {
-  const file = join(home, '.claude.json')
-  let shared: Record<string, unknown>
-  let own: Record<string, unknown> = {}
-  try { shared = JSON.parse(readFileSync(from, 'utf8')) } catch { return }
-  try { own = JSON.parse(readFileSync(file, 'utf8')) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return }
-  const next = { ...own }
-  for (const key of SHARED_KEYS) { if (key in shared) next[key] = shared[key]; else delete next[key] }
-  if (SHARED_KEYS.every((key) => JSON.stringify(next[key]) === JSON.stringify(own[key])) && lstatOf(file)) return
+function mergeServers(cli: Servers | undefined, acct: Servers | undefined, base: Servers | undefined): Servers {
+  const out: Servers = { ...cli }
+  if (!acct) return out
+  for (const name of new Set([...Object.keys(acct), ...Object.keys(base ?? {})])) {
+    const a = acct?.[name]
+    if (same(a, base?.[name]) || !same(cli?.[name], base?.[name])) continue
+    if (a === undefined) delete out[name]
+    else out[name] = a
+  }
+  return out
+}
+
+/**
+ * `projects` after a sync: the local MCP servers of each project the account has merged as `mergeServers` does. A project only
+ * the account has comes along with its servers. One the account lacks changed nothing there.
+ */
+function mergeProjects(cli: Record<string, unknown> | undefined, acct: Record<string, unknown> | undefined, base: Record<string, Servers> | undefined) {
+  const out = { ...cli }
+  for (const [path, p] of Object.entries(acct ?? {})) {
+    const c = record(cli?.[path])
+    const was = record(c?.mcpServers)
+    const servers = mergeServers(was, record(record(p)?.mcpServers), base?.[path])
+    if (!same(servers, was ?? {})) out[path] = { ...(c ?? record(p)), mcpServers: servers }
+  }
+  return out
+}
+
+/** The MCP servers a `.claude.json` holds, as `MCP_BASE` keeps them. */
+function serversOf(config: Record<string, unknown>): McpServers {
+  const projects = Object.entries(record(config.projects) ?? {}).flatMap(([path, p]) => {
+    const servers = record(record(p)?.mcpServers)
+    return servers && Object.keys(servers).length ? [[path, servers] as const] : []
+  })
+  const user = record(config.mcpServers)
+  return { ...(user && Object.keys(user).length ? { mcpServers: user } : {}), ...(projects.length ? { projects: Object.fromEntries(projects) } : {}) }
+}
+
+/**
+ * Takes Claude Code's own lock on a config file, the folder `<file>.lock` its lock library makes, so neither writes over the
+ * other's change. One older than LOCK_STALE_MS was left behind and goes. Returns the release, or undefined while a CLI holds it.
+ */
+function lockConfig(file: string): (() => void) | undefined {
+  const dir = `${file}.lock`
+  for (let tries = 0; tries < 2; tries++) {
+    try {
+      mkdirSync(dir)
+      return () => { try { rmdirSync(dir) } catch { /* gone already */ } }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return undefined
+      if (Date.now() - (lstatOf(dir)?.mtimeMs ?? Date.now()) <= LOCK_STALE_MS) return undefined
+      try { rmdirSync(dir) } catch { return undefined }
+    }
+  }
+  return undefined
+}
+
+/** Writes JSON through a temp file beside `file`, at `mode`. */
+function writeJson(file: string, value: unknown, mode: number) {
   const tmp = `${file}.${process.pid}.tmp`
-  writeFileSync(tmp, JSON.stringify(next, null, 2), { mode: 0o600 })
+  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode })
   renameSync(tmp, file)
+}
+
+/**
+ * Keeps an account's `.claude.json` and the CLI login's (`from`) on one set of MCP servers (KERNEL-560, KERNEL-618). A user
+ * or local server added, changed or removed on the account since Kernel last synced it goes to the CLI login first, through
+ * Claude Code's own lock, so no server added on either login is lost. Then the account gets `mcpServers` and `projects` from
+ * the CLI login in place of its own, and every other key, which describes its login, stays. What the account then holds is
+ * kept as its base, which tells a server one login removed from one the other added. Writes go through temp files at the
+ * files' own modes, 600 for the account. Nothing changes while a CLI holds either lock or either file can't be read whole.
+ */
+export function syncClaudeConfig(home: string, from: string) {
+  const file = join(home, '.claude.json')
+  const unlockFrom = lockConfig(from)
+  if (!unlockFrom) return
+  try {
+    const unlockOwn = lockConfig(file)
+    if (!unlockOwn) return
+    try { syncLocked(home, file, from) } finally { unlockOwn() }
+  } finally { unlockFrom() }
+}
+
+function syncLocked(home: string, file: string, from: string) {
+  let shared: Record<string, unknown> | undefined
+  let own: Record<string, unknown> = {}
+  try { shared = record(JSON.parse(readFileSync(from, 'utf8'))) } catch { return }
+  if (!shared) return
+  try { own = record(JSON.parse(readFileSync(file, 'utf8'))) ?? {} } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') return }
+  let base: McpServers | undefined
+  try { base = record(JSON.parse(readFileSync(join(home, MCP_BASE), 'utf8'))) as McpServers | undefined } catch { /* none yet */ }
+  const merged = { ...shared }
+  const servers = mergeServers(record(shared.mcpServers), record(own.mcpServers), record(base?.mcpServers))
+  if (!same(servers, record(shared.mcpServers) ?? {})) merged.mcpServers = servers
+  const projects = mergeProjects(record(shared.projects), record(own.projects), record(base?.projects) as McpServers['projects'])
+  if (!same(projects, record(shared.projects) ?? {})) merged.projects = projects
+  if (merged.mcpServers !== shared.mcpServers || merged.projects !== shared.projects) {
+    // A `.claude.json` linked from a dotfiles folder stays a link.
+    const real = realpathSync(from)
+    writeJson(real, merged, statSync(real).mode & 0o777)
+  }
+  const next = { ...own }
+  for (const key of SHARED_KEYS) { if (key in merged) next[key] = merged[key]; else delete next[key] }
+  if (!SHARED_KEYS.every((key) => same(next[key], own[key])) || !lstatOf(file)) writeJson(file, next, 0o600)
+  const now = serversOf(merged)
+  if (!same(now, base)) writeJson(join(home, MCP_BASE), now, 0o600)
 }
 
 /** Deletes an account's folder. A link goes as a link, so nothing in `~/.claude` it points to is touched. */
@@ -139,7 +250,19 @@ export interface Keychain {
   read(item: string): string | undefined
   /** Writes the item's secret, making the item when there is none. False when it couldn't. */
   write(item: string, secret: string): boolean
+  /**
+   * Whether the item's secret can be read, without keeping it (KERNEL-618): `ok`, `absent` when there is no item, or `denied`
+   * when the read failed or ran past `timeoutMs`, as when macOS asks first and nobody allows it. Async, since the read
+   * waits on that prompt. Left out, Kernel can't tell a login waiting on a prompt from a signed-out one.
+   */
+  access?(item: string, timeoutMs: number): Promise<KeychainAccess>
 }
+
+/** What a read of a Keychain item found (`Keychain.access`). */
+export type KeychainAccess = 'ok' | 'absent' | 'denied'
+
+/** The code `security` exits with when there is no such item. */
+const NO_ITEM = 44
 
 /** The name Claude Code files its items under: $USER, or a stand-in when that has characters it won't use. */
 function keychainAccount(): string {
@@ -156,8 +279,8 @@ const SECURITY_LINE = 4032
 
 /**
  * The real Keychain, through `/usr/bin/security` the way Claude Code reads and writes it, so each item keeps the access list
- * the CLI gave it and no prompt shows. A secret goes in on stdin, or as an argument when it is too long for `security -i`,
- * as the CLI does. Nothing read or written is logged.
+ * the CLI gave it, which names `/usr/bin/security`, and no prompt shows (KERNEL-618). A secret goes in on stdin, or as an
+ * argument when it is too long for `security -i`, as the CLI does. Nothing read or written is logged.
  */
 export function macKeychain(account = keychainAccount()): Keychain {
   const run = (args: string[], input?: string) => execFileSync('/usr/bin/security', args, { input, encoding: 'utf8', timeout: SECURITY_MS, stdio: ['pipe', 'pipe', 'ignore'] })
@@ -171,7 +294,13 @@ export function macKeychain(account = keychainAccount()): Keychain {
         else run(['add-generic-password', '-U', '-a', account, '-s', item, '-X', hex])
         return true
       } catch { return false }
-    }
+    },
+    // The secret goes nowhere: only whether it could be read counts.
+    access: (item, timeoutMs) => new Promise((resolve) => {
+      const child = spawn('/usr/bin/security', ['find-generic-password', '-a', account, '-w', '-s', item], { stdio: 'ignore', timeout: timeoutMs })
+      child.on('error', () => resolve('denied'))
+      child.on('exit', (code) => resolve(code === 0 ? 'ok' : code === NO_ITEM ? 'absent' : 'denied'))
+    })
   }
 }
 

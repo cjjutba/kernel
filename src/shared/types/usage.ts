@@ -85,6 +85,18 @@ export interface AccountProfile {
    * (KERNEL-616).
    */
   missingModels?: MissingModel[]
+  /**
+   * Claude only: the provider's other accounts signed in to the same claude.ai organization, by id (KERNEL-618). Seats in one
+   * Team or Enterprise organization can share limits, so Kernel counts such an account as having room only when its own
+   * windows say so (`switchChoices`). Settings, Providers says "Same organization as Work". Undefined when it shares none.
+   */
+  sameOrg?: string[]
+  /**
+   * Claude only: this added login's Keychain item waits on a macOS prompt (KERNEL-618). Until someone allows it, Claude Code
+   * reads the login as signed out, so Kernel says this instead and keeps the sign-in it last read. Settings, Providers says
+   * "Waiting for Keychain access".
+   */
+  keychainWait?: boolean
 }
 
 /**

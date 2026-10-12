@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { copyClaudeConfig, credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns } from '../src/main/services/providers/claudeHome'
+import { credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig } from '../src/main/services/providers/claudeHome'
 import { fakeClaude, MCP_LINK } from './helpers/fakeClaude'
 import { fakeKeychain } from './helpers/fakeKeychain'
 
@@ -24,6 +24,7 @@ async function setUp() {
   await mkdir(join(root, 'plugins', 'cache'), { recursive: true })
   await writeFile(join(root, 'plugins', 'installed_plugins.json'), '{}')
   for (const own of ['.claude.json', '.credentials.json', 'mcp-needs-auth-cache.json', 'remote-settings.json', 'daemon.log']) await writeFile(join(root, own), 'cli')
+  await mkdir(join(root, '.claude.json.lock'))
   await mkdir(join(root, 'backups'))
   return { dir, root, home }
 }
@@ -35,7 +36,7 @@ describe('linkClaudeHome', () => {
     const { root, home } = await setUp()
     linkClaudeHome(home, root)
     for (const name of ['projects', 'settings.json', 'CLAUDE.md']) expect(await readlink(join(home, name))).toBe(join(root, name))
-    for (const own of ['.claude.json', '.credentials.json', 'mcp-needs-auth-cache.json', 'remote-settings.json', 'daemon.log', 'backups']) expect(existsSync(join(home, own))).toBe(false)
+    for (const own of ['.claude.json', '.claude.json.lock', '.credentials.json', 'mcp-needs-auth-cache.json', 'remote-settings.json', 'daemon.log', 'backups']) expect(existsSync(join(home, own))).toBe(false)
     // Real folders whose entries are links, so the account's org can sync its own skills and plugins beside them.
     expect(await isLink(join(home, 'skills'))).toBe(false)
     expect(await readlink(join(home, 'skills', 'impeccable'))).toBe(join(root, 'skills', 'impeccable'))
@@ -79,36 +80,136 @@ describe('removeClaudeHome', () => {
   })
 })
 
-describe('copyClaudeConfig', () => {
-  const cli = { mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': { mcpServers: { local: { command: 'x' } } } }, oauthAccount: { emailAddress: 'cj@example.com' }, numStartups: 9 }
+describe('syncClaudeConfig', () => {
+  const cli = { mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': { allowedTools: [], mcpServers: { local: { command: 'x' } } } }, oauthAccount: { emailAddress: 'cj@example.com' }, numStartups: 9 }
+  const side = { oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1' }
+  const read = async (file: string) => JSON.parse(await readFile(file, 'utf8'))
 
-  it("gives the account the CLI login's MCP servers and projects in place of its own, and keeps its login's keys", async () => {
+  /** The CLI login's `.claude.json` and an account folder whose own one has `own`, synced once unless `own` says not to. */
+  async function synced(own: object = side, o: { sync?: boolean } = {}) {
     const { dir, home } = await setUp()
     const from = join(dir, '.claude.json')
+    const file = join(home, '.claude.json')
     await writeFile(from, JSON.stringify(cli))
     await mkdir(home, { recursive: true })
-    await writeFile(join(home, '.claude.json'), JSON.stringify({ oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1', mcpServers: { added: {} } }))
-    copyClaudeConfig(home, from)
-    expect(JSON.parse(await readFile(join(home, '.claude.json'), 'utf8'))).toEqual({ oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1', mcpServers: cli.mcpServers, projects: cli.projects })
-    expect((await stat(join(home, '.claude.json'))).mode & 0o777).toBe(0o600)
-    // A key the CLI login dropped goes from the account too.
+    await writeFile(file, JSON.stringify(own))
+    if (o.sync !== false) syncClaudeConfig(home, from)
+    /** Changes one login's file the way `claude mcp add` or `remove` would. */
+    const edit = async (at: string, change: (c: any) => void) => { const c = await read(at); change(c); await writeFile(at, JSON.stringify(c)) }
+    return { dir, home, from, file, edit }
+  }
+
+  it("gives the account the CLI login's MCP servers and projects in place of its own, and keeps its login's keys", async () => {
+    const { home, from, file } = await synced(side)
+    expect(await read(file)).toEqual({ ...side, mcpServers: cli.mcpServers, projects: cli.projects })
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    // The CLI login's file had nothing to gain, so it is as it was.
+    expect(await read(from)).toEqual(cli)
+    // A key the CLI login dropped goes from the account too, servers and all.
     await writeFile(from, JSON.stringify({ projects: {} }))
-    copyClaudeConfig(home, from)
-    expect(JSON.parse(await readFile(join(home, '.claude.json'), 'utf8'))).toEqual({ oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1', projects: {} })
+    syncClaudeConfig(home, from)
+    expect(await read(file)).toEqual({ ...side, projects: {} })
+  })
+
+  it('keeps a user and a local MCP server added on the account, on both logins, with each project it was added in (KERNEL-618)', async () => {
+    const { home, from, file, edit } = await synced()
+    await edit(file, (c) => { c.mcpServers.fal = { command: 'fal' }; c.projects['/repo'].mcpServers.db = { command: 'db' }; c.projects['/side'] = { allowedTools: ['Bash'], mcpServers: { s: { command: 's' } } } })
+    syncClaudeConfig(home, from)
+    const both = { neon: { command: 'neon' }, fal: { command: 'fal' } }
+    const projects = { '/repo': { allowedTools: [], mcpServers: { local: { command: 'x' }, db: { command: 'db' } } }, '/side': { allowedTools: ['Bash'], mcpServers: { s: { command: 's' } } } }
+    expect(await read(from)).toEqual({ ...cli, mcpServers: both, projects })
+    expect(await read(file)).toEqual({ ...side, mcpServers: both, projects })
+    // A server the CLI login gains while the account keeps its own reaches the account, and the account's stays.
+    await edit(from, (c) => { c.mcpServers.linear = { type: 'http', url: 'https://mcp.linear.app' } })
+    syncClaudeConfig(home, from)
+    expect(Object.keys((await read(file)).mcpServers)).toEqual(['neon', 'fal', 'linear'])
+  })
+
+  it('removes a server removed on either login from the other, and never brings it back (KERNEL-618)', async () => {
+    const { home, from, file, edit } = await synced()
+    await edit(file, (c) => { c.mcpServers.fal = { command: 'fal' } })
+    syncClaudeConfig(home, from)
+    // Removed on the account.
+    await edit(file, (c) => { delete c.mcpServers.fal; delete c.projects['/repo'].mcpServers.local })
+    syncClaudeConfig(home, from)
+    syncClaudeConfig(home, from)
+    expect((await read(from)).mcpServers).toEqual({ neon: { command: 'neon' } })
+    expect((await read(from)).projects['/repo']).toEqual({ allowedTools: [], mcpServers: {} })
+    // Removed on the CLI login.
+    await edit(from, (c) => { delete c.mcpServers.neon })
+    syncClaudeConfig(home, from)
+    syncClaudeConfig(home, from)
+    expect((await read(file)).mcpServers).toEqual({})
+    expect((await read(from)).mcpServers).toEqual({})
+  })
+
+  it("lets the CLI login win when both changed one server, and takes the account's change when only it did (KERNEL-618)", async () => {
+    const { home, from, file, edit } = await synced()
+    await edit(file, (c) => { c.mcpServers.neon = { command: 'neon', args: ['--account'] } })
+    await edit(from, (c) => { c.mcpServers.neon = { command: 'neon', args: ['--cli'] } })
+    syncClaudeConfig(home, from)
+    expect((await read(file)).mcpServers.neon).toEqual({ command: 'neon', args: ['--cli'] })
+    await edit(file, (c) => { c.mcpServers.neon = { command: 'neon', args: ['--account'] } })
+    syncClaudeConfig(home, from)
+    expect((await read(from)).mcpServers.neon).toEqual({ command: 'neon', args: ['--account'] })
+  })
+
+  it("never removes the CLI login's servers when the account's file lost its own, as a reset file has (KERNEL-618)", async () => {
+    const { home, from, file } = await synced()
+    for (const own of [JSON.stringify(side), undefined]) {
+      if (own) await writeFile(file, own)
+      else await rm(file)
+      syncClaudeConfig(home, from)
+      expect(await read(from)).toEqual(cli)
+      expect(await read(file)).toEqual({ ...(own ? side : {}), mcpServers: cli.mcpServers, projects: cli.projects })
+    }
+  })
+
+  it('counts a server only the account has as added there the first time, with no base to go by (KERNEL-618)', async () => {
+    const { from, file } = await synced({ ...side, mcpServers: { added: { command: 'a' } } })
+    expect((await read(from)).mcpServers).toEqual({ neon: { command: 'neon' }, added: { command: 'a' } })
+    expect((await read(file)).mcpServers).toEqual({ neon: { command: 'neon' }, added: { command: 'a' } })
+  })
+
+  it('changes nothing while Claude Code holds either lock, and takes over one left behind (KERNEL-618)', async () => {
+    const { home, from, file, edit } = await synced()
+    await edit(file, (c) => { c.mcpServers.fal = { command: 'fal' } })
+    for (const lock of [`${from}.lock`, `${file}.lock`]) {
+      await mkdir(lock)
+      syncClaudeConfig(home, from)
+      expect((await read(from)).mcpServers).toEqual(cli.mcpServers)
+      expect(existsSync(lock)).toBe(true)
+      // Claude Code renews its lock every 5 seconds, so one a minute old was left behind.
+      const old = new Date(Date.now() - 60_000)
+      await utimes(lock, old, old)
+    }
+    syncClaudeConfig(home, from)
+    expect((await read(from)).mcpServers).toEqual({ neon: { command: 'neon' }, fal: { command: 'fal' } })
+    expect([existsSync(`${from}.lock`), existsSync(`${file}.lock`)]).toEqual([false, false])
+  })
+
+  it('writes a linked .claude.json through its link, at its own mode (KERNEL-618)', async () => {
+    const { dir, home, from, file, edit } = await synced()
+    const real = join(dir, 'dotfiles.json')
+    await writeFile(real, await readFile(from, 'utf8'), { mode: 0o644 })
+    await rm(from)
+    await symlink(real, from)
+    await edit(file, (c) => { c.mcpServers.fal = { command: 'fal' } })
+    syncClaudeConfig(home, from)
+    expect(await readlink(from)).toBe(real)
+    expect((await read(real)).mcpServers.fal).toEqual({ command: 'fal' })
+    expect((await stat(real)).mode & 0o777).toBe(0o644)
   })
 
   it("changes nothing while either file can't be read whole", async () => {
-    const { dir, home } = await setUp()
-    const from = join(dir, '.claude.json')
-    await mkdir(home, { recursive: true })
-    await writeFile(join(home, '.claude.json'), '{"oauthAccount":')
-    await writeFile(from, JSON.stringify(cli))
-    copyClaudeConfig(home, from)
-    expect(await readFile(join(home, '.claude.json'), 'utf8')).toBe('{"oauthAccount":')
-    await writeFile(join(home, '.claude.json'), '{"userID":"u1"}')
+    const { home, from, file } = await synced('{"oauthAccount":' as never, { sync: false })
+    await writeFile(file, '{"oauthAccount":')
+    syncClaudeConfig(home, from)
+    expect(await readFile(file, 'utf8')).toBe('{"oauthAccount":')
+    await writeFile(file, '{"userID":"u1"}')
     await writeFile(from, '{"mcpServers":')
-    copyClaudeConfig(home, from)
-    expect(await readFile(join(home, '.claude.json'), 'utf8')).toBe('{"userID":"u1"}')
+    syncClaudeConfig(home, from)
+    expect(await readFile(file, 'utf8')).toBe('{"userID":"u1"}')
   })
 })
 

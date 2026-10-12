@@ -4,6 +4,7 @@ import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
 import { limitProvider } from '@shared/providers'
+import { switchChoices } from '@shared/usage'
 import { joinLabels } from '@shared/waits'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -15,7 +16,7 @@ import type { UsageRead } from '../services/sessions'
 import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
 import { claudeExecutable, resolveBinary } from '../services/providers/binary'
-import { claudeStatus, copyClaudeConfig, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, type ClaudeLogin } from '../services/providers/claudeHome'
+import { claudeStatus, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
 import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
 import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
@@ -50,8 +51,11 @@ interface StoredAccount {
   orgId?: string
   createdAt: number
 }
-/** The CLI's own login as `accounts.json` keeps it: its nickname, its last email, and what Kernel last read of its sign-in (KERNEL-567). */
-interface StoredCli { label?: string; email?: string; signedIn?: boolean }
+/**
+ * The CLI's own login as `accounts.json` keeps it: its nickname, its last email, what Kernel last read of its sign-in
+ * (KERNEL-567), and on Claude its claude.ai organization (KERNEL-618).
+ */
+interface StoredCli { label?: string; email?: string; signedIn?: boolean; orgId?: string }
 /** Each provider's added accounts, the one it runs on, and its CLI login. No `active` is the CLI's own login. */
 type AccountsFile = Record<Provider, { active?: string; accounts: StoredAccount[]; cli?: StoredCli }>
 
@@ -111,6 +115,20 @@ export class Providers extends Feature {
   private mcpSignIns = new Map<string, McpSignIn[]>()
   /** The models each account offers, by `provider:id`, with the login they were read on (`loginKey`, KERNEL-616). */
   private offered = new Map<string, { login: string; ids: string[] }>()
+  /** When the MCP servers were last synced across every Claude login (KERNEL-618). */
+  private syncedAt = 0
+  /**
+   * Added Claude logins whose Keychain item waits on a macOS prompt, by account id (KERNEL-618): `prompt` while Kernel's own
+   * read keeps the prompt up, true once someone allowed it, and `endedAt` once it gave up. `checking` is a check under way.
+   */
+  private keychain = new Map<string, { prompt?: Promise<boolean>; endedAt?: number }>()
+  private checking = new Map<string, Promise<'prompt' | 'later' | undefined>>()
+  /**
+   * How long a Keychain read may take before it counts as waiting on a macOS prompt, how long Kernel keeps its read and so
+   * the prompt up for someone to allow it, and how long after one nobody allowed before it asks again (KERNEL-618). Tests
+   * shorten them.
+   */
+  keychainMs = { wait: 5_000, prompt: 2 * 60_000, retry: 10 * 60_000 }
 
   // ---------- models
 
@@ -272,24 +290,40 @@ export class Providers extends Feature {
   private moved(a: StoredAccount) { return !!a.home && a.home !== this.claudeHome(a.id) }
 
   /**
-   * Before each Claude process on an added login: what `~/.claude` gained since is linked in, and the shared `.claude.json`
-   * keys are copied (KERNEL-560). A failure leaves the folder as it was, and the login still runs.
+   * Before each Claude process on an added login: what `~/.claude` gained since is linked in, and its MCP servers are synced
+   * with the CLI login's, which then gives it the shared `.claude.json` keys (KERNEL-560, KERNEL-618). A failure leaves the
+   * folder as it was, and the login still runs.
    */
   private readyClaudeHome(home: string) {
     try { linkClaudeHome(home, this.claudeRoot()) } catch { /* ~/.claude can't be read: the account runs on what it has */ }
-    try { copyClaudeConfig(home, this.claudeConfig()) } catch { /* the same */ }
+    try { syncClaudeConfig(home, this.claudeConfig()) } catch { /* the same */ }
+  }
+
+  /**
+   * Brings the MCP servers added, changed or removed on each added login to the CLI login's `.claude.json`, and from there to
+   * the others (`syncClaudeConfig`), so one added on any account is on every account from its next process, the CLI's own
+   * included (KERNEL-618). At most once every SHARE_EVERY_MS. A folder that moved is left alone.
+   */
+  private syncConfigs() {
+    if (this.stopped || Date.now() - this.syncedAt < SHARE_EVERY_MS) return
+    this.syncedAt = Date.now()
+    for (const a of this.load().claude.accounts) {
+      if (!a.home || this.moved(a)) continue
+      try { syncClaudeConfig(a.home, this.claudeConfig()) } catch { /* the next process tries again */ }
+    }
   }
 
   /**
    * What a Claude process adds to its environment for an account, the active one by default: an added login's folder as
    * CLAUDE_CONFIG_DIR, readied first (KERNEL-567), a legacy token, or an API key account's key (KERNEL-523). Nothing for
    * the CLI login, which `cli` names too. A folder that moved is passed as it signed in, so its sessions fail as signed out
-   * rather than run on another login. The MCP sign-ins are shared first (KERNEL-616).
+   * rather than run on another login. The MCP sign-ins are shared first (KERNEL-616), and the MCP servers synced (KERNEL-618).
    */
   claudeEnv(accountId = this.active('claude')): Record<string, string> {
     const a = accountId && accountId !== CLI_ACCOUNT ? this.stored('claude', accountId) : undefined
-    // Each Claude process reads its MCP sign-ins from its login's Keychain item.
+    // Each Claude process reads its MCP sign-ins from its login's Keychain item, and its servers from its `.claude.json`.
     this.shareMcp()
+    this.syncConfigs()
     if (!a) return {}
     if (a.auth === 'apiKey') {
       const key = this.apiKey('claude', a.id)
@@ -341,7 +375,8 @@ export class Providers extends Feature {
 
   /**
    * Reads an added Claude login through Claude Code with its folder: its sign-in, email and plan, kept on the account
-   * (`noteLogin`). A folder that moved reads as signed out. Undefined when Claude Code didn't answer.
+   * (`noteLogin`). A folder that moved reads as signed out. Undefined when Claude Code didn't answer, or when the login it
+   * read as signed out waits on a Keychain prompt (`keychainCheck`, KERNEL-618).
    */
   private async readClaudeLogin(a: StoredAccount): Promise<ClaudeLogin | undefined> {
     const bin = this.binary('claude').path
@@ -350,6 +385,9 @@ export class Providers extends Feature {
     if (!this.moved(a)) {
       this.readyClaudeHome(a.home)
       who = await claudeStatus(bin, loginEnv(a.home))
+      // Claude Code gives up on a Keychain read after 2 seconds and says signed out, which a login waiting on a prompt isn't.
+      if (!who?.signedIn && a.signedIn !== false && await this.keychainCheck(a)) return undefined
+      if (who?.signedIn) this.keychainRead(a.id)
     }
     if (who) await this.noteLogin('claude', a.id, who)
     return who
@@ -369,6 +407,7 @@ export class Providers extends Feature {
     let changed = was !== who.signedIn
     rec.signedIn = who.signedIn
     if (who.signedIn && who.email && rec.email !== who.email && !a) { rec.email = who.email; changed = true }
+    if (who.signedIn && who.orgId && rec.orgId !== who.orgId && !a) { rec.orgId = who.orgId; changed = true }
     let planChanged = false
     if (who.signedIn && a) {
       const tier = provider === 'claude' ? planOf(who.subscriptionType) : 'unknown'
@@ -468,11 +507,15 @@ export class Providers extends Feature {
     return out
   }
 
-  /** What a row adds (KERNEL-616): the MCP servers that need a sign-in, as last checked, and the models it lacks, as last read. */
-  private extras(provider: Provider, id: string): Pick<AccountProfile, 'mcpSignIns' | 'missingModels'> {
+  /**
+   * What a row adds: the MCP servers that need a sign-in, as last checked, and the models it lacks, as last read (KERNEL-616).
+   * On Claude, the accounts in its organization and a wait on a Keychain prompt (KERNEL-618).
+   */
+  private extras(provider: Provider, id: string): Pick<AccountProfile, 'mcpSignIns' | 'missingModels' | 'sameOrg' | 'keychainWait'> {
     const signIns = provider === 'claude' ? this.mcpSignIns.get(id) : undefined
     const missing = this.missing(provider, id)
-    return { ...(signIns ? { mcpSignIns: signIns } : {}), ...(missing ? { missingModels: missing } : {}) }
+    const peers = this.sameOrg(provider, id)
+    return { ...(signIns ? { mcpSignIns: signIns } : {}), ...(missing ? { missingModels: missing } : {}), ...(peers ? { sameOrg: peers } : {}), ...(provider === 'claude' && this.keychain.has(id) ? { keychainWait: true } : {}) }
   }
 
   /** Tells every window the accounts changed. */
@@ -756,6 +799,8 @@ export class Providers extends Feature {
     await this.save()
     if (to !== from) this.switches.set(provider, { to, from, ...(hit ? { limit: hit.type } : {}) })
     this.k.account.switched(provider, next, hit)
+    // Chats held for the old account's Keychain prompt run on the new one (KERNEL-618).
+    if (provider === 'claude') this.k.account.keychainDone()
     if (provider === 'codex') this.codexModels = undefined
     this.sessions.restartProvider(provider)
     this.k.account.applyLimits(this.store.meta<RateLimit[]>('limits') ?? [])
@@ -775,10 +820,29 @@ export class Providers extends Feature {
     return this.stored(provider, accountId)?.label ?? 'another account'
   }
 
+  /** A Claude login's claude.ai organization, `cli` for the CLI's own, as Kernel last read it (KERNEL-616, KERNEL-618). */
+  private orgOf(id: string): string | undefined {
+    const file = this.load().claude
+    return id === CLI_ACCOUNT ? file.cli?.orgId : file.accounts.find((a) => a.id === id)?.orgId
+  }
+
+  /**
+   * The provider's other accounts signed in to the same claude.ai organization as `id`, which can share its limits, or
+   * undefined (KERNEL-618). Codex says no workspace, so it has none.
+   */
+  private sameOrg(provider: Provider, id: string): string[] | undefined {
+    const org = provider === 'claude' ? this.orgOf(id) : undefined
+    if (!org) return undefined
+    const peers = [CLI_ACCOUNT, ...this.load().claude.accounts.map((a) => a.id)].filter((x) => x !== id && this.orgOf(x) === org)
+    return peers.length ? peers : undefined
+  }
+
   /**
    * The account Kernel moves `provider` to when the one in use hits its limit (KERNEL-568): a signed-in subscription account
    * with no rejected 5-hour or weekly window in `limits`, the lowest 5-hour use first and an account never read last. Never
-   * an API key account, which bills per token, and never the one in use. Sign-ins are as Kernel last read them.
+   * an API key account, which bills per token, and never the one in use. Sign-ins are as Kernel last read them. One in the
+   * same organization counts only by its own windows, and one waiting on a Keychain prompt not at all (`switchChoices`,
+   * KERNEL-618).
    */
   spareAccount(provider: Provider, limits: RateLimit[], now = Date.now()): string | undefined { return this.spares(provider, limits, now)[0] }
 
@@ -801,12 +865,12 @@ export class Providers extends Feature {
   /** Every account `spareAccount` could pick, best first. */
   private spares(provider: Provider, limits: RateLimit[], now: number): string[] {
     const file = this.load()[provider]
-    const signedIn = (a: StoredAccount) => a.auth !== 'apiKey' && (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
+    const signedIn = (a: StoredAccount) => (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
       : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
-    const ids = [...(file.cli?.signedIn !== false ? [CLI_ACCOUNT] : []), ...file.accounts.filter(signedIn).map((a) => a.id)].filter((id) => id !== (file.active ?? CLI_ACCOUNT))
-    const of = (id: string) => limits.filter((l) => limitProvider(l) === provider && (l.accountId ?? CLI_ACCOUNT) === id)
-    const used = (id: string) => of(id).find((l) => l.type === 'five_hour')?.utilization ?? Infinity
-    return ids.filter((id) => !blockingLimit(of(id), now)).sort((a, b) => used(a) - used(b))
+    const active = file.active ?? CLI_ACCOUNT
+    const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: signedIn(a) }))]
+      .map((a) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
+    return switchChoices(provider, accounts, limits, now).room.map((a) => a.id)
   }
 
   /**
@@ -957,7 +1021,8 @@ export class Providers extends Feature {
     if (!keychain || this.stopped || (!o.force && Date.now() - this.sharedAt < SHARE_EVERY_MS)) return
     this.sharedAt = Date.now()
     const logins = [{ id: CLI_ACCOUNT, item: credentialsItem(process.env), dir: this.claudeRoot() }]
-    for (const a of this.load().claude.accounts) if (a.home && !this.moved(a)) logins.push({ id: a.id, item: credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), dir: a.home })
+    // A login waiting on a Keychain prompt would hold the main process up to its read's timeout (KERNEL-618).
+    for (const a of this.load().claude.accounts) if (a.home && !this.moved(a) && !this.keychain.has(a.id)) logins.push({ id: a.id, item: credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), dir: a.home })
     let got: Map<string, string[]>
     try { got = shareMcpSignIns(keychain, logins) } catch { return }
     let changed = false
@@ -1029,6 +1094,81 @@ export class Providers extends Feature {
       this.shareMcp({ force: true })
     }
     return this.pushList()
+  }
+
+  // ---------- Keychain prompts (KERNEL-618)
+
+  /**
+   * Whether the Claude account in use waits on a Keychain prompt (`keychainCheck`), for a session Claude Code refused as
+   * signed out. Undefined at once when it can't: only an added login can, and only on a Kernel given a Keychain to read.
+   */
+  keychainWaiting(): Promise<'prompt' | 'later' | undefined> | undefined {
+    const id = this.active('claude')
+    const a = id ? this.stored('claude', id) : undefined
+    return a?.home && !this.moved(a) && this.o.keychain?.access ? this.keychainCheck(a) : undefined
+  }
+
+  /**
+   * Whether an added login's Keychain item waits on a macOS prompt, which Claude Code reads as signed out (KERNEL-618). Kernel
+   * reads the item itself, through `/usr/bin/security` as the CLI does. A read that hasn't finished within `keychainMs.wait`
+   * waits on a prompt, and Kernel keeps it up to `keychainMs.prompt` for someone to allow it. Resolves `prompt` while it is
+   * up, `later` for `keychainMs.retry` after one nobody allowed, when no new prompt shows, and undefined when the item
+   * reads, or there is none. The first wait saves one Inbox notice a day. One check runs per login at a time.
+   */
+  private keychainCheck(a: StoredAccount): Promise<'prompt' | 'later' | undefined> {
+    const running = this.checking.get(a.id)
+    if (running) return running
+    const check = this.checkKeychain(a).finally(() => this.checking.delete(a.id))
+    this.checking.set(a.id, check)
+    return check
+  }
+
+  private async checkKeychain(a: StoredAccount): Promise<'prompt' | 'later' | undefined> {
+    const keychain = this.o.keychain
+    if (!keychain?.access || !a.home || this.moved(a) || this.stopped) return undefined
+    const had = this.keychain.get(a.id)
+    if (had?.prompt) return 'prompt'
+    if (had?.endedAt && Date.now() - had.endedAt < this.keychainMs.retry) return 'later'
+    const read = keychain.access(credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), this.keychainMs.prompt).catch(() => 'denied' as const)
+    let timer: NodeJS.Timeout | undefined
+    const first = await Promise.race([read, new Promise<'waiting'>((resolve) => { timer = setTimeout(() => resolve('waiting'), this.keychainMs.wait) })])
+    clearTimeout(timer)
+    if (first !== 'waiting') { this.keychainRead(a.id); return undefined }
+    const wait = { prompt: read.then((r) => r === 'ok') }
+    this.keychain.set(a.id, wait)
+    void wait.prompt.then((allowed) => this.keychainDone(a.id, wait, allowed))
+    const name = a.label
+    const title = `${name} is waiting for Keychain access`
+    const day = new Date().toISOString().slice(0, 10)
+    this.notifications.notice({
+      id: `n-keychain-claude-${a.id}-${day}`, title, heading: title, sub: 'Allow it in the macOS prompt to use this account.',
+      body: `macOS is asking whether Claude Code can read ${name}'s login from your Keychain. Click Always Allow in that prompt to use ${name} again. Kernel keeps ${name} signed in meanwhile.`
+    })
+    void this.pushAccounts()
+    return 'prompt'
+  }
+
+  /** A login's Keychain item read, so it no longer waits on a prompt. One whose prompt is still up waits for it to end. */
+  private keychainRead(id: string) {
+    if (this.keychain.get(id)?.prompt || !this.keychain.delete(id)) return
+    void this.pushAccounts()
+  }
+
+  /**
+   * The read that kept a login's prompt up ended: someone allowed it, or nobody did in time. Allowed, the login is read again.
+   * Either way Claude's chats stop waiting on it (`Account.keychainDone`), so none waits on a prompt forever.
+   */
+  private keychainDone(id: string, wait: { prompt?: Promise<boolean> }, allowed: boolean) {
+    if (this.keychain.get(id) !== wait || this.stopped) return
+    if (allowed) this.keychain.delete(id)
+    else this.keychain.set(id, { endedAt: Date.now() })
+    void (async () => {
+      const a = this.stored('claude', id)
+      if (allowed && a) await this.readClaudeLogin(a).catch(() => undefined)
+      if (this.stopped) return
+      this.k.account.keychainDone(allowed && id === this.active('claude'))
+      void this.pushAccounts()
+    })()
   }
 
   // ---------- models an account offers (KERNEL-616)

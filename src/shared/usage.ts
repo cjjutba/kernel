@@ -1,4 +1,5 @@
-import type { RateLimit } from './types'
+import type { AccountProfile, Provider, RateLimit } from './types'
+import { limitProvider } from './providers'
 
 /**
  * How full a usage window is when Settings, Account's "Pause new work when close to the limit" holds teammates (KERNEL-220).
@@ -33,4 +34,42 @@ export const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { 
 export function resetPhrase(resetsAt: number, now: number): string {
   const ms = resetsAt * 1000
   return ms - now < DAY ? `at ${clock(ms)}` : `${new Date(ms).toLocaleDateString('en-US', { weekday: 'long' })} at ${clock(ms)}`
+}
+
+/** What `switchChoices` reads of an account. */
+export type SwitchAccount = Pick<AccountProfile, 'id' | 'provider' | 'active' | 'signedIn' | 'auth' | 'sameOrg' | 'keychainWait'>
+
+/**
+ * Where a provider can go when the account in use hits its 5-hour or weekly limit, as Kernel's own switch and the limit
+ * banner see it (KERNEL-568, KERNEL-569, KERNEL-618). `room` holds the provider's other signed-in accounts with no rejected
+ * 5-hour or weekly window, and none waiting for Keychain access: subscriptions first, the most 5-hour room first (a window past its reset has all of it, and one
+ * never read goes last), then API key accounts, which Kernel never moves to on its own. Seats in one claude.ai organization
+ * can share limits, so an account in the same organization as the one in use counts only when its own windows say so: a
+ * 5-hour or weekly window read on it, and none rejected. When none has room, `signedOut` is the signed-out subscription
+ * account that would have room by the same rules, for "Personal is signed out. Sign in to switch to it." `now` is in ms.
+ */
+export function switchChoices<A extends SwitchAccount>(provider: Provider, accounts: A[], usage: RateLimit[], now = Date.now()): { room: A[]; signedOut?: A } {
+  const mine = accounts.filter((a) => a.provider === provider)
+  const active = mine.find((a) => a.active)?.id ?? 'cli'
+  const windows = (id: string) => usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === id && (l.type === 'five_hour' || l.type === 'seven_day'))
+  const rejected = (l: RateLimit) => l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now)
+  const hasRoom = (a: A) => {
+    const own = windows(a.id)
+    return !own.some(rejected) && (!a.sameOrg?.includes(active) || own.length > 0)
+  }
+  const fiveHourUse = (a: A) => {
+    const w = windows(a.id).find((l) => l.type === 'five_hour' && !l.model)
+    if (w?.utilization === undefined) return Infinity
+    return w.resetsAt !== undefined && w.resetsAt * 1000 <= now ? 0 : w.utilization
+  }
+  const byRoom = (list: A[]) => [...list].sort((a, b) => {
+    const x = fiveHourUse(a)
+    const y = fiveHourUse(b)
+    return x === y ? 0 : x < y ? -1 : 1
+  })
+  const others = mine.filter((a) => !a.active && !a.keychainWait && hasRoom(a))
+  const plans = (signedIn: boolean) => byRoom(others.filter((a) => a.auth !== 'apiKey' && a.signedIn === signedIn))
+  const room = [...plans(true), ...others.filter((a) => a.auth === 'apiKey' && a.signedIn)]
+  const signedOut = room.length ? undefined : plans(false)[0]
+  return { room, ...(signedOut ? { signedOut } : {}) }
 }

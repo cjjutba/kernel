@@ -888,3 +888,170 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     await k.stop()
   })
 })
+
+describe('MCP servers added on an account, Keychain prompts and shared organizations (KERNEL-618)', () => {
+  const keys = ['FAKE_EMAIL', 'FAKE_PLAN', 'FAKE_ORG'] as const
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  afterEach(() => { for (const key of keys) { if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key] } })
+
+  /** A Kernel whose Claude is a fake CLI with its own login on Max and `neon` in `~/.claude.json`, an in-memory Keychain, and one added login. */
+  async function setUp() {
+    const kc = fakeKeychain()
+    const t = await kernel({ keychain: kc.keychain })
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    await writeFile(join(t.home, '.claude.json'), JSON.stringify({ mcpServers: { neon: { command: 'neon' } }, projects: { '/repo': {} }, oauthAccount: { emailAddress: 'cj@example.com' } }))
+    const h = t.k.handlers()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = t.k.providers.claudeHome(side.id)
+    const rows = async () => (await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude')
+    const row = async (id = side.id) => (await rows()).find((a) => a.id === id)
+    /** The environment the next Claude process on `accountId` gets, with the MCP servers synced across every login first. */
+    const start = (accountId?: string) => { (t.k.providers as unknown as { syncedAt: number }).syncedAt = 0; return t.k.providers.claudeEnv(accountId) }
+    return { ...t, kc, claude, h, side, folder, rows, row, start }
+  }
+
+  const config = async (file: string) => JSON.parse(await readFile(file, 'utf8'))
+  /** Changes a `.claude.json` the way `claude mcp add` or `claude mcp remove` would. */
+  const edit = async (file: string, change: (c: any) => void) => { const c = await config(file); change(c); await writeFile(file, JSON.stringify(c)) }
+
+  it('keeps an MCP server added on an added account on every login while switching back and forth, and one removed stays removed', async () => {
+    const { k, h, side, folder, home, start } = await setUp()
+    const cliFile = join(home, '.claude.json')
+    const acctFile = join(folder, '.claude.json')
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    expect(start()).toEqual({ CLAUDE_CONFIG_DIR: folder })
+    // `claude mcp add --scope user fal` in a terminal on the account, and a local server in /repo.
+    await edit(acctFile, (c) => { c.mcpServers.fal = { command: 'fal' }; c.projects['/repo'] = { mcpServers: { db: { command: 'db' } } } })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(start()).toEqual({})
+    expect((await config(cliFile)).mcpServers).toEqual({ neon: { command: 'neon' }, fal: { command: 'fal' } })
+    expect((await config(cliFile)).projects['/repo'].mcpServers).toEqual({ db: { command: 'db' } })
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    start()
+    expect((await config(acctFile)).mcpServers).toEqual({ neon: { command: 'neon' }, fal: { command: 'fal' } })
+    // `claude mcp remove fal` on the CLI login: gone from the account, and it doesn't come back.
+    await edit(cliFile, (c) => { delete c.mcpServers.fal })
+    for (const to of ['cli', side.id, 'cli', side.id]) {
+      await h['accounts.switch']({ provider: 'claude', accountId: to })
+      start()
+    }
+    expect((await config(acctFile)).mcpServers).toEqual({ neon: { command: 'neon' } })
+    expect((await config(cliFile)).mcpServers).toEqual({ neon: { command: 'neon' } })
+    // The account's own login stays its own.
+    expect((await config(acctFile)).oauthAccount).toEqual({ emailAddress: 'side@example.com' })
+    expect((await config(cliFile)).oauthAccount).toEqual({ emailAddress: 'cj@example.com' })
+    await k.stop()
+  })
+
+  it('says an account waits for Keychain access instead of signing it out, holds its chats only while the prompt is up, and goes on once allowed', async () => {
+    const { k, kc, claude, h, side, folder, row } = await setUp()
+    k.providers.keychainMs = { wait: 50, prompt: 5000, retry: 60_000 }
+    await h['accounts.rename']({ provider: 'claude', accountId: side.id, label: 'Personal' })
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    const item = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
+    kc.set(item, { claudeAiOauth: { accessToken: 'pro-login' } })
+    // macOS asks before reading the item, and Claude Code gives up after 2 seconds and reads the login as signed out.
+    kc.prompt(item)
+    await claude.setLogin(folder, null)
+    k.account.signedOut('claude')
+    await until(() => k.sessions.heldFor('claude').includes('keychain'))
+    expect(k.sessions.heldFor('claude')).not.toContain('auth')
+    expect(await row()).toMatchObject({ signedIn: true, keychainWait: true })
+    const notices = () => k.notifications.list().filter((n) => n.title.startsWith('Personal is'))
+    expect(notices()).toMatchObject([{ title: 'Personal is waiting for Keychain access', sub: 'Allow it in the macOS prompt to use this account.' }])
+    // Reads meanwhile keep the sign-in and show one prompt, not one each.
+    await k.providers.readUsage({ force: true })
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true, name: 'Personal' })
+    expect(kc.accesses.filter((i) => i === item)).toHaveLength(1)
+    // Always Allow.
+    await claude.setLogin(folder, { email: 'side@example.com', plan: 'pro' })
+    kc.allow(item)
+    await until(() => !k.sessions.heldFor('claude').includes('keychain'))
+    await until(async () => (await row())?.keychainWait === undefined)
+    expect(await row()).toMatchObject({ signedIn: true })
+    expect(notices().map((n) => n.title)).toEqual(['Personal is waiting for Keychain access'])
+    await k.stop()
+  })
+
+  it("stops holding chats when nobody allows the prompt, asks again only later, and still never signs the account out", async () => {
+    const { k, kc, claude, h, side, folder, row } = await setUp()
+    k.providers.keychainMs = { wait: 50, prompt: 200, retry: 60_000 }
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    const item = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
+    kc.set(item, { claudeAiOauth: { accessToken: 'pro-login' } })
+    kc.prompt(item)
+    await claude.setLogin(folder, null)
+    k.account.signedOut('claude')
+    await until(() => k.sessions.heldFor('claude').includes('keychain'))
+    // Kernel's read gives up, and with it the hold.
+    await until(() => !k.sessions.heldFor('claude').includes('keychain'))
+    expect(await row()).toMatchObject({ signedIn: true, keychainWait: true })
+    // Refused again: no new prompt yet, and nothing waits for one.
+    k.account.signedOut('claude')
+    await until(() => !k.sessions.heldFor('claude').includes('auth'))
+    expect(k.sessions.heldFor('claude')).toEqual([])
+    expect(kc.accesses.filter((i) => i === item)).toHaveLength(1)
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toEqual([])
+    await k.stop()
+  })
+
+  it('lets chats held for a Keychain prompt go on when Claude moves to another account', async () => {
+    const { k, kc, claude, h, side, folder } = await setUp()
+    k.providers.keychainMs = { wait: 50, prompt: 5000, retry: 60_000 }
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    const item = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
+    kc.set(item, { claudeAiOauth: { accessToken: 'pro-login' } })
+    kc.prompt(item)
+    await claude.setLogin(folder, null)
+    k.account.signedOut('claude')
+    await until(() => k.sessions.heldFor('claude').includes('keychain'))
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(k.sessions.heldFor('claude')).toEqual([])
+    kc.deny(item)
+    await k.stop()
+  })
+
+  it('signs an account out as before when its Keychain item reads, or is gone', async () => {
+    const { k, h, side, claude, folder, row } = await setUp()
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    await claude.setLogin(folder, null)
+    k.account.signedOut('claude')
+    await until(async () => (await row())?.signedIn === false)
+    expect(k.sessions.heldFor('claude')).toContain('auth')
+    expect((await row())?.keychainWait).toBeUndefined()
+    expect(k.notifications.list().map((n) => n.title)).toContain('side@example.com is signed out')
+    await k.stop()
+  })
+
+  it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has room', async () => {
+    const { k, claude, h, side, folder, row } = await setUp()
+    // The CLI login is a Team seat, and a second seat in the same organization is added.
+    await claude.setLogin('cli', { email: 'cj@example.com', plan: 'team', org: 'org-team' })
+    process.env.FAKE_EMAIL = 'seat@example.com'
+    process.env.FAKE_PLAN = 'team'
+    process.env.FAKE_ORG = 'org-team'
+    const seat = await h['accounts.add']({ provider: 'claude' })
+    await h['accounts.rename']({ provider: 'claude', accountId: 'cli', label: 'Work' })
+    expect(await row('cli')).toMatchObject({ sameOrg: [seat.id] })
+    expect(await row(seat.id)).toMatchObject({ sameOrg: ['cli'] })
+    expect((await row(side.id))?.sameOrg).toBeUndefined()
+    // side@example.com signs out, so the seat is the only other account.
+    await claude.setLogin(folder, null)
+    await k.providers.readUsage({ force: true })
+    expect((await row(side.id))?.signedIn).toBe(false)
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    // Work hits its 5-hour limit, and the seat's usage can't be read.
+    sdk.usage = { '': 100 }
+    const merge = (l: Partial<RateLimit>) => (k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }).mergeLimits([{ type: 'five_hour', resetsAt: Math.round(Date.now() / 1000) + 3600, ...l }])
+    merge({ status: 'rejected', utilization: 1 })
+    const moving = () => [...(k.account as unknown as { moving: Map<string, { state: string }> }).moving.values()].map((m) => m.state)
+    await until(() => moving().includes('waiting'))
+    expect(k.providers.active('claude')).toBeUndefined()
+    // A reading of the seat's own windows shows room, and Kernel moves there.
+    merge({ status: 'allowed', utilization: 0.1, accountId: seat.id })
+    await until(() => k.providers.active('claude') === seat.id)
+    await k.stop()
+  })
+})

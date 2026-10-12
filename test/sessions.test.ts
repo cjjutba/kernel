@@ -580,3 +580,80 @@ describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
     expect(t.approvals.expirePending().map((a) => a.id)).toEqual([card.id])
   })
 })
+
+describe('switching accounts while a chat waits on the user, on Claude (KERNEL-618)', () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+
+  /** A chat on Work, a Claude account whose folder each process gets, and `switchTo`, which does what `Providers.switchTo` asks of Sessions. */
+  async function setup(o: { plan?: boolean } = {}) {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-switch-')), 'kernel.db'))
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: !!o.plan, createdAt: 1 })
+    const approvals = new Approvals(store)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: ['pnpm build'], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    let active = 'work'
+    const sessions = new Sessions({
+      store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), switchNote: (_p, id) => `Now on ${id}`
+    })
+    const start = async (text = 'Add a pdf_url column') => {
+      await sessions.send('chat', [{ type: 'text', text }])
+      const call = sdk.calls.at(-1)!
+      call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+      await flush()
+      return call
+    }
+    const switchTo = (to: string) => { active = to; sessions.restartProvider('claude'); sessions.drainWaiting() }
+    const finish = async (call: (typeof sdk.calls)[number]) => { call.feed({ type: 'result', subtype: 'success', uuid: `r${sdk.calls.length}`, duration_ms: 5 }); await flush() }
+    const stopped = (call: { options: Options }) => !!call.options.abortController?.signal.aborted
+    const pending = () => store.approvals({ pendingOnly: true })
+    const notes = () => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+    return { store, sessions, approvals, start, switchTo, finish, stopped, pending, notes }
+  }
+
+  it('finishes a turn waiting on a permission card on the account it started on, and the next turn runs on the new one', async () => {
+    const t = await setup()
+    const call = await t.start()
+    expect(call.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/work')
+    const answer = (call.options.canUseTool as CanUseTool)('Bash', { command: 'pnpm build' }, { signal: new AbortController().signal, toolUseID: 'b1' } as never)
+    const [card] = t.pending()
+    expect(card).toMatchObject({ kind: 'tool', toolName: 'Bash' })
+    t.switchTo('personal')
+    // The card still waits, in the process it came from.
+    expect(t.stopped(call)).toBe(false)
+    expect(t.sessions.isRunning('chat')).toBe(true)
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+    await t.finish(call)
+    // That process ends with its turn, and the next turn starts one on Personal.
+    expect(t.stopped(call)).toBe(true)
+    const next = await t.start('Run the tests')
+    expect(sdk.calls.at(-1)).toBe(next)
+    expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+    expect(t.notes()).toEqual(['Now on personal'])
+  })
+
+  it('finishes a turn waiting on plan approval on the account it started on, and goes on with the plan there', async () => {
+    const t = await setup({ plan: true })
+    const call = await t.start('Plan the column')
+    const calls = sdk.calls.length
+    const answer = (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column' }, { signal: new AbortController().signal, toolUseID: 'p1' } as never)
+    await flush()
+    const [card] = t.pending()
+    expect(card).toMatchObject({ kind: 'plan', detail: '1. Add the column' })
+    t.switchTo('personal')
+    expect(t.stopped(call)).toBe(false)
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+    // The agent carries out the plan in the same turn, on Work, and nothing new started.
+    expect(t.store.chat('chat')?.plan).toBe(false)
+    expect(sdk.calls).toHaveLength(calls)
+    await t.finish(call)
+    expect(t.stopped(call)).toBe(true)
+    expect((await t.start('Next')).options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+  })
+})
