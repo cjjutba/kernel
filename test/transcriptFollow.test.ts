@@ -86,3 +86,27 @@ describe('whether the chat keeps following its end after a scroll (KERNEL-605)',
     expect(followsAfterScroll(true, view(900), view(900), false)).toBe(true)
   })
 })
+
+describe('whether following may move the view (KERNEL-629)', () => {
+  type View = { scrollTop: number; scrollHeight: number; clientHeight: number }
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ movesToEnd: (view: View, byHand: boolean) => boolean }>
+  const view = (up: number): View => ({ scrollTop: 3000 - 800 - up, scrollHeight: 3000, clientHeight: 800 })
+
+  it('moves when the view is short of the end and nobody is scrolling', async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(300), false)).toBe(true)
+    expect(movesToEnd(view(1), false)).toBe(true)
+  })
+
+  it('stays put at the end, so the native bounce finishes', async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(0), false)).toBe(false)
+    expect(movesToEnd(view(0.4), false)).toBe(false)
+  })
+
+  it("stays put while the reader's gesture or its momentum is going", async () => {
+    const { movesToEnd } = await load()
+    expect(movesToEnd(view(300), true)).toBe(false)
+    expect(movesToEnd(view(0), true)).toBe(false)
+  })
+})

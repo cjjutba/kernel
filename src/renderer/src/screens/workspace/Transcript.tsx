@@ -63,6 +63,12 @@ export function followsAfterScroll(pinned: boolean, view: ScrollView, before: Sc
   return distFromEnd(view) <= PIN_PX ? true : pinned
 }
 
+/**
+ * Whether following may move the view (KERNEL-629). Not while the reader's own gesture or its momentum is under way, and not when the view is already
+ * at its end, since a jump there cuts the native rubber-band bounce short. Following resumes once the scroll lands.
+ */
+export const movesToEnd = (view: ScrollView, byHand: boolean) => !byHand && distFromEnd(view) >= 1
+
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 export function PartChip({ part }: { part: ChatPart }) {
@@ -429,8 +435,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
     if (gliding.current) return 0
-    end.current?.scrollIntoView({ block: 'end' })
-    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) end.current?.scrollIntoView({ block: 'end' }) })
+    const move = () => { const el = scroller.current; if (!el || movesToEnd(el, byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
+    move()
+    return requestAnimationFrame(() => { if (pinned.current && !gliding.current) move() })
   }
   const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
   const landed = () => {
@@ -477,7 +484,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const last = items[items.length - 1]
   const sent = followsSend(last)
   useEffect(() => {
-    if (sent) { release(); pin(true) }
+    if (sent) { release(); byHand.current = false; pin(true) }
     if (pinned.current) followNow()
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
