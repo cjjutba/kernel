@@ -21,7 +21,7 @@ export const DEFAULT_BASE_REF = 'origin/main'
 export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
-  general: { openTo: 'lastPlace', openAtLogin: false, menuBar: true, sendWith: 'enter' },
+  general: { openTo: 'lastPlace', openAtLogin: false, sendWith: 'enter' },
   floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
-  team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
+  team: { addNewAgents: true, defaultTemplate: 'starter' },
   permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
@@ -178,6 +178,10 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
   // Nothing ever read setUpstream, so it went (KERNEL-460). A file that still has it loads without it.
   if (workspace) delete workspace.setUpstream
+  // Nothing read Show in menu bar or Show names instead of roles, so they went (KERNEL-536). A file that still has them loads without them.
+  if (general) delete general.menuBar
+  const team = group('team')
+  if (team) delete team.showNames
   // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
   const exp = group('experimental')
   if (exp) {
