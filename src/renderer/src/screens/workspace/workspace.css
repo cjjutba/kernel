@@ -206,7 +206,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .tab-strip .tab { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; white-space: nowrap; }
 /* The tablist clips what sits outside it, so the focus ring is drawn inside the tab. */
 .tab-strip .tab:focus-visible { outline-offset: -2px; }
-.tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
+/* Under .tab-strip so it outranks the base .icon-btn size, which comes later in the bundle. The arrow and its fade fill the strip's height, so the arrow centers on the labels. */
+.tab-strip .tab-more { position: absolute; top: 0; bottom: 0; width: var(--tab-fade); height: auto; padding: 0 3px; border-radius: 0; }
 .tab-more[data-side='left'] { left: 0; justify-content: flex-start; background: linear-gradient(to left, transparent, var(--panel) 58%); }
 .tab-more[data-side='right'] { right: 0; justify-content: flex-end; background: linear-gradient(to right, transparent, var(--panel) 58%); }
 .tab-more[data-side='left'] svg { transform: rotate(180deg); }
