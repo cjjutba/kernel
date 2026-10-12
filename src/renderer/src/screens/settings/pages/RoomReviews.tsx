@@ -5,11 +5,12 @@ import { providerOf } from '@shared/providers'
 import { loadRoom, useStore } from '../../../store'
 import { SegmentedControl, Select, Toggle } from '../../../ui'
 import { modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
-import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
+import { LinesField, NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
 import { NumberField } from './fields'
-import { NO_REVIEW, patchReview } from './reviewSettings'
+import { NO_REVIEW, patchAlwaysReview, patchReview } from './reviewSettings'
 
 const NO_AGENTS: AgentDef[] = []
+const NO_PATHS: string[] = []
 const KERNEL = ''
 const DEFAULT_MODEL = ''
 
@@ -38,8 +39,8 @@ function PathsField({ label, value, disabled, onSave }: { label: string; value: 
 
 /**
  * Settings > a room > Reviews (SettingsRoomReviews.png, KERNEL-557): what runs on each pull request once its checks pass, and when
- * it comes to the user. It reads and writes `[review]` in the shared settings.toml through `settings.setReview`, so the whole
- * team shares it. A review that is off keeps its settings in view and can't be edited, since saving one would turn it on.
+ * it comes to the user. It reads and writes `[review]` in the shared settings.toml through `settings.setReview`, and the repo's
+ * always-review paths, `[merge] always_review`, through `settings.setAlwaysReview` (KERNEL-594), so the whole team shares it. A review that is off keeps its settings in view and can't be edited, since saving one would turn it on.
  */
 export function RoomReviews({ roomId }: { roomId?: string }) {
   const { room, rs } = useRoomPage(roomId)
@@ -49,6 +50,7 @@ export function RoomReviews({ roomId }: { roomId?: string }) {
   useEffect(() => { if (roomId) void loadRoom(roomId) }, [roomId])
   if (!room || !roomId) return <NoRoom />
   const review = rs?.review ?? NO_REVIEW
+  const always = rs?.merge?.alwaysReview ?? NO_PATHS
   // The agents a review can run as: the room's own files, as the engine's pool is. Kernel's prompt runs a review with none picked.
   const pool = agents.filter((a) => !a.lead && !a.retired && !a.builtIn)
   // The code review runs as the room's reviewer when it names no agent, so Kernel is not a choice there while the room has one.
@@ -96,6 +98,13 @@ export function RoomReviews({ roomId }: { roomId?: string }) {
         <Row label="Stop after" desc="After this many, the pull request comes to you.">
           <NumberField label="Review rounds" value={review.rounds} unit="review rounds" onSave={(rounds) => void patchReview(roomId, { rounds })} />
         </Row>
+        <Row label="Always review yourself" desc="Changes to these paths never merge automatically, on anyone’s Mac. One path per line."
+          full={(
+            <>
+              <LinesField label="Always review yourself" value={always} onSave={(paths) => void patchAlwaysReview(roomId, paths)} />
+              <p className="set-hint">Kernel’s built-in paths, like agent files and CI workflows, always apply too. These only add to them.</p>
+            </>
+          )} />
       </Section>
     </RoomPage>
   )

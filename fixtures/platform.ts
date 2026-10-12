@@ -362,7 +362,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
   // KERNEL-493: Agents working at once is 4, so the Open workspaces row's first option reads "Same as agents working at once (4)".
   SettingsTeam: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
-  // KERNEL-557: Client A's `[review]` as the canvas draws it. The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Lumi, which is optional.
+  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Lumi, which is optional.
   SettingsRoomReviews: scene((f) => ({
     ...clientA({
       review: {
@@ -372,7 +372,9 @@ export const platformFixtures: Record<string, Fixture> = {
           security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
           ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'lumi', model: 'claude-sonnet-5-5', provider: 'claude' }
         }
-      }
+      },
+      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] }
     }),
     agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'reviews' } }
