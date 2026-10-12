@@ -112,8 +112,8 @@ export interface RunnerHost {
   /** The user stopped this turn. */
   readonly interrupted: boolean
 
-  /** Put a request in front of the user and wait for the answer. Undefined when nobody answered in time. */
-  ask(a: Ask, o: { signal?: AbortSignal }): Promise<Decision | undefined>
+  /** Put a request in front of the user and wait for the answer. Undefined when nobody answered in time, or `timeoutMs` passed. */
+  ask(a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }): Promise<Decision | undefined>
   /**
    * Show a plan for approval and wait. An approved plan takes the chat out of plan mode and starts a Lead's hand-off.
    * `toolName` and `input` are the call that asked, when the plan came from a tool such as ExitPlanMode.
