@@ -100,6 +100,11 @@ const noCanvas = [
   'SetupWorktreeFailed', // git wouldn't make it: Couldn't create the worktree with git's reason and Try again (KERNEL-543)
   'SetupSentAnyway',
   'SetupDone',
+  // The turn files card under a finished reply, drawn in design/redesign/ (KERNEL-586).
+  'TurnFiles',
+  'TurnFilesLong',
+  'TurnFilesNoReply',
+  'TurnFilesHover',
 ]
 
 describe('fixtures', () => {

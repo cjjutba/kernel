@@ -272,7 +272,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
-                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onForked={select} />
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
