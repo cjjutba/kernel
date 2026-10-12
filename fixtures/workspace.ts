@@ -1338,6 +1338,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
   PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
   PanelCollapsed: bottomFolded(idleRun(headerScene('ready', [], { panel: true }))),
+  // Folded while the run script runs: the bar says Running, so you can tell the app is up without opening it (KERNEL-529).
+  PanelCollapsedRunning: bottomFolded(headerScene('ready', [], { panel: true })),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
   // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The canvas draws the top strip beside the toolbar, which takes the room Checks needs; until the toolbar is built
   // the Shared tab takes it instead. The bottom's two terminals past Run are stand-ins the shot adds.

@@ -229,6 +229,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .bottom-panel { position: relative; height: clamp(160px, calc(var(--bottom-ratio, 0.3333) * 100cqh), calc(100cqh - 160px)); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .bottom-panel[data-collapsed] { height: 41px; }
 .bottom-panel[data-collapsed] .bottom-tabs { border-bottom: 0; }
+.bottom-word { flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--faint); }
 .bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-bottom: 1px solid var(--line); }
 /* The chevron points down while the pane is open and up once it is folded. */
 .bottom-tabs > .icon-btn { width: 24px; height: 24px; border-radius: 6px; }
