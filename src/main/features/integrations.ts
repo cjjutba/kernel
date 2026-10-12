@@ -3,17 +3,19 @@ import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs, prsNaming } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
-import { loadRepoSettings } from '../services/settings'
 import { issueTaken, TAKEN_TIMEOUT_MS } from '../services/issueTaken'
+import { saveJiraAccount, storedJiraAccount } from '../services/jiraAccount'
+import { loadRepoSettings, saveRepoSettings } from '../services/settings'
 import { trackerKind, trackerName } from '../services/trackers'
 import { githubKey, githubTracker } from '../services/trackers/github'
 import { listGithubIssues, readGithubIssue } from '../services/trackers/githubIssues'
+import { jiraKey, jiraMyself, jiraSite, jiraTracker, jiraTransitions, latestToDo, listJiraIssues } from '../services/trackers/jira'
 import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
 import { noneTracker } from '../services/trackers/none'
 import { remoteBranches, remoteRepo } from '../services/worktrees'
 import { Feature } from './feature'
 
-/** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
+/** Linear, GitHub and Jira, and the Integrations page that connects them (KERNEL-325). */
 export class Integrations extends Feature {
   /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY (KERNEL-445). */
   private async linearKey() { return (await storedLinearToken(this.o.dataDir, this.o.cipher)) ?? linearToken() }
@@ -21,13 +23,17 @@ export class Integrations extends Feature {
 
   /**
    * A workspace started on an issue: move it to In Progress in the room's tracker (D-140). Nobody waits for it, and a
-   * failure is one note in the log, never a failed workspace. Linear without a token, GitHub and no tracker move nothing.
+   * failure is one note in the log, never a failed workspace. Linear without a token, Jira without a transition (KERNEL-474),
+   * GitHub and no tracker move nothing.
    */
   async startIssue(ws: Workspace, key: string) {
+    let tracker: Tracker | undefined
     try {
-      await (await this.trackerFor(ws.roomId)).start(key)
+      tracker = await this.trackerFor(ws.roomId)
+      await tracker.start(key)
     } catch (e) {
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
+      const where = tracker ? ` in ${trackerName(tracker.kind === 'none' ? undefined : tracker.kind)}` : ''
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress${where}:`, object: (e as Error).message, warn: true })
     }
   }
 
@@ -111,14 +117,15 @@ export class Integrations extends Feature {
     const repo = await loadRepoSettings(room.path)
     const remote = room.repo ?? (await remoteRepo(room.path, await this.k.config.remoteFor(room.path, repo)))
     const kind = trackerKind({ kind: repo.tracker?.kind, linearToken: !!(await this.linearKey()), linearTeam: !!repo.linear?.team, githubRemote: !!remote })
-    return { room, kind, remote }
+    return { room, repo, kind, remote }
   }
 
-  /** The room's issue tracker. Jira reads as no tracker until Kernel can read it (KERNEL-474). */
+  /** The room's issue tracker. Jira only when the room sets `[tracker] kind = "jira"` (KERNEL-474). */
   async trackerFor(roomId: string): Promise<Tracker> {
-    const { room, kind } = await this.detect(roomId)
+    const { room, repo, kind } = await this.detect(roomId)
     if (kind === 'linear') return linearTracker(() => this.linearKey(), this.linearFetch)
     if (kind === 'github') return githubTracker(room.path)
+    if (kind === 'jira') return jiraTracker({ creds: () => this.jiraAccount(), project: repo.jira?.project, transition: repo.jira?.transition, fetch: this.o.fetch })
     return noneTracker()
   }
 
@@ -127,8 +134,12 @@ export class Integrations extends Feature {
     const { kind, remote } = await this.detect(roomId)
     if (kind === 'linear') return { kind }
     if (kind === 'github') return { kind, ...(remote ? { where: remote } : {}) }
+    if (kind === 'jira') return { kind }
     return { kind: 'none' }
   }
+
+  /** The Jira account saved in Settings (KERNEL-474). */
+  private jiraAccount() { return storedJiraAccount(this.o.dataDir, this.o.cipher) }
 
   private async integrations() {
     const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), this.linearKey()])
@@ -152,6 +163,32 @@ export class Integrations extends Feature {
         const chat = await this.k.lead.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
+      'jira.connect': async ({ site, email, token }) => {
+        if (!token.trim()) { await saveJiraAccount(this.o.dataDir, null); return null }
+        const host = jiraSite(site)
+        if (!host) throw new Error('Enter your Jira site, like acme.atlassian.net.')
+        if (!/^[^\s@]+@[^\s@]+$/.test(email.trim())) throw new Error('Enter the email you sign in to Jira with.')
+        const creds = { site: host, email: email.trim(), token: token.trim() }
+        const account = await jiraMyself(creds, this.o.fetch)
+        await saveJiraAccount(this.o.dataDir, creds, this.o.cipher)
+        return account
+      },
+      'jira.test': async () => {
+        const creds = await this.jiraAccount()
+        return creds ? jiraMyself(creds, this.o.fetch) : null
+      },
+      'jira.issues': async ({ roomId, filter }) => {
+        const project = (await loadRepoSettings(this.mustRoom(roomId).path)).jira?.project
+        return listJiraIssues(await this.jiraAccount(), { ...filter, project }, 100, this.o.fetch)
+      },
+      'jira.transitions': async ({ roomId, issue }) => {
+        const project = (await loadRepoSettings(this.mustRoom(roomId).path)).jira?.project
+        const creds = await this.jiraAccount()
+        const key = issue ? jiraKey(issue, project) : await latestToDo(creds, project, this.o.fetch)
+        if (issue && !key) throw new Error(`${issue} is not a Jira issue. Jira issues go by key, like PROJ-7.`)
+        return key ? jiraTransitions(creds, key, this.o.fetch) : []
+      },
+      'jira.saveTransition': async ({ roomId, transition, shared }) => saveRepoSettings(this.mustRoom(roomId).path, { jira: { transition } }, shared),
       'integrations.list': async () => this.integrations(),
       'integrations.connect': async ({ id, token }) => {
         if (id === 'linear') {

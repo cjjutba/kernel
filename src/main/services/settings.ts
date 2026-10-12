@@ -352,7 +352,7 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'jira', 'mcp', 'agents'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys that hold a table of names: both files merge it name by name, and a patch changes only the names it lists (KERNEL-432). */
@@ -432,6 +432,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
     env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
     tracker: picked(doc.tracker, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
+    // `[jira]` (KERNEL-474). Jira's transition ids are numbers, so a hand-written `transition = 21` reads as "21".
+    jira: Object.fromEntries(Object.entries(picked(doc.jira, ['project', 'transition'], (v) => isString(v) || Number.isInteger(v))).map(([k, v]) => [k, String(v)])),
     mcp: Object.keys(aliases).length ? { aliases } : {},
     agents: { ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)), ...(Object.keys(allow).length ? { allow } : {}) }
   }
@@ -481,7 +483,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, jira, mcp, agents } = merged
   // `[team]` (KERNEL-397), read like the other tables but written only by `saveTeamSettings`.
   const sharedTeam = teamValues(sharedDoc.team)
   const localTeam = teamValues(localDoc.team)
@@ -499,6 +501,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     env: { files: env.files ?? [] },
     ...(Object.keys(team).length ? { team } : {}),
     ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
+    ...(Object.keys(jira).length ? { jira } : {}),
     ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
     ...(Object.keys(agents).length ? { agents } : {}),
     sources
