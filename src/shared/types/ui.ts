@@ -26,7 +26,8 @@ export type Route =
   | { name: 'issues'; issueId?: string; roomId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
   /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
-  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider }
+  /** `account` is the id of the account Skills and MCP puts first in view (KERNEL-627). */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
@@ -120,8 +121,8 @@ export interface Toast {
   id: string
   title: string
   sub?: string
-  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). */
-  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string } }
+  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). */
+  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route }
 }
 
 /** The workspace screen's panes, so fixtures can open any of them. */
