@@ -4,6 +4,7 @@ import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
+import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
@@ -22,6 +23,7 @@ import './screens/floor/floor.css'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
+import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
 import { Issues } from './screens/issues/Issues'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
@@ -88,7 +90,7 @@ function Screen({ route }: { route: Route }): ReactNode {
       return <Checks />
     case 'home': return <Home />
     case 'inbox': return <Inbox />
-    case 'issues': return <Issues issueId={route.issueId} />
+    case 'issues': return <Issues issueId={route.issueId} roomId={route.roomId} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'floor': return <Floor roomId={route.roomId} />
@@ -124,6 +126,9 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
+      // KERNEL-479 makes Start anyway retry create_workspace with its confirm. Nothing opens this until it does.
+      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={actions.ui.closeModal} />
+      if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }
@@ -175,7 +180,6 @@ export function App() {
     const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
     return () => cancelIdleCallback(id)
   }, [booted])
-  useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
   // Usage data is asked about once, after the first room, in a build that can send it (KERNEL-397).
   const rooms = useStore((s) => s.rooms.length)
   useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, rooms, route.name, modal])

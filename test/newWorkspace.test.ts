@@ -114,7 +114,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
   afterEach(() => { vi.unstubAllEnvs() })
   const team = {
     '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
-    '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor.'
+    '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor. Open a PR for each task.'
   }
   const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
 

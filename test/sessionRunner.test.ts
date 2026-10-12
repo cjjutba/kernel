@@ -1,23 +1,31 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, symlink } from 'node:fs/promises'
-import { execFileSync, spawn } from 'node:child_process'
+import { mkdir, mkdtemp, realpath, symlink } from 'node:fs/promises'
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatItem, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, Decision, Room, TeamUpdate, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
+import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, ROOM_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import type { Ask } from '../src/main/services/providers/types'
 import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
+import { linkNodeModules } from '../src/main/services/scripts'
+import { tempRepo } from './helpers'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // After an abort it yields what was already fed, then throws, as the real one does. A `late` session keeps its stream
 // open after the abort until the test ends it, as a real process does while it exits.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[]; late: boolean }[] }))
+// It records every setPermissionMode call, holds the answer while `modeGate` is set, and refuses them while `refuseModes` is
+// set (KERNEL-447).
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[]; late: boolean; modes: string[]; refuseModes?: Error; modeGate?: Promise<void>; models: unknown[] }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ prompt, options }: { prompt: AsyncIterable<unknown>; options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
@@ -30,7 +38,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     let ended = false
     let failed: Error | undefined
     const call = {
-      options, prompt, interrupts: 0, flags: [] as unknown[], late: false,
+      options, prompt, interrupts: 0, flags: [] as unknown[], late: false, modes: [] as string[], refuseModes: undefined as Error | undefined, modeGate: undefined as Promise<void> | undefined, models: [] as unknown[],
       feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
       end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) },
       fail: (e: Error) => { failed = e; for (const w of waiters.splice(0)) w.reject(e) }
@@ -44,7 +52,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       }),
       interrupt: async () => { call.interrupts++ },
       setModel: async () => {},
-      setPermissionMode: async () => {},
+      setPermissionMode: async (mode: string) => { await call.modeGate; if (call.refuseModes) throw call.refuseModes; call.modes.push(mode) },
+      initializationResult: async () => ({ models: call.models }),
       applyFlagSettings: async (s: unknown) => { call.flags.push(s) }
     }
   }
@@ -67,18 +76,21 @@ async function nextSent(call: Call): Promise<string> {
   return value.message.content[0].text
 }
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; room?: Partial<Room>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']> } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
-  const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
-  const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
+  const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
+  const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1, ...hooks.chat }
   store.saveWorkspace(ws)
   store.saveChat(chat)
+  if (hooks.room) store.saveRoom({ id: 'room', name: 'invoices', path: '/tmp/room', kind: 'repo', createdAt: 1, ...hooks.room } as Room)
   const allow: string[] = []
+  const allowTools: string[] = []
   const approvals = new Approvals(store)
-  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}), ...(hooks.usage ? { usage: hooks.usage } : {}) } as unknown as AppSettings
+  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300, ...hooks.permissions }, ...(hooks.models ? { models: hooks.models } : {}), ...(hooks.usage ? { usage: hooks.usage } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
+    store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor, aliasesFor: hooks.aliasesFor, onMcp: hooks.onMcp,
+    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) },
+    onTurnDone: hooks.onTurnDone, onExit: hooks.onExit, availability: hooks.availability
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
   const call = sdk.calls[sdk.calls.length - 1]
@@ -86,7 +98,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const guard = options.hooks!.PreToolUse!.find((m) => m.matcher === 'Bash')!.hooks[0] as HookCallback
   const runGuard = (id: string, command: string) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, tool_use_id: id, session_id: 's', transcript_path: '', cwd: ws.path } as never, id, { signal: new AbortController().signal } as never)
   const kinds = () => store.items(chat.id).map((i: ChatItem) => i.kind)
-  return { store, sessions, call, options, runGuard, allow, approvals, kinds, chat, settings }
+  return { store, sessions, call, options, runGuard, allow, allowTools, approvals, kinds, chat, settings }
 }
 
 describe('questions to the user', () => {
@@ -199,33 +211,56 @@ describe('questions to the user', () => {
     expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...one, answers: { 'Which store?': 'Use whatever is cheapest' } } })
   })
 
-  it('still lets bypass answer an ordinary tool', async () => {
-    const { options } = await setup('bypassPermissions')
-    expect(await (options.canUseTool as CanUseTool)('Edit', { file_path: 'a.ts' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })).toMatchObject({ behavior: 'allow' })
+  it('in Bypass permissions asks the user about whatever Claude Code still sends, and never answers it for them (KERNEL-433)', async () => {
+    const { options, store, approvals } = await setup('bypassPermissions')
+    const answer = (options.canUseTool as CanUseTool)('Bash', { command: 'rm -rf node_modules' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })
+    await flush()
+    const card = store.approvals({ pendingOnly: true })[0]
+    expect(card).toMatchObject({ kind: 'tool', toolName: 'Bash', title: 'Run rm -rf node_modules' })
+    approvals.decide(card.id, { behavior: 'deny' })
+    expect(await answer).toMatchObject({ behavior: 'deny' })
   })
 })
 
 describe('session runner (SDK scripted)', () => {
   it('guards Bash with Kernel lists and leaves everything else to Claude Code', async () => {
-    const { runGuard, allow } = await setup()
+    const { runGuard, allow, store, approvals } = await setup()
     expect(await runGuard('t1', 'git push origin main')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
-    expect(await runGuard('t2', 'pnpm drizzle-kit push')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'ask' } })
+    // Always ask waits in the hook for the user's answer, and only a yes lets the command run (KERNEL-447).
+    const asked = runGuard('t2', 'pnpm drizzle-kit push')
+    await flush()
+    const card = store.approvals({ pendingOnly: true })[0]
+    expect(card).toMatchObject({ kind: 'tool', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', reason: ALWAYS_ASK })
+    approvals.decide(card.id, { behavior: 'allow' })
+    expect(await asked).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
     expect(await runGuard('t3', 'npm test')).toEqual({})
+    // A room rule answers in the hook, and beats Always ask (D-016, KERNEL-454).
     allow.push('pnpm drizzle-kit push')
-    expect(await runGuard('t4', 'pnpm drizzle-kit push')).toEqual({})
+    expect(await runGuard('t4', 'pnpm drizzle-kit push')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
   })
 
-  it('asks with the command the hook saw, and Always allow saves it on the room', async () => {
-    const { runGuard, options, approvals, store, allow } = await setup()
-    await runGuard('t5', 'pnpm drizzle-kit push')
-    const rewritten = { command: 'rtk pnpm drizzle-kit push', description: 'Push the schema' }
-    const answer = (options.canUseTool as CanUseTool)('Bash', rewritten, { signal: new AbortController().signal, toolUseID: 't5', requestId: 'r1' })
+  it('asks about Always ask with the command the hook saw, and Always allow saves it on the room', async () => {
+    const { runGuard, approvals, store, allow } = await setup()
+    const asked = runGuard('t5', 'pnpm drizzle-kit push')
     await flush()
     const pending = store.approvals({ pendingOnly: true })[0]
     expect(pending).toMatchObject({ title: 'Run pnpm drizzle-kit push', input: { command: 'pnpm drizzle-kit push' } })
     approvals.decide(pending.id, { behavior: 'allow', always: true })
-    expect(await answer).toEqual({ behavior: 'allow', updatedInput: rewritten, updatedPermissions: undefined })
+    expect(await asked).toMatchObject({ hookSpecificOutput: { permissionDecision: 'allow' } })
     expect(allow).toEqual(['pnpm drizzle-kit push'])
+  })
+
+  it('asks in canUseTool with the command the hook saw when another hook rewrote it, and Always allow saves that', async () => {
+    const { runGuard, options, approvals, store, allow } = await setup()
+    expect(await runGuard('t6', 'pnpm build')).toEqual({})
+    const rewritten = { command: 'rtk pnpm build', description: 'Build' }
+    const answer = (options.canUseTool as CanUseTool)('Bash', rewritten, { signal: new AbortController().signal, toolUseID: 't6', requestId: 'r1' })
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })[0]
+    expect(pending).toMatchObject({ title: 'Run pnpm build', input: { command: 'pnpm build' } })
+    approvals.decide(pending.id, { behavior: 'allow', always: true })
+    expect(await answer).toEqual({ behavior: 'allow', updatedInput: rewritten, updatedPermissions: undefined })
+    expect(allow).toEqual(['pnpm build'])
   })
 
   it('knows its session id up front, runs from init to result, and hides the error result of an interrupted turn', async () => {
@@ -319,7 +354,8 @@ describe('session runner (SDK scripted)', () => {
 
   it("says once when the agent file lists an MCP server the session doesn't have", async () => {
     const agent = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'mcp__linear', 'mcp__kernel__submit_review'] } as AgentDef
-    const servers = [{ name: 'kernel', status: 'connected' }, { name: 'claude_ai_Linear', status: 'connected' }]
+    // Claude Code lists a claude.ai connector by its own name, and its tools by the name made from it (KERNEL-464).
+    const servers = [{ name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'claude.ai Linear', status: 'connected', source: 'claudeai' }]
     const { call, options, store, chat } = await setup('acceptEdits', { agent })
     for (let i = 0; i < 2; i++) call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none', mcp_servers: servers })
     await flush()
@@ -329,6 +365,39 @@ describe('session runner (SDK scripted)', () => {
     ok.call.feed({ type: 'system', subtype: 'init', session_id: ok.options.sessionId, apiKeySource: 'none', mcp_servers: servers })
     await flush()
     expect(ok.store.items(ok.chat.id).filter((i) => i.kind === 'note')).toEqual([])
+  })
+
+  // KERNEL-464: a server whose name matches but that can't be used says why, and every init's statuses reach the room.
+  it('says why a listed MCP server the session has can\'t be used, and tells the room each init\'s statuses', async () => {
+    const agent = { id: 'noor', name: 'Noor', role: 'Backend', description: 'APIs.', lead: false, prompt: 'You build.', file: '/r/noor.md', tools: ['Read', 'mcp__neon', 'mcp__claude_ai_Notion__search', 'mcp__fal-ai', 'mcp__figma', 'mcp__linear__get_issue', 'mcp__claude_ai_Gmail'] } as AgentDef
+    const reports: unknown[][] = []
+    // The room heard from a probe that the Gmail connector is up, before this session's first init lists it.
+    const room = [{ name: 'claude.ai Gmail', status: 'connected' as const, source: 'claudeai' }]
+    const { call, options, store, chat } = await setup('acceptEdits', {
+      agent, disabledFor: () => ({ skills: [], mcp: ['figma'] }), aliasesFor: () => ({ linear: 'claude.ai Linear' }),
+      onMcp: (_ws, provider, list) => { reports.push([provider, list]); return [...room, ...list] }
+    })
+    const servers = [
+      { name: 'kernel', status: 'connected', source: 'sdk' }, { name: 'neon', status: 'failed', source: 'user' }, { name: 'claude.ai Notion', status: 'needs-auth', source: 'claudeai' },
+      { name: 'fal-ai', status: 'disabled', source: 'user' }, { name: 'claude.ai Linear', status: 'connected', source: 'claudeai' }, { name: 'odd', status: 'warming' }
+    ]
+    for (let i = 0; i < 2; i++) call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none', mcp_servers: servers })
+    await flush()
+    expect(store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual([[
+      "This agent's file lists mcp__neon, but the MCP server neon failed to connect.",
+      "This agent's file lists mcp__claude_ai_Notion__search, but the MCP server claude.ai Notion needs you to sign in. Sign in with /mcp in Claude Code.",
+      "This agent's file lists mcp__fal-ai, but the MCP server fal-ai is switched off in Claude Code. Turn it on with /mcp.",
+      "This agent's file lists mcp__figma, but the MCP server figma is switched off in this room. Turn it on in Settings, Skills and MCP."
+    ].join(' ')])
+    // Every init reports, with a status Kernel doesn't know left out.
+    expect(reports).toHaveLength(2)
+    expect(reports[0]).toEqual(['claude', servers.slice(0, 5)])
+    // The tools line reads through the room's aliases.
+    const unmatched = options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
+    const gate = unmatched[unmatched.length - 1] as HookCallback
+    const use = (tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: 't', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 't', { signal: new AbortController().signal } as never)
+    expect(await use('mcp__claude_ai_Linear__get_issue')).toEqual({})
+    expect(await use('mcp__claude_ai_Linear__save_issue')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
   })
   it('holds follow-ups while a turn runs and sends them in order when it ends', async () => {
     const { sessions, call, options, chat, kinds } = await setup()
@@ -534,6 +603,14 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
   })
 
+  it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
+    expect(options.disallowedTools).toEqual(['WebFetch', 'mcp__github', 'mcp__linear__save_issue'])
+    const gate = gateOf(options)!
+    expect(await use(gate, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
+    for (const tool of ['Edit', 'Write', 'mcp__linear__get_issue', 'mcp__kernel__submit_review']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
   it('restricts nothing for an agent with no tools line', async () => {
     const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined } })
     expect(options).not.toHaveProperty('disallowedTools')
@@ -554,6 +631,89 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     expect(signal.aborted).toBe(true)
     await sessions.send(chat.id, [{ type: 'text', text: 'Again' }])
     expect(sdk.calls[sdk.calls.length - 1].options.resume).toBe(options.sessionId)
+  })
+})
+
+describe('asking from inside a hook (KERNEL-446)', () => {
+  const noor = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md' } as AgentDef
+  const ask: Ask = { kind: 'tool', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', activity: 'Run pnpm drizzle-kit push' }
+  // The host Sessions gave the chat's runner, so the card and the status are the ones a canUseTool ask gets.
+  const hostOf = (sessions: Sessions) => (sessions['live'].get('chat') as unknown as { runner: ClaudeRunner }).runner['host']
+  const open = () => new AbortController().signal
+  const denied = (reason: string) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+  const late = denied('No decision was made in time.')
+
+  it('puts the card in the chat, shows the agent as needing the user, and allows the call on yes', async () => {
+    const { sessions, call, options, store, approvals, kinds } = await setup('acceptEdits', { agent: noor })
+    const statuses: string[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    const answer = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })[0]
+    expect(pending).toMatchObject({ kind: 'tool', source: 'sdk', toolName: 'Bash', chatId: 'chat', title: 'Run pnpm drizzle-kit push' })
+    expect(kinds()).toContain('approval')
+    expect(statuses.at(-1)).toBe('needs')
+    approvals.decide(pending.id, { behavior: 'allow' })
+    expect(await answer).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
+    expect(statuses.at(-1)).toBe('working')
+  })
+
+  it("denies with the user's reason, or with what the user typed instead", async () => {
+    const { sessions, store, approvals } = await setup()
+    const cases: [Decision, string][] = [
+      [{ behavior: 'deny', message: 'Use the staging database.' }, 'Use the staging database.'],
+      [{ behavior: 'deny' }, 'Denied in Kernel.'],
+      [{ behavior: 'answer', text: 'Run the migration instead' }, 'The user answered: Run the migration instead']
+    ]
+    for (const [decision, reason] of cases) {
+      const answer = awaitDecision(hostOf(sessions), ask, open())
+      await flush()
+      approvals.decide(store.approvals({ pendingOnly: true })[0].id, decision)
+      expect(await answer).toEqual(denied(reason))
+    }
+  })
+
+  it('denies when the hook is aborted, and opens no card for a hook already aborted', async () => {
+    const { sessions, store } = await setup()
+    const abort = new AbortController()
+    const answer = awaitDecision(hostOf(sessions), ask, abort.signal)
+    await flush()
+    abort.abort()
+    expect(await answer).toEqual(late)
+    expect(store.approvals({}).map((a) => a.status)).toEqual(['expired'])
+    expect(await awaitDecision(hostOf(sessions), ask, abort.signal)).toEqual(late)
+    expect(store.approvals({})).toHaveLength(1)
+  })
+
+  it('denies once the wait runs out, which comes before the CLI stops waiting on the hook and lets the call go', async () => {
+    expect(HOOK_ASK_MS).toBeLessThan(HOLD_TIMEOUT_SEC * 1000)
+    // Past this, Node fires the timer at once and every ask would deny before the user saw it.
+    expect(HOOK_ASK_MS).toBeLessThanOrEqual(2 ** 31 - 1)
+    const waits: (number | undefined)[] = []
+    await awaitDecision({ ask: async (_a, o) => { waits.push(o.timeoutMs); return { behavior: 'allow' } } }, ask, open())
+    expect(waits).toEqual([HOOK_ASK_MS])
+
+    const { sessions, store } = await setup()
+    expect(await awaitDecision(hostOf(sessions), ask, open(), 20)).toEqual(late)
+    expect(store.approvals({}).map((a) => a.status)).toEqual(['expired'])
+  })
+
+  it('denies when the ask ends with no decision: the workspace archived, or Kernel quitting', async () => {
+    const { sessions, approvals } = await setup()
+    const archived = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    approvals.expireWorkspace('ws')
+    expect(await archived).toEqual(late)
+    const quitting = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    approvals.expirePending()
+    expect(await quitting).toEqual(late)
+    // Once Kernel is quitting, an ask gets no decision at once.
+    expect(await awaitDecision(hostOf(sessions), ask, open())).toEqual(late)
   })
 })
 
@@ -781,6 +941,457 @@ describe('who sent a message (KERNEL-116)', () => {
     sdk.calls[sdk.calls.length - 1].feed({ type: 'result', subtype: 'success', uuid: 'r4', duration_ms: 10 })
     await flush()
     expect(s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })).toBe(true)
+  })
+})
+
+describe('permission modes on Claude (KERNEL-447)', () => {
+  const autoWorks: SessionDeps['availability'] = () => ({ auto: true, bypass: true })
+  const signal = () => new AbortController().signal
+  const notes = (store: Store) => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+  const denied = (reason: string) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+  const hook = (options: Options, matcher: string) => options.hooks!.PreToolUse!.find((m) => m.matcher === matcher)!
+  const run = (options: Options, matcher: string, tool: string, input: Record<string, unknown>) =>
+    (hook(options, matcher).hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 'w1', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 'w1', { signal: signal() } as never)
+
+  it("starts each mode under Claude Code's name for it, and lets only a chat in Bypass permissions take bypass", async () => {
+    for (const mode of ['default', 'acceptEdits'] as const) {
+      const { options } = await setup(mode)
+      expect(options.permissionMode).toBe(mode)
+      expect(options).not.toHaveProperty('allowDangerouslySkipPermissions')
+    }
+    expect((await setup('bypassPermissions')).options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
+    expect((await setup('auto', { availability: autoWorks })).options.permissionMode).toBe('auto')
+    // Plan mode comes first. A chat that leaves it for Bypass permissions can take it then.
+    expect((await setup('bypassPermissions', { chat: { plan: true } })).options).toMatchObject({ permissionMode: 'plan', allowDangerouslySkipPermissions: true })
+  })
+
+  it("runs Auto as Accept edits until Kernel knows the chat's model runs it, and moves the live session once it does", async () => {
+    let known = false
+    const { options, sessions, call } = await setup('auto', { availability: () => ({ auto: known, bypass: true }) })
+    expect(options.permissionMode).toBe('acceptEdits')
+    known = true
+    sessions.applyModes()
+    await flush()
+    expect(call.modes).toEqual(['auto'])
+  })
+
+  it('leaves Auto when the chat moves to a model that does not run it', async () => {
+    const { sessions, call } = await setup('auto', { availability: (chat) => ({ auto: chat.model === 'claude-sonnet-5-5', bypass: true }) })
+    await sessions.configure('chat', { model: 'claude-haiku-4-5-20251001' })
+    expect(call.modes).toEqual(['acceptEdits'])
+  })
+
+  it("takes the chat's mode over the room's, the room's over the app's, and an agent file's only when it is stricter", async () => {
+    expect((await setup('default', { room: { permissionMode: 'acceptEdits' } })).options.permissionMode).toBe('acceptEdits')
+    expect((await setup('default', { room: { permissionMode: 'acceptEdits' }, chat: { mode: 'bypassPermissions' } })).options.permissionMode).toBe('bypassPermissions')
+    const careful = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', permissionMode: 'acceptEdits' } as AgentDef
+    const tightened = (await setup('bypassPermissions', { agent: careful })).options
+    expect(tightened.permissionMode).toBe('acceptEdits')
+    expect(tightened).not.toHaveProperty('allowDangerouslySkipPermissions')
+    expect((await setup('default', { agent: { ...careful, permissionMode: 'bypassPermissions' } })).options.permissionMode).toBe('default')
+  })
+
+  it('never runs a current-branch workspace in Bypass permissions while Only in worktrees is on, however the mode is picked', async () => {
+    const t = await setup('bypassPermissions', { ws: { mode: 'current' }, permissions: { bypassOnlyInWorktrees: true } })
+    expect(t.options.permissionMode).toBe('acceptEdits')
+    expect(t.options).not.toHaveProperty('allowDangerouslySkipPermissions')
+    const ended = (id: string) => { t.call.feed({ type: 'result', subtype: 'success', uuid: id, duration_ms: 1 }); return flush() }
+    await ended('r0')
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    t.store.saveRoom({ id: 'room', name: 'invoices', path: '/tmp/room', permissionMode: 'bypassPermissions', createdAt: 1 } as Room)
+    t.sessions.applyModes()
+    t.sessions.applySettings()
+    await flush()
+    await t.sessions.send('chat', [{ type: 'text', text: 'Push it' }])
+    for (const c of sdk.calls.slice(sdk.calls.indexOf(t.call))) {
+      expect(c.options.permissionMode).not.toBe('bypassPermissions')
+      expect(c.options).not.toHaveProperty('allowDangerouslySkipPermissions')
+      expect(c.modes).not.toContain('bypassPermissions')
+    }
+    // With Only in worktrees off, the same chat may take it, from a process started for it once the turn ends.
+    const before = structuredClone(t.settings)
+    t.settings.permissions.bypassOnlyInWorktrees = false
+    t.sessions.applySettings(before)
+    await ended('r1')
+    await t.sessions.send('chat', [{ type: 'text', text: 'Now push it' }])
+    expect(sdk.calls[sdk.calls.length - 1]).not.toBe(t.call)
+    expect(sdk.calls[sdk.calls.length - 1].options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true })
+  })
+
+  it('moves a live session with setPermissionMode when the chat, plan mode, the room or Settings changes its mode', async () => {
+    const t = await setup('acceptEdits', { room: {} })
+    await t.sessions.configure('chat', { mode: 'default' })
+    await t.sessions.configure('chat', { plan: true })
+    await t.sessions.configure('chat', { plan: false })
+    expect(t.call.modes).toEqual(['default', 'plan', 'default'])
+    // The chat's own mode wins over Settings and the room, so neither moves it.
+    const before = structuredClone(t.settings)
+    t.settings.permissions.mode = 'auto'
+    t.sessions.applySettings(before)
+    t.store.saveRoom({ ...t.store.room('room')!, permissionMode: 'acceptEdits' })
+    t.sessions.applyModes()
+    await flush()
+    expect(t.call.modes).toEqual(['default', 'plan', 'default'])
+
+    const u = await setup('acceptEdits', { room: {} })
+    u.store.saveRoom({ ...u.store.room('room')!, permissionMode: 'default' })
+    u.sessions.applyModes()
+    await flush()
+    const was = structuredClone(u.settings)
+    u.settings.permissions.mode = 'default'
+    u.sessions.applySettings(was)
+    await flush()
+    // Settings changed to the mode the room already gives, so only the room's change moved it.
+    expect(u.call.modes).toEqual(['default'])
+  })
+
+  it('leaves a note when Claude Code refuses a switch, and keeps checking steps in the stricter mode', async () => {
+    const t = await setup('bypassPermissions')
+    t.call.refuseModes = new Error('the session is busy')
+    await t.sessions.configure('chat', { plan: true })
+    expect(notes(t.store)).toEqual(["Claude Code didn't switch this chat to Plan (the session is busy), so it stays in Bypass permissions."])
+    // Claude Code still runs Bypass permissions, but Kernel checks steps as plan mode would: Always ask asks.
+    const asked = t.runGuard('t1', 'pnpm drizzle-kit push')
+    await flush()
+    expect(t.store.approvals({ pendingOnly: true })).toHaveLength(1)
+    t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'deny' })
+    expect(await asked).toEqual(denied('Denied in Kernel.'))
+  })
+
+  // A chat leaving Bypass permissions while its turn runs. Claude Code runs in bypass until it takes the switch, and its process
+  // can take bypass until it ends, so a push that might reach main stays denied all along.
+  const leaving = async () => {
+    const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'] } })
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'bypassPermissions' })
+    await flush()
+    return t
+  }
+  const own = () => denied(pushOwnBranch(['main'], 'feat/invoice-schema'))
+  const askedOnce = async (t: Awaited<ReturnType<typeof setup>>, id: string) => {
+    const asked = t.runGuard(id, 'pnpm drizzle-kit push')
+    await flush()
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    expect(card, 'Always ask should ask in the stricter mode').toMatchObject({ toolName: 'Bash', reason: ALWAYS_ASK })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    expect(await asked).toEqual(denied('Denied in Kernel.'))
+  }
+
+  it('denies a push that might reach main while a switch out of Bypass permissions is pending, and asks about Always ask', async () => {
+    const t = await leaving()
+    let answer!: () => void
+    t.call.modeGate = new Promise((resolve) => { answer = resolve })
+    const switched = t.sessions.configure('chat', { mode: 'acceptEdits' })
+    await flush()
+    expect(t.call.modes).toEqual([])
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    expect(await t.runGuard('t2', 'git push origin main')).toEqual(own())
+    expect(await t.runGuard('t3', 'git push -u origin HEAD')).toEqual(own())
+    await askedOnce(t, 't4')
+    answer()
+    await switched
+    expect(t.call.modes).toEqual(['acceptEdits'])
+  })
+
+  it('keeps denying it after Claude Code refuses the switch', async () => {
+    const t = await leaving()
+    t.call.refuseModes = new Error('not now')
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(notes(t.store)).toEqual(["Claude Code didn't switch this chat to Accept edits (not now), so it stays in Bypass permissions."])
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    expect(await t.runGuard('t2', 'git push origin "$BRANCH"')).toEqual(own())
+    await askedOnce(t, 't3')
+  })
+
+  it('keeps denying it after the switch lands mid-turn, until the process that could bypass ends with the turn', async () => {
+    const t = await leaving()
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(t.call.modes).toEqual(['acceptEdits'])
+    t.call.feed({ type: 'system', subtype: 'status', status: null, permissionMode: 'acceptEdits', uuid: 's1', session_id: 's' })
+    await flush()
+    // A subagent with its own bypass could still push from this process.
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    await askedOnce(t, 't2')
+    t.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1 })
+    await flush()
+    await t.sessions.send('chat', [{ type: 'text', text: 'Push it' }])
+    const next = sdk.calls[sdk.calls.length - 1]
+    expect(next).not.toBe(t.call)
+    expect(next.options).toMatchObject({ permissionMode: 'acceptEdits' })
+    expect(next.options).not.toHaveProperty('allowDangerouslySkipPermissions')
+    // Accept edits leaves a bare push to the user's own settings, as it always has.
+    expect(await run(next.options, 'Bash', 'Bash', { command: 'git push' })).toEqual({})
+  })
+
+  it('asks about Always ask while Claude Code reports a stricter mode than Bypass permissions, until it reports bypass again', async () => {
+    const t = await setup('bypassPermissions')
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'default' })
+    await flush()
+    await askedOnce(t, 't1')
+    t.call.feed({ type: 'system', subtype: 'status', status: null, permissionMode: 'bypassPermissions', uuid: 's1', session_id: 's' })
+    await flush()
+    expect(await t.runGuard('t2', 'pnpm drizzle-kit push')).toEqual({})
+  })
+
+  it('moves into Bypass permissions by restarting a process that started without it, and out of it by switching first', async () => {
+    const t = await setup('acceptEdits')
+    expect(t.options).not.toHaveProperty('allowDangerouslySkipPermissions')
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    t.call.feed({ type: 'result', subtype: 'success', uuid: 'r0', duration_ms: 1 })
+    await flush()
+    const before = sdk.calls.length
+    // Idle: the process ends now, and the next message starts one that may take Bypass permissions.
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(t.call.modes).toEqual([])
+    await t.sessions.send('chat', [{ type: 'text', text: 'Go on' }])
+    expect(sdk.calls.length).toBe(before + 1)
+    const bypassing = sdk.calls[sdk.calls.length - 1]
+    expect(bypassing.options).toMatchObject({ permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true, resume: t.options.sessionId })
+
+    // Busy: the stricter mode applies at once, and the process that could bypass ends with the turn.
+    bypassing.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(bypassing.modes).toEqual(['acceptEdits'])
+    bypassing.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1 })
+    await flush()
+    await t.sessions.send('chat', [{ type: 'text', text: 'And again' }])
+    expect(sdk.calls[sdk.calls.length - 1].options).toMatchObject({ permissionMode: 'acceptEdits' })
+    expect(sdk.calls[sdk.calls.length - 1].options).not.toHaveProperty('allowDangerouslySkipPermissions')
+  })
+
+  it('says when Bypass permissions waits for the running turn to end', async () => {
+    const t = await setup('acceptEdits')
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(notes(t.store)).toEqual(['Bypass permissions starts once this turn ends.'])
+    expect(t.call.modes).toEqual([])
+  })
+
+  it('in Bypass permissions, denies Never allow, a push that might reach a protected branch and network use, and has no opinion on Always ask', async () => {
+    const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'] } })
+    expect(await t.runGuard('t1', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    expect(await t.runGuard('t2', 'git push')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    expect(await t.runGuard('t3', 'git push -u origin HEAD')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    expect(await t.runGuard('t4', 'git push -u origin feat/invoice-schema')).toEqual({})
+    expect(await t.runGuard('t5', 'pnpm drizzle-kit push')).toEqual({})
+    expect(t.store.approvals({})).toEqual([])
+
+    const never = await setup('bypassPermissions', { permissions: { neverAllow: ['rm -rf /'] } })
+    expect(await never.runGuard('t6', 'rm -rf /')).toEqual(denied(neverAllowed('rm -rf /')))
+
+    const off = await setup('bypassPermissions', { permissions: { network: false } })
+    expect(await off.runGuard('t7', 'curl https://example.com')).toEqual(denied(neverAllowed('curl https://example.com')))
+    expect(await run(off.options, 'WebFetch|WebSearch', 'WebFetch', { url: 'https://example.com' })).toEqual(denied(NETWORK_OFF))
+    expect(await (off.options.canUseTool as CanUseTool)('WebSearch', { query: 'zod' }, { signal: signal(), toolUseID: 'w2', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+  })
+
+  it("asks the user about Always ask in Auto from inside the hook, so Auto mode's classifier never answers it", async () => {
+    const t = await setup('auto', { availability: autoWorks })
+    expect(t.options.permissionMode).toBe('auto')
+    expect(hook(t.options, 'Bash').timeout).toBe(HOLD_TIMEOUT_SEC)
+    const asked = t.runGuard('t1', 'pnpm drizzle-kit push')
+    await flush()
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    expect(card).toMatchObject({ kind: 'tool', toolName: 'Bash', chatId: 'chat', title: 'Run pnpm drizzle-kit push', reason: ALWAYS_ASK })
+    t.approvals.decide(card.id, { behavior: 'deny', message: 'Use the staging database.' })
+    expect(await asked).toEqual(denied('Use the staging database.'))
+  })
+
+  it("doesn't ask about an Always ask command the agent file's tools line refuses, which the gate denies", async () => {
+    const reader = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', tools: ['Read', 'Grep'] } as AgentDef
+    const t = await setup('acceptEdits', { agent: reader })
+    expect(await t.runGuard('t1', 'pnpm drizzle-kit push')).toEqual({})
+    expect(t.store.approvals({})).toEqual([])
+  })
+
+  it("leaves a note naming what Auto mode's classifier refused, and none for other denials", async () => {
+    const t = await setup('auto', { availability: autoWorks })
+    t.call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'rm -rf build' } }] } })
+    t.call.feed({ type: 'system', subtype: 'permission_denied', tool_name: 'Bash', tool_use_id: 'tu1', decision_reason_type: 'classifier', decision_reason: 'It deletes files the task never mentioned', message: 'Denied', uuid: 'd1', session_id: 's' })
+    t.call.feed({ type: 'system', subtype: 'permission_denied', tool_name: 'Edit', tool_use_id: 'tu2', decision_reason_type: 'rule', decision_reason: 'Edit(.env) is denied', message: 'Denied', uuid: 'd2', session_id: 's' })
+    t.call.feed({ type: 'system', subtype: 'permission_denied', tool_name: 'WebFetch', tool_use_id: 'tu3', decision_reason_type: 'classifier', message: '', uuid: 'd3', session_id: 's' })
+    await flush()
+    const row = t.store.items('chat').find((i) => i.kind === 'tool')
+    expect(notes(t.store)).toEqual([`Auto mode refused "${row?.kind === 'tool' ? row.label : ''}": It deletes files the task never mentioned`, 'Auto mode refused WebFetch.'])
+  })
+
+  it('puts why Claude Code asked on the card: its reason, the path it stopped at and its description', async () => {
+    const t = await setup()
+    const answer = (t.options.canUseTool as CanUseTool)('Read', { file_path: '/etc/hosts' }, { signal: signal(), toolUseID: 'r1', requestId: 'x', decisionReason: 'Outside the allowed working directories.', blockedPath: '/etc/hosts', description: 'Claude will read files in /etc' })
+    await flush()
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    expect(card.reason).toBe('Outside the allowed working directories. Blocked path: /etc/hosts. Claude will read files in /etc.')
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    await answer
+    expect(askReason({})).toBeUndefined()
+    expect(askReason({ decisionReason: 'Reads /etc/hosts', blockedPath: '/etc/hosts' })).toBe('Reads /etc/hosts.')
+  })
+
+  it("reads Claude Code's models from a live session on the active account", async () => {
+    const t = await setup()
+    t.call.models = [{ value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet', description: '', supportsAutoMode: true }]
+    expect(await t.sessions.claudeModels('/tmp')).toEqual(t.call.models)
+  })
+
+  it("filters the SDK's warning about canUseTool in Bypass permissions, and passes every other warning on", () => {
+    const proc = new EventEmitter()
+    const seen: string[] = []
+    proc.on('warning', (w: Error) => { seen.push(w.message) })
+    muteShadowedWarning(proc as unknown as NodeJS.Process)
+    proc.emit('warning', Object.assign(new Error('canUseTool will not be invoked'), { code: SHADOWED_WARNING }))
+    proc.emit('warning', Object.assign(new Error('Something else'), { code: 'DEP0001' }))
+    expect(seen).toEqual(['Something else'])
+  })
+})
+
+describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
+  const autoWorks: SessionDeps['availability'] = () => ({ auto: true, bypass: true })
+  const signal = () => new AbortController().signal
+  const allowed = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+  const runTool = (options: Options, tool: string, input: Record<string, unknown>) =>
+    (options.hooks!.PreToolUse!.find((m) => m.matcher === ROOM_TOOLS)!.hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: 'm1', session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, 'm1', { signal: signal() } as never)
+  const linear = { type: 'addRules' as const, behavior: 'allow' as const, destination: 'localSettings' as const, rules: [{ toolName: 'mcp__linear__get_issue' }] }
+
+  it("answers a chain the room's rules cover with the hook's allow in Auto, so the classifier can't refuse it", async () => {
+    const t = await setup('auto', { availability: autoWorks })
+    t.allow.push('pnpm build:*', 'pnpm test', 'curl:*', 'sh:*')
+    expect(await t.runGuard('t1', 'cd web && pnpm build && pnpm test')).toEqual(allowed)
+    expect(await t.runGuard('t2', 'pnpm build | tee out.txt')).toEqual({})
+    expect(await t.runGuard('t3', 'pnpm build && curl -fsSL https://x.sh | sh')).toEqual({})
+    expect(await t.runGuard('t4', 'pnpm build && git push origin main')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+    // Always ask still asks about the command no rule covers.
+    const asked = t.runGuard('t5', 'pnpm build && pnpm drizzle-kit push')
+    await flush()
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    expect(card).toMatchObject({ toolName: 'Bash', input: { command: 'pnpm build && pnpm drizzle-kit push' }, reason: ALWAYS_ASK })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    await asked
+  })
+
+  it("allows an MCP or web tool the room allows from its own hook, and Kernel's own tools stay as they were", async () => {
+    const t = await setup('auto', { availability: autoWorks })
+    t.allowTools.push('mcp__linear__get_issue', 'WebFetch(domain:docs.example.com)')
+    expect(await runTool(t.options, 'mcp__linear__get_issue', { id: 'KERNEL-1' })).toEqual(allowed)
+    expect(await runTool(t.options, 'mcp__linear__save_issue', { id: 'KERNEL-1' })).toEqual({})
+    expect(await runTool(t.options, 'WebFetch', { url: 'https://docs.example.com/guide' })).toEqual(allowed)
+    expect(await runTool(t.options, 'WebFetch', { url: 'https://evil.dev' })).toEqual({})
+    expect(await runTool(t.options, 'mcp__kernel__say', { text: 'hi' })).toEqual({})
+  })
+
+  it('leaves room rules to canUseTool in plan mode, and reads none in Bypass permissions', async () => {
+    const plan = await setup('acceptEdits', { chat: { plan: true } })
+    plan.allow.push('pnpm test')
+    plan.allowTools.push('mcp__linear__get_issue')
+    expect(await plan.runGuard('t1', 'pnpm test')).toEqual({})
+    expect(await runTool(plan.options, 'mcp__linear__get_issue', {})).toEqual({})
+    expect(await (plan.options.canUseTool as CanUseTool)('mcp__linear__get_issue', {}, { signal: signal(), toolUseID: 'm2', requestId: 'r' })).toEqual({ behavior: 'allow', updatedInput: {} })
+
+    const bypass = await setup('bypassPermissions')
+    bypass.allow.push('pnpm test')
+    bypass.allowTools.push('mcp__linear__get_issue')
+    expect(await bypass.runGuard('t2', 'pnpm test')).toEqual({})
+    expect(await runTool(bypass.options, 'mcp__linear__get_issue', {})).toEqual({})
+    // What Claude Code still sends in Bypass permissions goes to the user, a room rule or not (KERNEL-433).
+    void (bypass.options.canUseTool as CanUseTool)('mcp__linear__get_issue', {}, { signal: signal(), toolUseID: 'm3', requestId: 'r' })
+    await flush()
+    expect(bypass.store.approvals({ pendingOnly: true })).toHaveLength(1)
+  })
+
+  it("lets Network off and the agent file's tools line hold over a tool rule", async () => {
+    const off = await setup('auto', { availability: autoWorks, permissions: { network: false } })
+    off.allowTools.push('WebSearch')
+    expect(await runTool(off.options, 'WebSearch', { query: 'zod' })).toEqual({})
+    expect(await (off.options.canUseTool as CanUseTool)('WebSearch', { query: 'zod' }, { signal: signal(), toolUseID: 'w1', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+
+    const reader = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md', tools: ['Read', 'mcp__linear__get_issue'] } as AgentDef
+    const gated = await setup('acceptEdits', { agent: reader })
+    gated.allow.push('pnpm test')
+    gated.allowTools.push('mcp__linear')
+    expect(await runTool(gated.options, 'mcp__linear__save_issue', {})).toEqual({})
+    expect(await runTool(gated.options, 'mcp__linear__get_issue', {})).toEqual(allowed)
+    expect(await gated.runGuard('t1', 'pnpm test')).toEqual({})
+  })
+
+  it('checks the room in canUseTool before it asks about an MCP tool', async () => {
+    const t = await setup('default')
+    t.allowTools.push('mcp__linear')
+    expect(await (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-1' }, { signal: signal(), toolUseID: 'm1', requestId: 'r', suggestions: [linear] })).toEqual({ behavior: 'allow', updatedInput: { id: 'KERNEL-1' } })
+    expect(t.store.approvals({})).toEqual([])
+  })
+
+  it("saves Always allow on an MCP tool on the room, not as Claude Code's suggestion in the worktree", async () => {
+    const t = await setup('default')
+    const answer = (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-1' }, { signal: signal(), toolUseID: 'm1', requestId: 'r', suggestions: [linear] })
+    await flush()
+    t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow', always: true })
+    expect(await answer).toEqual({ behavior: 'allow', updatedInput: { id: 'KERNEL-1' }, updatedPermissions: undefined })
+    expect(t.allowTools).toEqual(['mcp__linear__get_issue'])
+    // The next call in this room, from any chat, goes through without a card.
+    expect(await (t.options.canUseTool as CanUseTool)('mcp__linear__get_issue', { id: 'KERNEL-2' }, { signal: signal(), toolUseID: 'm2', requestId: 'r' })).toMatchObject({ behavior: 'allow' })
+
+    // A tool no room rule covers keeps Claude Code's own suggestion.
+    const dirs = [{ type: 'addDirectories' as const, directories: ['/etc'], destination: 'session' as const }]
+    const read = (t.options.canUseTool as CanUseTool)('Read', { file_path: '/etc/hosts' }, { signal: signal(), toolUseID: 'r1', requestId: 'r', suggestions: dirs })
+    await flush()
+    t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow', always: true })
+    expect(await read).toEqual({ behavior: 'allow', updatedInput: { file_path: '/etc/hosts' }, updatedPermissions: dirs })
+    expect(t.allowTools).toEqual(['mcp__linear__get_issue'])
+  })
+})
+
+describe('Bypass permissions in the sandbox (KERNEL-458)', () => {
+  const notes = (store: Store) => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+  const denied = (reason: string) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+
+  it('runs only a process that may take Bypass permissions in the sandbox, and leaves the other modes as they were', async () => {
+    for (const mode of ['default', 'acceptEdits'] as const) expect((await setup(mode)).options).not.toHaveProperty('sandbox')
+    expect((await setup('auto', { availability: () => ({ auto: true, bypass: true }) })).options).not.toHaveProperty('sandbox')
+    expect((await setup('default', { chat: { plan: true } })).options).not.toHaveProperty('sandbox')
+    // Bypass permissions that runs as Accept edits: a current-branch workspace while Only in worktrees is on, or a policy that turns it off.
+    expect((await setup('bypassPermissions', { ws: { mode: 'current' }, permissions: { bypassOnlyInWorktrees: true } })).options).not.toHaveProperty('sandbox')
+    expect((await setup('bypassPermissions', { availability: () => ({ auto: false, bypass: false }) })).options).not.toHaveProperty('sandbox')
+    const bypass = (await setup('bypassPermissions')).options
+    expect(bypass.sandbox).toMatchObject({ enabled: true, failIfUnavailable: false, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false, network: { strictAllowlist: true, allowLocalBinding: true } })
+    // A chat that plans before it bypasses has the sandbox from its start, as it has the flag.
+    expect((await setup('bypassPermissions', { chat: { plan: true } })).options).toMatchObject({ permissionMode: 'plan', allowDangerouslySkipPermissions: true, sandbox: bypass.sandbox })
+  })
+
+  it("lets a worktree's commands write its repo's git folder and the node_modules Kernel linked in, and not the git hooks", async () => {
+    const repo = await realpath(await tempRepo({ 'README.md': '# demo\n', '.gitignore': 'node_modules\n' }))
+    await mkdir(join(repo, 'node_modules'))
+    const wt = join(await realpath(await mkdtemp(join(tmpdir(), 'kernel-wt-'))), 'wt')
+    execFileSync('git', ['-C', repo, 'worktree', 'add', '-q', '-b', 'kernel/demo', wt])
+    await linkNodeModules(repo, wt)
+    const { options } = await setup('bypassPermissions', { ws: { path: wt }, room: { path: repo } })
+    expect(options.sandbox?.filesystem?.allowWrite?.slice(0, 2)).toEqual([join(repo, '.git'), join(repo, 'node_modules')])
+    expect(options.sandbox?.filesystem?.denyWrite).toEqual([join(repo, '.git', 'hooks'), join(repo, '.git', 'config')])
+  })
+
+  it("keeps Kernel's denials inside the sandbox: Never allow, a push that might reach a protected branch, and network off even to GitHub", async () => {
+    const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'], neverAllow: ['rm -rf /'] } })
+    expect(t.options.sandbox).toBeDefined()
+    expect(await t.runGuard('t1', 'rm -rf /')).toEqual(denied(neverAllowed('rm -rf /')))
+    expect(await t.runGuard('t2', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
+    const off = await setup('bypassPermissions', { permissions: { network: false } })
+    expect(off.options.sandbox?.network?.allowedDomains).toContain('github.com')
+    expect(await off.runGuard('t3', 'curl https://github.com')).toEqual(denied(neverAllowed('curl https://github.com')))
+    expect(await (off.options.canUseTool as CanUseTool)('WebFetch', { url: 'https://github.com' }, { signal: new AbortController().signal, toolUseID: 'w1', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })
+  })
+
+  it('leaves a note when Claude Code runs the commands without the sandbox, and none for a chat outside Bypass permissions', async () => {
+    // What Claude Code 2.1.292 writes to stderr where the sandbox can't start, with `failIfUnavailable` off.
+    const line = '\n⚠ Sandbox disabled: sandbox is enabled but linux is not supported (requires macOS, Linux, or WSL2) · run /sandbox for details\n  Commands will run WITHOUT sandboxing. Network and filesystem restrictions will NOT be enforced.\n'
+    const start = (options: Options) => new Promise<void>((resolve) => {
+      const child = options.spawnClaudeCodeProcess!({ command: '/bin/sh', args: ['-c', 'printf "%s" "$LINE" >&2'], cwd: tmpdir(), env: { ...process.env, LINE: line }, signal: new AbortController().signal }) as unknown as ChildProcess
+      child.once('close', () => resolve())
+    })
+    const t = await setup('bypassPermissions')
+    await start(t.options)
+    expect(notes(t.store)).toEqual(["The sandbox didn't start, so this chat's commands run in Bypass permissions without it. Claude Code says: sandbox is enabled but linux is not supported (requires macOS, Linux, or WSL2)."])
+    const u = await setup('acceptEdits')
+    await start(u.options)
+    expect(notes(u.store)).toEqual([])
   })
 })
 

@@ -41,6 +41,8 @@ class Reader {
   readonly result: Simple[] = []
   /** The command has an operator: `;`, `&&`, `||`, `|`, `&`, a newline or a group. */
   chained = false
+  /** The command has a pipe, `|` or `|&`. */
+  piped = false
   /** The command's tokens, for comparing two spellings of the same command. */
   readonly canon: string[] = []
   /** Cleared by anything whose meaning isn't in its text: an expansion, a glob, a heredoc. */
@@ -127,6 +129,7 @@ class Reader {
 
   private operator(op: string) {
     this.chained = true
+    if (op === '|' || op === '|&') this.piped = true
     if (op === ';' && this.canon[this.canon.length - 1] === ';') return
     this.canon.push(op)
   }
@@ -413,6 +416,8 @@ interface Analysis {
   /** The same, each with its wrappers taken off and the scripts they run read in (`unwrap`). */
   effective: Simple[]
   chained: boolean
+  /** The command has a pipe, `|` or `|&`. One inside a backtick isn't counted, and no room rule covers a backtick anyway. */
+  piped: boolean
   /** The text of the command with one spelling per meaning, or undefined when part of it only means something at run time. */
   canonical?: string
 }
@@ -428,7 +433,7 @@ function analyze(command: string): Analysis {
   if (r.bodies.length && effective.some((s) => SHELLS.has(base(s.words[0] ?? '')) || base(s.words[0] ?? '') === 'ssh')) {
     for (const body of r.bodies) effective.push(...parse(body).flatMap((s) => unwrap(s)))
   }
-  const a: Analysis = { simples: r.result, effective, chained: r.chained, canonical: r.canonOk ? r.canon.join(' ') : undefined }
+  const a: Analysis = { simples: r.result, effective, chained: r.chained, piped: r.piped, canonical: r.canonOk ? r.canon.join(' ') : undefined }
   if (analyses.size >= 64) analyses.delete(analyses.keys().next().value!)
   analyses.set(command, a)
   return a
@@ -710,9 +715,49 @@ export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAs
   const { effective } = analyze(command.trim())
   const pushes = effective.map((s) => pushVerdict(s, branches))
   if (matchesRule(command, p.neverAllow) || pushes.includes('deny') || (p.network === false && usesNetwork(command))) return 'deny'
-  if (roomAllow.some((r) => matchesRoomRule(command, r))) return 'allow'
+  if (matchesRoomRule(command, roomAllow)) return 'allow'
   if (matchesRule(command, p.alwaysAsk) || pushes.includes('ask') || (branches.length > 0 && effective.some((s) => s.unknown && mentions(s.words, branches)))) return 'ask'
   return undefined
+}
+
+/**
+ * A push Bypass permissions can't let through, because it might reach a protected branch (KERNEL-447): one `pushVerdict`
+ * denies or asks about, a command Kernel can't read that mentions a protected branch, a `git` whose command is only known at
+ * run time, and a `git push` that leaves its destination to git (`pushesUnnamed`). Every mode but Bypass asks about the
+ * ones `bashVerdict` asks about and leaves the unnamed ones to the user's own settings.
+ */
+export function pushMightReach(command: string, branches: string[]): boolean {
+  if (!branches.length) return false
+  return analyze(command.trim()).effective.some((s) => {
+    if (pushVerdict(s, branches) || (s.unknown && mentions(s.words, branches))) return true
+    const g = gitCall(s)
+    return !!g && ((g.sub === undefined && !g.scripts.length) || pushesUnnamed(g))
+  })
+}
+
+/**
+ * A `git push` that names no branch to push to, so git picks it from the upstream and `push.default`, which can be a
+ * protected branch: a bare push, one naming only the remote, or one pushing `HEAD` or `@` without `:dst`. With `--tags` and
+ * no refspec it pushes tags only.
+ */
+function pushesUnnamed(g: GitCall): boolean {
+  if (g.sub !== 'push') return false
+  const words: string[] = []
+  let tags = false
+  let end = false
+  for (let k = 0; k < g.args.length; k++) {
+    const a = g.args[k]
+    if (!end && a === '--') { end = true; continue }
+    if (!end && a.startsWith('-')) {
+      if (a === '--tags') tags = true
+      if (PUSH_ARGS.has(a)) k++
+      continue
+    }
+    words.push(a)
+  }
+  const refspecs = words.slice(1)
+  if (!refspecs.length) return !tags
+  return refspecs.some((r) => /^\+?(?:HEAD|@)$/.test(r))
 }
 
 /** A `git push` that names a protected branch (`origin main`, `origin "main"`, `origin HEAD:refs/heads/main`, `git -C dir push ...`), or pushes `--all` or `--mirror`. A bare `git push` names none, so it is left alone. */
@@ -720,7 +765,6 @@ export function pushesTo(command: string, branches: string[]): boolean {
   return analyze(command.trim()).effective.some((s) => pushVerdict(s, branches) === 'deny')
 }
 
-export const NETWORK_OFF = 'Network access is off in Kernel (Settings, Permissions).'
 const NET_PROGRAMS = new Set(['curl', 'wget', 'nc', 'ncat', 'ssh', 'scp', 'rsync', 'ftp', 'sftp', 'telnet', 'gh'])
 const NET_PACKAGE = new Set(['npm', 'pnpm', 'yarn', 'bun', 'pip', 'pip3', 'brew'])
 const NET_PACKAGE_COMMANDS = new Set(['install', 'i', 'add', 'update', 'upgrade', 'publish'])
@@ -740,22 +784,69 @@ export function usesNetwork(command: string): boolean {
 /** The simple commands only: no operators, redirections, process substitution, heredoc, expansion or unknown words. */
 const isPlain = (s: Simple) => !s.unknown && !s.redirects.length && !s.procSub && !s.heredoc && !s.dynamic.some(Boolean)
 
-/**
- * Room rules use Claude Code's Bash rule shape: `prefix:*` covers the prefix with any arguments, otherwise the exact command.
- * A prefix rule covers one simple command whose words start with the prefix's words. It never covers a chained command, so
- * `npm run build:*` can't wave through `npm run build && pnpm db:reset`, and never one with a redirection, process
- * substitution, heredoc, `$(`, backtick or any word that is only known when it runs, so `echo:*` doesn't cover
- * `echo hi > ~/.zshrc`. An exact rule covers the same command spelled the same way, whatever the spacing (KERNEL-230).
- */
-export function matchesRoomRule(command: string, rule: string): boolean {
-  const c = command.trim()
+/** Shells, and the builtins that run a script file, which run whatever a pipe sends them: `curl … | sh`, `… | source /dev/stdin`. */
+const RUNS_INPUT = new Set([...SHELLS, 'source', '.'])
+
+/** A word that may be a glob, which only the same text covers exactly. The quotes are off by now, so a quoted `*` counts too. */
+const mayGlob = (w: string) => /[*?[]/.test(w) || w.startsWith('~')
+
+/** A room rule as the words of one plain simple command, `:*` making it a prefix. Undefined for a chain or anything else. */
+function roomRuleOf(rule: string): { words: string[]; prefix: boolean } | undefined {
   const r = rule.trim()
-  if (!r.endsWith(':*')) return c === r || (analyze(c).canonical !== undefined && analyze(c).canonical === analyze(r).canonical)
-  const prefix = analyze(r.slice(0, -2).trim())
-  if (prefix.simples.length !== 1 || prefix.chained || !isPlain(prefix.simples[0]) || !prefix.simples[0].words.length) return false
-  const a = analyze(c)
+  const prefix = r.endsWith(':*')
+  const a = analyze(prefix ? r.slice(0, -2).trim() : r)
   const [only] = a.simples
-  return a.simples.length === 1 && !a.chained && isPlain(only) && prefix.simples[0].words.length <= only.words.length && prefix.simples[0].words.every((w, i) => only.words[i] === w)
+  if (a.simples.length !== 1 || a.chained || !isPlain(only) || !only.words.length) return undefined
+  return { words: only.words, prefix }
+}
+
+/**
+ * The words a room rule must cover in one simple command of a chain, without the `{`, `if` or `then` before them. Undefined
+ * when no rule may cover it (KERNEL-454): a redirection, process substitution, heredoc, `$(…)`, backtick or any word only known
+ * when it runs; `eval`; a command that runs another one it names (`xargs git push`, a git `!` alias); a shell told to run a
+ * script with `-c`, wherever it sits (`xargs sh -c`, `find -exec bash -c`); and a shell or `source` in a command with a pipe,
+ * which may run what the pipe sends. A wrapper such as `sudo` stays in the words, so a rule has to name it.
+ */
+function coverable(s: Simple, piped: boolean): string[] | undefined {
+  if (!isPlain(s)) return undefined
+  const [run, ...more] = unwrap(s)
+  if (run.unknown || more.length) return undefined
+  // Any `-c` after a shell's name, so an option that takes a value (`bash --rcfile x -c …`) can't hide it.
+  if (s.words.some((w, k) => SHELLS.has(base(w)) && s.words.slice(k + 1).some((x) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(x)))) return undefined
+  if (piped && RUNS_INPUT.has(base(run.words[0] ?? ''))) return undefined
+  let k = 0
+  while (k < s.words.length && KEYWORDS.has(s.words[k])) k++
+  return s.words.slice(k)
+}
+
+/**
+ * Whether the room's Always allow rules cover a command. Rules use Claude Code's Bash rule shape: `prefix:*` covers the prefix
+ * with any arguments, otherwise the exact command. A rule covers the command it was saved from, spelled the same way whatever
+ * the spacing, chained or not (KERNEL-230). Otherwise every simple command in it must be covered on its own (KERNEL-454): `cd`
+ * needs no rule, and each other one is plain and matches a rule, a prefix rule by its first words and an exact rule by all of
+ * them. So `npm run build:*` and `npm test:*` cover `cd web && npm run build && npm test`, but `npm run build:*` alone can't
+ * wave through `npm run build && pnpm db:reset`, and `echo:*` doesn't cover `echo hi > ~/.zshrc`. `$(…)`, backticks, `eval`,
+ * `sh -c` and its kind and a pipe into a shell never match (`coverable`). A chain of `cd` alone matches nothing.
+ */
+export function matchesRoomRule(command: string, rules: string[]): boolean {
+  if (!rules.length) return false
+  const c = command.trim()
+  const a = analyze(c)
+  const same = (r: string) => c === r || (a.canonical !== undefined && a.canonical === analyze(r).canonical)
+  if (rules.some((r) => !r.trim().endsWith(':*') && same(r.trim()))) return true
+  const parsed = rules.flatMap((r) => roomRuleOf(r) ?? [])
+  let ruled = false
+  for (const s of a.simples) {
+    const words = coverable(s, a.piped)
+    if (!words) return false
+    if (!words.length || words[0] === 'cd') continue
+    const hit = parsed.some((r) => r.prefix
+      ? r.words.length <= words.length && r.words.every((w, i) => words[i] === w)
+      : r.words.length === words.length && !words.some(mayGlob) && r.words.every((w, i) => words[i] === w))
+    if (!hit) return false
+    ruled = true
+  }
+  return ruled
 }
 
 /**

@@ -1,9 +1,15 @@
-import type { Room, WorkspaceSource } from '@shared/types'
+import type { Room, TrackerKind, WorkspaceSource } from '@shared/types'
 
 type IssueSource = Extract<WorkspaceSource, { kind: 'issue' }>
 
 /** A GitHub key starts with `#`. A Linear key looks like KERNEL-160. */
 export const isGithubKey = (id: string) => id.startsWith('#')
+
+/**
+ * The tracker an issue came from: the source's own tag (KERNEL-462), else its key tells. A source saved before the tag, or from a room
+ * that had no tracker, has none, and `#41` is GitHub's where anything else is Linear's.
+ */
+export const issueTracker = (source: IssueSource): TrackerKind => source.tracker ?? (isGithubKey(source.id) ? 'github' : 'linear')
 
 /**
  * The page a GitHub issue key opens. Rowan saves the source without a url, so it falls back to the room's repo when that is a GitHub

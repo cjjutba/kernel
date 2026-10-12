@@ -1,5 +1,5 @@
 import { EFFORTS, isRunName, MODELS } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, GithubIssue, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
@@ -7,6 +7,7 @@ import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
+import { CODEX_AUTO } from './features/permissions'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 import { mustBeInside, OPEN_APPS } from './services/openApps'
@@ -66,6 +67,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'preflight.fix': async () => f.preflight,
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
     'hooks.uninstall': async () => f.hooks ?? { port: 7420, listening: true, installed: false, events: [] },
+    'hooks.turnOn': async () => ({ ...hooks, problem: undefined }),
     'hooks.status': async () => hooks,
     'github.status': async () => f.github ?? {},
     'hooks.test': async () => hooks,
@@ -92,6 +94,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.resolveOverlap': async () => ok,
     'rooms.inspectFolder': async ({ path }) => f.folders?.find((x) => x.path === path) ?? { path, git: true, branch: 'main', dirty: 0 },
     'rooms.recentFolders': async () => f.folders ?? [],
+    'rooms.pushCheck': async ({ roomId }) => f.pushChecks?.[roomId] ?? null,
     'rooms.scriptTrust': async () => null,
     'rooms.trust': async () => ok,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
@@ -131,6 +134,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
     'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'issues.tracker': async ({ roomId }) => f.trackers?.[roomId] ?? { kind: 'linear' },
+    'github.issueList': async ({ roomId, query }) => (f.githubIssues?.[roomId] ?? [])
+      .filter((i) => !query || `${i.id} ${i.title} ${i.author ?? ''}`.toLowerCase().includes(query.replace(/^#/, '').toLowerCase()))
+      .map(({ body: _b, comments: _c, ...issue }): GithubIssue => issue),
+    'github.issue': async ({ roomId, id }) => {
+      const issue = f.githubIssues?.[roomId]?.find((i) => i.id === id)
+      if (!issue) throw new Error(`Unknown issue ${id}`)
+      return issue
+    },
     'linear.issues': async ({ filter }) => (f.linear?.issues ?? []).filter((i) => {
       const q = filter.query?.trim().toLowerCase()
       return (!filter.mine || i.assignee?.me) && (!filter.teamId || i.team.id === filter.teamId) && (!filter.projectId || i.project?.id === filter.projectId)
@@ -226,12 +238,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.merge': async ({ workspaceId }) => workspace(workspaceId),
     'pr.mergeAll': async () => ({ merged: [] }),
     'pr.resolve': async () => ({ ok: true }),
+    'pr.update': async () => ({ ok: true }),
     'pr.ready': async ({ workspaceId }) => workspace(workspaceId),
     'pr.reopen': async ({ workspaceId }) => workspace(workspaceId),
     'pr.continue': async ({ workspaceId }) => ({ ...workspace(workspaceId), prState: 'none', prNumber: undefined, prUrl: undefined }),
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'scripts.replay': async () => ok,
+    'scripts.skipSetup': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
@@ -259,6 +273,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
+    // Auto works on Claude and not on Codex, as on an account that runs it (KERNEL-447).
+    'permissions.availability': async () => ({ claude: { auto: true, bypass: true }, codex: { auto: false, bypass: true, reason: CODEX_AUTO } }),
     'settings.setRoom': async ({ roomId, patch, shared }) => {
       // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
       // the patch names is applied the same way, and the sources follow the file it was written to. `runScripts` is a list
@@ -305,10 +321,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return roomSettings(roomId)
     },
     'files.preview': async ({ roomId, patterns }) => {
-      const entries = patterns ?? roomSettings(roomId).files.copy
-      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+      const { copy, exclude = [] } = roomSettings(roomId).files
+      const named = (list: string[], path: string) => list.some((e) => (isPattern(e) ? matchesGlob(path, e) : path === e))
+      return (f.localFiles?.[roomId] ?? []).filter((file) => named(patterns ?? copy, file.path) && !named(exclude, file.path))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    'files.production': async ({ roomId }) => f.production?.[roomId] ?? [],
+    'files.keepCopying': async ({ roomId, hints }) => ({ ...room(roomId), keepCopying: hints.map((h) => `${h.path}:${h.name}`) }),
     'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
       .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
       .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
@@ -338,7 +357,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'env.set': async () => ok,
     'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
-    'mcp.list': async () => f.mcp ?? [],
+    'mcp.list': async ({ provider = 'claude' }) => (f.mcp ?? []).filter((m) => (m.provider ?? 'claude') === provider),
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
     'update.get': async () => update,

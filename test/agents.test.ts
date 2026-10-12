@@ -3,7 +3,8 @@ import { watch } from 'node:fs'
 import { mkdtemp, mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
+import { agentFromFile, createAgent, draftAgent, hireDefaults, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
+import { canOpenPr } from '../src/main/services/agentTools'
 
 // fs.watch timing varies under load, so wait for the callback instead of sleeping a fixed time.
 const WATCH = { timeout: 10_000 }
@@ -41,11 +42,11 @@ describe('agents', () => {
   })
   it('reads block values, comments, a BOM and Windows line endings as Claude Code does', () => {
     const folded = parseFrontmatter('---\nname: code-reviewer\ndescription: >-\n  Reviews pull requests.\n  Use proactively\n  after a change.\n\n  Read-only.\ntools:\n  - Read\n  - Grep\n---\nBody')
-    expect(folded.meta).toMatchObject({ name: 'code-reviewer', description: 'Reviews pull requests. Use proactively after a change.\nRead-only.', tools: 'Read, Grep' })
-    expect(parseFrontmatter('---\nname: x\ndescription: |\n  Line one\n    indented\n  line two\nmodel: opus\n---\n').meta).toMatchObject({ description: 'Line one\n  indented\nline two', model: 'opus' })
-    expect(parseFrontmatter('---\nname: x\ndescription: >+ # kept\n  One.\n---\n').meta.description).toBe('One.')
+    expect(folded.meta).toMatchObject({ name: 'code-reviewer', description: 'Reviews pull requests. Use proactively after a change.\nRead-only.', tools: ['Read', 'Grep'] })
+    expect(agentFromFile('/r/x.md', '---\nname: x\ndescription: |\n  Line one\n    indented\n  line two\nmodel: opus\n---\n')).toMatchObject({ description: 'Line one\n  indented\nline two', model: 'opus' })
+    expect(agentFromFile('/r/x.md', '---\nname: x\ndescription: >+ # kept\n  One.\n---\n').description).toBe('One.')
     expect(parseFrontmatter('---\nname: x\nmodel: sonnet # cheap\ndescription: "Fixes #12"\nrole: QA #tests\n---\n').meta).toMatchObject({ model: 'sonnet', description: 'Fixes #12', role: 'QA' })
-    expect(parseFrontmatter('\uFEFF---\r\nname: win\r\ndescription: >\r\n  From Windows.\r\ntools: [Read, Edit]\r\n---\r\nBody\r\n').meta).toMatchObject({ name: 'win', description: 'From Windows.', tools: '[Read, Edit]' })
+    expect(parseFrontmatter('\uFEFF---\r\nname: win\r\ndescription: >\r\n  From Windows.\r\ntools: [Read, Edit]\r\n---\r\nBody\r\n')).toMatchObject({ meta: { name: 'win', description: 'From Windows.\n', tools: ['Read', 'Edit'] }, body: 'Body' })
     const a = agentFromFile('/r/code-reviewer.md', '---\nname: code-reviewer\ndescription: >-\n  Reviews pull requests.\n---\nBody')
     // A description that opens with a sentence names no role, so the file's name does.
     expect(a).toMatchObject({ description: 'Reviews pull requests.', role: 'Code Reviewer' })
@@ -53,6 +54,76 @@ describe('agents', () => {
     expect(agentFromFile('/r/c.md', '---\nname: architect\ndescription: Designs the system.\n---\n').role).toBe('Architect')
     expect(agentFromFile('/r/w.md', '---\nname: w\ndescription: x\ntools: [Read, Edit, Bash]\n---\n').tools).toEqual(['Read', 'Edit', 'Bash'])
   })
+  // KERNEL-451: the YAML reader, the retry and the fields as Claude Code 2.1.292 reads them.
+  it('reads a description Claude Code reads only on its second try, quoted', () => {
+    const a = agentFromFile('/r/helper.md', '---\nname: helper\ndescription: Use this agent when: the user asks for help. Examples: <example>hi</example>\ntools: Read\n---\nBody')
+    expect(a).toMatchObject({ id: 'helper', description: 'Use this agent when: the user asks for help. Examples: <example>hi</example>', tools: ['Read'] })
+    expect(a.warnings).toBeUndefined()
+    // A written \n is a new line, as Claude Code reads it, and a tab-indented list reads as one indented with spaces.
+    expect(agentFromFile('/r/x.md', '---\nname: x\ndescription: One.\\nTwo.\ntools:\n\t- Read\n\t- Grep\n---\n')).toMatchObject({ description: 'One.\nTwo.', tools: ['Read', 'Grep'] })
+    // A key written twice keeps its last value.
+    expect(agentFromFile('/r/x.md', '---\nname: x\ndescription: x\nmodel: haiku\nmodel: opus\n---\n').model).toBe('opus')
+  })
+
+  it('splits tools as Claude Code does: at commas and spaces outside parentheses, every tool for *, none for an empty line', () => {
+    const tools = (line: string) => agentFromFile('/r/x.md', `---\nname: x\ndescription: x\n${line}\n---\n`).tools
+    expect(tools('tools: Read Grep, Bash(git status:*)')).toEqual(['Read', 'Grep', 'Bash(git status:*)'])
+    expect(tools('tools: ["Read", "mcp__linear"]')).toEqual(['Read', 'mcp__linear'])
+    expect(tools('tools: "*"')).toBeUndefined()
+    expect(tools('tools: [Read, "*"]')).toBeUndefined()
+    expect(tools('tools:')).toEqual([])
+    expect(tools('tools: []')).toEqual([])
+    expect(tools('tools: ""')).toEqual([])
+    expect(tools('color: blue')).toBeUndefined()
+  })
+
+  it('reads disallowedTools, mcpServers, permissionMode and an inherited model', () => {
+    const a = agentFromFile('/r/x.md', [
+      '---', 'name: x', 'description: x', 'model: inherit', 'disallowedTools: WebFetch, mcp__github', 'permissionMode: plan',
+      'mcpServers:', '  - linear', '  - sentry:', '      type: http', '      url: https://mcp.sentry.dev/mcp', '  - { a: 1, b: 2 }', '---', 'Body'
+    ].join('\n'))
+    expect(a).toMatchObject({ disallowedTools: ['WebFetch', 'mcp__github'], mcpServers: ['linear', 'sentry'], permissionMode: 'plan' })
+    // `inherit` follows Settings, Models, as no model line does.
+    expect(a.model).toBeUndefined()
+    const mode = (v: string) => agentFromFile('/r/x.md', `---\nname: x\ndescription: x\npermissionMode: ${v}\n---\n`).permissionMode
+    expect(['manual', 'acceptEdits', 'dontAsk', 'bypassPermissions', 'yolo'].map(mode)).toEqual(['default', 'acceptEdits', 'dontAsk', 'bypassPermissions', undefined])
+    expect(agentFromFile('/r/x.md', '---\nname: x\ndescription: x\ndisallowedTools:\n---\n')).not.toHaveProperty('disallowedTools')
+  })
+
+  it("keeps a file Claude Code can't read, with what went wrong, no tools and no Lead", () => {
+    const broken = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: "Frontend engineer\nlead: true\n---\nYou are Kai.')
+    expect(broken).toMatchObject({ id: 'kai', name: 'Kai', role: 'Agent', description: '', lead: false, tools: [], prompt: '', file: '/r/.claude/agents/kai.md' })
+    expect(broken.warnings).toHaveLength(1)
+    // Team shows it as "Kernel couldn't read its file: line 5 isn't valid YAML. Missing closing "quote."
+    expect(broken.warnings![0]).toEqual({ kind: 'unreadable-file', detail: 'line 5 isn\'t valid YAML. Missing closing "quote' })
+    const why = (head: string) => agentFromFile('/r/x.md', `---\n${head}\n---\n`).warnings?.[0]?.detail
+    expect(why('name: x\n  bad: indent')).toBe("line 2 isn't valid YAML. Nested mappings are not allowed in compact mappings")
+    expect(why('name: -x\ndescription: x')).toBe('its name starts with a dash')
+    expect(why('name: acme:x\ndescription: x')).toBe('its name has a colon, which Claude Code keeps for plugin agents')
+    expect(why('name: 7\ndescription: x')).toBe("its name isn't text. Put it in quotes")
+    expect(why('- Read\n- Grep')).toBe('its frontmatter has no key: value lines')
+    // A file with no frontmatter, or one that names no agent, is still read as Kernel always read it.
+    expect(agentFromFile('/r/plain.md', 'Just instructions.')).toMatchObject({ id: 'plain', prompt: 'Just instructions.' })
+    expect(agentFromFile('/r/plain.md', '---\n# nothing yet\n---\nBody').warnings).toBeUndefined()
+  })
+
+  it("loads a broken file with its error instead of dropping it, and won't edit it until it's fixed", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    const dir = join(repo, '.claude', 'agents')
+    await mkdir(join(dir, 'notes.md'), { recursive: true })
+    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
+    const text = '---\nname: ivy\ndescription: "QA\n---\nYou are Ivy.\n'
+    await writeFile(join(dir, 'ivy.md'), text)
+    const list = await loadAgents(repo)
+    expect(list.map((a) => [a.id, a.warnings?.map((w) => w.kind) ?? []])).toEqual([['ivy', ['unreadable-file']], ['kai', []], ['notes', ['unreadable-file']]])
+    expect(list.find((a) => a.id === 'notes')!.warnings![0].detail).toBe("it's a folder, not a file")
+    expect(list.find((a) => a.id === 'ivy')!.joinedAt).toBeGreaterThan(0)
+    await expect(updateAgent(repo, 'ivy', { model: 'opus' })).rejects.toThrow('Kernel can\'t read ivy.md: line 4 isn\'t valid YAML. Missing closing "quote. Fix the file, then save again.')
+    expect(await readFile(join(dir, 'ivy.md'), 'utf8')).toBe(text)
+    // New agent won't write a file Claude Code can't read.
+    await expect(createAgent(repo, { ...draftAgent({ description: 'QA', name: 'Rex' }), text })).rejects.toThrow('Claude Code can\'t read this file: line 4 isn\'t valid YAML. Missing closing "quote.')
+  })
+
   it('round-trips, loads lead first, and retires out of the loaded folder', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
@@ -99,6 +170,18 @@ describe('agents', () => {
     await expect(createAgent(repo, d)).rejects.toThrow(/already on the team/)
     await expect(createAgent(repo, { ...d, text: '---\nname: Bad Name\ndescription: x\n---\nbody' })).rejects.toThrow(/lowercase/)
     await expect(createAgent(repo, { ...d, text: '---\nname: ok\n---\nbody' })).rejects.toThrow(/description/)
+  })
+  // KERNEL-476: a drafted Designer used to get Read, Grep, Glob and Bash, and a Docs writer had no Bash, so both joined as helpers.
+  it('gives every drafted role but a reviewer the tools to open a pull request', async () => {
+    const pr = ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob']
+    const drafts = ['a designer who checks every screen against DESIGN.md', 'writes the docs for each release', 'owns the SQL schema and migrations', 'QA: tests each flow end to end', 'Reviews security in every diff']
+      .map((description) => draftAgent({ description }))
+    expect(drafts.map((d) => [d.id, d.tools])).toEqual([['designer', pr], ['docs', pr], ['data', pr], ['qa-tests', pr], ['reviewer', ['Read', 'Grep', 'Glob']]])
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    for (const d of drafts) await createAgent(repo, d)
+    expect((await loadAgents(repo)).map((a) => [a.id, canOpenPr(a.tools)])).toEqual([['data', true], ['designer', true], ['docs', true], ['qa-tests', true], ['reviewer', false]])
+    expect(hireDefaults('Frontend')).toEqual({ tools: pr })
+    expect(hireDefaults('Security reviewer')).toEqual({ role: 'Reviewer', tools: ['Read', 'Grep', 'Glob'] })
   })
   it('lists retired agents and restores one, refusing when the name is taken', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))

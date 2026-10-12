@@ -21,6 +21,8 @@
 .ob-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ob-name { font-weight: 500; }
 .ob-detail { font-size: 12.5px; color: var(--muted); }
+.ob-note { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+.ob-code { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
 .ob-meta { font: 12px var(--mono); color: var(--muted); margin-top: 2px; }
 .ob-acts { display: flex; gap: 8px; margin-top: 10px; }
 .ob-fix { margin-top: 10px; }
@@ -56,5 +58,22 @@
 .hk-note { font-size: 12.5px; color: var(--muted); }
 .code.hk-snip { margin: 12px 18px 18px; white-space: pre; overflow: auto; }
 .hk-snip .path { color: var(--muted); }
+/* CheckHooksNotWritable.png and the four beside it (KERNEL-461): the status row, one card with one fix, and what still works. */
+.hk-problem { display: flex; flex-direction: column; gap: 12px; padding: 0 18px 16px; }
+.hk-problem .hk-status { margin: 0; }
+.hk-card { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; border: 1px solid var(--card-line); border-radius: var(--r); background: var(--surface); }
+.hk-card p { margin: 0; }
+.hk-card-head { display: flex; flex-direction: column; gap: 4px; }
+.hk-card-title { font-weight: 500; }
+.hk-card-detail { font-size: 12.5px; line-height: 1.55; color: var(--muted); }
+.hk-mono { font: 12px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.hk-fix { display: flex; flex-direction: column; gap: 8px; }
+.hk-fix-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+.hk-command { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: 12.5px/1.55 var(--mono); user-select: text; }
+.hk-command span { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hk-command .btn { flex-shrink: 0; height: 24px; padding: 0 8px; border-radius: var(--r-sm); font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.hk-line { padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); font: 12.5px var(--mono); color: var(--ink-2); white-space: pre; user-select: text; }
+.hk-admin.btn { height: 30px; }
+.hk-keep { margin: 0; padding: 0 2px; font-size: 12px; color: var(--muted); }
 
 .ob-bar .btn.primary:disabled { opacity: 1; background: var(--surface-3); border-color: transparent; color: var(--faint); }
