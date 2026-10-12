@@ -175,7 +175,16 @@ async function filterChanges(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// PanelCompare is Changes with the ⋯ menu open. Whether it is open is local to the tab, so press the button and wait for the commit rows, which the menu reads when it opens (KERNEL-517).
+async function openCompare(page: Page) {
+  await page.getByRole('button', { name: 'Compare changes' }).click()
+  await page.getByRole('menuitemradio', { name: /Drop Inbox rows/ }).waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  PanelCompare: openCompare,
   PanelFilter: filterChanges,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
