@@ -2,12 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { PushEvent } from '../src/shared/ipc'
 import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedVersion, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { collapse, decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
 import { UPDATE_HEADER } from '../src/main/services/handoff'
 import { capText } from '../src/main/services/text'
+import { Sessions } from '../src/main/services/sessions'
+import { Approvals } from '../src/main/services/approvals'
+import { DEFAULT_SETTINGS } from '../src/main/services/settings'
+import { listen } from '../src/main/features/wiring'
+import type { Kernel } from '../src/main/kernel'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -24,7 +30,8 @@ const done = { ok: true, interrupted: false, lead: false, queued: false, by: 'le
 const NAMES: Record<string, string> = { rowan: 'Rowan', noor: 'Noor', kai: 'Kai' }
 const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 
-async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
+/** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
+async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-lu-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   // Teammate workspaces were handed off in the Lead chat "lc" unless a test says otherwise.
@@ -35,7 +42,9 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
   ws('w2', 'kai', { title: 'Inbox actions' })
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
   store.saveItem('nc', { kind: 'text', id: 't1', ts: 1, text: REPLY })
-  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true }
+  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true,
+    /** Why the Lead chat can't take a message, as `Sessions.postHold` says it. Unset takes it. */
+    hold: undefined as ((chatId: string) => string | undefined) | undefined, logs: [] as string[], times: [] as number[] }
   const deps: ConstructorParameters<typeof LeadUpdates>[0] = {
     store, enabled: () => s.enabled,
     // Kernel's rule in small: the owner while it's open, else the first Lead chat ("lc"), saying where the work came from:
@@ -49,12 +58,14 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
     },
     isLead: (w) => w.agentId === 'rowan',
     agentName: (_r, a) => NAMES[a],
-    post: (chatId, text, update) => { if (!s.accept || s.busy.has(chatId)) return false; s.posts.push(text); s.updates.push(update); s.to.push(chatId); return true },
+    post: (chatId, text, update) => { if (!s.accept || s.busy.has(chatId) || s.hold?.(chatId)) return false; s.posts.push(text); s.updates.push(update); s.to.push(chatId); s.times.push(Date.now()); return true },
+    holdOf: (chatId) => s.hold?.(chatId) ?? (s.busy.has(chatId) ? 'busy' : undefined),
+    log: (_level, line) => { s.logs.push(line) },
     delivered: (_r, _c, update) => { s.delivered.push(update) },
     reviewer: () => s.reviewer,
     reviewState: () => s.review,
     autoReview: () => s.autoReview,
-    delayMs: o.delayMs ?? 20
+    ...(o.defaults ? {} : { delayMs: o.delayMs ?? 20 })
   }
   const make = () => { const x = new LeadUpdates(deps); x.attach(); open.push(x); return x }
   const u = make()
@@ -246,7 +257,7 @@ describe('teammate updates to the Lead', () => {
     await wait()
     const lines = s.posts[0].split('\n')
     expect(lines.filter((l) => l.startsWith('Kai (kai) · '))).toEqual([3, 4, 5, 6, 7, 8, 9, 10].map((i) => `Kai (kai) · Task ${i} · workspace x${i}`))
-    expect(lines).toContain('Kernel left out updates on 2 more workspaces. Call list_workspaces to see where they stand.')
+    expect(lines).toContain("Updates on 2 more workspaces didn't fit here. Kernel sends them in its next update.")
     expect(s.updates[0].omitted).toBe(2)
     expect(s.updates[0].rows).toHaveLength(8)
     expect(parts(s.posts[0]).todo).toHaveLength(8)
@@ -1196,7 +1207,7 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     const lines = s.posts[0].split('\n')
     expect(lines.filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])).toEqual(['Own 3', 'Own 4', 'Own 5', 'Own 6', 'Closed 1', 'Closed 2', 'Closed 3', 'Closed 4'])
     expect(lines).toContain('From "Composer unit tests", a Lead chat that is now closed. This work is yours now.')
-    expect(lines).toContain('Kernel left out updates on 2 more workspaces. Call list_workspaces to see where they stand.')
+    expect(lines).toContain("Updates on 2 more workspaces didn't fit here. Kernel sends them in its next update.")
   })
 
   it("names a closed tab of the same Lead chat apart from a closed Lead chat, in the text and on the card (KERNEL-337)", async () => {
@@ -1370,5 +1381,158 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
     const fromAuthor = decide({ ws: of, name: 'Kai', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
     expect(fromReview).toEqual(fromAuthor)
     expect(fromAuthor).toEqual(["Ask Kai to update PR #60: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
+  })
+})
+
+describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () => {
+  const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
+  /** The delivery log's fields, the last line first. */
+  const logged = (s: { logs: string[] }) => s.logs.filter((l) => l.startsWith('[lead-updates] delivered ')).map((l) => JSON.parse(l.slice('[lead-updates] delivered '.length)))
+
+  it("sends an update a paused, offline or setup-held Lead chat couldn't take the moment Sessions lifts the hold, and logs why it waited", async () => {
+    const t = await setup()
+    // Sessions' own rule for what holds the Lead chat. Sending is the harness's, so nothing starts a real turn.
+    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'rowan' ? rowan : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
+    t.s.hold = (chatId) => sessions.postHold(chatId)
+    const holds: [string, () => void, () => void][] = [
+      ['paused', () => sessions.pause('r'), () => sessions.resume('r')],
+      ['offline', () => sessions.holdAll('offline'), () => sessions.releaseAll('offline')],
+      ['setup', () => sessions.hold('lc'), () => sessions.release('lc')]
+    ]
+    for (const [why, start, lift] of holds) {
+      start()
+      expect(sessions.postHold('lc')).toBe(why)
+      t.u.turnDone(t.store.workspace('w1')!, t.nc, done)
+      await wait()
+      const before = t.s.posts.length
+      lift()
+      expect(sessions.postHold('lc')).toBeUndefined()
+      // Not at the PR poll 45 seconds later: within the next step.
+      await wait(10)
+      expect(t.s.posts).toHaveLength(before + 1)
+      expect(logged(t.s).at(-1)).toMatchObject({ chatId: 'lc', heldBy: why, carried: 0 })
+    }
+  })
+
+  it('sends an update a busy, queued, crashed, limit-held or full Lead chat refused once the chat stops running or its queue empties', async () => {
+    const { store, u, s, nc } = await setup()
+    const k = { chats: { onRunning: () => {} }, leadUpdates: u, store } as unknown as Kernel
+    const off = listen(k)
+    try {
+      const frees: [string, PushEvent][] = [
+        ['busy', { type: 'chat.running', chatId: 'lc', running: false }],
+        ['queued', { type: 'chat.queue', chatId: 'lc', queue: [] }],
+        ['crashed', { type: 'chat.running', chatId: 'lc', running: false }],
+        ['limit', { type: 'chat.running', chatId: 'lc', running: false }],
+        // A teammate's turn ending frees a slot.
+        ['capacity', { type: 'chat.running', chatId: 'kc', running: false }]
+      ]
+      for (const [why, freed] of frees) {
+        s.hold = () => why
+        u.turnDone(store.workspace('w1')!, nc, done)
+        await wait()
+        const before = s.posts.length
+        s.hold = undefined
+        bus.push(freed)
+        await wait(10)
+        expect(s.posts, why).toHaveLength(before + 1)
+        expect(logged(s).at(-1)).toMatchObject({ heldBy: why })
+      }
+      // A turn starting, or a queue that still holds messages, frees nothing.
+      s.hold = () => 'busy'
+      u.turnDone(store.workspace('w1')!, nc, done)
+      await wait()
+      s.hold = undefined
+      bus.push({ type: 'chat.running', chatId: 'lc', running: true })
+      await wait(10)
+      expect(s.posts).toHaveLength(frees.length)
+    } finally { off() }
+  })
+
+  it('logs timings and why each update waited, never what it says', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(logged(s)).toEqual([{ roomId: 'r', chatId: 'lc', workspaces: 1, ageMs: expect.any(Number), heldMs: expect.any(Number), heldBy: 'none', carried: 0, leftOut: 0 }])
+    expect(logged(s)[0].ageMs).toBeGreaterThanOrEqual(20)
+    expect(s.logs.join('\n')).not.toContain('Linked node_modules')
+  })
+
+  it('sends the first update within 5 seconds of its oldest event while events keep coming every second for 30 seconds', async () => {
+    const { store, u, s, nc, kc } = await setup({ defaults: true })
+    vi.useFakeTimers()
+    try {
+      const start = Date.now()
+      for (let i = 0; i < 30; i++) {
+        if (i % 2) u.turnDone(store.workspace('w2')!, kc, done)
+        else u.turnDone(store.workspace('w1')!, nc, done)
+        await vi.advanceTimersByTimeAsync(1000)
+      }
+      expect(s.times.length).toBeGreaterThan(1)
+      expect(s.times[0] - start).toBeLessThanOrEqual(5000)
+      // Each later batch is bounded the same way.
+      for (const [i, at] of s.times.entries()) if (i) expect(at - s.times[i - 1]).toBeLessThanOrEqual(5000)
+    } finally { vi.useRealTimers() }
+  })
+
+  it('still sends a lone event 2 seconds after it, and waits for a PR read however long it takes', async () => {
+    const { u, s, w1, nc } = await setup({ defaults: true })
+    vi.useFakeTimers()
+    try {
+      u.turnDone(w1, nc, done)
+      await vi.advanceTimersByTimeAsync(1990)
+      expect(s.posts).toEqual([])
+      await vi.advanceTimersByTimeAsync(20)
+      expect(s.posts).toHaveLength(1)
+      u.readingPr('w1')
+      u.turnDone(w1, nc, done)
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(s.posts).toHaveLength(1)
+      u.readPr('w1')
+      await vi.advanceTimersByTimeAsync(2010)
+      expect(s.posts).toHaveLength(2)
+      expect(logged(s).at(-1)).toMatchObject({ heldBy: 'reading' })
+    } finally { vi.useRealTimers() }
+  })
+
+  it('sends 8 of 12 workspaces, keeps the other 4 for the next update across a restart, and sends nothing twice', async () => {
+    const { store, u, s, ws, chat, lead, lc, restart } = await setup()
+    for (let i = 1; i <= 12; i++) {
+      const w = ws(`x${i}`, 'kai', { title: `Task ${i}` })
+      chat(`xc${i}`, w.id)
+      u.turnDone(w, store.chat(`xc${i}`)!, done)
+    }
+    await wait()
+    const tasks = (n: number) => s.updates[n].rows.map((r) => r.task)
+    expect(tasks(0)).toEqual([5, 6, 7, 8, 9, 10, 11, 12].map((i) => `Task ${i}`))
+    expect(s.updates[0].omitted).toBe(4)
+    expect(s.posts[0].split('\n')).toContain("Updates on 4 more workspaces didn't fit here. Kernel sends them in its next update.")
+    expect(logged(s).at(-1)).toMatchObject({ workspaces: 8, carried: 4, leftOut: 4 })
+    // The other 4 are saved, so a quit doesn't lose them.
+    const saved = store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')!
+    expect(saved.pending.flatMap(([, p]) => p.events.map((e) => e.workspaceId))).toEqual(['x1', 'x2', 'x3', 'x4'])
+    const again = restart()
+    // Rowan's turn on the first update ends: the rest go next, once.
+    again.turnDone(lead, lc, { ...done, lead: true })
+    expect(tasks(1)).toEqual([1, 2, 3, 4].map((i) => `Task ${i}`))
+    expect(s.updates[1].omitted).toBeUndefined()
+    again.turnDone(lead, lc, { ...done, lead: true })
+    await wait()
+    expect(s.updates).toHaveLength(2)
+    expect(store.meta<{ pending: unknown[] }>('leadUpdates')!.pending).toEqual([])
+  })
+
+  it('still holds a Lead chat the user stopped when it stops running, until its next turn ends normally (KERNEL-122)', async () => {
+    const { u, s, pr, lead, lc } = await setup()
+    u.turnDone(lead, lc, { ...done, lead: true, interrupted: true })
+    pr('w1', 'cifail')
+    await wait()
+    u.chatFreed()
+    u.flushSoon()
+    await wait(10)
+    expect(s.posts).toEqual([])
+    u.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
+    expect(s.posts).toHaveLength(1)
+    expect(logged(s).at(-1)).toMatchObject({ heldBy: 'stopped' })
   })
 })

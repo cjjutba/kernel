@@ -1,0 +1,7 @@
+**A Team update goes 2 seconds after its newest event, and never later than 5 seconds after the first event of its batch.** The old rule restarted a 5 second wait on every event, so a team that kept producing news could hold an update back for as long as it kept going. The deliberate holds still apply on top: a PR read in progress, a teammate's own wait turn and auto-merge (KERNEL-556) keep a batch waiting however long they take (KERNEL-637).
+
+**An update Kernel couldn't post is retried the moment the Lead chat can take it.** Sessions names why `post` refused (`postHold`) and calls `onFreed` when a resume, a lifted offline or sign-in hold, the launch checks or a setup release frees chats. A chat that stops running or whose queue empties is a push event `listen` reacts to. Both flush on the next step, after the turn's end has set a Stop mark or a crash, so a stopped Lead chat still gets nothing until its next normal turn (KERNEL-122). The PR poll's flush stays as the safety net (KERNEL-637).
+
+**A message carries 8 workspaces at most, and the rest wait for the next one instead of being dropped.** After a post, only the events the message carried, or ones it made stale, leave the saved queue. The Lead's text says the others follow in the next update (KERNEL-637).
+
+**Each delivery logs one line of timings: how old its oldest event was, how long it waited once due, why, and how many events it carried over.** Never the message or a reply from it (KERNEL-637).

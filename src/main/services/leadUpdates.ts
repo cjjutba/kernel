@@ -42,6 +42,8 @@ export interface LeadUpdateDeps {
   agentName: (roomId: string, agentId: string) => string | undefined
   /** Sends Kernel's message into the Lead chat, with the card's data. False when the Lead can't take it now (`Sessions.post`). */
   post: (chatId: string, text: string, update: TeamUpdate) => boolean
+  /** Why `post` refused the chat, for the delivery log (`Sessions.postHold`, KERNEL-637). */
+  holdOf?: (chatId: string) => string | undefined
   /** Called after a delivered update, for the room log. */
   delivered?: (roomId: string, chat: Chat, update: TeamUpdate) => void
   /** What Kernel knows about reviews of the workspace's PR. Unknown until reviews are linked (KERNEL-130). */
@@ -50,14 +52,22 @@ export interface LeadUpdateDeps {
   reviewer?: (roomId: string) => AgentDef | undefined
   /** Whether Kernel starts reviews of a PR that passed checks by itself (`pr.autoReview`, KERNEL-115, KERNEL-549). On when unset. */
   autoReview?: () => boolean
-  /** How long to wait for more events before sending. Five seconds; tests shorten it. */
+  /**
+   * A batch goes `delayMs` after its newest event, two seconds, but never later than `maxDelayMs` after its oldest, five
+   * seconds, so a busy team can't hold it back (KERNEL-637). Tests shorten both.
+   */
   delayMs?: number
+  maxDelayMs?: number
+  /** Where the delivery log and delivery errors go. The console unless a test says otherwise. */
+  log?: (level: 'info' | 'warn', line: string) => void
 }
 
 /** One thing that happened in a teammate's workspace, kept until it reaches the Lead. */
 export interface TeamEvent {
   /** Order across every chat's events, so a message that mixes several knows which are newest. */
   n: number
+  /** When it happened, for the delivery log (KERNEL-637). Unset on events saved before. */
+  at?: number
   workspaceId: string
   kind: TeamEventKind
   /** The PR's number and title when it happened. */
@@ -124,7 +134,10 @@ const TURN_ENDS = new Set<TeamEventKind>(['turn', 'error', 'crash'])
 /** Events that say something only once. */
 const ONCE = new Set<TeamEventKind>(['pr.opened', 'pr.merged', 'pr.closed'])
 
-/** The most workspaces one update carries. Older ones are counted, so a long absence can't flood the Lead. */
+/**
+ * The most workspaces one update carries, so a long absence can't flood the Lead. The rest are counted and wait for the next
+ * update (KERNEL-637).
+ */
 const MAX_BLOCKS = 8
 
 /** A reply is cut to this many characters, and all of one message's replies share `REPLY_BUDGET`. */
@@ -281,7 +294,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
  * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
  * off. `shares` are its shared files, which the card draws apart from `events`.
  */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card: string[]; held: boolean; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; raw: TeamEvent[]; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card: string[]; held: boolean; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: From; owner?: string }
@@ -392,6 +405,13 @@ export class LeadUpdates {
   /** Keyed by the owning Lead chat's id, or `room:<id>` for workspaces no Lead chat handed off. */
   private pending = new Map<string, Pending>()
   private timers = new Map<string, NodeJS.Timeout>()
+  /** When the first event of the batch a timer waits on came, per key. The batch goes five seconds after it at the latest. */
+  private since = new Map<string, number>()
+  /** When each key's events were due to go, and why they waited since, for the delivery log (KERNEL-637). */
+  private ready = new Map<string, number>()
+  private heldBy = new Map<string, string>()
+  /** Flushes asked for once the current step is done, by room, or `*` for every room (`flushSoon`). */
+  private soon = new Map<string, NodeJS.Timeout>()
   /** The last PR state seen per workspace, to tell "opened" from a later change. */
   private prev = new Map<string, PrState>()
   /** The head commit each PR was on when an update told the Lead it was ready, until the PR leaves ready and checks. */
@@ -442,8 +462,10 @@ export class LeadUpdates {
   detach() {
     this.detached = true
     this.off()
-    for (const t of this.timers.values()) clearTimeout(t)
+    for (const t of [...this.timers.values(), ...this.soon.values()]) clearTimeout(t)
     this.timers.clear()
+    this.soon.clear()
+    this.since.clear()
   }
 
   /**
@@ -459,11 +481,14 @@ export class LeadUpdates {
       this.seq = Math.max(this.seq, saved.seq ?? 0)
       for (const [key, p] of saved.pending ?? []) {
         const events = (p.events ?? []).filter((e) => { const ws = this.d.store.workspace(e.workspaceId); return !!ws && !this.d.isLead(ws) })
-        if (events.length) this.pending.set(key, { ...p, events })
+        if (events.length) { this.pending.set(key, { ...p, events }); this.ready.set(key, Date.now()) }
       }
       for (const id of saved.stopped ?? []) { const chat = this.d.store.chat(id); if (chat && !chat.closed) this.stopped.add(id) }
       for (const [id, blocked] of saved.toldBlocked ?? []) if (this.d.store.workspace(id)) this.toldBlocked.set(id, blocked)
-    } catch { this.pending.clear(); this.stopped.clear(); this.toldBlocked.clear() }
+    } catch (e) {
+      this.warn('could not read the saved updates, so they were dropped', e)
+      this.pending.clear(); this.ready.clear(); this.stopped.clear(); this.toldBlocked.clear()
+    }
     this.save()
   }
 
@@ -624,7 +649,7 @@ export class LeadUpdates {
     if (!this.d.enabled()) return
     const key = this.keyOf(ws)
     const p = this.pending.get(key) ?? { roomId: ws.roomId, owner: ws.leadChatId, events: [] }
-    p.events.push({ ...e, n: this.seq++, workspaceId: ws.id, ...(ws.prNumber ? { pr: ws.prNumber } : {}), ...(ws.prTitle ? { prTitle: ws.prTitle } : {}) })
+    p.events.push({ ...e, n: this.seq++, at: Date.now(), workspaceId: ws.id, ...(ws.prNumber ? { pr: ws.prNumber } : {}), ...(ws.prTitle ? { prTitle: ws.prTitle } : {}) })
     // Events that wait for something to wake the Lead can wait a long time. Only what could still be sent is kept, so a
     // workspace holds a handful of events however long it waits (KERNEL-121).
     const mine = p.events.filter((x) => x.workspaceId === ws.id)
@@ -632,13 +657,27 @@ export class LeadUpdates {
     p.events = p.events.filter((x) => x.workspaceId !== ws.id || kept.has(x))
     this.pending.set(key, p)
     this.save()
+    if (!this.since.has(key)) this.since.set(key, Date.now())
     this.arm(key, ws.roomId)
   }
 
+  /**
+   * Waits for the batch to go quiet: `delayMs` after now, but no later than `maxDelayMs` after the batch's first event, so
+   * events that keep coming can't hold it back for good (KERNEL-637). A wait on purpose, as for a PR read, holds it apart.
+   */
   private arm(key: string, roomId: string) {
     const old = this.timers.get(key)
     if (old) clearTimeout(old)
-    this.timers.set(key, setTimeout(() => { this.timers.delete(key); this.flush(roomId) }, this.d.delayMs ?? 5000))
+    const now = Date.now()
+    const since = this.since.get(key) ?? now
+    this.since.set(key, since)
+    const due = Math.min(now + (this.d.delayMs ?? 2000), since + (this.d.maxDelayMs ?? 5000))
+    this.timers.set(key, setTimeout(() => {
+      this.timers.delete(key)
+      this.since.delete(key)
+      if (!this.ready.has(key)) this.ready.set(key, Date.now())
+      this.flush(roomId)
+    }, Math.max(0, due - now)))
   }
 
   /** Waits again for a workspace with events still pending. */
@@ -656,16 +695,52 @@ export class LeadUpdates {
     const waiting = [...this.pending].filter(([, p]) => p.roomId === roomId && p.events.length)
     if (!waiting.length) return
     const changed = { any: false }
-    try { this.deliver(roomId, waiting, changed) } finally { if (changed.any) this.save() }
+    try { this.deliver(roomId, waiting, changed) } catch (e) { this.warn(`could not deliver the updates waiting in room ${roomId}`, e) } finally { if (changed.any) this.save() }
+  }
+
+  /**
+   * Flushes the room, or every room, once the current step is done (KERNEL-637). Kernel calls it when a chat stops running or
+   * its queue empties, and when a pause or another hold lifts, so an update `post` refused goes the moment the Lead can take
+   * it rather than at the PR poll. After the step, so a Stop or a crash has marked the chat by then.
+   */
+  flushSoon(roomId?: string) {
+    const at = roomId ?? '*'
+    if (this.detached || this.soon.has(at) || this.soon.has('*')) return
+    if (![...this.pending.values()].some((p) => (!roomId || p.roomId === roomId) && p.events.length)) return
+    this.soon.set(at, setTimeout(() => {
+      this.soon.delete(at)
+      if (this.detached) return
+      if (roomId) this.flush(roomId)
+      else this.flushAll()
+    }, 0))
+  }
+
+  /**
+   * A chat stopped running, or its queue emptied, so a Lead chat may take its update now, or a slot freed for one. Every room
+   * with updates waiting tries, on the next step. It reads no database here: it runs inside the push, which must never throw.
+   */
+  chatFreed() { this.flushSoon() }
+
+  private warn(what: string, e: unknown) { this.write('warn', `[lead-updates] ${what}: ${e instanceof Error ? e.message : String(e)}`) }
+
+  private write(level: 'info' | 'warn', line: string) {
+    if (this.d.log) this.d.log(level, line)
+    else if (level === 'warn') console.warn(line)
+    else console.info(line)
   }
 
   private deliver(roomId: string, waiting: [string, Pending][], changed: { any: boolean }) {
-    const drop = (key: string) => { if (this.pending.delete(key)) changed.any = true }
+    const drop = (key: string) => { this.ready.delete(key); this.heldBy.delete(key); if (this.pending.delete(key)) changed.any = true }
+    const hold = (keys: string[], why: string) => { for (const key of keys) if (this.ready.has(key)) this.heldBy.set(key, why) }
     if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) drop(key); return }
     const byChat = new Map<string, { chat: Chat; sources: Source[]; keys: string[]; quiet: boolean }>()
     for (const [key, p] of waiting) {
       // A verdict waits for its PR's read too, as auto-merge's, so it never calls a PR Kernel is merging ready to merge (KERNEL-556).
-      const quiet = !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || (!!e.review && this.reading.has(e.review.of)) || this.waitTurns.has(e.workspaceId))
+      const reading = p.events.some((e) => this.reading.has(e.workspaceId) || (!!e.review && this.reading.has(e.review.of)))
+      const waitTurn = p.events.some((e) => this.waitTurns.has(e.workspaceId))
+      const quiet = !this.timers.has(key) && !reading && !waitTurn
+      if (reading) hold([key], 'reading')
+      else if (waitTurn) hold([key], 'waitTurn')
       let t = this.d.target(roomId, p.owner)
       if (!t && this.d.open) {
         // No Lead tab is open. Once quiet, an update that needs the Lead opens one (KERNEL-365). The rest wait for the next
@@ -686,14 +761,32 @@ export class LeadUpdates {
       byChat.set(t.chat.id, group)
     }
     for (const g of byChat.values()) {
-      if (!g.quiet || this.stopped.has(g.chat.id)) continue
+      if (!g.quiet) continue
+      if (this.stopped.has(g.chat.id)) { hold(g.keys, 'stopped'); continue }
       const message = this.compose(roomId, g.sources)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
       if (!message) { for (const key of g.keys) drop(key); continue }
       // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
-      if (!message.wakes) continue
-      if (!this.d.post(g.chat.id, message.text, message.update)) continue
-      for (const key of g.keys) drop(key)
+      if (!message.wakes) { hold(g.keys, 'quiet'); continue }
+      if (!this.d.post(g.chat.id, message.text, message.update)) { hold(g.keys, this.d.holdOf?.(g.chat.id) ?? 'refused'); continue }
+      // Only what went out, or what it overtook, leaves. Workspaces past the 8th wait for the next update (KERNEL-637).
+      const now = Date.now()
+      const due = Math.min(...g.keys.map((key) => this.ready.get(key) ?? now))
+      const why = g.keys.map((key) => this.heldBy.get(key)).find((x) => x) ?? 'none'
+      const at = g.sources.flatMap((s) => s.events.filter((e) => message.sent.has(e) && e.at !== undefined).map((e) => e.at!))
+      let carried = 0
+      for (const key of g.keys) {
+        const p = this.pending.get(key)
+        const rest = p?.events.filter((e) => !message.sent.has(e)) ?? []
+        if (!p || !rest.length) { drop(key); continue }
+        p.events = rest
+        carried += rest.length
+        this.ready.set(key, now)
+        this.heldBy.delete(key)
+        changed.any = true
+      }
+      // Timings only, never the message or anything from it.
+      this.write('info', `[lead-updates] delivered ${JSON.stringify({ roomId, chatId: g.chat.id, workspaces: message.update.rows.length, ageMs: at.length ? now - Math.min(...at) : null, heldMs: now - due, heldBy: why, carried, leftOut: message.update.omitted ?? 0 })}`)
       for (const row of message.update.rows) {
         const w = this.d.store.workspace(row.workspaceId)
         if (w?.prHead && row.events.some((e) => e.kind === 'pr.ready')) this.toldReady.set(row.workspaceId, w.prHead)
@@ -714,14 +807,16 @@ export class LeadUpdates {
    * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
    * whether any of it needs the Lead now.
    */
-  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean } | undefined {
+  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent> } | undefined {
     const blocks: Block[] = []
+    // Events the message carries, or that have nothing left to say. The rest wait for the next update (KERNEL-637).
+    const sent = new Set<TeamEvent>()
     for (const source of sources) {
       const byWs = new Map<string, TeamEvent[]>()
       for (const e of source.events) byWs.set(e.workspaceId, [...(byWs.get(e.workspaceId) ?? []), e])
       for (const [id, events] of byWs) {
         const ws = this.d.store.workspace(id)
-        if (!ws || this.d.isLead(ws)) continue
+        if (!ws || this.d.isLead(ws)) { for (const e of events) sent.add(e); continue }
         // A verdict is current while the reviewed PR's head is the commit it reviewed, as of now, not as of the verdict.
         // A wait that broke and came back, as when its PR reopened, says nothing (KERNEL-259).
         // Blockers on the head after the last review round Kernel runs say so (KERNEL-552).
@@ -732,14 +827,14 @@ export class LeadUpdates {
           const stuck = current && e.review.verdict === 'blockers' && e.review.lens && of ? this.d.reviewState?.(of)?.stillBlocked?.rounds : undefined
           return { ...e, review: { ...e.review, current, ...(stuck ? { stillBlocked: stuck } : {}) } }
         })
-        if (!kept.length) continue
+        if (!kept.length) { for (const e of events) sent.add(e); continue }
         const turn = kept.find((e) => e.kind === 'turn')
         const verdicts = kept.flatMap((e) => (e.kind === 'review' && e.review ? [e.review] : []))
         const name = this.d.agentName(roomId, ws.agentId) ?? ws.agentId
         const review = kept.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? this.d.reviewState?.(ws) : undefined
         const reviewer = this.d.reviewer?.(ws.roomId)
         const block: Block = {
-          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdicts.length ? summaries(verdicts) : turn?.reply, summary: verdicts.length > 0, status: reviewStatus(review), card: reviewCard(review), held: reviewHolds(review),
+          ws, name, raw: events, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdicts.length ? summaries(verdicts) : turn?.reply, summary: verdicts.length > 0, status: reviewStatus(review), card: reviewCard(review), held: reviewHolds(review),
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
         }
         if (source.owner) {
@@ -760,6 +855,7 @@ export class LeadUpdates {
     const rank = (b: Block) => (b.wake.size ? 1 : 0)
     const kept = [...blocks].sort((a, b) => rank(b) - rank(a) || b.latest - a.latest).slice(0, MAX_BLOCKS).sort((a, b) => a.latest - b.latest)
     const omitted = blocks.length - kept.length
+    for (const b of kept) for (const e of b.raw) sent.add(e)
     const replies = kept.filter((b) => b.reply).length
     const max = Math.min(REPLY_MAX, Math.floor(REPLY_BUDGET / Math.max(1, replies)))
     const shown = kept.map((b) => ({ ...b, reply: b.reply ? capText(b.reply, max) : undefined }))
@@ -773,7 +869,7 @@ export class LeadUpdates {
       lines.push('', `${fromLine(from)} This work is yours now.`)
       for (const b of shown.filter((x) => x.from && fromKey(x.from) === fromKey(from))) { lines.push('', ...blockLines(b)); order.push(b) }
     }
-    if (omitted) lines.push('', `Kernel left out updates on ${omitted} more ${omitted === 1 ? 'workspace' : 'workspaces'}. Call list_workspaces to see where they stand.`)
+    if (omitted) lines.push('', `Updates on ${omitted} more ${omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here. Kernel sends them in its next update.`)
     const todo = [...new Set(order.flatMap((b) => b.todo))]
     if (todo.length) lines.push('', 'To do:', ...todo.map((t) => `- ${t}`))
 
@@ -797,7 +893,7 @@ export class LeadUpdates {
       }
     })
     const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
-    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0) }
+    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent }
   }
 
   /**

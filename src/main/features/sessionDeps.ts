@@ -52,7 +52,11 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
       void k.workspaces.changes(ws.id).catch(() => undefined)
-      if (teammate) void k.refreshPr(ws.id).catch(() => undefined).then(() => k.leadUpdates.readPr(ws.id)).catch(() => undefined)
+      // A read that fails still lets the update go, and says why it may be missing the PR (KERNEL-637).
+      if (teammate) {
+        void k.refreshPr(ws.id).catch((e) => { if (!k.stopped) console.warn(`[lead-updates] could not read the PR of ${ws.id} after its turn: ${(e as Error)?.message ?? e}`) })
+          .then(() => k.leadUpdates.readPr(ws.id)).catch((e) => console.warn(`[lead-updates] could not send the update for ${ws.id}: ${(e as Error)?.message ?? e}`))
+      }
       // A chat with Rowan can open a PR from its own branch too (KERNEL-405). Nobody else hears about it.
       else if (ws.prNumber) void k.refreshPr(ws.id).catch(() => undefined)
       void k.overlaps.check(ws.roomId).catch(() => undefined)
@@ -80,6 +84,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
     },
     onLimits: (limits) => k.account.applyLimits(limits),
     onCutOff: (chatIds) => k.store.saveMeta('cutOff', chatIds),
-    onHeld: (held) => k.store.saveMeta('held', held)
+    onHeld: (held) => k.store.saveMeta('held', held),
+    // A pause or another hold lifted, so a Team update the Lead couldn't take goes now (KERNEL-637).
+    onFreed: () => k.leadUpdates.flushSoon()
   }
 }
