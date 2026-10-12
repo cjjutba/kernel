@@ -510,6 +510,9 @@ class Component extends DCLogic {
     if (sc === 'providerlimit') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work', primary: true }]);
     // KERNEL-522: when the account on offer is an API key, the banner says it is billed per token, since the button starts paid use.
     if (sc === 'providerlimitkey') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Work key is billed per token.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work key', primary: true }]);
+    // KERNEL-617: the limit banner when the only other account is signed out, and the warning after a switch to a plan that lacks a model the team pins.
+    if (sc === 'providerlimitout') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Personal is signed out. Sign in to switch to it.', [{ id: 'notify', label: 'Notify me' }, { id: 'signin', label: 'Sign in', primary: true }]);
+    if (sc === 'switchwarn') { B('warn', 'Personal\u2019s plan doesn\u2019t include Opus 5.5', 'Theo and Noor use it.', [{ id: 'switchback', label: 'Switch back to Work' }, { id: 'models', label: 'Models and effort', primary: true }]); s.banner.dismiss = true; }
     if (sc === 'nearlimit') { B('limit', 'Work is at 90% of its 5-hour limit', 'Personal has room.', [{ id: 'switchacct', label: 'Switch to Personal', primary: true }]); s.banner.dismiss = true; }
     var accountNote = function (text) { s.msgs = base.concat([U('Also add a loading skeleton.'), { kind: 'note', text: text }, { kind: 'tools', text: '3 tool calls' }, { kind: 'ai', text: 'Added a loading skeleton to the invoice table and held it for 200ms. The tests still pass.' }, { kind: 'meta', text: '38s \u00b7 10:44' }]); };
     if (sc === 'accountnote') accountNote('Now on Personal');
@@ -938,7 +941,8 @@ class Component extends DCLogic {
       offline: 'M3 3l10 10M5.2 7.6a4 4 0 0 1 2-1M10.8 7.6a4 4 0 0 0-.9-.6M2.5 5.5a8 8 0 0 1 3-1.6M13.5 5.5a8 8 0 0 0-4.7-1.9M6.6 10a2 2 0 0 1 2.8 0',
       auth: 'M10 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM7.6 8.4 2.5 13.5M4 12l1.5 1.5M5.5 10.5 7 12',
       setup: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM6 6l4 4M10 6l-4 4',
-      hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14'
+      hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14',
+      warn: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1'
     };
     var banner = { title: '', sub: '', actions: [], spin: false, icon: false, path: '', dismiss: false };
     if (s.banner) {

@@ -1988,6 +1988,87 @@
       "w": 1440,
       "x": 13680,
       "y": 26000
+    },
+    "UsagePopover.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Usage popover, Claude Code and Codex",
+      "w": 1440,
+      "x": 0,
+      "y": 27300
+    },
+    "UsagePopoverApiKey.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Usage popover, API key account in use",
+      "w": 1440,
+      "x": 1520,
+      "y": 27300
+    },
+    "UsagePopoverSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Usage popover, Codex signed out",
+      "w": 1440,
+      "x": 3040,
+      "y": 27300
+    },
+    "SettingsProvidersMcp.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, an account needs MCP sign-ins",
+      "w": 1440,
+      "x": 4560,
+      "y": 27300
+    },
+    "SettingsProvidersKeychain.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, an account waiting for Keychain access",
+      "w": 1440,
+      "x": 6080,
+      "y": 27300
+    },
+    "SettingsProvidersSameOrg.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, two accounts in one organization",
+      "w": 1440,
+      "x": 7600,
+      "y": 27300
+    },
+    "SettingsAddAccountDuplicate.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Add account, that account is already in Kernel",
+      "w": 1440,
+      "x": 9120,
+      "y": 27300
+    },
+    "WorkspaceProviderLimitSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude Code limit, the other account is signed out",
+      "w": 1440,
+      "x": 10640,
+      "y": 27300
+    },
+    "WorkspaceSwitchWarning.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Switch warning, the new plan lacks a model",
+      "w": 1440,
+      "x": 12160,
+      "y": 27300
     }
   },
   "createdOnFiles": {
@@ -2166,6 +2247,14 @@
       "w": 600,
       "x": 0,
       "y": 25700
+    },
+    "row24": {
+      "kind": "title1",
+      "maxW": 13600,
+      "text": "22 \u00b7 Usage and account messages",
+      "w": 600,
+      "x": 0,
+      "y": 27000
     }
   },
   "order": [
@@ -2388,7 +2477,16 @@
     "WorkspaceProviderNearLimit.dc.html",
     "WorkspaceAccountNote.dc.html",
     "WorkspaceAccountNoteLimit.dc.html",
-    "SearchSwitchAccount.dc.html"
+    "SearchSwitchAccount.dc.html",
+    "UsagePopover.dc.html",
+    "UsagePopoverApiKey.dc.html",
+    "UsagePopoverSignedOut.dc.html",
+    "SettingsProvidersMcp.dc.html",
+    "SettingsProvidersKeychain.dc.html",
+    "SettingsProvidersSameOrg.dc.html",
+    "SettingsAddAccountDuplicate.dc.html",
+    "WorkspaceProviderLimitSignedOut.dc.html",
+    "WorkspaceSwitchWarning.dc.html"
   ],
   "pages": [],
   "title": "Kernel"

@@ -85,6 +85,8 @@
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
 <sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.note }}</span></sc-if>
 <sc-if value="{{ r.hasStack }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ r.stack }}" as="sl" hint-placeholder-count="3"><span style="font-size: 12.5px; color: #8a8f98">{{ sl }}</span></sc-for></sc-if>
+<sc-if value="{{ r.hasWarn }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #d0d6e0"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f2c55c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1"></path></svg>{{ r.warn }}<sc-if value="{{ r.hasWarnStep }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="{{ r.warnStepLabel }}" style="padding: 0; border: 0; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer">{{ r.warnStep }}</button></sc-if></span></sc-if>
+<sc-if value="{{ r.hasWarnNote }}" hint-placeholder-val="{{ false }}"><span style="margin-left: 18px; font-size: 12.5px; color: #8a8f98">{{ r.warnNote }}</span></sc-if>
 <sc-if value="{{ r.hasAvail }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #b7bcc4"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1"></path></svg>{{ r.avail }}</span></sc-if>
 <sc-if value="{{ r.hasMono }}" hint-placeholder-val="{{ false }}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #b7bcc4; {{ r.monoStyle }}">{{ r.mono }}</span></sc-if>
 </div>
@@ -168,6 +170,7 @@
 <button type="button" role="radio" aria-checked="{{ modal.keyChecked }}" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ modal.keyBg }}; color: {{ modal.keyColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
 </div></sc-if>
 <sc-if value="{{ modal.isSub }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 12.5px; color: #8a8f98">{{ modal.help }}</p></sc-if>
+<sc-if value="{{ modal.hasError }}" hint-placeholder-val="{{ false }}"><p role="alert" style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; color: #f7f8f8"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg>{{ modal.error }}</p></sc-if>
 <sc-if value="{{ modal.isWait }}" hint-placeholder-val="{{ false }}"><p role="status" style="margin: 0; font-size: 12.5px; color: #8a8f98">Finish signing in in your browser. <button type="button" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer">Open the page again</button></p></sc-if>
 <sc-if value="{{ modal.hasCode }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-code" style="font-size: 12px; font-weight: 500; color: #8a8f98">Code, if the sign-in page shows one</label><input id="acct-code" type="text" autocomplete="off" spellcheck="false" value="" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div></sc-if>
 <sc-if value="{{ modal.isKey }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px">
@@ -568,6 +571,15 @@ class Component extends DCLogic {
     all['providers-rename'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), claudePersonal({ renaming: true, placeholder: 'cj@jutba.example', actions: null }), keyRow()])].concat(rest(all.providers)) });
     var legacy = account('Personal', ['Sign in again to show email and plan'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM'), ['As of its last turn at 2:10 PM']), false, ['Switch to', 'Rename', 'Sign in again', 'Remove']);
     all['providers-legacy'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), legacy, keyRow()])].concat(rest(all.providers)) });
+    // KERNEL-617. An added account lists the MCP servers that need a sign-in on it, and says when it waits on the macOS Keychain or shares an organization with another account.
+    var personalMcp = account('Personal', ['cj@jutba.example \u00b7 Claude Pro'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], { warn: 'Needs sign-in: Google Drive, Gmail', warnStep: 'Sign in', warnStepLabel: 'Sign in to Google Drive and Gmail on Personal' });
+    all['providers-mcp'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), personalMcp, keyRow()])].concat(rest(all.providers)) });
+    var personalKeychain = account('Personal', ['cj@jutba.example \u00b7 Claude Pro'], false, ['Rename', 'Remove'], { warn: 'Waiting for Keychain access', warnNote: 'Allow Kernel in the macOS prompt to use this account.' });
+    all['providers-keychain'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), personalKeychain, keyRow()])].concat(rest(all.providers)) });
+    var workTeam = account('Work', ['cj@example.com \u00b7 Claude Team \u00b7 Claude Code\u2019s own login'].concat(usage(62, 'at 3:40 PM', 38, 'Monday at 9:00 AM')), true, ['Rename', 'Sign out']);
+    var personalTeam = account('Personal', ['cj@jutba.example \u00b7 Claude Team'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], { avail: 'Same organization as Work' });
+    all['providers-sameorg'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [workTeam, personalTeam, keyRow()]), Object.assign({}, all.providers.sections[1], { rows: all.providers.sections[1].rows.map(function (r) { return r.label === 'Plan' ? val('Plan', 'Claude Team') : r; }) })].concat(all.providers.sections.slice(2)) });
+    all['providers-add-duplicate'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'sub', title: 'Add a Claude account', help: HELP.claude, error: 'That account is already in Kernel', confirm: 'Sign in with Claude' } });
     all['account-apikey'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: [text('Agents are on Work key, billed per token.')].concat(sec.rows) }); }) });
     all['providers-apikey-active'] = Object.assign({}, all.providers, { nav: 'providers', sections: [
       accountsSection('claude', [claudeWork(false), keyRow(true)]),
@@ -603,7 +615,7 @@ class Component extends DCLogic {
       if (!m.account) return Object.assign({ isAccount: false, isForm: true, hasConfirm: true, confirmOpacity: '1' }, m);
       var step = m.step || 'key', on = '#24252a', off = 'transparent';
       return Object.assign({
-        isAccount: true, isForm: false, hasKinds: step !== 'wait',
+        isAccount: true, isForm: false, hasError: !!m.error, hasKinds: step !== 'wait',
         subChecked: step === 'sub' ? 'true' : 'false', subBg: step === 'sub' ? on : off, subColor: step === 'sub' ? '#f7f8f8' : '#8a8f98',
         keyChecked: step === 'key' ? 'true' : 'false', keyBg: step === 'key' ? on : off, keyColor: step === 'key' ? '#f7f8f8' : '#8a8f98',
         isSub: step === 'sub', isWait: step === 'wait', hasCode: !!m.code, isKey: step === 'key',
@@ -640,7 +652,7 @@ class Component extends DCLogic {
           statColor: r.stat ? { ok: '#d0d6e0', fail: '#f7f8f8', busy: '#b7bcc4', none: '#8a8f98' }[r.stat[1]] : '#d0d6e0',
           hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || '',
           align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || '',
-          hasStack: !!r.stack, stack: r.stack || [], isEdit: !!r.renaming, placeholder: r.placeholder || '', actMt: '0', tagMt: '0'
+          hasStack: !!r.stack, stack: r.stack || [], hasWarn: !!r.warn, warn: r.warn || '', hasWarnStep: !!r.warnStep, warnStep: r.warnStep || '', warnStepLabel: r.warnStepLabel || r.warnStep || '', hasWarnNote: !!r.warnNote, warnNote: r.warnNote || '', isEdit: !!r.renaming, placeholder: r.placeholder || '', actMt: '0', tagMt: '0'
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
