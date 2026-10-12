@@ -104,7 +104,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 - Radii: 6px rows, 7 to 8px buttons and inputs, 10px cards and panels, 12px composer, 14px modals, 999px pills and tags
 - 1px borders, no drop shadows anywhere
-- Icons: 16px stroke icons, 1.4 stroke width, round caps
+- Icons: Hugeicons free stroke-rounded set (`@hugeicons/core-free-icons`), 16px, stroke 2.1 on its 24px grid (the old 1.4 on a 16px grid), round caps
 
 ## Patterns
 
