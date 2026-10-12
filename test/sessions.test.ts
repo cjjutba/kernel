@@ -147,46 +147,50 @@ describe('usage', () => {
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 1, resetsAt: 1001 }, 999_000).status).toBe('rejected')
   })
 
+  /** A live Claude process on `account` (undefined: the CLI's own login) whose usage call runs `usage`. */
+  const claudeLive = (usage: () => Promise<void>, account?: string) => {
+    const r = Object.create(ClaudeRunner.prototype) as ClaudeRunner
+    Object.defineProperty(r, 'closed', { value: false })
+    Object.defineProperty(r, 'usage', { value: usage })
+    return { runner: r, ...(account ? { account } : {}) }
+  }
+
   it('asks a live session on demand and falls back to event data when the call fails', async () => {
     const s = new Sessions({} as SessionDeps)
     const inner = s as unknown as { live: Map<string, unknown>; limits: Map<string, unknown>; mergeLimits: (p: LimitPatch[]) => void }
     inner.limits.set('five_hour', { type: 'five_hour', status: 'allowed_warning', utilization: 0.8 })
-    expect(await s.usage()).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
+    expect(await s.usage([{ provider: 'claude' }])).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
 
     let answer: () => Promise<SDKControlGetUsageResponse> = () => Promise.reject(new Error('not supported'))
     // The chat's runner asks its Claude Code session, as ClaudeRunner.usage does (KERNEL-406).
     const query = { usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: () => answer() } as unknown as Query
-    inner.live.set('chat', { runner: { closed: false, usage: () => readUsage(query, (p) => inner.mergeLimits(p)) } })
-    expect(await s.usage()).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
+    inner.live.set('chat', claudeLive(() => readUsage(query, (p) => inner.mergeLimits(p))))
+    expect(await s.usage([{ provider: 'claude' }])).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
 
     answer = async () => usage(85, 20)
-    expect(await s.usage()).toEqual([
+    expect(await s.usage([{ provider: 'claude' }])).toEqual([
       { type: 'five_hour', status: 'allowed_warning', utilization: 0.85, resetsAt: 1791361200, readAt: expect.any(Number) },
       { type: 'seven_day', status: 'allowed', utilization: 0.2, readAt: expect.any(Number) }
     ])
   })
 
-  it("never asks the usage call for a Claude account Kernel added, whose token it answers nothing for (KERNEL-406)", async () => {
-    let account: string | undefined = 'work'
-    const s = new Sessions({ accountFor: (p: string) => (p === 'claude' ? account : undefined) } as unknown as SessionDeps)
+  it("reads each account it is given on that account's live process, or else its own read, and keeps the account on each window (KERNEL-567)", async () => {
+    const s = new Sessions({} as SessionDeps)
     const inner = s as unknown as { live: Map<string, unknown> }
-    let asked = 0
-    const claudeRunner = (on?: string) => {
-      const r = Object.create(ClaudeRunner.prototype) as ClaudeRunner
-      Object.defineProperty(r, 'closed', { value: false })
-      Object.defineProperty(r, 'usage', { value: async () => { asked++ } })
-      return { runner: r, ...(on ? { account: on } : {}) }
-    }
-    inner.live.set('token', claudeRunner('work'))
-    await s.usage()
-    expect(asked).toBe(0)
-    // Back on the CLI's own login, a session of it answers. The token account's process still running doesn't.
-    account = undefined
-    await s.usage()
-    expect(asked).toBe(0)
-    inner.live.set('cli', claudeRunner())
-    await s.usage()
-    expect(asked).toBe(1)
+    const asked: string[] = []
+    inner.live.set('a', claudeLive(async () => { asked.push('cli') }))
+    inner.live.set('b', claudeLive(async () => { asked.push('side') }, 'side'))
+    // A legacy token account's process, which Providers never names, so it is never asked.
+    inner.live.set('c', claudeLive(async () => { asked.push('legacy') }, 'legacy'))
+    const read = (utilization: number) => async (merge: (p: LimitPatch[]) => void) => merge([{ type: 'five_hour', utilization }])
+    const limits = await s.usage([
+      { provider: 'claude' },
+      { provider: 'claude', accountId: 'side', read: read(0.9) },
+      { provider: 'claude', accountId: 'idle', read: read(0.3) },
+      { provider: 'claude', accountId: 'broken', read: async () => { throw new Error('no answer') } }
+    ])
+    expect(asked.sort()).toEqual(['cli', 'side'])
+    expect(limits).toEqual([{ type: 'five_hour', status: 'allowed', utilization: 0.3, accountId: 'idle', readAt: expect.any(Number) }])
   })
 
   it('says when each window was last read', async () => {

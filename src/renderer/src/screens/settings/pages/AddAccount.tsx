@@ -45,7 +45,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
     setStarted(true)
     try {
       if (signIn) await call('providers.signIn', { provider })
-      else await call('accounts.add', { provider, label: label.trim() || undefined, ...(claude && plan ? { plan } : {}) })
+      else await call('accounts.add', { provider })
       actions.accounts.set(await call('accounts.list', undefined))
       onClose()
     } catch (e) {

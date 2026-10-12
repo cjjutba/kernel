@@ -29,8 +29,9 @@ export interface ClaudeAccount {
 }
 
 /**
- * How an account signs in (KERNEL-523). `subscription` runs on a Claude or ChatGPT plan: the CLI's own login, a
- * `claude setup-token` token or a ChatGPT sign-in. `apiKey` runs on an API key the user added, which bills the key.
+ * How an account signs in (KERNEL-523). `subscription` runs on a Claude or ChatGPT plan: the CLI's own login, a full Claude
+ * login in a folder of its own (KERNEL-567), a `claude setup-token` token from before that, or a ChatGPT sign-in. `apiKey`
+ * runs on an API key the user added, which bills the key.
  */
 export type AccountAuth = 'subscription' | 'apiKey'
 
@@ -42,7 +43,7 @@ export type AccountAuth = 'subscription' | 'apiKey'
 export interface AccountProfile {
   id: string
   provider: Provider
-  /** What the user calls it, or its email. */
+  /** Its nickname (`accounts.rename`), or its email when it has none (KERNEL-567). */
   label: string
   email?: string
   /** "Claude Max", "ChatGPT Plus". None for an API key account. */
@@ -57,10 +58,15 @@ export interface AccountProfile {
   active: boolean
   signedIn: boolean
   /**
-   * Its usage is known only from its turns: a Claude account Kernel added runs on a `claude setup-token` token, which can't
-   * read the usage call, so its meters stand as of its last turn (KERNEL-406).
+   * Its usage is known only from its turns: a legacy token account (`legacyToken`) can't read the usage call, so its meters
+   * stand as of its last turn (KERNEL-406). Every other subscription account reads its own (KERNEL-567).
    */
   usageFromTurns?: boolean
+  /**
+   * A Claude account added before KERNEL-567, which runs on a `claude setup-token` token. The token can't say its email or
+   * plan, so the row asks the user to sign in again, which moves it to a full login and keeps its id and nickname.
+   */
+  legacyToken?: boolean
 }
 
 /** Where a provider's executable comes from: Kernel's bundled copy, the one on the PATH, a path from Settings, or none found. */
@@ -84,7 +90,10 @@ export interface ProviderStatus {
   error?: string
 }
 
-/** Where Add account is, for its sheet. `code` asks for the code the sign-in page shows (Claude only). */
+/**
+ * Where Add account or Sign in again is, for its sheet. `code` asks for the code the sign-in page shows (Claude only), which
+ * Claude Code's login offers from the start, so it follows `browser` at once.
+ */
 export interface AccountAddStep {
   provider: Provider
   step: 'browser' | 'code' | 'done' | 'failed'

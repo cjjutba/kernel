@@ -2,69 +2,44 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { asksForCode, captureClaudeToken, isClaudeToken, signInLink, tokenFrom } from '../src/main/services/providers/claudeToken'
-import { fakeClaude, LINK, TOKEN } from './helpers/fakeClaude'
+import { asksForCode, loginClaude, signInLink } from '../src/main/services/providers/claudeToken'
+import { fakeClaude, LINK } from './helpers/fakeClaude'
 
-// Add account for Claude (KERNEL-406): the token `claude setup-token` prints, picked out of a pty's output.
+// Claude's sign-in in a pty (KERNEL-567): `claude auth login` in an account's folder, its link and code prompt passed on.
 
-describe('reading the token setup-token prints', () => {
-  const printed = (lines: string[]) => lines.join('\r\n') + '\r\n'
-
-  it('takes a token that fits on one line, through colors', () => {
-    expect(TOKEN.length).toBe(108)
-    expect(tokenFrom(printed(['Your OAuth token (valid for 1 year):', '', `\x1b[33m${TOKEN}\x1b[39m`, '', 'Store this token securely.']))).toBe(TOKEN)
-  })
-
-  it('joins a token the terminal wrapped across two lines', () => {
-    expect(tokenFrom(printed(['Your OAuth token (valid for 1 year):', `  ${TOKEN.slice(0, 60)}`, `  ${TOKEN.slice(60)}`, '', 'Store this token securely.']))).toBe(TOKEN)
-  })
-
-  it("doesn't take the placeholder, a piece of a token, or text after a token", () => {
-    expect(tokenFrom(printed(['Use this token by setting: export CLAUDE_CODE_OAUTH_TOKEN=<token>']))).toBeUndefined()
-    // A narrow terminal can leave the token out, or cut it short.
-    expect(tokenFrom(printed([TOKEN.slice(0, 60), '', 'Store this token securely.']))).toBeUndefined()
-    expect(tokenFrom(printed([`${TOKEN.slice(0, 60)}…`, TOKEN.slice(60)]))).toBeUndefined()
-    expect(isClaudeToken(`${TOKEN}${'x'.repeat(20)}`)).toBe(false)
-    expect(isClaudeToken(TOKEN.replace('oat01', 'api03'))).toBe(false)
-  })
-
-  it('waits for the end of a line while the CLI is still printing', () => {
-    // 104 characters arrived, which would pass for a token.
-    expect(tokenFrom(`token:\r\n${TOKEN.slice(0, 104)}`)).toBeUndefined()
-    expect(tokenFrom(`token:\r\n${TOKEN}\r\n`)).toBe(TOKEN)
-    expect(tokenFrom(`token:\r\n${TOKEN}`, { done: true })).toBe(TOKEN)
-  })
-
+describe("reading the CLI's sign-in output", () => {
   it('finds the sign-in link and the code prompt', () => {
     expect(signInLink(`x \x1b]8;;${LINK}\x07${LINK}\x1b]8;;\x07`)).toBe(LINK)
-    expect(signInLink(`Browser didn't open? Use the url below to sign in\r\n${LINK}\r\n`)).toBe(LINK)
+    expect(signInLink(`If the browser didn't open, visit: ${LINK}\r\n`)).toBe(LINK)
     expect(asksForCode('\x1b[2mPaste code here if prompted > \x1b[22m')).toBe(true)
     expect(asksForCode('Opening browser')).toBe(false)
   })
 })
 
-describe('running setup-token in a pty', () => {
-  const env = (extra: Record<string, string> = {}) => ({ PATH: process.env.PATH ?? '', HOME: tmpdir(), ...extra })
+describe('running claude auth login in a pty', () => {
+  const env = (home: string, extra: Record<string, string> = {}) => ({ PATH: process.env.PATH ?? '', HOME: tmpdir(), CLAUDE_CONFIG_DIR: home, ...extra })
 
-  it('passes on the link, types the code into the prompt, and joins a wrapped token', async () => {
-    const bin = await fakeClaude()
+  it('passes on the link and the code prompt at once, types the code, and finishes on Login successful', async () => {
+    const claude = await fakeClaude()
+    const home = join(await mkdtemp(join(tmpdir(), 'kernel-home-')), 'acct')
     const codeFile = join(await mkdtemp(join(tmpdir(), 'kernel-code-')), 'code')
     const links: string[] = []
     let asked = 0
-    const c = captureClaudeToken(bin, { env: env({ FAKE_CODE_FILE: codeFile, FAKE_WRAP: '60' }), cwd: tmpdir(), timeoutMs: 10_000, onLink: (u) => links.push(u), onCode: () => { asked++; c.sendCode('  abc#123  ') } })
-    // The CLI sleeps after printing it, so the token is taken without waiting for it to exit.
-    const started = Date.now()
-    expect(await c.token).toBe(TOKEN)
-    expect(Date.now() - started).toBeLessThan(4000)
+    const run = loginClaude(claude.bin, { env: env(home, { FAKE_CODE_FILE: codeFile, FAKE_EMAIL: 'me@example.com' }), cwd: tmpdir(), timeoutMs: 10_000, onLink: (u) => links.push(u), onCode: () => { asked++; run.sendCode('  abc#123  ') } })
+    await run.done
     expect(links).toEqual([LINK])
     expect(asked).toBe(1)
     expect((await readFile(codeFile, 'utf8')).trim()).toBe('abc#123')
+    // The login is the folder's, and the CLI's own stays as it was.
+    expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' }, [home]: { email: 'me@example.com', plan: 'pro' } })
   })
 
-  it('fails when the CLI ends without a token, and on Cancel', async () => {
-    const bin = await fakeClaude()
-    await expect(captureClaudeToken(bin, { env: env({ FAKE_NO_TOKEN: '1' }), cwd: tmpdir(), timeoutMs: 10_000 }).token).rejects.toThrow("Kernel couldn't read a token from claude setup-token.")
-    const c = captureClaudeToken(bin, { env: env({ FAKE_CODE_FILE: join(tmpdir(), 'never') }), cwd: tmpdir(), timeoutMs: 10_000, onCode: () => c.cancel() })
-    await expect(c.token).rejects.toThrow('Sign-in canceled.')
+  it("fails with the CLI's reason, and on Cancel", async () => {
+    const claude = await fakeClaude()
+    const home = join(await mkdtemp(join(tmpdir(), 'kernel-home-')), 'acct')
+    await expect(loginClaude(claude.bin, { env: env(home, { FAKE_LOGIN_FAIL: '1' }), cwd: tmpdir(), timeoutMs: 10_000 }).done).rejects.toThrow('Claude Code said: OAuth error: Request failed with status code 400')
+    const run = loginClaude(claude.bin, { env: env(home, { FAKE_LOGIN_WAIT: '1' }), cwd: tmpdir(), timeoutMs: 10_000, onCode: () => run.cancel() })
+    await expect(run.done).rejects.toThrow('Sign-in canceled.')
+    expect(Object.keys(await claude.logins())).toEqual(['cli'])
   })
 })
