@@ -55,6 +55,10 @@ html[data-font='small'] #root { zoom: 0.92; height: calc(100vh / 0.92); }
 html[data-font='large'] #root { zoom: 1.1; height: calc(100vh / 1.1); }
 html[data-density='compact'] .nav-item { height: 26px; }
 html[data-density='compact'] .set-row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+/* Compact reaches the lists you scan all day, not only Settings (KERNEL-538): inbox rows, the chat thread and the file and change trees. */
+html[data-density='compact'] .ib-row { height: 52px; }
+html[data-density='compact'] .thread { gap: 8px; }
+html[data-density='compact'] .tree-row { height: 22px; }
 html:not([data-pointer='true']) button, html:not([data-pointer='true']) select, html:not([data-pointer='true']) summary { cursor: default; }
 html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, html[data-reduce-motion='true'] *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
 

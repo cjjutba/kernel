@@ -38,6 +38,7 @@ const noCanvas = [
   'WorkspaceQueuedMerge', // a brief held until another PR merges, with Send now (KERNEL-361)
   'WorkspaceWaitedOn', // a PR another workspace's brief waits for, naming that workspace above the box
   'InboxOverlap',
+  'InboxCompact', // the inbox with Settings, Appearance, Density on Compact (KERNEL-538)
   'InboxTrustHeld', // a workspace held for script trust listed in the Inbox, its detail pane open on it (KERNEL-395)
   'LoadingError', // boot failed: the error and Try again (KERNEL-217)
   'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
