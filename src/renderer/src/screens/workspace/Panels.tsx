@@ -224,9 +224,12 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   const [opened, setOpened] = useState<string>()
   const folded = setupFolds(ws) && opened !== ws.id
   const pick = (id: string) => { setOpened(ws.id); actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right }) }
+  // A narrow panel scrolls its tabs sideways, so the one shown scrolls into view when it changes (KERNEL-489).
+  const strip = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) }, [right, folded, isLead])
   return (
     <div className={folded ? 'col' : 'col grow'} style={{ minHeight: 0 }}>
-      <div className="panel-tabs" data-lead={isLead || undefined}>
+      <div ref={strip} className="panel-tabs" data-lead={isLead || undefined}>
         <Tabs label="Workspace panel" value={folded ? '' : right} onChange={pick} tabs={[
           // No count with nothing ready, as LeadPrsEmpty and LeadPrsNoneReady draw it (KERNEL-411).
           ...(isLead ? [{ id: 'prs', label: ready ? <>PRs {count(ready)}</> : 'PRs' }] : []),
