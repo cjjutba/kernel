@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from '../workspace/composer/providerModels'
-import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, Effort, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
-import { call, cleanError } from '../../api'
-import { actions, loadWorkspace, useStore } from '../../store'
-import { leadOf, openLeadChat } from '../../lead'
+import { call } from '../../api'
+import { actions, getState, useStore } from '../../store'
+import { leadOf } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
-import { NEW_CHAT_DRAFT, saveDraft } from '../workspace/composer/draftStore'
+import { NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
 import { ModelPicker } from '../workspace/composer/ModelPicker'
 import { effortFor } from '@shared/effort'
 import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
@@ -16,8 +16,9 @@ import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
 import { useRemote } from '../settings/useSettings'
 import { FromPopover } from './FromPopover'
-import { briefParts, leadMessage, pickedLines } from './brief'
-import { focusComposerWhenOpen } from '../workspace/composer/bus'
+import { briefParts, pickedLines } from './brief'
+import { startChat } from './start'
+import { takenFindings } from './taken'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
 import { RoomIcon } from '../../components/RoomIcon'
@@ -32,8 +33,10 @@ const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
  * "What do you want to work on?" (NewWorkspace.png and its four popovers). Create opens a new chat with the room's Lead
  * and sends the prompt there, so the Lead plans and hands off (D-131). Enter and Cmd+Enter create, Shift+Enter breaks the line.
  * The box keeps its draft while the modal is closed, until a create sends it.
+ * A chat that starts from an issue first asks whether someone else is on it (KERNEL-500). `picks` is what the box had chosen when
+ * that warning sent the user back.
  */
-export function NewWorkspace({ roomId, source: initial }: { roomId?: string; source?: WorkspaceSource }) {
+export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: string; source?: WorkspaceSource; picks?: NewChatPicks }) {
   const rooms = useStore((s) => s.rooms)
   const settings = useStore((s) => s.settings)
   const menu = useStore((s) => s.ui.menu)
@@ -41,25 +44,27 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const [roomMenu, setRoomMenu] = useState(false)
   const [source, setSource] = useState<WorkspaceSource | null>(initial ?? null)
   /** The prompt a picked source wrote, replaced by the next pick or cleared with the source until you edit it. */
-  const [filled, setFilled] = useState('')
-  const [baseRef, setBaseRef] = useState('')
+  const [filled, setFilled] = useState(picks?.filled ?? '')
+  const [baseRef, setBaseRef] = useState(picks?.baseRef ?? '')
   /** The base a picked PR or branch set, which its prompt already says. */
-  const [pickedRef, setPickedRef] = useState('')
-  const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
+  const [pickedRef, setPickedRef] = useState(picks?.pickedRef ?? '')
+  const [mode, setMode] = useState<WorkspaceMode>(picks?.mode ?? settings?.workspace.mode ?? 'worktree')
   const codexInUse = useCodexInUse()
   const codexModels = useProviderModels('codex')
-  const [model, setModel] = useState<string>(settings?.models.roles.lead.model ?? 'claude-opus-5-5')
+  const [model, setModel] = useState<string>(picks?.model ?? settings?.models.roles.lead.model ?? 'claude-opus-5-5')
   const lead = useStore((s) => leadOf(s.agents, room))
   const memory = useEffortMemory()
   const defaultEffort = useDefaultEffort(lead?.effort)
   // The picker shows each model at its remembered effort, so the modal starts there too.
-  const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, defaultEffort))
-  const [plan, setPlan] = useState(settings?.models.leadPlanMode ?? false)
+  const [effort, setEffort] = useState<Effort>(() => picks?.effort ?? effortFor(model, memory, defaultEffort))
+  const [plan, setPlan] = useState(picks?.plan ?? settings?.models.leadPlanMode ?? false)
   const d = useDraft(undefined, NEW_CHAT_DRAFT)
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
   const [creating, run] = useBusy()
   const busy = creating !== null
+  const [checking, setChecking] = useState(false)
+  const alive = useRef(true)
   const [error, setError] = useState<{ message: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
@@ -79,6 +84,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const fromAnchor = useRef<HTMLSpanElement>(null)
   const filePick = useRef<HTMLInputElement>(null)
 
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   // The modal shell focuses its first control. The prompt is where typing starts.
   useEffect(() => { const t = requestAnimationFrame(() => d.focus()); return () => cancelAnimationFrame(t) }, [])
   useEffect(() => {
@@ -112,27 +118,27 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     if (!typed.length) { d.focus(); return }
     const lines = pickedLines({ mode, target, fallback, picked: pickedRef })
     const parts = briefParts(typed, source, lines)
-    void run('create', () => start(room, parts))
+    void run('create', async () => {
+      setError(null)
+      if (source?.kind === 'issue' && (await someoneIsOn(room, source, parts))) return
+      const failed = await startChat({ roomId: room, parts, model, effort, plan, baseRef })
+      if (failed) setError({ message: failed })
+    })
   }
-  const start = async (room: string, parts: ChatPart[]) => {
-    setError(null)
-    let chat
-    // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
-    try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan, ...(baseRef ? { baseRef } : {}) }) }
-    catch (e) { setError({ message: cleanError(e) }); return }
-    saveDraft(NEW_CHAT_DRAFT, [], '')
-    // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
-    try {
-      const ws = (await call('workspaces.list', { roomId: room })).find((w) => w.id === chat.workspaceId)
-      if (ws) actions.workspaces.upsert(ws)
-      actions.chats.upsert(chat)
-      await loadWorkspace(chat.workspaceId)
-    } catch { actions.chats.upsert(chat) }
-    // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
-    focusComposerWhenOpen(chat.id)
-    close()
-    // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).
-    await openLeadChat(room, chat.id)
+  /**
+   * Whether the issue check held the chat back: it opens the warning, which sends the chat on or brings this box back. Anything
+   * the check can't answer, or the user closing the box meanwhile, leaves nothing held (KERNEL-500).
+   */
+  const someoneIsOn = async (room: string, issue: Extract<WorkspaceSource, { kind: 'issue' }>, parts: ChatPart[]) => {
+    setChecking(true)
+    let found
+    try { found = await takenFindings((req) => call('issues.taken', req), room, issue.id) }
+    finally { setChecking(false) }
+    if (!alive.current) return true
+    if (!found.length) return false
+    if (getState().ui.modal?.name !== 'newWorkspace') return true
+    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.id, findings: found, held: { roomId: room, source: issue, parts, picks: { mode, model, effort, plan, baseRef, pickedRef, filled } } })
+    return true
   }
 
   /** Enter creates and Shift+Enter breaks the line, as in the chat composer. Cmd+Enter is the keyboard shortcut below. */
@@ -196,7 +202,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
-          <Button variant="primary" className="nw-create" busy={busy} busyLabel="Sending" onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
+          <Button variant="primary" className="nw-create" busy={busy} busyLabel={checking ? 'Checking' : 'Sending'} onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>

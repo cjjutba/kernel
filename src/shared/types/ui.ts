@@ -1,9 +1,9 @@
-import type { ChatPart } from './chats'
+import type { ChatPart, Effort } from './chats'
 import type { NewAgentPrefill, NewRoomPrefill } from './rooms'
 import type { RoomSettingsSection, SettingsPage, Theme } from './settings'
 import type { Provider } from './chats'
 import type { AppUpdate } from './system'
-import type { WorkspaceSource } from './workspaces'
+import type { WorkspaceMode, WorkspaceSource } from './workspaces'
 
 /**
  * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `permissions` comes after `checks`
@@ -31,12 +31,35 @@ export type Route =
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
+/** What New chat had picked besides its words, so that Cancel on the issue warning brings the box back as it was (KERNEL-500). */
+export interface NewChatPicks {
+  mode: WorkspaceMode
+  model: string
+  effort: Effort
+  plan: boolean
+  /** The target branch picked, empty for the default. */
+  baseRef: string
+  /** The base a picked PR or branch set, which its prompt already says. */
+  pickedRef: string
+  /** The prompt a picked source wrote, which the next pick may replace. */
+  filled: string
+}
+
+/** A New chat the issue check held back (KERNEL-500). Start anyway sends `parts` to the room's Lead, and Cancel reopens New chat on `source` with `picks`. */
+export interface HeldChat {
+  roomId: string
+  source: WorkspaceSource
+  parts: ChatPart[]
+  picks: NewChatPicks
+}
+
 export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire' | 'trust'
 
 /** The one modal shell's contents. At most one modal is open. */
 export type Modal =
   | null
-  | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource }
+  /** `picks` is what New chat had chosen when the issue warning sent it back (KERNEL-500). */
+  | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource; picks?: NewChatPicks }
   | { name: 'search' }
   | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
@@ -59,9 +82,10 @@ export type Modal =
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
   /**
    * Someone else may already be on the issue a workspace is about to start from: what Kernel found, in the order to show it
-   * (ConfirmIssueTaken.png, KERNEL-471). The findings have the shape of KERNEL-479's `IssueTakenFinding`, which opens it.
+   * (ConfirmIssueTaken.png, KERNEL-471). The findings have the shape of KERNEL-479's `IssueTakenFinding`. New chat opens it
+   * with the chat it held back in `held` (KERNEL-500).
    */
-  | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[] }
+  | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[]; held: HeldChat }
   /**
    * The first switch into Bypass permissions, asked once (KERNEL-455). `roomId` is the room whose mode override is being set,
    * and none means the app's mode in Settings, Permissions.

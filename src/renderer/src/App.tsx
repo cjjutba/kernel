@@ -24,6 +24,7 @@ import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
 import { ConfirmIssueTaken } from './screens/issues/ConfirmIssueTaken'
+import { backToNewChat, startHeld } from './screens/new-workspace/start'
 import { Issues } from './screens/issues/Issues'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
@@ -110,7 +111,7 @@ function Screen({ route }: { route: Route }): ReactNode {
 /** The one modal shell's contents (DESIGN.md: one modal at a time). */
 function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
-    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} source={modal.source} />
+    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} source={modal.source} picks={modal.picks} />
     case 'search': return <CommandPalette />
     case 'newRoom': return <NewRoom prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />
@@ -128,8 +129,8 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
-      // KERNEL-479 makes Start anyway retry create_workspace with its confirm. Nothing opens this until it does.
-      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={actions.ui.closeModal} />
+      // New chat opens this when the issue it starts from has findings (KERNEL-500): Start anyway sends the held chat, Cancel brings the box back.
+      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={() => startHeld(modal.held)} onCancel={() => backToNewChat(modal.held)} />
       if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
