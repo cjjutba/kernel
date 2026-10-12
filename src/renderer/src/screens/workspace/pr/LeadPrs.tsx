@@ -10,7 +10,8 @@ import './pr.css'
 
 /**
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
- * Ready ones come first with Merge, the rest follow muted with what they wait on, in the words every place uses (KERNEL-417).
+ * Ready ones come first with Merge, the rest follow muted with what they wait on, in the words every place uses (KERNEL-417). One
+ * that only blockers hold back says Blockers found and offers Merge anyway, and never counts as ready (KERNEL-501).
  * Each row opens its workspace. Two or more ready PRs get Merge all, which merges them in order and stops at the first that
  * can't merge (KERNEL-411).
  */
@@ -84,7 +85,12 @@ function Row({ row }: { row: LeadPr }) {
         <span className="lp-act">
           {row.ready
             ? <MergeButton ws={ws} short />
-            : state && <PrStatusTag status={state} why={state.why} />}
+            : (
+              <>
+                {state && <PrStatusTag status={state} why={state.why} />}
+                {row.blockers && <MergeButton ws={ws} short />}
+              </>
+            )}
           <button type="button" className="lp-open" aria-label={`Open ${row.name}'s workspace${row.key ? ` for ${row.key}` : ''}`} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>
             Open<Icon name="ext" size={11} stroke={1.5} />
           </button>
