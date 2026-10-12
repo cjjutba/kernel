@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -56,6 +56,8 @@ interface Live {
   failed?: 'auth' | 'network'
   /** The account the process runs on, which its usage windows belong to. Undefined is the CLI's own login (KERNEL-406). */
   account?: string
+  /** That account is an API key account: it has no usage windows, and the key should pay for it (KERNEL-523). */
+  onKey?: boolean
   /** A Claude process started allowed to take Bypass permissions, which it keeps for life (KERNEL-447). Undefined on Codex. */
   bypass?: boolean
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
@@ -97,10 +99,11 @@ export interface SessionDeps {
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
   /**
-   * What a Codex chat runs (KERNEL-406): the executable, the active account's CODEX_HOME, the personality, and Kernel's
-   * own tools with their instructions, which Codex gets as dynamic tools. Without it a Codex chat can't start.
+   * What a Codex chat runs (KERNEL-406): the executable, the active account's CODEX_HOME and, on an API key account, its key
+   * (KERNEL-523), the personality, and Kernel's own tools with their instructions, which Codex gets as dynamic tools. Without
+   * it a Codex chat can't start.
    */
-  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
+  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; apiKey?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
   /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
@@ -121,8 +124,10 @@ export interface SessionDeps {
   availability?: (chat: Chat, ws: Workspace, wants: RunMode) => ChatAvailability
   /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
   accountFor?: (provider: Provider) => string | undefined
-  /** What a Claude chat's process adds to its environment for the active account, such as its token (KERNEL-406). */
+  /** What a Claude chat's process adds to its environment for the active account: its token, or its API key (KERNEL-406, KERNEL-523). */
   claudeEnv?: () => Record<string, string>
+  /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
+  authOf?: (provider: Provider, accountId: string | undefined) => AccountAuth
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -467,11 +472,12 @@ export class Sessions {
    * 5-hour and weekly windows, fetched only when asked. A live session of each provider answers its usage call. Without a
    * live Claude one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last
    * rate_limit_event numbers stand. A Claude account Kernel added runs on a `setup-token` token, which the usage call
-   * answers nothing for, so it is never asked: its numbers come from its turns' rate_limit_event (KERNEL-406).
+   * answers nothing for, so it is never asked: its numbers come from its turns' rate_limit_event (KERNEL-406). An API key
+   * account has no windows, so its processes aren't asked either (KERNEL-523).
    */
   async usage(o: { probeIn?: string } = {}): Promise<RateLimit[]> {
     const open = [...this.live.values()].filter((l) => !l.runner.closed)
-    const other = open.find((l) => !(l.runner instanceof ClaudeRunner))
+    const other = open.find((l) => !(l.runner instanceof ClaudeRunner) && !l.onKey)
     if (other) await other.runner.usage()
     if (this.d.accountFor?.('claude') === undefined) {
       const claude = open.find((l) => l.runner instanceof ClaudeRunner && !l.account)
@@ -1112,7 +1118,8 @@ export class Sessions {
   private start(chat: Chat, ws: Workspace): Live {
     const agent = this.d.agentFor(ws)
     const root = this.d.store.room(ws.roomId)?.path
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), account: this.d.accountFor?.(chatProvider(chat)) } as Live
+    const account = this.d.accountFor?.(chatProvider(chat))
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey' } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
@@ -1120,10 +1127,10 @@ export class Sessions {
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws) })
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws) })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root, aliases: this.d.aliasesFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, root, aliases: this.d.aliasesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()
@@ -1151,9 +1158,11 @@ export class Sessions {
         if (chat.sessionId !== sessionId) { chat = { ...chat, sessionId }; this.d.store.saveChat(chat) }
         const source = o.billedBy
         if (source !== undefined) {
-          if (!this.billing.has(chatId) && source !== 'none') {
-            this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: `This session is billed through ${source}, not your Claude plan.` })
-            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId, text: `is billed through ${source}, not the Claude plan` })
+          // The key pays on an API key account, the plan on every other (D-018, KERNEL-523). Anything else gets a note.
+          if (!this.billing.has(chatId) && source !== (live.onKey ? 'ANTHROPIC_API_KEY' : 'none')) {
+            const by = source === 'none' ? 'your Claude plan' : source
+            this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: `This session is billed through ${by}, not ${live.onKey ? 'the API key account you picked' : 'your Claude plan'}.` })
+            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId, text: `is billed through ${source === 'none' ? 'the Claude plan' : source}, not ${live.onKey ? 'the API key account' : 'the Claude plan'}` })
           }
           this.billing.set(chatId, source)
         }
@@ -1181,7 +1190,8 @@ export class Sessions {
       failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId))) },
       limited: (o = {}) => { if (o.always || live.running) live.limited = true },
       // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
-      mergeLimits: (patches) => this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))),
+      // An API key account has none, so nothing it reports holds a chat or pauses a room (KERNEL-523).
+      mergeLimits: (patches) => { if (!live.onKey) this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))) },
       reset: (trigger) => {
         this.d.store.clearItems(chatId)
         if (trigger === 'clear') live.cleared = true

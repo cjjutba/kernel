@@ -149,6 +149,28 @@ export interface ChangedFile {
   status: 'A' | 'M' | 'D' | 'R' | '?'
   added: number
   removed: number
+  /** A renamed file's old path, with `path` the new one. Every compare target but `base` sets it (KERNEL-516). */
+  from?: string
+}
+
+/**
+ * What the Changes list compares a workspace with, from the Changes ⋯ menu (PanelCompare, KERNEL-516). `base`, the default,
+ * is the workspace's base as before. `branch` is the work since its merge base with another branch, uncommitted files
+ * included, as `git diff --merge-base <ref>` gives it. `uncommitted` is what isn't committed yet, as `git diff HEAD` gives it.
+ * `commit` is one commit against its first parent.
+ */
+export type CompareTarget =
+  | { kind: 'base' }
+  | { kind: 'branch'; ref: string }
+  | { kind: 'uncommitted' }
+  | { kind: 'commit'; sha: string }
+
+/** A commit on a workspace's branch since its base, one row of the compare menu (KERNEL-516). `time` is the author's, in ms. */
+export interface BranchCommit {
+  sha: string
+  subject: string
+  author: string
+  time: number
 }
 
 /** One row of the All files tree (Workspace.png, right panel). */

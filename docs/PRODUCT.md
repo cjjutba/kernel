@@ -46,7 +46,7 @@ The isometric floor and the Board are hidden for now (D-104). Their code stays, 
 
 ## Not in v1
 
-Multiple users or shared rooms, cloud sync, Windows and Linux builds, API key billing (Kernel runs on your Claude or ChatGPT subscription, through Claude Code and Codex).
+Multiple users or shared rooms, cloud sync, Windows and Linux builds.
 
 ## Definition of done
 

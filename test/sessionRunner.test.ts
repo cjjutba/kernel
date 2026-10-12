@@ -76,7 +76,7 @@ async function nextSent(call: Call): Promise<string> {
   return value.message.content[0].text
 }
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; room?: Partial<Room>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']> } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; aliasesFor?: SessionDeps['aliasesFor']; onMcp?: SessionDeps['onMcp']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit']; ws?: Partial<Workspace>; chat?: Partial<Chat>; room?: Partial<Room>; availability?: SessionDeps['availability']; permissions?: Partial<AppSettings['permissions']>; deps?: Partial<SessionDeps> } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...hooks.ws }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1, ...hooks.chat }
@@ -90,7 +90,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor, aliasesFor: hooks.aliasesFor, onMcp: hooks.onMcp,
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) },
-    onTurnDone: hooks.onTurnDone, onExit: hooks.onExit, availability: hooks.availability
+    onTurnDone: hooks.onTurnDone, onExit: hooks.onExit, availability: hooks.availability, ...hooks.deps
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
   const call = sdk.calls[sdk.calls.length - 1]
@@ -350,6 +350,54 @@ describe('session runner (SDK scripted)', () => {
     await flush()
     expect(sessions.billingOf(chat.id)).toBe('ANTHROPIC_API_KEY')
     expect(store.items(chat.id).find((i) => i.kind === 'note')).toMatchObject({ text: 'This session is billed through ANTHROPIC_API_KEY, not your Claude plan.' })
+  })
+
+  describe('on an API key account (KERNEL-523)', () => {
+    const KEY = 'sk-ant-api03-' + 'k'.repeat(40)
+    const mac = { PATH: '/bin', ANTHROPIC_API_KEY: 'sk-ant-api03-from-the-mac', ANTHROPIC_AUTH_TOKEN: 'tok', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-from-the-shell' }
+    const onKey: Partial<SessionDeps> = { accountFor: () => 'key', authOf: (_p, id) => (id === 'key' ? 'apiKey' : 'subscription'), claudeEnv: () => ({ ANTHROPIC_API_KEY: KEY }), envFor: () => mac }
+
+    it("starts the session with the picked key account's key, and no other key or token", async () => {
+      const { options } = await setup('acceptEdits', { deps: onKey })
+      expect(options.env).toMatchObject({ PATH: '/bin', ANTHROPIC_API_KEY: KEY })
+      expect(options.env).not.toHaveProperty('ANTHROPIC_AUTH_TOKEN')
+      expect(options.env).not.toHaveProperty('CLAUDE_CODE_OAUTH_TOKEN')
+      // A token account still gets no API key at all, the Mac's included.
+      const token = await setup('acceptEdits', { deps: { accountFor: () => 'side', claudeEnv: () => ({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-added' }), envFor: () => mac } })
+      expect(token.options.env).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-added' })
+      expect(token.options.env).not.toHaveProperty('ANTHROPIC_API_KEY')
+      expect(token.options.env).not.toHaveProperty('ANTHROPIC_AUTH_TOKEN')
+    })
+
+    it('says nothing when the key pays, and a note when anything else does', async () => {
+      const notes: Record<string, string | undefined> = {}
+      for (const source of ['ANTHROPIC_API_KEY', 'none', 'apiKeyHelper']) {
+        const { call, options, store, chat } = await setup('acceptEdits', { deps: onKey })
+        call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: source })
+        await flush()
+        notes[source] = store.items(chat.id).find((i): i is Extract<ChatItem, { kind: 'note' }> => i.kind === 'note' && i.text.includes('billed'))?.text
+      }
+      expect(notes).toEqual({
+        ANTHROPIC_API_KEY: undefined,
+        none: 'This session is billed through your Claude plan, not the API key account you picked.',
+        apiKeyHelper: 'This session is billed through apiKeyHelper, not the API key account you picked.'
+      })
+    })
+
+    it('keeps no usage window from it, so a rejected one cuts nothing off', async () => {
+      const run = async (deps: Partial<SessionDeps>) => {
+        const cutOff: Record<string, string>[] = []
+        const s = await setup('acceptEdits', { deps: { ...deps, onCutOff: (ids) => { cutOff.push(ids) } } })
+        s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: deps === onKey ? 'ANTHROPIC_API_KEY' : 'none' })
+        s.call.feed({ type: 'rate_limit_event', uuid: 'l1', session_id: 's', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', utilization: 1, resetsAt: Math.round(Date.now() / 1000) + 3600 } })
+        s.call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, uuid: 'r1', duration_ms: 1, session_id: 's' })
+        await flush()
+        return { limits: await s.sessions.usage(), cutOff: cutOff.at(-1) ?? {} }
+      }
+      // On the CLI's own login the window counts, and the turn waits for it to reset.
+      expect(await run({})).toMatchObject({ limits: [{ type: 'five_hour', status: 'rejected' }], cutOff: { chat: 'limit' } })
+      expect(await run(onKey)).toEqual({ limits: [], cutOff: {} })
+    })
   })
 
   it("says once when the agent file lists an MCP server the session doesn't have", async () => {

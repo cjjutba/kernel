@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { actions, getState, useStore } from '../store'
 import { IconButton } from '../ui'
+import { AskRowanButton } from './footer/QuickAsk'
+import { UpdatePill } from './footer/UpdatePill'
 
 /** Window widths below which a panel folds: the right panel first, then the sidebar (D-080). */
 const FOLD_BELOW = { rightPanel: 1024, sidebar: 900 } as const
@@ -30,10 +32,21 @@ export const toggleFocus = () => {
   actions.ui.setRightPanel(!sidebar && !rightPanel)
 }
 
-/** First in every screen header. Shows only while the sidebar is hidden, right of the traffic lights, and brings it back (Cmd+B). */
+/**
+ * First in every screen header. Shows only while the sidebar is hidden, right of the traffic lights, and brings it back (Cmd+B).
+ * What the sidebar's bottom row holds that can't wait comes along: Ask Rowan, and the update pill once an update is ready (KERNEL-527).
+ */
 export function SidebarToggle() {
   const open = useStore((s) => s.ui.sidebar)
-  return open ? null : <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
+  const onFloor = useStore((s) => s.ui.route.name === 'floor')
+  if (open) return null
+  return (
+    <>
+      <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
+      {!onFloor && <AskRowanButton />}
+      <UpdatePill />
+    </>
+  )
 }
 
 /** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */

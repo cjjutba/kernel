@@ -1,22 +1,19 @@
 import { actions, useStore } from '../../store'
 import { Icon } from '../../ui'
 import { githubPause } from './model'
-import { AskRowanButton } from './QuickAsk'
-import { UpdatePill } from './UpdatePill'
 import './footer.css'
 
 /**
- * The strip under every main panel: the update pill and Ask Rowan on the right. Hook health shows on the left only when the
- * hook server is down (D-082); Settings, Hooks has the port and status. A GitHub rate limit holding PR reads off shows there
- * too, until it ends (KERNEL-401). Ask Rowan is hidden on the floor, where the brief box already talks to Rowan.
+ * What the footer used to warn about, now a row just above the sidebar's bottom row (KERNEL-527): hook health only when the hook
+ * server is down (D-082; Settings, Hooks has the port and status), and a GitHub rate limit holding PR reads off until it ends
+ * (KERNEL-401). With the sidebar hidden, the chat's banners say the same. Ask Rowan and the update pill sit in the bottom row itself.
  */
-export function Footer() {
+export function SidebarAlerts() {
   const down = useStore((s) => s.system.hooks?.listening === false)
   const github = useStore((s) => s.system.github)
-  const onFloor = useStore((s) => s.ui.route.name === 'floor')
   const paused = githubPause(github, Date.now())
   return (
-    <footer className="footer ft">
+    <div className="sb-alerts">
       {down && <button type="button" className="ft-hooks ft-down" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" size={13} />Hooks down<span className="ft-fix">Check hooks</span></button>}
       {/* Always mounted, so a screen reader hears the pause start. The item does nothing, so it is no button; Tab reaches its tooltip. */}
       <span role="status" className="ft-status">
@@ -27,9 +24,6 @@ export function Footer() {
           </span>
         )}
       </span>
-      <span className="grow" />
-      <UpdatePill />
-      {!onFloor && <AskRowanButton />}
-    </footer>
+    </div>
   )
 }
