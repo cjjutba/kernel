@@ -1,6 +1,7 @@
 import type { AppUpdate, SharedFile } from '@shared/types'
 import type { Cipher } from '../services/env'
 import type { AppSettings } from '../services/settings'
+import type { ShellRead } from '../services/shellPath'
 
 /** What the app shell, or a test, passes to `new Kernel()`. */
 export interface KernelOptions {
@@ -12,8 +13,11 @@ export interface KernelOptions {
   claudeAgents?: (home: string) => Promise<import('@anthropic-ai/claude-agent-sdk').AgentInfo[]>
   /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
   probeNetwork?: () => Promise<boolean>
-  /** Re-reads the user's PATH before each preflight, so "Check again" finds a CLI installed after launch. Tests leave it out. */
-  refreshPath?: () => Promise<void>
+  /**
+   * Re-reads the user's PATH and shell variables before each preflight, so "Check again" finds a CLI installed after launch.
+   * Its answer is what preflight says about the shell and the gh token (KERNEL-448). Tests leave it out.
+   */
+  refreshPath?: () => Promise<ShellRead | void>
   /** Kernel's version, for Settings > About. */
   version?: string
   /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */

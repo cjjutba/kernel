@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import type { PushEvent } from '../src/shared/ipc'
+import type { RoomSetupStep } from '../src/shared/types'
 import { tempRepo } from './helpers'
-import { MAX_FILES_TO_COPY, resolveFilesToCopy } from '../src/main/services/filesToCopy'
+import { Kernel } from '../src/main/kernel'
+import { bus } from '../src/main/bus'
+import { MAX_FILES_TO_COPY, productionInCopy, resolveFilesToCopy } from '../src/main/services/filesToCopy'
 import { copyLocalFiles } from '../src/main/services/scripts'
 import { run } from '../src/main/services/exec'
 
@@ -136,3 +140,75 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(refused).toEqual(['.env'])
   })
 })
+
+describe('Files to copy exclusions and the production warning (KERNEL-449)', () => {
+  const PROD = {
+    '.env': 'PORT=3000\nDATABASE_URL=postgres://app:hunter2@db.prod.example.com:5432/app\n',
+    '.env.local': 'DATABASE_URL=postgres://postgres@localhost:5432/app\n',
+    '.env.production': 'NODE_ENV=production\nSTRIPE_SECRET_KEY=sk_live_abc123\n',
+    'certs/live.pem': 'sk_live_not_an_env_file\n'
+  }
+
+  it('leaves out what [files] exclude names, by exact path or pattern, in the preview and the copy', async () => {
+    const repo = await tempRepo({ '.gitignore': '.env*\ncerts/\n', 'README.md': '' })
+    await put(repo, PROD)
+    expect(await paths(repo, ['.env*', 'certs/*.pem'])).toEqual(['.env', '.env.local', '.env.production', 'certs/live.pem'])
+    expect((await resolveFilesToCopy(repo, ['.env*', 'certs/*.pem'], [], ['.env', 'certs/*'])).map((f) => f.path)).toEqual(['.env.local', '.env.production'])
+    expect((await resolveFilesToCopy(repo, ['.env', '.env.local'], [], ['./.env.local', ' '])).map((f) => f.path)).toEqual(['.env'])
+    const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
+    expect((await copyLocalFiles(repo, wt, ['.env*'], ['.env.production'])).copied).toEqual(['.env', '.env.local'])
+    expect((await readdir(wt)).sort()).toEqual(['.env', '.env.local'])
+  })
+
+  it('names the env files to copy that look like production, by variable, and reads nothing else', async () => {
+    const repo = await tempRepo({ '.gitignore': '.env*\ncerts/\n', 'README.md': '' })
+    await put(repo, PROD)
+    const hints = await productionInCopy(repo, ['.env*', 'certs/*.pem'])
+    expect(hints).toEqual([
+      { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
+      { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' },
+      { path: '.env.production', name: 'NODE_ENV', why: 'production' }
+    ])
+    expect(JSON.stringify(hints)).not.toMatch(/hunter2|abc123|prod\.example/)
+    expect(await productionInCopy(repo, ['.env*'], ['.env', '.env.production'])).toEqual([])
+  })
+
+  it('warns in room setup and on Files to copy until the user stops copying the files or keeps them', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    const k = new Kernel({ dataDir, home, starterDir: join(__dirname, '..', 'docs', 'starter-agents'), claudeSettingsFile: join(home, 'claude-settings.json') })
+    await k.start()
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
+    const repo = await tempRepo({ '.gitignore': '.env*\ncerts/\n', 'README.md': '', '.kernel/settings.toml': '[files]\ncopy = [".env*"]\n' })
+    await put(repo, PROD)
+    const steps = new Promise<RoomSetupStep[]>((resolve) => {
+      const on = (e: PushEvent) => { if (e.type === 'room.setup' && !e.steps.some((s) => s.state === 'wait' || s.state === 'run')) { bus.off('push', on); resolve(e.steps) } }
+      bus.on('push', on)
+    })
+    const room = await k.rooms.createRoom({ source: 'folder', name: 'Prod', from: repo, team: ['kai'], autostart: false })
+    expect((await steps).find((s) => s.id === 'copy')).toMatchObject({ state: 'warn', detail: '.env, .env.local, .env.production', production: ['.env', '.env.production'] })
+
+    const h = k.handlers()
+    expect(await h['files.production']({ roomId: room.id })).toEqual([
+      { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
+      { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }
+    ])
+    // One Keep copying covers the whole file, though the banner names one variable of the three.
+    await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\n')
+    await h['files.keepCopying']({ roomId: room.id, hints: [{ path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] })
+    expect(k.store.room(room.id)?.keepCopying).toEqual(['.env.production:STRIPE_SECRET_KEY', '.env.production:DATABASE_URL', '.env.production:NODE_ENV'])
+    expect(await h['files.production']({ roomId: room.id })).toEqual([{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }])
+    // A variable added to a kept file warns again.
+    await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\nSTRIPE_RESTRICTED_KEY=rk_live_def456\n')
+    expect(await h['files.production']({ roomId: room.id })).toEqual([
+      { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
+      { path: '.env.production', name: 'STRIPE_RESTRICTED_KEY', why: 'live-key' }
+    ])
+    // Don't copy these files saves them to the room's exclusions, so neither the preview nor a new worktree gets them.
+    await h['settings.setRoom']({ roomId: room.id, patch: { files: { exclude: ['.env', '.env.production'] } } })
+    expect(await h['files.production']({ roomId: room.id })).toEqual([])
+    expect((await h['files.preview']({ roomId: room.id })).map((f) => f.path)).toEqual(['.env.local'])
+  }, 60000)
+})
+

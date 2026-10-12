@@ -123,6 +123,10 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Go on' }])
     await vi.waitFor(() => expect(callIn(moved)).toHaveLength(1))
     expect(callIn(moved)[0].options).toMatchObject({ cwd: moved, resume: 'S1' })
+    // The database and Compose names setup ran with hold in the new folder (KERNEL-449).
+    const names = (env: Record<string, string>) => ({ slug: env.KERNEL_WORKSPACE_SLUG, compose: env.COMPOSE_PROJECT_NAME })
+    expect(names(callIn(moved)[0].options.env)).toEqual(names(first.options.env))
+    expect(names(first.options.env).compose).toMatch(/^kernel_/)
     expect(callIn(ws.path)).toHaveLength(1)
 
     // A later title, and a name the user types, name the chat and the breadcrumb only.
