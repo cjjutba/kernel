@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel Right panel toolbar, Checks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.k{--canvas:#070707;--panel:#0f0f0f;--aside:#0b0b0b;--surface:#141414;--surface-2:#181818;--surface-3:#1e1e1e;--hover:#242424;--line:#1c1c1c;--line-2:#262626;--line-3:#2e2e2e;--line-4:#3d3d3d;--panel-line:#1f1f1f;--ink:#f5f5f5;--ink-2:#e0e0e0;--ink-3:#c4c4c4;--muted:#9c9c9c;--faint:#7a7a7a;--add:#4cb782;--del:#eb5757;--mod:#e2c08d;--merged:#b9a3f5;--merged-solid:#7c5ce0;--needs:#f2c55c;--count:var(--needs);--on-ink:#070707;--input-bg:#121212;--code-bg:#0b0b0b;--nav-hover:#151515;--pr-ready-soft:#1d3b2c;--pr-ready-edge:#33704f;--pr-ready-fg:#a3e8c3;--side-panel:var(--aside)}
+.k{font-family:'Inter',-apple-system,system-ui,sans-serif;font-feature-settings:'cv01','ss03';-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45;color:var(--ink);background:var(--canvas)}
+.k *{box-sizing:border-box}
+.k button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left}
+.k code{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;background:var(--code-bg);border-radius:4px;padding:1px 5px;color:var(--ink-2)}
+.mono{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.row{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--ink-2);width:100%}
+.row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .kbd{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--faint)}
+.row .ds{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row.sel{background:var(--surface-3);color:var(--ink)}
+.row.wait{color:var(--ink)}
+.sa{color:var(--add)}.sd{color:var(--del)}
+.nav{display:flex;flex-direction:column;gap:3px}
+.sub .row{padding-left:22px}
+.prh{height:44px;flex-shrink:0;display:flex;align-items:center;gap:7px;padding:0 10px 0 12px;background:var(--pr-tint);border-bottom:1px solid var(--pr-line)}
+.prh > *{flex-shrink:0;white-space:nowrap}
+.prh > .prstate{flex-shrink:1;min-width:0;overflow:hidden}
+.prstate .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.t-merged{--pr-tint:#2a2140;--pr-line:#3c2f5c;--pr-fg:#d4c2ff;--pr-label:#b88fff;--pr-soft:#372b55;--pr-edge:#64509c;--pr-solid:#8b45f5;--pr-on:#ffffff}
+.t-green{--pr-tint:#15281f;--pr-line:#22432f;--pr-fg:#a3e8c3;--pr-label:#62d69d;--pr-soft:#1d3b2c;--pr-edge:#33704f;--pr-solid:#1b7f50;--pr-on:#ffffff}
+.t-red{--pr-tint:#2c1719;--pr-line:#472428;--pr-fg:#ffbdbd;--pr-label:#ff8a8a;--pr-soft:#3e2125;--pr-edge:#70353c;--pr-solid:#c93b3f;--pr-on:#ffffff}
+.t-grey{--pr-tint:var(--surface);--pr-line:var(--line-2);--pr-fg:var(--ink-2);--pr-label:var(--ink-3);--pr-soft:var(--surface-3);--pr-edge:var(--line-3);--pr-solid:var(--ink);--pr-on:var(--on-ink)}
+.prlink{display:inline-flex;align-items:stretch;height:24px;font-size:11.5px;color:var(--pr-fg);background:var(--pr-soft);border:1px solid var(--pr-edge);border-radius:6px;overflow:hidden}
+.prlink span{display:inline-flex;align-items:center;padding:0 7px}
+.prlink .prext{border-left:1px solid var(--pr-edge);padding:0 6px}
+.prstate{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;color:var(--pr-label)}
+.k .prbtn{display:inline-flex;align-items:center;gap:6px;height:26px;font-size:12px;font-weight:500;border-radius:7px;padding:0 10px}
+.k .prsolid{background:var(--pr-solid);color:var(--pr-on);border:1px solid var(--pr-solid)}
+.k .prsoft{background:var(--pr-soft);color:var(--pr-fg);border:1px solid var(--pr-edge)}
+.k .prdash{border-style:dashed}
+.k .prbusy{background:var(--pr-soft);color:color-mix(in srgb,var(--pr-fg) 76%,transparent);border:1px solid var(--pr-edge);cursor:default}
+.k .prbusy .ico-spin{color:var(--pr-label)}
+.k .joined{border-radius:7px 0 0 7px}
+.k .caret-b{margin-left:-8px;padding:0 6px;border-radius:0 7px 7px 0;background:var(--pr-solid);color:var(--pr-on);border:1px solid var(--pr-solid);border-left-color:rgba(8,9,10,.25)}
+.k .ico{display:none;width:13px;height:13px}
+.k .i-cont .ico-cont,.k .i-arch .ico-arch,.k .i-spin .ico-spin{display:inline-block}
+.gly{display:none}
+.gl-pr .gly-pr,.gl-merged .gly-merged,.gl-draft .gly-draft,.gl-closed .gly-closed,.gl-branch .gly-branch,.gl-spin .gly-spin{display:inline-block}
+.lgy{display:none}
+.lg-pr .lgy-pr,.lg-merged .lgy-merged,.lg-draft .lgy-draft,.lg-closed .lgy-closed,.lg-branch .lgy-branch{display:inline-block}
+.sel .gly,.prstate .lgy,.evt .lgy{color:var(--pr-label)}
+.evt{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:18px}
+.files-empty{display:none}
+.no-files .has-files{display:none}
+.no-files .files-empty{display:flex}
+.k .hide{display:none}
+.g-muted{color:var(--muted)}.g-merged{color:var(--merged)}.g-add{color:var(--add)}.g-del{color:var(--del)}.g-needs{color:var(--needs)}
+.av{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;background:var(--surface-3);color:var(--ink-2)}
+.ib{width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.tr{line-height:1.6;font-size:14px;color:var(--ink-2)}
+.tr p{margin:0 0 12px}
+.tr b{color:var(--ink);font-weight:500}
+.tr ul,.tr ol{margin:0 0 12px;padding-left:20px}
+.tr li{margin-bottom:6px}
+.meta{font-size:12px;color:var(--faint);margin:4px 0 18px}
+.file{display:flex;align-items:center;gap:10px;height:26px;padding:0 10px;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--ink-2);border-radius:6px}
+.file .p{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .d{color:var(--faint)}
+.tab{font-size:12.5px;color:var(--muted);padding:4px 8px;border-radius:6px}
+.tab.on{color:var(--ink);background:var(--surface-3)}
+.btab{display:flex;align-items:center;height:38px;padding:0 6px;border-bottom:1px solid var(--line);gap:2px;flex-shrink:0}
+.btab .bt{height:38px;display:inline-flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
+.btab .bt.on{color:var(--ink);border-bottom-color:var(--ink)}
+.btab .bi{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);border-radius:6px}
+.k .runbtn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px}
+.k .runbtn.big{height:28px;padding:0 12px}
+.empty{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center}
+.prcap{display:flex;align-items:center;gap:7px;height:32px;margin-left:auto;padding:0 3px 0 8px;background:var(--pr-tint);border:1px solid var(--pr-line);border-radius:9px;flex-shrink:0}
+.prcap > *{flex-shrink:0;white-space:nowrap}
+.k .ttl{position:relative;display:flex;min-width:0;padding:3px 6px;margin:0 -6px;border-radius:5px;color:var(--ink);font-weight:500;white-space:nowrap}
+.ttl > span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.k .ttl.hov{background:var(--hover)}
+.ikey{flex-shrink:0;display:inline-flex;align-items:center;height:20px;padding:0 6px;border:1px solid var(--line-2);border-radius:5px;color:var(--ink-2);font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px}
+.tip{position:absolute;z-index:5;top:calc(100% + 6px);left:0;display:flex;flex-direction:column;gap:2px;width:max-content;padding:6px 9px;background:var(--surface-2);border:1px solid var(--line-3);border-radius:6px;font-weight:400;text-align:left}
+.tip .br{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--ink-2)}
+.tip .hint{font-size:11.5px;color:var(--muted)}
+.prh .go{margin-left:auto;display:inline-flex;color:var(--pr-label)}
+.pr-sec{display:flex;align-items:baseline;gap:6px;padding:8px 14px 5px;font-size:12px;color:var(--faint)}
+.pr-sec h3{margin:0;font-size:12px;font-weight:500;color:var(--muted)}
+.prs{list-style:none;margin:0;padding:0}
+.pr{padding:5px 14px 7px;border-top:1px solid var(--line)}
+.pr-l1{display:flex;align-items:center;gap:8px;height:24px}
+.pr-name{font-size:13px;font-weight:500;color:var(--ink);flex-shrink:0}
+.pr-key{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--faint);flex-shrink:0}
+.pr-n{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--faint);flex-shrink:0}
+.pr-act{margin-left:auto;display:flex;align-items:center;gap:12px;flex-shrink:0}
+.pr-st{font-size:12px;color:var(--pr-label)}
+.pr-st.red{--pr-label:#ff8a8a}.pr-st.grey{--pr-label:#b7bcc4}
+.pr-title{font-size:13px;line-height:18px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr.still .pr-name,.pr.still .pr-title{color:var(--muted)}
+.pr-l3{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;line-height:16px;color:var(--muted)}
+.pr-l3 .good{color:var(--add)}.pr-l3 .bad{color:var(--del)}.pr-l3 .faint{color:var(--faint)}
+.pr-ds{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums}
+.tu-open{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);flex-shrink:0}
+.k .tu-merge{display:inline-flex;align-items:center;height:24px;padding:0 9px;font-size:12px;font-weight:500;border-radius:6px;background:var(--pr-ready-soft);color:var(--pr-ready-fg);border:1px solid var(--pr-ready-edge)}
+.tu-events{margin-top:3px;font-size:12.5px;color:var(--muted)}
+.tu-events .sep{color:var(--faint);margin:0 6px}
+.tu-events .bad{color:var(--del)}.tu-events .good{color:var(--add)}.tu-events .mrg{color:var(--merged)}
+.tr .tu-reply{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.k .tu-more{margin-top:5px;font-size:12px;color:var(--faint)}
+.ctab{display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
+.ctab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.k .tu-merge{display:inline-flex;align-items:center;height:24px;padding:0 9px;font-size:12px;font-weight:500;border-radius:6px;background:var(--pr-ready-soft);color:var(--pr-ready-fg);border:1px solid var(--pr-ready-edge)}
+.pr-st.red{--pr-label:#ff8a8a}.pr-st.grey{--pr-label:var(--ink-3)}
+/* the right panel: PR band, then the top pane (strip and list) over the bottom pane (strip and tab), split 2/3 and 1/3 */
+.aside{flex-shrink:0;border-left:1px solid var(--line);background:var(--aside);display:flex;flex-direction:column;position:relative;min-height:0}
+.top{flex:none;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.bottom{flex:1 1 0;min-height:0;border-top:1px solid var(--line);display:flex;flex-direction:column;position:relative}
+.bottom.closed{flex:none}
+.strip{height:40px;flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 10px}
+.tabs{position:relative;flex:1;min-width:0;height:100%;overflow:hidden;display:flex;align-items:center}
+.tablist{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.tab{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap}
+.tab .n{color:var(--faint);font-size:11.5px}
+.k .fade{position:absolute;top:0;bottom:0;width:44px;display:flex;align-items:center;padding:0 3px;color:var(--muted)}
+.k .fade-r{right:0;justify-content:flex-end;background:linear-gradient(to right,transparent,var(--aside) 58%)}
+.k .fade-l{left:0;justify-content:flex-start;background:linear-gradient(to left,transparent,var(--aside) 58%)}
+.fade svg{width:14px;height:14px}
+.tools{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.k .tb{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;color:var(--muted);flex-shrink:0}
+.k .tb.on{background:var(--surface-3);color:var(--ink)}
+.tb svg{width:14px;height:14px}
+.k .tbtn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;margin-right:4px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px;flex-shrink:0;white-space:nowrap}
+.k .tbtn.go{background:var(--pr-ready-soft);color:var(--pr-ready-fg);border-color:var(--pr-ready-edge);font-weight:500}
+.bstrip{height:40px;flex-shrink:0;display:flex;align-items:center;gap:6px;padding:0 8px 0 6px;border-bottom:1px solid var(--line)}
+.bottom.closed .bstrip{border-bottom:0}
+.bstrip .tabs{align-self:stretch}
+.bstrip .tablist{align-self:stretch;align-items:stretch;gap:2px}
+.bstrip .bt{display:inline-flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent;flex-shrink:0;white-space:nowrap}
+.bstrip .bt.on{color:var(--ink);border-bottom-color:var(--ink)}
+.bstrip .fade{height:calc(100% - 1px)}
+.k .bstrip .bi{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);border-radius:6px;flex-shrink:0}
+.bstrip .bi svg{width:14px;height:14px}
+.k .runbtn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px;flex-shrink:0;white-space:nowrap}
+.k .runbtn.big{height:28px;padding:0 14px;font-size:12.5px}
+.empty{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:16px 24px;text-align:center}
+/* a horizontal resize handle on the split's hairline: the sidebar's edge glow (resize.css) turned 90 degrees */
+.rz{--edge-glow:color-mix(in srgb,var(--ink) 45%,transparent);position:absolute;left:0;right:0;top:-5px;height:8px;z-index:5}
+.rz::after{content:'';position:absolute;left:0;right:0;top:3px;height:3px;pointer-events:none;background:radial-gradient(ellipse closest-side at 50% 50%,var(--edge-glow) 0%,var(--edge-glow) 25%,transparent 100%);opacity:0}
+.rz.lit::after{opacity:1}
+/* file rows, as the app draws them (workspace.css .tree-row and .change-row) */
+.list{flex:1;min-height:0;overflow:hidden;padding:4px 8px 8px;display:flex;flex-direction:column}
+.list.ch{padding:4px 10px 8px}
+.chead{display:flex;align-items:center;gap:8px;flex-shrink:0;height:40px;margin:0 -10px 6px;padding:0 16px;border-bottom:1px solid var(--line)}
+.chead .c{font-size:13px;color:var(--ink-2)}
+.chead .tot{margin-left:auto;display:inline-flex;gap:6px;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;font-variant-numeric:tabular-nums}
+.tr2{position:relative;display:flex;align-items:center;gap:4px;flex-shrink:0;height:24px;padding-right:6px;border-radius:6px;color:var(--ink-2);font-size:13px;white-space:nowrap}
+.tr2 .fi{width:16px;height:16px;flex-shrink:0;margin-right:2px}
+.tr2 .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tr2 .dir{margin-left:8px;color:var(--muted);font-size:12px}
+.tr2 .cnt{display:inline-flex;gap:6px;flex-shrink:0;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;font-variant-numeric:tabular-nums}
+.tr2 .lt{flex-shrink:0;width:14px;text-align:center;font:500 11.5px 'Geist Mono',ui-monospace,monospace}
+.tr2 .chev{width:16px;height:16px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.tr2 .chev svg{width:12px;height:12px}
+.tr2 .chev.o svg{transform:rotate(90deg)}
+.tr2 .gd{position:absolute;top:0;bottom:0;width:1px;background:var(--line-2)}
+.hl{background:color-mix(in srgb,var(--ink) 16%,transparent);border-radius:2px}
+.cm{color:var(--mod)}.ca{color:var(--add)}.cd{color:var(--del)}
+.ffield{flex-shrink:0;padding:0 10px 8px}
+.finput{display:flex;align-items:center;gap:8px;height:30px;padding:0 3px 0 10px;background:var(--input-bg);border:1px solid var(--line-4);border-radius:7px;color:var(--muted)}
+.finput .v{flex:1;color:var(--ink);font-size:13px}
+.finput .caret{display:inline-block;width:1px;height:15px;background:var(--ink);vertical-align:-3px;margin-left:1px}
+/* checks rows (WorkspacePreview.png) */
+.csec{padding:10px 18px 0;font-size:12px;color:var(--faint)}
+.crow{display:flex;align-items:center;gap:10px;height:30px;padding:0 18px;font-size:13px;color:var(--ink-2)}
+.crow .m{margin-left:auto;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--faint)}
+.crow .ok{color:var(--add);display:inline-flex}
+/* the compare menu: surface-2, a line-3 hairline, no shadow */
+.menu{position:absolute;z-index:20;width:332px;background:var(--surface-2);border:1px solid var(--line-3);border-radius:10px;padding:6px;display:flex;flex-direction:column}
+.menu .mi{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 8px;border-radius:6px;color:var(--ink-2);font-size:13px}
+.menu .mi .ck{width:16px;height:16px;flex-shrink:0;color:var(--ink);display:inline-flex}
+.menu .mi.cm2{align-items:flex-start;padding:6px 8px;min-height:44px}
+.menu .mi.cm2 .ck{margin-top:1px}
+.menu .mi .sub{display:flex;align-items:center;gap:6px;margin-top:1px;font-size:12px;color:var(--muted);white-space:nowrap}
+.menu .mi .sub .sha{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--faint)}
+.menu .mi .sub .dot{color:var(--faint)}
+.menu .mi .sub .age{margin-left:auto;color:var(--faint)}
+.menu .mi .subj{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.menu .rule{height:1px;background:var(--line-3);margin:6px -6px}
+.k .menu .pick{margin-left:auto;display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px 0 9px;background:var(--surface);border:1px solid var(--line-3);border-radius:6px;color:var(--ink-2)}
+.menu .pick .mono{font-size:12px}
+.menu .pick svg{width:12px;height:12px;color:var(--muted)}
+.log{flex:1;min-height:0;overflow:hidden;padding:6px 16px 12px;font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.75;display:flex;flex-direction:column;justify-content:flex-end}
+.log .d{color:var(--faint)}.log .t{color:var(--muted)}.log .b{color:var(--ink-2)}
+.bubble{max-width:480px;background:var(--surface);border-radius:10px;padding:12px 14px;color:var(--muted);line-height:1.7}
+.fi{width:16px;height:16px;flex-shrink:0}
+</style>
+</helmet>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true"></svg>
+<div class="k gl-pr lg-pr t-green" style="width: 1440px; height: 900px; display: flex; overflow: hidden">
+<aside style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 8px">
+<div style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+<button class="ib" aria-label="Hide sidebar" style="margin-left: 8px"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="2"></rect><path d="M6 3v10"></path></svg></button>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; margin-bottom: 8px">
+<span class="av" style="width: 20px; height: 20px; border-radius: 6px; background: var(--ink); color: var(--canvas)">CJ</span>
+<span style="font-weight: 500; color: var(--ink)">CJ Jutba</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg>
+<button class="ib" aria-label="New workspace" style="margin-left: auto; border: 1px solid var(--line-3)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3H3.5v9.5H13V9"></path><path d="M11.5 2.5l2 2L8 10H6V8z"></path></svg></button>
+</div>
+
+<div class="nav">
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="t">Search</span><span class="kbd">⌘K</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7 8 2.5 13.5 7v6.5h-11z"></path></svg><span class="t">Home</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"></path><path d="M2.5 9.5 4 3.5h8l1.5 6v3.5h-11z"></path></svg><span class="t">Inbox</span><span class="mono" style="font-size: 11.5px; font-weight: 500; color: var(--count)">12</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3l2 1.5"></path></svg><span class="t">History</span></button>
+</div>
+
+<div style="font-size: 12px; color: var(--faint); padding: 0 8px; margin: 20px 0 6px">Your rooms</div>
+<div class="nav">
+<button class="row" style="color: var(--ink)"><span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">K</span><span class="t">Kernel</span><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<div class="nav sub">
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="6" r="2.2"></circle><path d="M2.5 13c.4-2 1.8-3 3.5-3s3.1 1 3.5 3"></path><path d="M10.5 4.2a2 2 0 0 1 0 3.6M11.5 10.2c1 .4 1.7 1.3 2 2.8"></path></svg><span class="t">Team</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg><span class="t">Rowan</span></button>
+<button class="row sel"><svg class="i gly gly-pr" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg><svg class="i gly gly-merged" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><svg class="i gly gly-draft" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 3.5v1.3M11 7v1.5"></path></svg><svg class="i gly gly-closed" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M9.5 3.5l3 3M12.5 3.5l-3 3"></path></svg><svg class="i gly gly-branch" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5.5v5M11 7.5c0 2-2 2.5-6 3"></path></svg><svg class="i gly gly-spin" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">kernel-155-home-and-inbox-keep</span></button>
+<button class="row wait"><svg class="i g-needs" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M6.5 6.5a1.5 1.5 0 1 1 2.2 1.3c-.5.3-.7.6-.7 1.2"></path><path d="M8 11.2v.1"></path></svg><span class="t">kernel-156-kernel-holds-perm</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5.5v5M11 7.5c0 2-2 2.5-6 3"></path></svg><span class="t">review-pr-146-kernel-156</span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-158-show-the-subagents</span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-162-design-the-issues</span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-163-linear-service</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5.5v5M11 7.5c0 2-2 2.5-6 3"></path></svg><span class="t">review-pr-147-kernel-155</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">kernel-165-list-rowan-sessions</span><span class="ds"><span class="sa">+271</span> <span class="sd">-48</span></span></button>
+<button class="row"><svg class="i g-add" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg><span class="t">kernel-166-draw-rowan</span><span class="ds"><span class="sa">+557</span> <span class="sd">-477</span></span></button>
+<button class="row"><svg class="i g-add" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg><span class="t">one-file-per-decision</span><span class="ds"><span class="sa">+4</span> <span class="sd">-4</span></span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5.5v5M11 7.5c0 2-2 2.5-6 3"></path></svg><span class="t">review-pr-156-decisions-file</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">kernel-160-issues-screen</span><span class="ds"><span class="sa">+362</span></span></button>
+<button class="row"><svg class="i g-add" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg><span class="t">kernel-161-room-s-linear</span><span class="ds"><span class="sa">+52</span> <span class="sd">-6</span></span></button>
+<button class="row wait"><svg class="i g-needs" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M6.5 6.5a1.5 1.5 0 1 1 2.2 1.3c-.5.3-.7.6-.7 1.2"></path><path d="M8 11.2v.1"></path></svg><span class="t">kernel-172-duplicates-show</span><span class="ds"><span class="sa">+28</span> <span class="sd">-7</span></span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">review-pr-157-kernel-161</span></button>
+</div>
+<button class="row" style="color: var(--ink); margin-top: 3px"><span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">U</span><span class="t">Ulat</span><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+</div>
+
+<div style="margin-top: auto; display: flex; align-items: center; gap: 4px; padding: 0 4px">
+<span style="font-size: 11.5px; color: var(--muted); border: 1px solid var(--line-3); border-radius: 6px; padding: 2px 8px">Claude Max</span>
+<button class="ib" aria-label="What's new" style="margin-left: auto"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3"></path></svg></button>
+<button class="ib" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg></button>
+</div>
+</aside>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0">
+<div style="flex: 1; min-height: 0; display: flex; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; overflow: hidden; position: relative">
+<section style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line)">
+<span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">K</span>
+<span style="color: var(--ink-2)">Kernel</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M6 4l4 4-4 4"></path></svg>
+<button class="ttl" title="cjjutbaofficial/kernel-155-home-and-inbox-keep-asking-about-requests-and-prs"><span>Home and Inbox keep asking about requests and the PRs</span></button>
+<span class="ikey">KERNEL-155</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--muted)"><path d="M5.5 5 2.5 8l3 3M10.5 5l3 3-3 3"></path></svg>
+</div>
+<div style="height: 38px; flex-shrink: 0; display: flex; align-items: stretch; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line)">
+<div style="display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 2px solid var(--ink); color: var(--ink)">
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; color: var(--muted)"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg>
+<span style="font-size: 12.5px">KERNEL-155 Home and Inbox</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 13px; height: 13px; color: var(--faint)"><path d="M10.5 3l2.5 2.5L6 12.5H3.5V10z"></path></svg>
+</div>
+<button class="ib" aria-label="New chat" style="align-self: center"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3l2 1.5"></path></svg>Checkpoints</div>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 24px">
+<div class="tr" style="width: 620px">
+<p>To finish, pick one:</p>
+<ol>
+<li><b>Push it yourself</b> from the worktree: <code>git push --force-with-lease</code>. Then I'll update the PR body, which still says "D-136", and KERNEL-156 takes D-137, to D-137 and D-138, and check CI once.</li>
+<li><b>Let me redo it without a force push:</b> I'd merge origin/main into the branch instead of rebasing, and push normally. The PR gets squash-merged, so main's history ends up the same. The PR branch would show a merge commit, though.</li>
+</ol>
+<div class="meta">3m 52s · 13:01</div>
+<div style="display: flex; justify-content: flex-end; margin-bottom: 18px">
+<div style="max-width: 480px; background: var(--surface-2); border-radius: 10px; padding: 10px 14px; color: var(--ink)">Change of method for the conflict on PR #147. The repo's guard hook blocks force pushes, so don't rebase. Merge origin/main into your branch and push normally, since the repo squash-merges anyway. Everything else stays the same: your entry becomes D-137, check <code style="background: var(--hover)">kernel.ts</code> against #149, run typecheck and test, and update the PR body.</div>
+</div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); margin-bottom: 14px"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px"><path d="M6 4l4 4-4 4"></path></svg>9 tool calls, 12 messages</div>
+<p>PR #147 no longer conflicts with main. I merged origin/main into the branch and pushed it normally, with no force push.</p>
+<p><b>What I did</b></p>
+<ul>
+<li><b>Reset:</b> put the branch back on the pushed commit, 7c2c03f, and dropped the local rebase.</li>
+<li><b>Merge:</b> merged origin/main (f565c3d). The only conflict was <code>docs/DECISIONS.md</code>. Main's D-136 stays as it is, and my entry follows it as <b>D-137</b>.</li>
+<li><b>Renumber commit (1440439):</b> my code comments that cited D-136 now cite D-137, 12 lines across <code>ipc.ts</code>, <code>kernel.ts</code>, <code>db.ts</code> and <code>approvals.ts</code>.</li>
+<li><b>Checks:</b> <code>pnpm typecheck</code> passes, and <code>pnpm test</code> passes with 901 passed and 4 skipped.</li>
+</ul>
+<p><b>PR state</b><br>GitHub reports the PR as mergeable, with merge state <code>BLOCKED</code>. When I checked once, Vercel had passed and the Release note check was still running. I didn't wait for it.</p>
+<div class="meta">1m 17s · 13:02</div>
+<div class="evt"><span style="display:inline-flex; color: var(--pr-label)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M4.5 5.3v5.4M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10.7V6.5A1.5 1.5 0 0 0 10 5H7.5"></path></svg></span>PR #147 passed checks and has no conflicts.<span style="flex: 1; height: 1px; background: var(--line)"></span></div>
+</div>
+</div>
+
+<div style="flex-shrink: 0; display: flex; justify-content: center; padding: 0 24px 16px">
+<div style="width: 620px; background: var(--input-bg); border: 1px solid var(--line-2); border-radius: 12px; padding: 12px 12px 10px">
+<div style="font-size: 14px; color: var(--faint); height: 40px">Ask Noor to make changes, @mention files, run /skills</div>
+<div style="display: flex; align-items: center; gap: 12px">
+<div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px; border: 1px solid var(--line-3); border-radius: 999px; padding: 2px 10px"><span style="color: var(--ink-2)">Noor</span><span style="color: var(--faint)">Backend</span></div>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px"><span style="color: var(--ink-2)">Opus 5.5</span><span style="color: var(--faint)">High</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></div>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="ib" aria-label="Send" style="background: var(--surface-3); border-radius: 50%; color: var(--muted)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+</section>
+<section class="aside" style="width: 400px" aria-label="Right panel">
+<div class="prh t-green"><span class="mono prlink"><span>#147</span><span class="prext"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 11px; height: 11px"><path d="M5 11 11 5M6 5h5v5"></path></svg></span></span><span class="prstate"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M4.5 5.3v5.4M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10.7V6.5A1.5 1.5 0 0 0 10 5H7.5"></path></svg>Ready to merge</span><span style="flex: 1"></span><button class="prbtn prsolid">Merge PR</button><button class="ib" aria-label="Hide panel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px"><path d="M4 3h8a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 4 3ZM9.5 3v10"></path></svg></button></div>
+<div class="top" style="height: 544px">
+<div class="strip">
+<div class="tabs"><div class="tablist" role="tablist" aria-label="Panel" style=""><span class="tab" role="tab">All files</span><span class="tab" role="tab">Changes <span class="n">16</span></span><span class="tab on" role="tab" aria-selected="true">Checks</span></div></div>
+<div class="tools" role="toolbar" aria-label="Panel actions"><button class="tb" aria-label="Refresh checks"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M13.2 8a5.2 5.2 0 1 1-1.5-3.7M13.2 3v2.6h-2.6"></path></svg></button><button class="tb" aria-label="Open on GitHub"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M5 11 11 5M6 5h5v5"></path></svg></button></div>
+</div><div style="flex: 1; min-height: 0; overflow: hidden">
+<div class="csec" style="padding-top: 6px">Git</div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>16 files changed, up to date with main</span><span class="m"></span></div>
+<div class="csec" style="padding-top: 14px">Pull request</div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>#147 fix(inbox): keep asking about requests</span><span class="m">open</span></div>
+<div class="csec" style="padding-top: 14px">CI</div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>lint</span><span class="m">12s</span></div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>typecheck</span><span class="m">31s</span></div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>vitest</span><span class="m">48s</span></div>
+<div class="crow"><span class="ok"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span><span>playwright</span><span class="m">2m 4s</span></div>
+<div class="crow" style="margin-top: 6px; color: var(--muted)"><span>Port</span><span class="mono" style="color: var(--ink-2)">4303</span><span style="margin-left: auto; display: inline-flex"><span class="runbtn" style="border-radius: 6px 0 0 6px; border-right: 0">Open</span><span class="runbtn" style="border-radius: 0 6px 6px 0; padding: 0 6px"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></span></span></div>
+</div>
+</div>
+<div class="bottom open"><div class="rz" role="separator" aria-orientation="horizontal" aria-label="Resize bottom panel"></div><div class="bstrip">
+<button class="bi" aria-label="Collapse panel" aria-expanded="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M4.5 6.25 8 9.75l3.5-3.5"></path></svg></button>
+<div class="tabs"><div class="tablist" role="tablist" aria-label="Scripts" style=""><button class="bt" role="tab">Setup</button><button class="bt on" role="tab" aria-selected="true">Run</button><button class="bt" role="tab">Terminal</button></div></div>
+<button class="runbtn">Stop</button>
+</div><div class="log" role="log" aria-label="Run output">
+<div class="d">$ pnpm dev --port 4303</div>
+<div class="t">VITE v6.3.5  ready in 412 ms</div>
+<div class="t">Local:   http://localhost:4303/</div>
+<div class="t">Compiled /inbox in 1.2s</div>
+<div class="t">GET /api/requests 200 in 84ms</div>
+<div class="b">GET /inbox 200 in 31ms</div>
+</div></div>
+</section>
+</div>
+<div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 0 6px; font-size: 12px; color: var(--muted)">
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 13px; height: 13px"><path d="M13.5 2.5 2.5 7l4.5 1.5L8.5 13z"></path><path d="M7 8.5l3-3"></path></svg>Ask Rowan
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -93,7 +93,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   <span className="ob-detail">{s.detail}</span>
                   {s.error && <span className="ob-detail rs-error" role="alert">{s.error}</span>}
                   {s.output && <pre className="code boxed rs-out">{s.output}</pre>}
-                  {s.fix?.command && <div className="ob-fix"><CodeBlock>{s.fix.command}</CodeBlock></div>}
+                  {s.fix?.command && <div className="ob-fix"><CodeBlock inline>{s.fix.command}</CodeBlock></div>}
                   {s.fix?.action === 'recheck' && (
                     <div className="ob-acts rs-acts">
                       <Button variant="secondary" busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
@@ -130,7 +130,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
           )}
           <div className="ob-bar">
             <span role="status">{status}</span>
-            <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
+            <Button variant="primary" size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
           </div>
           {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}
         </div>

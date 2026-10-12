@@ -3,6 +3,7 @@ import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { FileIcon } from '../../components/FileIcon'
+import { isUnread } from '../../components/sidebar/unread'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
@@ -129,8 +130,8 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string }[] = [
-    ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string; unread?: boolean }[] = [
+    ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const, unread: c.kind === 'chat' && isUnread(c) })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p, file: p })),
     ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p, file: p || undefined })),
     ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, file: kindFile[sharedFiles[id]?.kind ?? 'markdown'] })),
@@ -146,6 +147,9 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
           const editing = renaming === t.id
           // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
           const g = t.kind === 'chat' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
+          // A reply you haven't seen bolds the title. The tab on screen is read, and the chat view is asking main to say so (KERNEL-508).
+          const unread = !!t.unread && !on
+          const name = [t.title, g?.label || undefined, unread ? 'Unread' : undefined].filter(Boolean).join(', ')
           return (
             <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (
@@ -153,8 +157,8 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} onClick={() => onSelect(t.id)}
-                  aria-label={g?.label ? `${t.title}, ${g.label}` : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
+                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} data-unread={unread || undefined} onClick={() => onSelect(t.id)}
+                  aria-label={g?.label || unread ? name : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>

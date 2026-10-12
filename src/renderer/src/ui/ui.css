@@ -95,6 +95,10 @@
 .codeblock { position: relative; }
 .codeblock .code { margin: 0; padding-right: 96px; }
 .codeblock .btn { position: absolute; top: 5px; right: 5px; height: 24px; font-size: 12px; }
+/* The command line the setup canvases draw (RoomSetupWarnings.png): the command and an outlined Copy on one row. */
+.codeblock[data-inline='true'] { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--r); background: var(--code-bg); }
+.codeblock[data-inline='true'] .code { flex: 1; min-width: 0; padding: 0; background: transparent; font-size: 12.5px; line-height: 1.45; color: var(--ink); }
+.codeblock[data-inline='true'] .btn { position: static; flex-shrink: 0; padding: 0 8px; border-radius: var(--r-sm); font-weight: 400; color: var(--ink-2); }
 
 /* kbd, avatar */
 .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-3); background: var(--surface); font: 11px var(--mono); color: var(--muted); }

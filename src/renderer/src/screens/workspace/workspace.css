@@ -38,6 +38,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-glyph[data-tone='needs'] svg { color: var(--needs); }
 .ws-tab:hover { color: var(--ink-2); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
+/* A tab with a reply you haven't seen is bold, like its sidebar row (KERNEL-508). The tab on screen is read, so it is never marked. */
+.ws-tab[data-unread] { color: var(--ink); font-weight: 600; }
 /* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
 .tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
 .tab-end > * { grid-area: 1 / 1; }

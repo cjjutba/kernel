@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -981,6 +981,30 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
   }
 }
 
+/**
+ * SidebarUnread (no PNG, KERNEL-508): `grouped` with a bold title on each row that has a reply you haven't seen, and no dot anywhere. The table chat is on screen,
+ * so its row stays regular although its second tab is unread, and that tab is bold. Under it, invoice-schema is unread and invoice-table is read. The login chat
+ * is unread in one tab and running in the other, so its row is bold and keeps its spinner. The export chat is folded over three workspaces, one of them unread,
+ * so its row is bold. org-invites needs you and is unread, with the amber icon and the bold title together. Client B is collapsed over an unread workspace,
+ * and the demo chat, the other rooms and invoice-table are read.
+ */
+function sidebarUnread(f: Fixture): Partial<Fixture> {
+  const unreadAt = at(10, 40)
+  const unread = new Set(['chat-table-copy', 'chat-login-redirect', ids.schemaChat, ids.invitesChat, 'chat-pdf-button', 'chat-landing'])
+  const owned = (id: string, workspaceId: string, title: string): Chat => ({ id, workspaceId, title, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 5) })
+  const g = grouped(f, { tab: 'chat-table', running: ['chat-login'] })
+  const landing = handedOff('ws-landing-copy', 'landing-copy', 't-31', 'kai', 4330, { roomId: ids.roomB, threadId: undefined, leadChatId: undefined, branch: 'feat/t-31-landing-copy', path: '/Users/you/kernel/worktrees/client-b/landing-copy' })
+  const question = pending('question', 'kai', { workspaceId: ids.invites, chatId: ids.invitesChat, title: 'Should invites expire after 7 days?', options: ['Yes, 7 days', 'No expiry'] })
+  return {
+    ...g,
+    chats: [...g.chats!, owned('chat-pdf-button', 'ws-pdf-button', 'Download PDF button'), owned('chat-landing', landing.id, 'Landing page copy')].map((c) => (unread.has(c.id) ? { ...c, unreadAt } : c)),
+    workspaces: [...g.workspaces!, landing],
+    approvals: [...g.approvals!, question],
+    items: { ...g.items, 'chat-table': groupedTurn('su', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Kai and Noor can start together.', [], 'Kai has the table and its states. Noor has the schema change the table needs.') },
+    ui: { ...g.ui!, foldedChats: [GROUPED.export] }
+  }
+}
+
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
   const plan = leadPlan(f, { agentId: 'rowan' })
@@ -1015,14 +1039,14 @@ export const scriptTrust: ScriptTrust = {
 const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
 
 /** Rowan's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
-const hireScene = (tools: string[], servers?: AgentReach) => scene((f) => ({
+const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) => scene((f) => ({
   ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
     userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
     { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
     tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
     { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
   ], {
-    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), text: [
+    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
       '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
     ].join('\n') } }), ...f.approvals]
   }, { plan: false, model: 'claude-opus-5-5' }),
@@ -1371,6 +1395,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // Hovering a chat row shows Archive, like a workspace row's (KERNEL-405). The shot hovers the table chat (scripts/shots.ts).
   GroupedChatArchive: scene((f) => grouped(f, { running: [] })),
+  SidebarUnread: scene(sidebarUnread),
   // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
   ConfirmArchiveChat: scene((f) => {
     const g = grouped(f, { running: [] })
@@ -1415,6 +1440,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   TeamUpdateShared: scene((f) => teamUpdateShared(f)),
   WorkspaceHire: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)']),
+  // KERNEL-502: the hire card says where the agent goes. No scope on the approval means just the user, so WorkspaceHire shows that line.
+  WorkspaceHireTeam: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)'], undefined, 'team'),
   // The servers row on the hire card (KERNEL-484). The PNG draws Lumi with Figma reached and Linear needing sign-in. The other states are
   // the ones the engine reports (`AgentReach.blocked`), one fixture each, for screenshots only.
   WorkspaceHireServers: hireScene(hireTools(['figma', 'linear']), { reach: ['figma'], blocked: [{ name: 'linear', why: 'needs-auth' }] }),
