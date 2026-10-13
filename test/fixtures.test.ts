@@ -44,6 +44,7 @@ const noCanvas = [
   'WorkspaceDiffTab',
   'WorkspaceDiffImageAdded', // an added image in a diff tab shows the picture (KERNEL-410)
   'WorkspaceDiffImageModified', // a changed image shows Before and After (KERNEL-410)
+  'WorkspaceQuestionStates', // a picked option, a hovered one and a keyboard-focused one: the pick reads strongest (KERNEL-676)
   'WorkspaceQuestionLong', // a long answer that wraps, and options with descriptions (KERNEL-407)
   'WorkspaceQuestionUrl', // a sign-in link in the question and an option's description wraps inside the card, with no AskUserQuestion row above it (KERNEL-591)
   'WorkspaceFilesTree', // All files drawn like VS Code's explorer, with every git status and compact folders (KERNEL-399)

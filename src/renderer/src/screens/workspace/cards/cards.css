@@ -33,15 +33,17 @@
 /* Every row aligns to its first line, with or without a description, and grows with a long label (KERNEL-416). */
 .qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 13px; line-height: 18px; text-align: left; }
 .qrow[data-desc='true'] { padding: 10px 12px; line-height: 19.5px; }
-.qrow:hover { background: var(--surface-3); }
+.qrow:not(:disabled):hover { background: var(--surface-2); border-color: var(--line-4); }
+.qrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .qrow:disabled { opacity: 0.55; cursor: default; }
-.qrow[aria-checked='true'] { border-color: var(--line-4); }
+.qrow[aria-checked='true'], .qrow[aria-checked='true']:not(:disabled):hover { background: var(--hover); border-color: var(--ink-3); color: var(--ink); }
+.qrow[aria-checked='true'] .n { color: var(--ink); }
 .qrow .n { flex-shrink: 0; color: var(--muted); font-size: 12px; }
 .qrow .qbox, .qother .qbox { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; box-sizing: border-box; border-radius: var(--r-2xs); border: 1px solid var(--faint); color: var(--on-ink); }
 .qrow[aria-checked='true'] .qbox, .qother .qbox { border-color: var(--ink); background: var(--ink); }
 .qrow .qbox { margin-top: 1px; }
-.qother { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; box-sizing: border-box; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--line-4); }
-.qother .n { flex-shrink: 0; padding: 7px 0; color: var(--muted); font-size: 12px; line-height: 20px; }
+.qother { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; box-sizing: border-box; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--ink-3); background: var(--hover); }
+.qother .n { flex-shrink: 0; padding: 7px 0; color: var(--ink); font-size: 12px; line-height: 20px; }
 .qother .qbox { margin-top: 9px; padding: 0; cursor: pointer; }
 .qother textarea { flex: 1; min-width: 0; box-sizing: border-box; max-height: 94px; padding: 7px 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; color: var(--ink-2); font-family: inherit; font-size: 13px; line-height: 20px; }
 .qother textarea::placeholder { color: var(--muted); }
