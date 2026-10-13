@@ -5,7 +5,7 @@ import { providerOf } from '@shared/providers'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { leadOf } from '../../lead'
-import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
+import { Button, Icon, Menu, Modal, Select, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
@@ -226,24 +226,18 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   )
 }
 
-/** Target branch and where it runs (NewWorkspaceBranch.png). Both are native selects, so the keyboard works. */
+/** Target branch and where it runs (NewWorkspaceBranch.png). Both are Selects, so the keyboard works. */
 function BranchMenu({ anchorRef, target, targets, onTarget, mode, onMode, hint }: { anchorRef: React.RefObject<HTMLElement | null>; target: string; targets: string[]; onTarget: (b: string) => void; mode: WorkspaceMode; onMode: (m: WorkspaceMode) => void; hint: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: actions.ui.closeMenu, onOutside: actions.ui.closeMenu, ref, anchorRef })
   return (
     <div ref={ref} role="dialog" aria-label="Branch options" className="nw-pop nw-branch">
-      <label className="nw-row"><span>Target branch</span>
-        <span className="nw-select mono" style={{ fontSize: 12.5 }}>
-          <select aria-label="Target branch" value={target} disabled={mode === 'current'} onChange={(e) => onTarget(e.target.value)}>{targets.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <Icon name="chevrons" size={12} />
-        </span>
-      </label>
-      <label className="nw-row"><span>Runs in</span>
-        <span className="nw-select">
-          <select aria-label="Runs in" value={mode} onChange={(e) => onMode(e.target.value as WorkspaceMode)}>{MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
-          <Icon name="chevrons" size={12} />
-        </span>
-      </label>
+      <div className="nw-row"><span>Target branch</span>
+        <Select variant="plain" align="right" className="nw-select mono" label="Target branch" value={target} disabled={mode === 'current'} onChange={onTarget} options={targets.map((t) => ({ value: t, label: t }))} />
+      </div>
+      <div className="nw-row"><span>Runs in</span>
+        <Select variant="plain" align="right" className="nw-select" label="Runs in" value={mode} onChange={(v) => onMode(v as WorkspaceMode)} options={MODES.map((m) => ({ value: m.id, label: m.label }))} />
+      </div>
       <p className="nw-hint">{hint}</p>
     </div>
   )

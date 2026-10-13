@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
-import { Button, Icon, Skeleton, useBusy } from '../../ui'
+import { Button, Icon, Select, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
@@ -159,15 +159,10 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
           )}
           <div className="is-actions">
             {room && (
-              <span className="is-room">
-                <span className="muted">Room</span>
-                <RoomIcon room={room} className="is-letter" />
-                <span>{room.name}</span>
-                <Icon name="chevron" size={12} />
-                <select aria-label={`Room: ${room.name}`} value={room.id} onChange={(e) => setPicked({ issue: id, room: e.target.value })}>
-                  {choices.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </span>
+              <Select
+                variant="chip" className="is-room" prefix="Room" leading={<RoomIcon room={room} className="is-letter" />} label="Room" value={room.id}
+                options={choices.map((r) => ({ value: r.id, label: r.name, leading: <RoomIcon room={r} className="is-letter" /> }))} onChange={(v) => setPicked({ issue: id, room: v })}
+              />
             )}
             <span className="grow" />
             <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={12} /></a>

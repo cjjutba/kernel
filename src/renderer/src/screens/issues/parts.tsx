@@ -1,25 +1,15 @@
 import { useRef, useState, type ReactNode } from 'react'
 import type { Room } from '@shared/types'
 import { go } from '../../store'
-import { Button, Icon, Menu } from '../../ui'
+import { Button, Icon, Menu, Select } from '../../ui'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggle } from '../../components/PanelToggles'
 
 type Option = { value: string; label: string }
 
-/** A filter as a chip: its name, its value and a chevron, with a real select laid over it so the keyboard and screen readers work. */
+/** A filter as a chip: its name, its value and a chevron. It is a Select, so the keyboard and screen readers work (KERNEL-680). */
 export function FilterChip({ label, value, options, onChange }: { label: string; value: string; options: Option[]; onChange: (v: string) => void }) {
-  const shown = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? ''
-  return (
-    <span className="is-chip">
-      <span className="muted">{label}</span>
-      <span>{shown}</span>
-      <Icon name="chevron" size={12} />
-      <select aria-label={`${label}: ${shown}`} value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </span>
-  )
+  return <Select variant="chip" prefix={label} label={label} value={value || (options[0]?.value ?? '')} options={options} onChange={onChange} />
 }
 
 export const typing = (t: HTMLElement | null) => !!t?.closest('input, textarea, select, [contenteditable="true"]')

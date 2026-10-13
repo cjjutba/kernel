@@ -124,7 +124,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   {s.state === 'warn' && !!s.production?.length && (
                     <>
                       <ProductionNote paths={s.production} />
-                      <div className="ob-acts rs-acts"><Button onClick={() => roomId && actions.ui.go({ name: 'settings', page: 'room', roomId, section: 'files' })}>Review files</Button></div>
+                      <div className="ob-acts rs-acts"><Button onClick={() => roomId && actions.ui.go({ name: 'settings', page: 'room', roomId, section: 'setup' })}>Review files</Button></div>
                     </>
                   )}
                 </div>
@@ -141,7 +141,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
               </div>
               <div className="rs-team-row">
                 <span className="rs-team-text"><span className="rs-team-label">Lead</span><span>Plans with you and hands out tasks</span></span>
-                <Select label="Lead" value={lead ?? leadNow} disabled={busy !== null} onChange={(e) => setLead(e.target.value)} options={[...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Rowan, from Kernel' }]} />
+                <Select label="Lead" value={lead ?? leadNow} disabled={busy !== null} onChange={setLead} options={[...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Rowan, from Kernel' }]} />
               </div>
               <div className="rs-team-row">
                 <span className="rs-team-text"><span id={reviewerLabel} className="rs-team-label">Reviewer</span><span data-gap={reviewerPick === KERNEL_REVIEWER && noReviewerAgent ? '' : undefined}>{reviewerNote}</span></span>
