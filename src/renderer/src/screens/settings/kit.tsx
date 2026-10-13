@@ -1,23 +1,26 @@
 import './settings.css'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { Room, RoomSettings } from '@shared/types'
+import type { Room, RoomSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, useStore } from '../../store'
-import { Button, Icon, Kbd, Menu, useBusy } from '../../ui'
+import { actions, go, useStore } from '../../store'
+import { Button, EmptyState, Icon, Kbd, Menu, useBusy, type IconName } from '../../ui'
+import { openNewRoom } from '../rooms/draft'
 import { useRoomSettings } from './useSettings'
 
-/** One settings page: the title, an optional intro and its sections. `action` sits at the right of the title, and `back` is the link above it to the page it opened from. */
-export function Page({ title, intro, action, back, children }: { title: string; intro?: string; action?: ReactNode; back?: ReactNode; children: ReactNode }) {
+/**
+ * One settings page: the title and its sections. Nothing goes under the title (KERNEL-680). `action` sits at the right of the title, and
+ * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the room on a room's page.
+ */
+export function Page({ title, crumb, action, back, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; children: ReactNode }) {
   return (
     <div className="set-scroll">
       <div className="set-page">
         <div>
           {back}
           <div className="set-head">
-            <h1>{title}</h1>
+            <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true"><Icon name="right" size={16} /></span></>}<span>{title}</span></h1>
             {action}
           </div>
-          {intro && <p className="set-intro">{intro}</p>}
         </div>
         {children}
       </div>
@@ -25,13 +28,40 @@ export function Page({ title, intro, action, back, children }: { title: string; 
   )
 }
 
-/** `action` sits at the right of the heading (Add run script). `note` is the line under the card. */
-export function Section({ title, action, note, children }: { title: string; action?: ReactNode; note?: ReactNode; children: ReactNode }) {
+/** Where a section's values are saved: `repo` is `.kernel/settings.toml`, shared with everyone on the repo; `mac` stays on this Mac. */
+export type Scope = 'repo' | 'mac'
+
+export function ScopeBadge({ scope }: { scope: Scope }) {
+  return <span className="set-badge"><Icon name={scope === 'repo' ? 'team' : 'computer'} size={12} />{scope === 'repo' ? 'Shared with the repo' : 'This Mac only'}</span>
+}
+
+/**
+ * A heading and a card of rows. `count` is a number after the title, `scope` the badge saying where the values are saved, `note` a
+ * muted line beside the heading and `action` a button at its right (Add run script). `footnote` is the line under the card.
+ * `collapsible` folds the card behind the heading, open when `defaultOpen`. `plain` leaves out the card, for a table or status line.
+ */
+export function Section({ title, count, scope, note, action, footnote, collapsible, defaultOpen = false, plain, label, children }: {
+  title?: string; count?: number | string; scope?: Scope; note?: ReactNode; action?: ReactNode; footnote?: ReactNode
+  collapsible?: boolean; defaultOpen?: boolean; plain?: boolean; label?: string; children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const shown = !collapsible || open
+  const n = count !== undefined && count !== '' && <span className="set-count">{count}</span>
+  const heading = collapsible
+    ? <button type="button" className="set-fold" aria-expanded={open} onClick={() => setOpen(!open)}><h2>{title}{n}</h2><Icon name="right" size={12} /></button>
+    : title && <h2>{title}{n}</h2>
   return (
-    <section className="set-section">
-      {action ? <div className="set-section-head"><h2>{title}</h2>{action}</div> : <h2>{title}</h2>}
-      <div className="set-card">{children}</div>
-      {note && <p className="set-note">{note}</p>}
+    <section className="set-section" aria-label={title ? undefined : label}>
+      {(title || action || scope || note) && (
+        <div className="set-section-head">
+          {heading}
+          {scope && <ScopeBadge scope={scope} />}
+          {note && <span className="set-section-note">{note}</span>}
+          {action && <span className="set-section-act">{action}</span>}
+        </div>
+      )}
+      {shown && (plain ? children : <div className="set-card">{children}</div>)}
+      {shown && footnote && <p className="set-note">{footnote}</p>}
     </section>
   )
 }
@@ -39,20 +69,108 @@ export function Section({ title, action, note, children }: { title: string; acti
 /**
  * A label and optional description on the left, the control on the right. `full` puts the control on its own line.
  * `source` is the line under the label that says where a room's value came from, and `onReset` adds Reset, which sends `null` for the key.
+ * `child` is a row that only matters because of the one above it: it is indented on a guide line. `lead` is a picture before the label
+ * (an avatar or a logo). `hover` holds the buttons that show while the pointer is on the row.
  */
-export function Row({ label, source, desc, onReset, children, full, className }: { label: ReactNode; source?: ReactNode; desc?: ReactNode; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string }) {
+export function Row({ label, source, desc, onReset, children, full, className, child, lead, hover, labelId }: {
+  label: ReactNode; source?: ReactNode; desc?: ReactNode; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
+  child?: boolean; lead?: ReactNode; hover?: ReactNode; labelId?: string
+}) {
   return (
-    <div className={['set-row', className].filter(Boolean).join(' ')}>
+    <div className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
+      {child && <span className="set-guide" aria-hidden="true" />}
+      {lead && <span className="set-lead">{lead}</span>}
       <div className="set-text">
-        <span className="set-label">{label}</span>
+        <span className="set-label" id={labelId}>{label}</span>
         {source && <span className="set-desc">{source}</span>}
         {desc && <span className="set-desc">{desc}</span>}
       </div>
+      {hover && <span className="set-acts">{hover}</span>}
       {onReset && <Button variant="ghost" className="set-reset" aria-label={`Reset ${typeof label === 'string' ? label : 'setting'}`} onClick={onReset}>Reset</Button>}
       {children}
       {full && <div className="set-full">{full}</div>}
     </div>
   )
+}
+
+/** A status at the top of a page or section: an icon, what is true now, a line under it and one action (Hooks, a room's push access). */
+export function StatusLine({ icon, title, sub, action, tone }: { icon: IconName; title: ReactNode; sub?: ReactNode; action?: ReactNode; tone?: 'ok' | 'warn' }) {
+  return (
+    <div className="set-status" role="status" data-tone={tone}>
+      <Icon name={icon} size={16} />
+      <span className="set-status-text"><span className="set-label">{title}</span>{sub && <span className="set-desc">{sub}</span>}</span>
+      {action}
+    </div>
+  )
+}
+
+export interface TableRow { key: string; cells: ReactNode[]; actions?: ReactNode }
+
+/**
+ * A list with a header row of column names (variables, run scripts, preview URLs). `grid` is the CSS columns, without the actions column
+ * that is added at the end. A row's `actions` show while the pointer or focus is on it. `empty` shows when there are no rows.
+ */
+export function DataTable({ label, columns, grid, rows, empty }: { label: string; columns: string[]; grid: string; rows: TableRow[]; empty?: ReactNode }) {
+  const template = `${grid} auto`
+  return (
+    <div className="set-card set-table" role="table" aria-label={label}>
+      <div className="set-table-head" role="row" style={{ gridTemplateColumns: template }}>
+        {columns.map((c) => <span key={c} role="columnheader">{c}</span>)}
+        <span role="columnheader" aria-label="Actions" />
+      </div>
+      {rows.map((r) => (
+        <div key={r.key} className="set-table-row" role="row" style={{ gridTemplateColumns: template }}>
+          {r.cells.map((c, i) => <span key={i} role="cell" className="set-cell">{c}</span>)}
+          <span role="cell" className="set-acts">{r.actions}</span>
+        </div>
+      ))}
+      {!rows.length && empty && <div className="set-table-empty">{empty}</div>}
+    </div>
+  )
+}
+
+/**
+ * A list of short values as tags, with × to remove one and an Add button that opens a field in place (Always ask before, Protected
+ * branches, Files to copy). A `locked` value is built in: it shows a lock and can't be removed. Enter adds, Escape cancels.
+ */
+export function TagList({ label, value, onChange, locked = [], addLabel = 'Add', placeholder, mono = true, disabled }: {
+  label: string; value: string[]; onChange: (next: string[]) => void; locked?: string[]; addLabel?: string; placeholder?: string; mono?: boolean; disabled?: boolean
+}) {
+  const [adding, setAdding] = useState(false)
+  const [text, setText] = useState('')
+  const addRef = useRef<HTMLButtonElement>(null)
+  const commit = (keepOpen: boolean) => {
+    const next = text.split(/[\n,]/).map((t) => t.trim()).filter((t) => t && !value.includes(t) && !locked.includes(t))
+    if (next.length) onChange([...value, ...next])
+    setText('')
+    if (!keepOpen) { setAdding(false); addRef.current?.focus() }
+  }
+  return (
+    <div className="set-tags" role="list" aria-label={label}>
+      {locked.map((t) => <span key={`l-${t}`} role="listitem" className="set-tag" data-locked=""><Icon name="lock" size={12} /><span className={mono ? 'mono' : undefined}>{t}</span></span>)}
+      {value.filter((t) => !locked.includes(t)).map((t) => (
+        <span key={t} role="listitem" className="set-tag">
+          <span className={mono ? 'mono' : undefined}>{t}</span>
+          <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="x" size={12} /></button>
+        </span>
+      ))}
+      {adding
+        ? <input
+            autoFocus className={['set-tag-input', mono && 'mono'].filter(Boolean).join(' ')} aria-label={`${addLabel} to ${label}`} placeholder={placeholder} spellCheck={false} value={text}
+            onChange={(e) => setText(e.target.value)} onBlur={() => commit(false)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(true) } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setText(''); setAdding(false); addRef.current?.focus() } }}
+          />
+        : <button ref={addRef} type="button" className="set-tag-add" disabled={disabled} aria-label={`${addLabel} to ${label}`} onClick={() => setAdding(true)}><Icon name="plus" size={12} />{addLabel}</button>}
+    </div>
+  )
+}
+
+/** Where a Settings link goes: an app page, or a room's page with its section. */
+export type SettingsTarget = { page: SettingsPage; roomId?: string; section?: RoomSettingsSection; agentId?: string }
+
+/** "Settings, Models and effort" you can click: a cross-reference to another Settings page (KERNEL-680). */
+export function SettingsLink({ to, children }: { to: SettingsTarget; children: ReactNode }) {
+  return <button type="button" className="set-link" onClick={() => go({ name: 'settings', ...to })}>{children}</button>
 }
 
 export function Keys({ keys }: { keys: string[] }) {
@@ -94,7 +212,11 @@ export function TextField({ label, value, onSave, placeholder }: { label: string
 
 /** A page for a repo's settings when there is no repo to read them from yet. */
 export function NoRoom() {
-  return <Page title="No room yet" intro="These settings belong to a repo. Add a room first and they show up here.">{null}</Page>
+  return (
+    <Page title="No room yet">
+      <EmptyState icon="rooms" title="These settings belong to a repo" action={<Button variant="primary" icon="plus" onClick={() => openNewRoom()}>New room</Button>}>Add a room and its settings show up here.</EmptyState>
+    </Page>
+  )
 }
 
 /** Where a room's value came from, for the line under its label. The app default says nothing. A personal value only the room sees says nothing either. */
@@ -147,7 +269,11 @@ function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings 
   )
 }
 
-/** A room page: the title, what it is, the settings files button, and the sections. `shared` is a page the team shares, so its file button opens settings.toml first. */
-export function RoomPage({ room, rs, title, intro, shared, children }: { room: Room; rs: RoomSettings | null; title: string; intro: string; shared?: boolean; children: ReactNode }) {
-  return <Page title={title} intro={intro} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page>
+/**
+ * A room page: the room and the page's name as a breadcrumb, the settings files button, and the sections. The room's name goes back to
+ * its General page. `shared` is a page the team shares, so its file button opens settings.toml first.
+ */
+export function RoomPage({ room, rs, title, shared, children }: { room: Room; rs: RoomSettings | null; title: string; shared?: boolean; children: ReactNode }) {
+  const crumb = <button type="button" className="set-crumb" aria-label={`${room.name} settings`} onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>{room.name}</button>
+  return <Page title={title} crumb={crumb} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page>
 }
