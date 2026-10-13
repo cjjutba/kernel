@@ -2,7 +2,7 @@ import { useId, useRef } from 'react'
 import type { Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon, Meter, Popover, useBusy } from '../../ui'
+import { Button, Icon, Meter, Popover, ProviderMark, useBusy } from '../../ui'
 import { useFreshUsage } from '../../accountRows'
 import { planSections, type PlanSection } from './planModel'
 
@@ -64,7 +64,7 @@ function PlanProvider({ s, busy, onSwitch, onSignIn }: { s: PlanSection; busy: B
   const { account } = s
   return (
     <section className="plan-sec" aria-labelledby={title}>
-      <h3 id={title} className="plan-prov">{s.name}</h3>
+      <h3 id={title} className="plan-prov prov-title"><ProviderMark provider={s.provider} size={12} />{s.name}</h3>
       {!account && (
         <div className="plan-out">
           <span className="grow">{s.name} isn’t signed in</span>

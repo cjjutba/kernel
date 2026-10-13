@@ -231,5 +231,5 @@
 .ctx-foot .btn { flex-shrink: 0; }
 
 /* KERNEL-406: the picker's provider headings */
-.pick-group { margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
+.pick-group { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
 .pick-list > div:first-child .pick-group { padding-top: 4px; }
