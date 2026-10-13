@@ -74,7 +74,7 @@ Kernel hands creating, fixing and resolving PRs to the agent with instruction fi
 
 ## Storage
 
-`kernel.db` in the app data folder: `~/Library/Application Support/Kernel` for the installed app, and `Kernel Dev` next to it for `pnpm dev`, which moves the data over on its first launch (KERNEL-408). The two can run at the same time (KERNEL-675). Logs go to `~/Library/Logs/Kernel` and `~/Library/Logs/Kernel Dev`. Plain SQL with JSON columns for now (see DECISIONS.md). App settings in `settings.json`; per-repo settings in `.kernel/settings.toml` and `.kernel/settings.local.toml`.
+`kernel.db` in the app data folder: `~/Library/Application Support/Kernel` for the installed app, and `Kernel Dev` next to it for `pnpm dev`, which moves the data over on its first launch (KERNEL-408). The two can run at the same time (KERNEL-675). Logs go to `~/Library/Logs/Kernel` and `~/Library/Logs/Kernel Dev`. A `pnpm dev` started inside a Kernel workspace is a third copy, with its data in `Kernel Dev Runs/<workspace id>` and its logs in `~/Library/Logs/Kernel Dev Runs` (KERNEL-679). Plain SQL with JSON columns for now (see DECISIONS.md). App settings in `settings.json`; per-repo settings in `.kernel/settings.toml` and `.kernel/settings.local.toml`.
 
 ## Testing
 

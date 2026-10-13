@@ -555,6 +555,8 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'files' } }
   })),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
+  // KERNEL-679: a dev run started inside a workspace says hooks are off in place of Install, with no snippet. No PNG.
+  SettingsHooksWorkspaceRun: settingsPage('hooks', { hooks: { port: 4669, listening: true, installed: false, build: 'run', problem: { kind: 'workspace-run' }, events: hookEvents.map((e) => ({ ...e, installed: false, lastSeen: undefined })) } }),
   // KERNEL-493: Agents working at once is 4, so the Open workspaces row's first option reads "Same as agents working at once (4)".
   SettingsTeam: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // An empty room with another room that has agents: Add the team, Copy from another room and New agent. No PNG, built from the Settings kit.

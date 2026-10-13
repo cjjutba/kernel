@@ -6,6 +6,7 @@ import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import { Kernel } from '../src/main/kernel'
 import { hooksPolicy, hooksPolicyOf, type HooksPolicy } from '../src/main/services/claudeSettings'
 import { hasKernelHooks, HooksFileError, installedEvents, installHooks, KERNEL_HOOK_EVENTS, mountPoint, refreshHooks, turnHooksOn, uninstallHooks, withCurrentKernelHooks, withKernelHooks, withoutKernelHooks } from '../src/main/services/hooksInstaller'
+import { DEFAULT_SETTINGS, runHookPort } from '../src/main/services/settings'
 import { hookCommand } from '@shared/hookEntry'
 import { run } from '../src/main/services/exec'
 
@@ -348,5 +349,70 @@ describe('the installed app and Kernel Dev side by side (KERNEL-675)', () => {
     expect((await k.handlers()['hooks.status']()).installed).toBe(false)
     const none = await startDev({ theme: 'dark' }, true)
     expect(JSON.parse(await readFile(none.file, 'utf8'))).toEqual({ theme: 'dark' })
+  })
+})
+
+describe('a dev run started inside a workspace (KERNEL-679)', () => {
+  const devToken = 'cd'.repeat(32)
+  const OFF = /Hooks are off for a workspace run/
+
+  /** A workspace run on a settings file with both builds' entries, Kernel Dev's out of date, and hooks turned off by the user. */
+  async function startRun() {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const port = 18000 + Math.floor(Math.random() * 800)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
+    const { file } = await temp({ disableAllHooks: true, ...withKernelHooks(withKernelHooks({}, 7420, 300, token), 7431, 120, devToken, 'dev') })
+    const before = await readFile(file)
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile: file, build: 'run', hooksWereShared: true })
+    k.hooks.readPolicy = async () => ({ managedHooks: {}, userOff: { path: file } })
+    await k.start()
+    onTestFinished(() => k.stop())
+    const same = async () => {
+      expect((await readFile(file)).equals(before)).toBe(true)
+      expect((await readdir(dirname(file))).sort()).toEqual([basename(file)])
+    }
+    return { k, h: k.handlers(), file, port, same }
+  }
+
+  it('leaves the settings file byte for byte the same, at start and whatever Settings, Hooks asks for', async () => {
+    const { k, h, port, same } = await startRun()
+    await same()
+    await expect(h['hooks.install']({ port })).rejects.toThrow(OFF)
+    await expect(k.hooks.writeHooks(port)).rejects.toThrow(OFF)
+    await expect(h['hooks.uninstall']()).rejects.toThrow(OFF)
+    await expect(h['hooks.turnOn']()).rejects.toThrow(OFF)
+    // A new approval timeout rewrites the other builds' entries, and a workspace run has none.
+    await h['settings.set']({ patch: { permissions: { approvalTimeoutSec: 600 } } })
+    const next = port + 1
+    await h['hooks.restart']({ port: next })
+    await same()
+    const status = await h['hooks.status']()
+    expect(status).toMatchObject({ installed: false, listening: true, port: next, build: 'run', needsInstall: false })
+    expect(status.problem).toEqual({ kind: 'workspace-run' })
+    expect(status.events.every((e) => !e.installed)).toBe(true)
+    expect(await k.hooks.present()).toBe(false)
+  })
+
+  it('counts no entry as its own, and the installer writes nothing for it', async () => {
+    const { file } = await temp(withKernelHooks(withKernelHooks({}, 7420, 300, token), 7430, 300, devToken, 'dev'))
+    const before = await readFile(file)
+    const s = JSON.parse(before.toString())
+    expect(hasKernelHooks(s, 'run')).toBe(false)
+    expect(installedEvents(s, devToken, 'run')).toEqual([])
+    expect(withoutKernelHooks(s, 'run')).toEqual(s)
+    expect(await refreshHooks(file, 4669, 300, devToken, 'run')).toBe(false)
+    await expect(installHooks(file, 4669, 300, devToken, 'run')).rejects.toThrow(OFF)
+    await expect(uninstallHooks(file, 'run')).rejects.toThrow(OFF)
+    expect((await readFile(file)).equals(before)).toBe(true)
+  })
+
+  it('listens on the last port of its workspace\'s block', () => {
+    expect(runHookPort({ KERNEL_PORT: '4660' })).toBe(4669)
+    expect(runHookPort({ KERNEL_PORT: '4300' })).toBe(4309)
+    for (const bad of [undefined, '', 'web', '0', '-5', '65530']) expect(runHookPort({ KERNEL_PORT: bad })).toBe(7440)
+    const was = process.env.KERNEL_PORT
+    process.env.KERNEL_PORT = '4310'
+    onTestFinished(() => { if (was === undefined) delete process.env.KERNEL_PORT; else process.env.KERNEL_PORT = was })
+    expect(DEFAULT_SETTINGS('/home/cj', 'run').hookPort).toBe(4319)
   })
 })

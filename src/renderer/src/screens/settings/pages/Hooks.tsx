@@ -41,6 +41,8 @@ export function Hooks({ s }: { s: AppSettings }) {
     } catch (e) { actions.ui.toast({ title: 'Hooks did not change', sub: cleanError(e) }) }
   })
   const installed = !!status?.installed
+  // A workspace run never writes Claude's settings, so it says so in place of Install and has no snippet to paste (KERNEL-679).
+  const workspaceRun = status?.problem?.kind === 'workspace-run'
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
   // Copy says "Copied" for 1.5s, like a code block's. Only a failure toasts.
   const [copied, setCopied] = useState(false)
@@ -66,12 +68,12 @@ export function Hooks({ s }: { s: AppSettings }) {
         </Row>
       </Section>
       <Section title="Maintenance">
-        <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites Kernel's entries in ~/.claude/settings.json">
+        {workspaceRun ? <Row label="Hooks are off in a workspace run" desc="This copy of Kernel never changes ~/.claude/settings.json, so it doesn't see Claude sessions started outside it." /> : <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites Kernel's entries in ~/.claude/settings.json">
           <span className="set-actions">
             {status && installed && <Button busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
             <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
           </span>
-        </Row>
+        </Row>}
         <Row label="Settings file"><Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open settings.json</Button></Row>
       </Section>
       {status && (
@@ -90,11 +92,11 @@ export function Hooks({ s }: { s: AppSettings }) {
               </span>
             </Row>
           </Section>
-          <Section title="Snippet">
+          {!workspaceRun && <Section title="Snippet">
             <Row label="settings.json" desc="What Kernel adds, if you would rather paste it yourself" full={<pre className="set-snippet" tabIndex={0} aria-label="Hooks snippet">{hooksSnippet(status, timeout)}</pre>}>
               <Button onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</Button>
             </Row>
-          </Section>
+          </Section>}
         </>
       )}
     </Page>

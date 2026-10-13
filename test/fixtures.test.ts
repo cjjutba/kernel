@@ -11,6 +11,7 @@ const noCanvas = [
   'FooterHelpMenu', // the Help menu open upward from the footer's bottom right: What's new, Keyboard shortcuts, Report a problem
   'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
   'SettingsTeamOwnAgents', // a repo's own agents in Settings, Agents: a warning on a row, Add a starter agent and New agent, and Retired with Restore (KERNEL-642)
+  'SettingsHooksWorkspaceRun', // Settings, Hooks in a dev run started inside a workspace: hooks are off, no Install and no snippet (KERNEL-679)
   'SettingsAgents', // Settings, Agents with no room open: a personal agent and two plugin agents (KERNEL-641)
   'SettingsAgentEdit', // a personal agent's editor inside Settings, with Back to Agents (KERNEL-641)
   'SettingsAgentPlugin', // a plugin agent read only, with no Save changes or Retire (KERNEL-641)

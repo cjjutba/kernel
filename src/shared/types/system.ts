@@ -34,9 +34,10 @@ export interface HookStatus {
 
 /**
  * The installed app or Kernel Dev (`pnpm dev`). Each keeps its own token, port and hook entries, so both can run at once
- * (KERNEL-675).
+ * (KERNEL-675). `run` is a dev run started inside a Kernel workspace, by its run script or a terminal: a copy of its own
+ * with no entries in Claude's settings (KERNEL-679).
  */
-export type HookBuild = 'app' | 'dev'
+export type HookBuild = 'app' | 'dev' | 'run'
 
 /**
  * Why Kernel's hooks aren't installed or can't run, and the one step that fixes it (CheckHooksNotWritable.png and the four
@@ -56,6 +57,8 @@ export type HookProblem =
   | { kind: 'managed'; setting: 'allowManagedHooksOnly' | 'disableAllHooks'; source?: string; block?: string }
   /** The user's own `file` sets disableAllHooks. */
   | { kind: 'off'; file: string }
+  /** This is a dev run started inside a Kernel workspace, which never writes Claude's settings, so it has no hooks to fix (KERNEL-679). */
+  | { kind: 'workspace-run' }
 
 /**
  * Kernel's PR reads from GitHub (WorkspaceGitHubPaused.png, KERNEL-401). `pausedUntil` is set while a GitHub rate limit holds

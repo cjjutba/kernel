@@ -148,6 +148,8 @@ export function plainLine(line: string): string {
 type Kind = 'setup' | 'run' | 'archive'
 /** Every script still running, by workspace, kind and run script name. Setup and archive have no name. */
 const running = new Map<string, { workspaceId: string; kind: Kind; name?: string; proc: pty.IPty }>()
+/** Run scripts a restart stopped to start the same script again. Their log goes on as the new run's, so they get no closing line (KERNEL-679). */
+const restarted = new WeakSet<pty.IPty>()
 /** The size each script's view last asked for, by `key`, so a script run again starts at it (KERNEL-655). */
 const sizes = new Map<string, { cols: number; rows: number }>()
 const key = (workspaceId: string, kind: Kind, name?: string) => JSON.stringify([workspaceId, kind, name ?? null])
@@ -207,11 +209,13 @@ const flushScript = (k: string) => { data.flush(k); output.flush(k) }
 
 /**
  * A line of Kernel's own in a script's log, like "Setup failed with exit code 1": a plain line in `script.output` and a
- * line in its terminal output, after whatever the script printed (KERNEL-655).
+ * line in its terminal output, after whatever the script printed (KERNEL-655). `name` is the run script's, for a line in
+ * a run script's log (KERNEL-679).
  */
-export function scriptNote(workspaceId: string, kind: 'setup' | 'archive', line: string, stream: 'stdout' | 'stderr' = 'stderr') {
-  flushScript(key(workspaceId, kind))
-  const tag = { workspaceId, kind }
+export function scriptNote(workspaceId: string, kind: Kind, line: string, stream: 'stdout' | 'stderr' = 'stderr', name?: string) {
+  const named = nameOf(kind, name)
+  flushScript(key(workspaceId, kind, named))
+  const tag = { workspaceId, kind, ...(named ? { name: named } : {}) }
   bus.push({ type: 'script.data', ...tag, data: `${line}\r\n` })
   bus.push({ type: 'script.output', ...tag, lines: [{ line, stream }] })
 }
@@ -234,6 +238,8 @@ export type ScriptEnd = number | null | 'timeout'
 export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; env: Record<string, string>; timeoutMs?: number }): Promise<ScriptEnd> {
   const name = nameOf(o.kind, o.name)
   const k = key(o.workspaceId, o.kind, name)
+  const before = running.get(k)?.proc
+  if (before) restarted.add(before)
   stopScript(o.workspaceId, o.kind, name)
   const tag = { workspaceId: o.workspaceId, kind: o.kind, ...(name ? { name } : {}) }
   // Settings read from a repo are checked as text before they get here; anything else never reaches the shell (KERNEL-209).
@@ -284,7 +290,15 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       flushScript(k)
       // A restart already holds the slot with the new process, and its URL.
       const replaced = running.has(k) && !current()
+      // Stop took the script out of `running` before it signalled it. One still there ended by itself.
+      const stopped = !current()
       if (current()) running.delete(k)
+      // A run script says how it ended, so a server that quit doesn't look like a button that did nothing (KERNEL-679).
+      if (name && !restarted.has(proc)) {
+        if (stopped || signal) scriptNote(o.workspaceId, 'run', 'Run script was stopped', 'stdout', name)
+        else if (exitCode === 0) scriptNote(o.workspaceId, 'run', 'Run script ended', 'stdout', name)
+        else scriptNote(o.workspaceId, 'run', `Run script exited with code ${exitCode}`, 'stderr', name)
+      }
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
       // A shell a signal ended has no exit code, as a stopped script had none before.
       const code = signal ? null : exitCode

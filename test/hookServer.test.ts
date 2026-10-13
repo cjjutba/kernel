@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import { request, type Server } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
@@ -217,6 +217,28 @@ describe('a session the other build started (KERNEL-675)', () => {
     bus.off('activity', onActivity)
     bus.off('push', onPush)
     expect(seen.map((e) => e.kind)).toEqual(['session.start', 'turn.done'])
+  })
+
+  it('ignores a session a workspace run started, and a workspace run ignores every other build\'s (KERNEL-679)', async () => {
+    const seen: any[] = []
+    const onActivity = (e: any) => seen.push(e)
+    bus.on('activity', onActivity)
+    onTestFinished(() => { bus.off('activity', onActivity) })
+    const listen = async (build: 'dev' | 'run') => {
+      const p = await closedPort()
+      const s = await startHookServer({ port: p, token, approvals, approvalTimeoutMs: 400, isManaged: () => false, build, resolve: () => ({ roomId: 'room-a' }) })
+      onTestFinished(() => { s.close() })
+      return (from: string, id: string) => fetch(`http://127.0.0.1:${p}/hooks/${build}`, { method: 'POST', body: JSON.stringify({ ...base, session_id: id, hook_event_name: 'Stop' }), headers: { 'content-type': 'application/json', 'x-kernel-token': token, 'x-kernel-build': from } }).then((r) => r.json())
+    }
+    const dev = await listen('dev')
+    expect(await dev('run', 'run-agent')).toEqual({})
+    expect(seen).toEqual([])
+    const run = await listen('run')
+    expect(await run('dev', 'dev-agent')).toEqual({})
+    expect(await run('app', 'app-agent')).toEqual({})
+    expect(seen).toEqual([])
+    await run('run', 'own-terminal')
+    expect(seen.map((e) => e.sessionId)).toEqual(['own-terminal', 'own-terminal'])
   })
 
   it('sends the build from the environment the session runs in, and no build outside every Kernel', async () => {
