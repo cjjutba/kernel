@@ -103,7 +103,7 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
         {a.status === 'expired' && <PlanExpired a={a} />}
       </div>
-      {answer && <AnswerBubble text={answer} />}
+      {answer && <AnswerBubble text={answer} images={a.images} />}
     </>
   )
 }
