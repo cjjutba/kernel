@@ -17,7 +17,7 @@ export function Hero({ version }: { version: string }) {
       <div className="relative px-6">
         <Link
           href="/changelog"
-          className="inline-flex h-8 items-center gap-2 rounded-pill border border-line-strong bg-surface-2/85 pr-3 pl-1 text-small text-ink-2 hover:border-edge-hover hover:text-white"
+          className="shimmer-pill inline-flex h-8 items-center gap-2 rounded-pill border border-line-strong bg-surface-2/85 pr-3 pl-1 text-small text-ink-2 hover:border-edge-hover hover:text-white"
         >
           <span className="inline-flex h-6 items-center rounded-pill bg-ink px-2 text-tag font-semibold text-canvas">New</span>
           Kernel {version} is here
