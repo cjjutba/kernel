@@ -45,13 +45,15 @@ export class Inbox extends Feature {
     const a = this.approvals.waitingPlan(id)!
     const chat = a.chatId ? this.store.chat(a.chatId) : undefined
     if (!chat || chat.closed) throw new Error('This request already timed out or was answered.')
-    if (decision.behavior === 'allow') await this.sessions.planApproved(chat.id, { queue: true, restarted: true })
+    // Kernel's message names the approval, so the chat shows the user's answer in its place.
+    const typed = decision.behavior === 'deny' ? decision.message ?? '' : undefined
+    if (decision.behavior === 'allow') await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id })
     else {
       decision = await this.withAttachments(id, decision)
       const notes = (decision.behavior === 'deny' ? decision.message : decision.behavior === 'answer' ? decision.text : undefined)?.trim() || 'no details'
-      await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel' })
+      await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel', approvalId: id })
     }
-    return this.approvals.settle(id, decision)!
+    return this.approvals.settle(id, decision, typed)!
   }
 
   handlers() {
@@ -61,7 +63,8 @@ export class Inbox extends Feature {
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => {
         if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)
-        const a = this.approvals.decide(id, await this.withAttachments(id, decision))
+        // Request changes keeps what the user typed, without the lines Kernel adds for the images.
+        const a = this.approvals.decide(id, await this.withAttachments(id, decision), decision.behavior === 'deny' ? decision.message ?? '' : undefined)
         if (!a) throw new Error('This request already timed out or was answered.')
         return a
       },

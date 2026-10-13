@@ -123,8 +123,11 @@ export interface NoteRef { text: string; workspaceId: string }
 
 /** One rendered row in a chat transcript. Mirrors the kinds drawn on the canvas. */
 export type ChatItem =
-  /** `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111). */
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate }
+  /**
+   * `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111).
+   * `approvalId` is the plan approval a Kernel message answers, so the chat can show the user's answer instead of Kernel's text.
+   */
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */
@@ -195,6 +198,8 @@ export interface QueuedMessage {
   /** Carried to the chat item, so a held brief stays the Lead's and a resent update stays Kernel's. */
   from?: MessageFrom
   update?: TeamUpdate
+  /** Carried to the chat item: the plan approval a Kernel message answers. */
+  approvalId?: string
 }
 
 /**

@@ -223,9 +223,10 @@ export class Chats extends Feature {
     const ws = this.mustWs(chat.workspaceId)
     const last = chat.kind !== 'terminal' && !chat.closed && !this.chatTabs(ws.id).some((c) => c.id !== chat.id && c.kind !== 'terminal')
     if (last && isLeadChatWorkspace(ws) && ws.status !== 'archived') return this.k.lead.archiveLeadChat(ws.threadId!)
+    // Before `stop`, which would end a plan card without a reason. A card a restart left up has no session for `stop` to end
+    // with at all (plan-cards-survive-restart).
+    this.approvals.expireIds(this.approvals.waitingPlans(chatId, ws.roomId).map((a) => a.id), 'closed')
     this.sessions.stop(chatId)
-    // A plan card a restart left up has no session for `stop` to end with (plan-cards-survive-restart).
-    this.approvals.expireIds(this.approvals.waitingPlans(chatId, ws.roomId).map((a) => a.id))
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return

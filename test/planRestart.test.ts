@@ -119,7 +119,7 @@ describe('plan cards outlive a restart', () => {
     const note = planApproval({ lead: false, planFile: card.planFile, restarted: true }).text
     expect(note).toBe('Plan approved. Build it from `.kernel/plans/invoice-table.md`.\n\nKernel restarted while the plan waited, so check git status before you start.')
     expect(users(k2, kai).at(-1)).toBe(note)
-    expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel' })
+    expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
     // One turn, in the same conversation, out of plan mode. The note is the message itself, so no other note is added.
     expect(k2.sessions.isRunning(kai.id)).toBe(true)
     expect(callIn(ws.path, before)?.options).toMatchObject({ resume: 'kai-session', permissionMode: expect.not.stringMatching(/^plan$/) })
@@ -164,6 +164,9 @@ describe('plan cards outlive a restart', () => {
     const sent = users(k2, kai).at(-1)!
     expect(sent.startsWith(planChanges('Split the API work out', card.planFile))).toBe(true)
     expect(sent).toMatch(/\.kernel\/attachments\/mock\.png/)
+    // The card keeps what the user typed, without the image lines, and Kernel's message names it.
+    expect(decided.answer).toBe('Split the API work out')
+    expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
     // The agent writes the revision, which goes to the same file.
     const call = callIn(ws.path, before)!
     void (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: `${PLAN}\n3. API in its own task` }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] } as never)
@@ -184,7 +187,7 @@ describe('plan cards outlive a restart', () => {
     const call = callIn(ws.path, before)!
     void (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: `${PLAN}\n3. Refunds` }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] } as never)
     await until(() => plans(k2, kai).length === 2 && plans(k2, kai).every((a) => a.planFile))
-    expect(k2.store.approval(card.id)?.status).toBe('expired')
+    expect(k2.store.approval(card.id)).toMatchObject({ status: 'expired', expiredBy: 'replaced' })
     expect(plans(k2, kai).filter((a) => a.status === 'pending')).toHaveLength(1)
   }, 30000)
 
@@ -193,14 +196,25 @@ describe('plan cards outlive a restart', () => {
     await a.k.stop()
     const { k: k2 } = await relaunch(a.where)
     await k2.archiveWorkspace(a.ws.id, false)
-    expect(k2.store.approval(a.card.id)?.status).toBe('expired')
+    expect(k2.store.approval(a.card.id)).toMatchObject({ status: 'expired', expiredBy: 'archived' })
 
     const b = await planning()
     await b.k.stop()
     const { k: k3 } = await relaunch(b.where)
     await k3.handlers()['chats.close']({ chatId: b.kai.id })
-    expect(k3.store.approval(b.card.id)?.status).toBe('expired')
+    expect(k3.store.approval(b.card.id)).toMatchObject({ status: 'expired', expiredBy: 'closed' })
   }, 60000)
+
+  it('says the chat closed or the workspace was archived when the launch ends a card for that', async () => {
+    const { k, where, ws, kai, card } = await planning()
+    await k.stop()
+    const store = new Store(join(where.dataDir, 'kernel.db'))
+    store.saveChat({ ...store.chat(kai.id)!, closed: true })
+    store.db.close()
+    const { k: k2 } = await relaunch(where)
+    expect(k2.store.approval(card.id)).toMatchObject({ status: 'expired', expiredBy: 'closed' })
+    expect(k2.store.workspace(ws.id)?.status).not.toBe('archived')
+  }, 30000)
 
   it('queues the note in a paused room and sends it when the room resumes', async () => {
     const { k, where, room, kai, card } = await planning()
@@ -234,7 +248,11 @@ describe('plan cards outlive a restart', () => {
     k2.sessions.pause(room.id)
     expect(await k2.handlers()['approvals.decide']({ id: 'codex-plan', decision: { behavior: 'allow' } })).toMatchObject({ status: 'allowed' })
     expect(k2.store.chat(codex.id)?.plan).toBe(false)
-    expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
+    expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', approvalId: 'codex-plan', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
+    // The queued message keeps the approval when it goes out.
+    k2.sessions.resume(room.id)
+    await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user'))
+    expect(k2.store.items(codex.id).find((i) => i.kind === 'user')).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })
   }, 30000)
 
   it("has the Lead hand off once after a restart, with the hand-off reminder armed", async () => {
@@ -263,4 +281,38 @@ describe('plan cards outlive a restart', () => {
     expect(k2.sessions.handoffs.due(lead.id)).toBe(true)
     expect(k2.store.chat(lead.id)?.plan).toBe(false)
   }, 30000)
+})
+
+describe('plan answers while the agent waits', () => {
+  it('approving adds no note to the chat, and the agent reads the same approval', async () => {
+    const { k, kai, card, answer } = await planning()
+    await k.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+    expect(notes(k, kai)).toEqual([])
+    expect(k.store.chat(kai.id)?.plan).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  }, 30000)
+
+  it('Request changes keeps what the user typed on the card, without the image lines', async () => {
+    const { k, card, answer } = await planning()
+    const decided = await k.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'deny', message: ' Split the API work out ', images: [{ name: 'mock.png', dataUrl: PNG }] } })
+    expect(decided).toMatchObject({ status: 'denied', answer: 'Split the API work out' })
+    expect(await answer).toMatchObject({ behavior: 'deny', message: expect.stringMatching(/\.kernel\/attachments\/mock\.png/) })
+    await k.stop({ budgetMs: 0 })
+  }, 30000)
+
+  it('ends a waiting card as closed with its chat and as archived with its workspace, and a tool card says neither', async () => {
+    const a = await planning()
+    await a.k.handlers()['chats.close']({ chatId: a.kai.id })
+    expect(await a.answer).toMatchObject({ behavior: 'deny' })
+    expect(a.k.store.approval(a.card.id)).toMatchObject({ status: 'expired', expiredBy: 'closed' })
+    await a.k.stop({ budgetMs: 0 })
+
+    const b = await planning()
+    await b.k.archiveWorkspace(b.ws.id, false)
+    expect(b.k.store.approval(b.card.id)).toMatchObject({ status: 'expired', expiredBy: 'archived' })
+    expect(b.k.store.approval(b.tool.id)?.status).toBe('expired')
+    expect(b.k.store.approval(b.tool.id)).not.toHaveProperty('expiredBy')
+    await b.k.stop({ budgetMs: 0 })
+  }, 60000)
 })
