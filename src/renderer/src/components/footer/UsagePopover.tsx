@@ -110,12 +110,26 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
               <span className="plan-switch-title" aria-hidden="true">Switch</span>
               {s.others.map((o) => {
                 const switching = busy === `switch:${s.provider}:${o.id}`
+                const use = compact || !o.windows.length ? o.use : undefined
                 return (
-                  <button key={o.id} type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
-                    <span className="plan-other-name">{o.label}</span>
-                    <span className="plan-other-plan ellipsis">{o.plan}</span>
-                    {switching ? <span className="plan-other-use"><span className="spin" aria-hidden="true" />Switching</span> : o.use && <span className="plan-other-use">{o.use}</span>}
-                  </button>
+                  <div key={o.id} className="plan-other-box">
+                    <button type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
+                      <span className="plan-other-name">{o.label}</span>
+                      <span className="plan-other-plan ellipsis">{o.plan}</span>
+                      {switching ? <span className="plan-other-use"><span className="spin" aria-hidden="true" />Switching</span> : use && <span className="plan-other-use">{use}</span>}
+                    </button>
+                    {!compact && o.windows.length > 0 && (
+                      <div className="plan-other-wins">
+                        {o.windows.map((w) => (
+                          <div key={w.id} className="plan-row">
+                            <span className="plan-title">{windowTitle(w.title)}</span>
+                            <Meter label={`${o.label} ${w.title}`} value={w.value} />
+                            <span className="plan-note">{w.note}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </div>

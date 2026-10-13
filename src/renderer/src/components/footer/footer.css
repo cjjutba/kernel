@@ -1,5 +1,5 @@
 /* Footer, its usage row and the Usage popover (KERNEL-21, KERNEL-588, KERNEL-674). Tokens only. */
-.ft { padding: 0 10px; }
+.ft { padding: 0 10px; container: ft / inline-size; }
 .ft-usage { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
 .ft-chip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
 .ft-chip:hover, .ft-chip[aria-expanded='true'] { background: var(--nav-hover); }
@@ -10,7 +10,11 @@
 .ft-name[data-dim] { color: var(--muted); font-weight: 400; }
 .ft-out { color: var(--muted); }
 .ft-win { display: inline-flex; align-items: center; gap: 5px; }
-.ft-win + .ft-win { margin-left: 8px; }
+.ft-nums { display: inline-flex; align-items: baseline; gap: 5px; }
+.ft-num { display: inline-flex; align-items: baseline; gap: 5px; }
+.ft-sep { color: var(--faint); }
+.ft-num:first-child .ft-sep { display: none; }
+.ft-refresh { margin-left: 4px; flex-shrink: 0; }
 .ft-wl { color: var(--muted); }
 .ft-bar { display: inline-flex; }
 .ft-bar .meter { width: 30px; height: 4px; }
@@ -24,6 +28,10 @@
 .ft-pill:focus-visible { outline-offset: 2px; }
 /* The pill fits the 32px footer. */
 .ft .ft-pill { height: 24px; }
+
+/* A narrow window drops the other accounts' chips first, then the Fable number. Nothing wraps or overlaps. */
+@container ft (max-width: 1040px) { .ft-other { display: none; } }
+@container ft (max-width: 820px) { .ft-num[data-fable] { display: none; } }
 
 /* The popover opens above the row from the footer's bottom left, 360px wide (UsagePopover.png). A row is a button that expands in place; the
    body bleeds in under the provider's name, 24px past the mark. Switch rows bleed 8px past the body's padding and pad themselves back, so their hover
@@ -56,7 +64,7 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .plan-row { display: flex; flex-direction: column; gap: 5px; }
 .plan-title { font-size: 12.5px; color: var(--ink-2); }
 .plan-note { font-size: 11.5px; color: var(--muted); }
-.plan-switch { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
+.plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; }
 .plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
 .menu-item.plan-other:disabled { color: var(--faint); }
@@ -66,3 +74,8 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .plan-other-use { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .btn.plan-signin { height: 24px; padding: 0 10px; font-size: 12px; }
 .plan-foot { padding: 6px; }
+
+/* Under Switch, an account in Detailed lists its windows as the active account's, below its name. */
+.plan-other-box + .plan-other-box { margin-top: 8px; }
+.plan-other-wins { display: flex; flex-direction: column; gap: 10px; padding: 6px 8px 4px; }
+.plan-other-wins .plan-row { gap: 4px; }

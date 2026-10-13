@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useRef } from 'react'
 import { actions, useStore } from '../../store'
-import { Meter, ProviderMark } from '../../ui'
+import { IconButton, Meter, ProviderMark, useBusy } from '../../ui'
+import { call } from '../../api'
 import { chipLabel, footerGroups, tightest, tone, type FooterChip, type FooterGroup } from './usageModel'
 import { UsagePopover } from './UsagePopover'
 import { useUsageActions } from './useUsageActions'
@@ -9,7 +10,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 
 /**
  * Usage for Claude Code and Codex, always in the footer's bottom left (UsageFooter.png, KERNEL-674). Each provider lists its signed-in accounts: the one it runs on first
- * with its mark and windows, the others as a name and one number. The active chip opens the Usage popover. Another chip switches to that account, by the same rules as
+ * with its mark, a 5-hour bar and its numbers inline (5h, wk, and Fable 5.1 when reported), the others as a name and one number. The refresh button follows the row. The active chip opens the Usage popover. Another chip switches to that account, by the same rules as
  * the popover's Switch. Claude Code, a hairline, then Codex. The popover's Detailed and Compact switch picks how much each active chip says.
  */
 export function UsageRow() {
@@ -41,6 +42,7 @@ export function UsageRow() {
             : g.chips.map((c) => <Chip key={c.id} g={g} c={c} compact={compact} open={open} busy={busy} onOpen={toggle} onSwitch={switchTo} />)}
         </Fragment>
       ))}
+      <RefreshButton />
       <UsagePopover open={open} onClose={actions.ui.closeMenu} anchorRef={anchor} busy={busy} onSwitch={switchTo} onSignIn={signIn} />
     </div>
   )
@@ -51,7 +53,7 @@ function Chip({ g, c, compact, open, busy, onOpen, onSwitch }: { g: FooterGroup;
   if (!c.active) {
     const switching = busy === `switch:${g.provider}:${c.id}`
     return (
-      <button type="button" className="ft-chip" aria-label={label} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(g.provider, c.id)}>
+      <button type="button" className="ft-chip ft-other" aria-label={label} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(g.provider, c.id)}>
         <span className="ft-name" data-dim="">{c.name}</span>
         {switching ? <span className="spin" aria-hidden="true" /> : c.five !== undefined && <span className="ft-pc" data-tone={tone(c.five)}>{pct(c.five)}</span>}
       </button>
@@ -64,8 +66,12 @@ function Chip({ g, c, compact, open, busy, onOpen, onSwitch }: { g: FooterGroup;
       {(c.billed || !compact) && <span className="ft-name">{c.name}</span>}
       {!c.billed && !compact && (
         <>
-          <Window short="5h" label={`${g.name} 5-hour`} value={c.five} />
-          <Window short="wk" label={`${g.name} weekly`} value={c.week} />
+          <span aria-hidden="true" className="ft-bar"><Meter label={`${g.name} 5-hour`} value={c.five ?? 0} /></span>
+          <span className="ft-nums">
+            <Num short="5h" value={c.five} />
+            <Num short="wk" value={c.week} />
+            {c.fable !== undefined && <Num short="Fable 5.1" value={c.fable} fable />}
+          </span>
         </>
       )}
       {!c.billed && compact && <Window label={`${g.name} ${top?.title ?? 'usage'}`} value={top?.value} />}
@@ -73,13 +79,32 @@ function Chip({ g, c, compact, open, busy, onOpen, onSwitch }: { g: FooterGroup;
   )
 }
 
-/** A bar and its number. The chip's label already says both, so the bar is hidden from a screen reader. */
-function Window({ short, label, value }: { short?: string; label: string; value: number | undefined }) {
+/** One labelled number, "wk 100%". Fable's drops out first when the window is narrow. */
+function Num({ short, value, fable }: { short: string; value: number | undefined; fable?: boolean }) {
+  return (
+    <span className="ft-num" data-fable={fable || undefined}>
+      <span className="ft-sep" aria-hidden="true">·</span>
+      <span className="ft-wl">{short}</span>
+      {value !== undefined && <span className="ft-pc" data-tone={tone(value)}>{pct(value)}</span>}
+    </span>
+  )
+}
+
+/** A bar and its number, for Compact. The chip's label already says both, so the bar is hidden from a screen reader. */
+function Window({ label, value }: { label: string; value: number | undefined }) {
   return (
     <span className="ft-win">
-      {short && <span className="ft-wl">{short}</span>}
       <span aria-hidden="true" className="ft-bar"><Meter label={label} value={value ?? 0} /></span>
       {value !== undefined && <span className="ft-pc" data-tone={tone(value)}>{pct(value)}</span>}
     </span>
   )
+}
+
+/** Reads every signed-in account again, whatever it read in the last minute. Their numbers arrive as `usage` pushes, and a failed read leaves the last ones. */
+function RefreshButton() {
+  const [busy, run] = useBusy<'refresh'>()
+  const refresh = () => run('refresh', async () => {
+    try { actions.usage.set(await call('usage.get', { force: true })) } catch { /* a failed read keeps the last numbers */ }
+  })
+  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyLabel="Refreshing usage" onClick={refresh} />
 }

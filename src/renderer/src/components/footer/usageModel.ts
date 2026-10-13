@@ -1,11 +1,11 @@
 import { PROVIDERS, type AccountProfile, type Provider, type RateLimit } from '@shared/types'
 import { switchChoices } from '@shared/usage'
-import { live, windowsOf, type PlanWindow } from './planModel'
+import { isFable, live, windowsOf, type PlanWindow } from './planModel'
 
 // What the footer's usage row draws (UsageFooter.png, KERNEL-674): every signed-in account of each provider, the one the provider runs on first.
 // Every input is what main pushed, so the row follows `usage` and `accounts` pushes, with no timer.
 
-/** One account's chip. `five` and `week` are 0 to 1, and undefined while Kernel has no number for the window or it has reset since. */
+/** One account's chip. `five`, `week` and `fable` are 0 to 1, and undefined while Kernel has no number for the window or it has reset since. */
 export interface FooterChip {
   id: string
   name: string
@@ -14,6 +14,8 @@ export interface FooterChip {
   billed: boolean
   five?: number
   week?: number
+  /** Fable 5.1's weekly window, only for an account that reports one. */
+  fable?: number
 }
 
 export interface FooterGroup {
@@ -29,6 +31,9 @@ const pct = (v: number) => `${Math.round(v * 100)}%`
 const windowOf = (usage: RateLimit[], a: AccountProfile, type: 'five_hour' | 'seven_day', now: number): number | undefined =>
   live(windowsOf(usage, a).find((l) => l.type === type && !l.model), now)?.utilization
 
+const fableOf = (usage: RateLimit[], a: AccountProfile, now: number): number | undefined =>
+  live(windowsOf(usage, a).find(isFable), now)?.utilization
+
 /**
  * Claude Code, then Codex. A provider whose accounts haven't loaded is left out. The active account comes first, then the other signed-in
  * subscriptions in the order Kernel's own switch would pick them (`switchChoices`, most 5-hour room first), with any it wouldn't pick after them.
@@ -43,7 +48,8 @@ export function footerGroups(accounts: AccountProfile[], usage: RateLimit[], now
       const billed = a.auth === 'apiKey'
       const five = billed ? undefined : windowOf(usage, a, 'five_hour', now)
       const week = billed ? undefined : windowOf(usage, a, 'seven_day', now)
-      return { id: a.id, name: a.label, active: a.active, billed, ...(five === undefined ? {} : { five }), ...(week === undefined ? {} : { week }) }
+      const fable = billed || p.id !== 'claude' ? undefined : fableOf(usage, a, now)
+      return { id: a.id, name: a.label, active: a.active, billed, ...(five === undefined ? {} : { five }), ...(week === undefined ? {} : { week }), ...(fable === undefined ? {} : { fable }) }
     }
     const order = switchChoices(p.id, mine, usage, now).room.map((a) => a.id)
     const rank = (a: AccountProfile) => { const i = order.indexOf(a.id); return i < 0 ? order.length : i }
@@ -72,6 +78,6 @@ export const tone = (v: number | undefined): 'near' | 'full' | undefined => (v =
 export function chipLabel(g: FooterGroup, c: FooterChip, compact: boolean): string {
   const say = (title: string, v: number | undefined) => (v === undefined ? `${title} not reported yet` : `${title} ${pct(v)}`)
   if (!c.active) return `${g.name}, ${c.name}: ${say('5-hour', c.five)}. Switch to it`
-  const numbers = c.billed ? 'billed per token' : compact ? (() => { const t = tightest(c); return t ? say(t.title.toLowerCase(), t.value) : 'no usage reported yet' })() : `${say('5-hour', c.five)}, ${say('weekly', c.week)}`
+  const numbers = c.billed ? 'billed per token' : compact ? (() => { const t = tightest(c); return t ? say(t.title.toLowerCase(), t.value) : 'no usage reported yet' })() : [say('5-hour', c.five), say('weekly', c.week), ...(c.fable === undefined ? [] : [say('Fable 5.1 weekly', c.fable)])].join(', ')
   return `${g.name}, ${c.name}, active: ${numbers}. Opens usage`
 }
