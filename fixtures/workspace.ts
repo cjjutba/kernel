@@ -277,7 +277,7 @@ const readImageItems: ChatItem[] = [
   tool('ri-t2', 'Read empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/empty-state.tsx' } }),
   { kind: 'text', id: 'ri-x1', ts: at(10, 28), text: 'The mock centres the message and puts the button under it. I will change the empty state to match.' },
   { kind: 'user', id: 'ri-u2', ts: at(10, 30), parts: [{ type: 'text', text: 'Now the loading state, with these two.' }, { type: 'image', name: 'image.png' }, { type: 'image', name: 'image-2.png' }] },
-  tool('ri-t3', 'Read image.png', '.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '.kernel/attachments/image.png' } }),
+  tool('ri-t3', 'Read image.png', '/Users/you/kernel/worktrees/client-a/invoice-table/.kernel/attachments/image.png', { name: 'Read', durationMs: 90, input: { file_path: '/Users/you/kernel/worktrees/client-a/invoice-table/.kernel/attachments/image.png' } }),
   tool('ri-t4', 'Read image-2.png', '.kernel/attachments/image-2.png', { name: 'Read', durationMs: 80, input: { file_path: '.kernel/attachments/image-2.png' } }),
   tool('ri-t5', 'Read skeleton.tsx', 'src/app/invoices/skeleton.tsx', { name: 'Read', durationMs: 60, input: { file_path: 'src/app/invoices/skeleton.tsx' } })
 ]
@@ -1532,6 +1532,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** Read rows on image files say "Read image" with the image chip, in the folded list and in the turn in progress (KERNEL-546). */
   WorkspaceReadImage: scene(() => ({
     items: { [ids.tableChat]: readImageItems },
+    // image.png loads, so its row opens a tab. image-2.png was deleted, so its row opens to the path (KERNEL-671).
+    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** The same transcript after a click on the Read image row whose file loads (an image tab opens, headed by its path) and on the one whose file is gone (the row opens to the path). scripts/shots.ts does the click (KERNEL-671). */
+  WorkspaceReadImageTab: scene(() => ({
+    items: { [ids.tableChat]: readImageItems },
+    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  WorkspaceReadImageMissing: scene(() => ({
+    items: { [ids.tableChat]: readImageItems },
+    images: { [ids.table]: { 'worktree:.kernel/attachments/image.png': { dataUrl: imageAfter } } },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
   })),
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */

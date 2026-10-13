@@ -261,7 +261,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
               : filePath
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : image
-                  ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
+                  ? <ImageView name={image.path ?? image.name} src={image.dataUrl} width={image.width} height={image.height} />
                 : text
                   ? <TextView name={text.name} text={text.text} />
                 // A chat waiting for setup shows what waits and where setup stands, not a skeleton or the New chat suggestions.

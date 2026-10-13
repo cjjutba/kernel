@@ -37,6 +37,8 @@ const noCanvas = [
   'WorkspaceRowsOpen', // a Thinking, a Bash and an Edit row open in place, and a running tool (KERNEL-198)
   'WorkspaceRowsFolded', // the folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198)
   'WorkspaceReadImage', // Read rows on image files: Read image with the image chip, folded and open (KERNEL-546)
+  'WorkspaceReadImageTab', // a Read image row clicked: the image opens in a tab headed by its path (KERNEL-671)
+  'WorkspaceReadImageMissing', // a Read image row whose file is gone, clicked: it opens to the path (KERNEL-671)
   'WorkspaceScrolledUp', // a long chat scrolled up, with the Scroll to bottom button over it; CJ skipped the design pass (KERNEL-532)
   'WorkspaceSuggestion', // Claude's guess at the next message in the empty box, in the placeholder's style (KERNEL-531)
   'WorkspaceDiffTab',

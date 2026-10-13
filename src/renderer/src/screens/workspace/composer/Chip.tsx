@@ -35,6 +35,11 @@ function previewPlace(r: DOMRect): React.CSSProperties {
   return r.top > PREVIEW_H + GAP * 2 ? { left, bottom: window.innerHeight - r.top + GAP } : { left, top: r.bottom + GAP }
 }
 
+/** A hover preview drawn over the page at a chip's place. Its owner decides when it shows and hides it on scroll. */
+export function HoverPreview({ at, className, children }: { at: DOMRect; className: string; children: React.ReactNode }) {
+  return createPortal(<div className={className} style={previewPlace(at)} aria-hidden="true">{children}</div>, document.body)
+}
+
 /** Pasted text: a `file` part with its text and no path. A file with a path (an @ file, a picked file or a hunk) is not one. */
 export type TextPart = Extract<ChatPart, { type: 'file' }> & { text: string }
 export const isPastedText = (p: ChatPart): p is TextPart => p.type === 'file' && !p.path && !!p.text

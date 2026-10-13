@@ -45,6 +45,13 @@ async function openRows(page: Page, rows: string[]) {
   await page.waitForTimeout(300)
 }
 
+// A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
+async function clickReadImage(page: Page, name: string) {
+  await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+
 // WorkspaceScrolledUp is a long chat read from higher up. The scroll position is the transcript's own, so wheel it up like a reader would.
 async function scrollUp(page: Page) {
   await page.locator('.ws-scroll').hover()
@@ -352,6 +359,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
+  WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
+  WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceScrolledUp: scrollUp,
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
