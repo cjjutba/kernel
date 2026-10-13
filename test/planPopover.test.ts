@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AccountProfile, RateLimit } from '@shared/types'
-import { planAccounts, planSection, planSections } from '../src/renderer/src/components/sidebar/planModel'
+import { planAccounts, planSection, planSections } from '../src/renderer/src/components/footer/planModel'
 
 const account = (id: string, plan: string, active: boolean, over: Partial<AccountProfile> = {}): AccountProfile => ({ id, provider: 'claude', label: id, plan, cli: id === 'cli', auth: 'subscription', active, signedIn: true, ...over })
 const window = (type: RateLimit['type'], utilization: number, accountId?: string, over: Partial<RateLimit> = {}): RateLimit => ({ type, status: 'allowed', utilization, resetsAt: 1_900_000_000, ...(accountId ? { accountId } : {}), ...over })

@@ -2,7 +2,7 @@ import { MODELS, PROVIDERS, type AccountProfile, type Provider, type RateLimit }
 import { limitProvider } from '@shared/providers'
 import { resetPhrase } from '@shared/usage'
 
-// What the Usage popover draws (UsagePopover.png, KERNEL-619): one section per provider, each from the account that provider runs on,
+// What the footer's Usage popover and its row draw (UsagePopover.png, KERNEL-619, KERNEL-674): one section per provider, each from the account that provider runs on,
 // never from the first window in the list. Every input is what main pushed, so the sections follow `usage` and `accounts` pushes.
 
 export interface PlanWindow {
@@ -10,6 +10,8 @@ export interface PlanWindow {
   title: string
   /** 0 to 1. */
   value: number
+  /** Kernel has a number for it that hasn't reset since. Otherwise `value` is 0 and `note` says no usage was reported. */
+  reported: boolean
   note: string
 }
 
@@ -46,7 +48,7 @@ export const windowsOf = (usage: RateLimit[], a: Pick<AccountProfile, 'provider'
   usage.filter((l) => limitProvider(l) === a.provider && (l.accountId ?? 'cli') === a.id)
 
 /** A window Kernel has a number for that hasn't reset since. One that has says nothing until the engine reads it again. */
-const live = (l: RateLimit | undefined, now: number): RateLimit | undefined =>
+export const live = (l: RateLimit | undefined, now: number): RateLimit | undefined =>
   l?.utilization !== undefined && (l.resetsAt === undefined || l.resetsAt * 1000 > now) ? l : undefined
 
 const note = (l: RateLimit | undefined, now: number): string => {
@@ -64,7 +66,7 @@ export function planWindows(usage: RateLimit[], account: AccountProfile, now: nu
     { id: 'seven_day', title: 'Weekly', limit: live(mine.find((l) => l.type === 'seven_day' && !l.model), now) },
     ...perModel.map((l) => ({ id: `${l.type}:${l.model ?? ''}`, title: `Weekly, ${l.model ? modelLabel(l.model) : WINDOW_MODEL[l.type] ?? 'one model'}`, limit: live(l, now) })).filter((r) => r.limit)
   ]
-  return rows.map((r) => ({ id: r.id, title: r.title, value: r.limit?.utilization ?? 0, note: note(r.limit, now) }))
+  return rows.map((r) => ({ id: r.id, title: r.title, value: r.limit?.utilization ?? 0, reported: r.limit !== undefined, note: note(r.limit, now) }))
 }
 
 /** "5-hour 8% used" for a subscription account that has a 5-hour number, nothing otherwise. */

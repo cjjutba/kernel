@@ -1,0 +1,7 @@
+**Usage lives in the footer's bottom left, and the sidebar's bottom row is gone.** Amends KERNEL-619 and KERNEL-588. The Usage pill, the gear and What's new left the sidebar. Settings and What's new stay in the account menu, and Cmd+comma still opens Settings.
+
+The row lists every signed-in account of Claude Code, a hairline, then Codex. The active account is first with its mark, name and 5h and wk bars (Compact: mark, one bar and the tightest window's number). Others are a name and their 5-hour number. The active chip opens the popover. Another chip switches with the popover's Switch, ordered by `switchChoices`, and an account waiting for Keychain access or a key that isn't in use gets no chip. Amber from 75%, red from 90%, reset times as clock times, no timers.
+
+The popover is 360px, opens upward, and has a Detailed and Compact switch kept across launches (`ui.usageView`, with the open rows in `ui.usageOpen`). It keeps the KERNEL-619 rules: "Billed per token" for a key, one line with Sign in for a signed-out provider, "No usage reported yet" for a window that has reset. It names a model window "Fable 5.1 weekly", as UsagePopover.png draws it. Settings keeps "Weekly, Fable 5.1".
+
+**The GitHub paused notice was removed** (KERNEL-401), with `githubPause` and its tests. It is not shown anywhere now. **Hooks down no longer shows in the footer.** It shows in the "Hooks are disconnected" banner above the composer and in Settings, Hooks.
