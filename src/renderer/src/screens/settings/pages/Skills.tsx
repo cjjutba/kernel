@@ -4,9 +4,9 @@ import { call } from '../../../api'
 import { Toggle } from '../../../ui'
 import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-import { McpServers } from './McpServers'
+import { RoomMcp } from './RoomMcp'
 
-/** Settings > a room > Skills and MCP (SettingsSkills.png). What is off is kept per room in its .kernel settings, so the same skill can be on in one room and off in another. */
+/** Settings > a room > Skills and MCP (SettingsSkills.png). Sign-ins live in Settings, MCP servers (KERNEL-661). What is off is kept per room in its .kernel settings, so the same skill can be on in one room and off in another. */
 export function Skills({ roomId }: { roomId?: string }) {
   const { room, rs } = useRoomPage(roomId)
   const [skills, setSkills] = useState<Skill[]>([])
@@ -31,7 +31,7 @@ export function Skills({ roomId }: { roomId?: string }) {
           </Row>
         ))}
       </Section>
-      <McpServers isOn={(name) => isOn('mcp', name)} flip={(name, on) => flip('mcp', name, on)} />
+      <RoomMcp isOn={(name) => isOn('mcp', name)} flip={(name, on) => flip('mcp', name, on)} />
     </RoomPage>
   )
 }

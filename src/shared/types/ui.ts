@@ -97,6 +97,8 @@ export type Modal =
   | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
+  /** Set up this account: the checklist of the MCP servers that need the user on one account (KERNEL-661). */
+  | { name: 'mcpSetUp'; provider: Provider; accountId: string }
 
 /**
  * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu, and `reply:<id>` the "..." menu under a reply.
@@ -124,8 +126,8 @@ export interface Toast {
   id: string
   title: string
   sub?: string
-  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). */
-  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route }
+  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). `route` goes to that screen (KERNEL-627). `modal` opens it (KERNEL-661). */
+  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string }; route?: Route; modal?: Exclude<Modal, null> }
 }
 
 /** The workspace screen's panes, so fixtures can open any of them. */

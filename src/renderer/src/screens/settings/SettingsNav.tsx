@@ -13,7 +13,7 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
     { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' }
   ] },
   { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'agents', label: 'Agents', icon: 'team' }, { page: 'providers', label: 'Providers', icon: 'providers' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
+    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'agents', label: 'Agents', icon: 'team' }, { page: 'providers', label: 'Providers', icon: 'providers' }, { page: 'mcp', label: 'MCP servers', icon: 'layers' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
   ] },
   { title: 'Workspaces', items: [
     { page: 'git', label: 'Git and worktrees', icon: 'branch' }, { page: 'scripts', label: 'Scripts', icon: 'term' },

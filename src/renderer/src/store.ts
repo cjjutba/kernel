@@ -726,17 +726,18 @@ export const actions = {
 /** Navigate. Shortcut for `actions.ui.go`. */
 export const go = actions.ui.go
 
-/** Skills and MCP on one account's tab, in the room on screen or the first one. Undefined when there is no room. */
-export function mcpRoute(provider: Provider, accountId: string): Route | undefined {
-  const s = getState()
-  const roomId = ('roomId' in s.ui.route && s.ui.route.roomId) || s.rooms[0]?.id
-  return roomId ? { name: 'settings', page: 'room', roomId, section: 'skills', tab: provider, account: accountId } : undefined
+/** Settings, MCP servers on one account's tab. */
+export function mcpRoute(provider: Provider, accountId: string): Route {
+  return { name: 'settings', page: 'mcp', tab: provider, account: accountId }
 }
 
-/** The notice after adding an account whose MCP servers need a sign-in. Its action opens Skills and MCP on that account's tab. */
-function mcpNeededToast(n: McpNeeded) {
-  const route = mcpRoute('claude', n.accountId)
-  actions.ui.toast({ title: n.title, ...(route ? { action: { label: 'Open', route } } : {}) })
+/** "3 MCP servers need you", the words the Providers row, the notice after adding an account and the MCP servers page share. */
+export const mcpNeedYou = (n: number) => `${n} MCP server${n === 1 ? '' : 's'} need${n === 1 ? 's' : ''} you`
+
+/** The notice after adding an account whose MCP servers need the user. Its action opens the Set up this account checklist. */
+async function mcpNeededToast(n: McpNeeded) {
+  const count = await call('mcp.accounts', undefined).then((all) => all.find((a) => a.provider === n.provider && a.accountId === n.accountId)?.needsYou).catch(() => undefined)
+  actions.ui.toast({ title: mcpNeedYou(count || n.servers.length), action: { label: 'Set up', modal: { name: 'mcpSetUp', provider: n.provider, accountId: n.accountId } } })
 }
 
 /** Apply one push event from main. Exported for tests and fixtures. */
