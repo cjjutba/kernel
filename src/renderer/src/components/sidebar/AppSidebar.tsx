@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Chat, Room, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon, type IconName } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
-import { actions, getState, go, useStore, type Route } from '../../store'
+import { actions, getState, go, useStore, type Route, type State } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { chatWorkspaces, isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
 import { archiveChatFromSidebar, archivingChat } from '../../screens/workspace/archiveChat'
@@ -131,7 +131,7 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
  * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn never changes
  * the icon: it adds the spinner at the row's right end, unless the chat itself waits on you, where the wait is all the row shows (KERNEL-601).
  */
-function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
+function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
   // A folded chat counts its workspaces: an unfolded one shows its own icon in its own row.
   const waits = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }), [approvals, tabs, folded, owned])
@@ -181,6 +181,17 @@ function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSe
   )
 }
 
+const sameSlot = (a?: RowKey, b?: RowKey) => a === b || (!!a && !!b && a.n === b.n && a.hint === b.hint)
+const sameList = <T,>(a: T[], b: T[]) => a === b || (a.length === b.length && a.every((x, i) => x === b[i]))
+const sameGone = (a?: Gone, b?: Gone) => a === b || (!!a && !!b && a.from === b.from && a.held === b.held)
+
+/**
+ * The sidebar builds its rows again on every workspace or chat change, with new arrays and closures. A row redraws only when what it shows changed, so an
+ * event for one chat leaves the others alone. `onSettled` is left out: it only reports the row's own key back, which never changes for the same row.
+ */
+const ChatItem = memo(ChatItemRow, (a, b) =>
+  a.roomId === b.roomId && a.thread === b.thread && a.ws === b.ws && a.folded === b.folded && sameList(a.tabs, b.tabs) && sameList(a.owned, b.owned) && sameSlot(a.slot, b.slot) && sameGone(a.leaving, b.leaving))
+
 /**
  * The row's archive button archives in one click, like Conductor, when nothing would be lost. Uncommitted changes, commits
  * not on GitHub yet, or a status Kernel can't read open ConfirmArchive instead, which says what happens to them.
@@ -200,7 +211,7 @@ async function archiveFromSidebar(ws: Workspace) {
  * A workspace row: its state icon (needs you, then the PR, or the branch), its name, its diff totals from 300px of sidebar, and a spinner while it runs. Hover swaps
  * that right end for Archive. Resting on it opens its card.
  */
-function WorkspaceItem({ ws, parent, slot, nested, leaving, onSettled }: { ws: Workspace; /** The title of the chat that started it, for the card. */ parent?: string; slot?: RowKey; nested?: boolean; leaving?: Gone; onSettled?: () => void }) {
+function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws: Workspace; /** The title of the chat that started it, for the card. */ parent?: string; slot?: RowKey; nested?: boolean; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
@@ -235,6 +246,9 @@ function WorkspaceItem({ ws, parent, slot, nested, leaving, onSettled }: { ws: W
     </div>
   )
 }
+
+const WorkspaceItem = memo(WorkspaceItemRow, (a, b) =>
+  a.ws === b.ws && a.parent === b.parent && a.nested === b.nested && sameSlot(a.slot, b.slot) && sameGone(a.leaving, b.leaving))
 
 /** The workspaces whose chat list `useChatLists` has asked for. The store can't say: a `chat` push makes a one-chat list before any fetch. */
 const fetched = new Set<string>()
@@ -280,9 +294,10 @@ function blocksOf(shown: Shown[]): Shown[][] {
 const NO_KEYS: string[] = []
 
 function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; onToggle: () => void }) {
-  const agents = useStore((s) => s.agents)
-  const workspaces = useStore((s) => s.workspaces)
-  const chats = useStore((s) => s.chats)
+  // Only this room's slice of each: an event in another room, or for a chat that isn't a row here, leaves it alone.
+  const agents = useStore((s) => ({ [room.id]: s.agents[room.id] }))
+  const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id))
+  const chats = useStore((s) => { const out: State['chats'] = {}; for (const w of s.workspaces) if (w.roomId === room.id && s.chats[w.id]) out[w.id] = s.chats[w.id]; return out })
   const threads = useStore((s) => s.threads)
   const foldedChats = useStore((s) => s.ui.foldedChats)
   const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, threads, foldedChats), [room, agents, workspaces, chats, threads, foldedChats])
@@ -350,25 +365,34 @@ function readExpanded(): Record<string, boolean> {
 }
 
 /**
+ * What the Inbox badge counts. It reads these four slices, plus the workspaces held for script trust, and nothing else, so terminal chunks, script lines
+ * and chat items leave it alone. The count is worked out again only when one of them is a new object.
+ */
+let inboxFrom: unknown[] = []
+let inboxCountNow = 0
+function inboxCount(s: State): number {
+  const from = [s.notifications, s.approvals, s.rooms, s.overlaps, s.workspaces]
+  if (from.every((x, i) => x === inboxFrom[i])) return inboxCountNow
+  inboxFrom = from
+  inboxCountNow = inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps), s.workspaces).filter(needsYou).length
+  return inboxCountNow
+}
+
+/**
  * What the sidebar frame holds in the app: the traffic-light strip with Hide sidebar, the account row, the nav items, the rooms and the footer.
  * The frame (Sidebar.tsx) owns the `<nav>`, the width and the resize edge, so these are its direct flex children.
  */
 export function AppSidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
-  const workspaces = useStore((s) => s.workspaces)
-  // The count reads these four slices, plus the workspaces held for script trust, and nothing else, so terminal chunks and script lines leave it alone.
-  const notifications = useStore((s) => s.notifications)
-  const approvals = useStore((s) => s.approvals)
-  const allRooms = useStore((s) => s.rooms)
-  const overlaps = useStore((s) => s.overlaps)
-  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps), workspaces).filter(needsYou).length, [notifications, approvals, allRooms, overlaps, workspaces])
+  const inbox = useStore(inboxCount)
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
-  const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
+  const openWorkspaceRoom = useStore((s) => (route.name === 'workspace' ? s.workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined))
+  const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? openWorkspaceRoom : rooms[0]?.id
   const toggle = (id: string, expanded: boolean) => {
     const next = { ...chosen, [id]: !expanded }
     setChosen(next)

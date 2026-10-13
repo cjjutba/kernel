@@ -14,12 +14,8 @@ function answerOf(items: { kind: string; ts: number; text?: string }[], since: n
 
 /** QuickAsk.png: a question to the room's Lead from anywhere. The answer shows here, with a way into the full chat. */
 export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRef: RefObject<HTMLElement | null> }) {
-  const route = useStore((s) => s.ui.route)
-  const rooms = useStore((s) => s.rooms)
-  const workspaces = useStore((s) => s.workspaces)
-  const agents = useStore((s) => s.agents)
-  const room = roomInView(route, rooms, workspaces)
-  const lead = room ? agents[room.id]?.find((a) => a.lead) : undefined
+  const room = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces))
+  const lead = useStore((s) => (room ? s.agents[room.id]?.find((a) => a.lead) : undefined))
   // The popover unmounts when it closes, so the draft and the question live in the store, by room.
   const text = useStore((s) => (room ? s.quickAsk[room.id]?.draft : undefined)) ?? ''
   const asked = useStore((s) => (room ? s.quickAsk[room.id]?.asked : undefined))
@@ -103,12 +99,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
 /** The footer's Ask Rowan button and its popover. */
 export function AskRowanButton() {
   const open = useStore((s) => s.ui.menu === 'quickAsk')
-  const route = useStore((s) => s.ui.route)
-  const rooms = useStore((s) => s.rooms)
-  const workspaces = useStore((s) => s.workspaces)
-  const agents = useStore((s) => s.agents)
-  const room = roomInView(route, rooms, workspaces)
-  const name = (room && agents[room.id]?.find((a) => a.lead)?.name) ?? 'Rowan'
+  const name = useStore((s) => { const room = roomInView(s.ui.route, s.rooms, s.workspaces); return (room && s.agents[room.id]?.find((a) => a.lead)?.name) ?? 'Rowan' })
   const anchor = useRef<HTMLSpanElement>(null)
   return (
     <span ref={anchor} className="qa-anchor">

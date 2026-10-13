@@ -37,7 +37,8 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   const checkpoints = useStore((s) => s.ui.workspace.checkpoints)
   const approvals = useStore((s) => s.approvals)
   const sharedFiles = useStore((s) => s.shared)
-  const running = useStore((s) => s.running)
+  // Only this workspace's tabs: another chat starting or stopping leaves the strip alone.
+  const running = useStore((s) => Object.fromEntries(chats.filter((c) => s.running[c.id]).map((c) => [c.id, true])))
   const [renaming, setRenaming] = useState<string | null>(null)
   const terminal = useStore((s) => s.settings?.terminal)
   // Main refuses a terminal tab while the big terminal is off, so neither the menu nor ⌘⇧T offers one then.
