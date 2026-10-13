@@ -47,6 +47,24 @@ export async function searchIssues(token: string | undefined, query = '', fetchI
   return (data.issues?.nodes ?? []).map((n) => ({ id: n.identifier, title: n.title, url: n.url, source: 'linear' as const }))
 }
 
+const NEXT = `query NextIssues($filter: IssueFilter) {
+  issues(first: 50, filter: $filter, orderBy: updatedAt) { nodes { identifier title url priority } }
+}`
+
+/** Linear's priority as an order: urgent first, then high, medium and low, and none last. */
+const urgency = (p: number) => (p > 0 ? p : 5)
+
+/**
+ * Up next in New chat with Rowan: Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so the
+ * 50 last updated are sorted here, and issues of one priority keep that order.
+ */
+export async function nextIssues(token: string | undefined, fetchImpl: typeof fetch = fetch): Promise<IssueSummary[]> {
+  const data = await linearRequest<{ issues?: { nodes?: { identifier: string; title: string; url?: string; priority?: number }[] } }>(token, NEXT, { filter: { state: { type: { eq: 'unstarted' } } } }, fetchImpl)
+  return (data.issues?.nodes ?? [])
+    .map((n) => ({ id: n.identifier, title: n.title, url: n.url, source: 'linear' as const, priority: n.priority ?? 0 }))
+    .sort((a, b) => urgency(a.priority) - urgency(b.priority))
+}
+
 const ISSUE_FIELDS = `
   id identifier title url branchName priority updatedAt
   state { id name type position }
@@ -198,6 +216,7 @@ export function linearTracker(token: () => Promise<string | undefined>, fetchImp
   return {
     kind: 'linear',
     search: async (query) => searchIssues(await token(), query, fetchImpl),
+    next: async () => nextIssues(await token(), fetchImpl),
     issue: async (id) => {
       const key = await token()
       if (!key) throw new Error(LINEAR_SIGNED_OUT)

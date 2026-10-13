@@ -8,7 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import type { Cipher } from '../src/main/services/env'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
+import { getIssue, getScope, issueFilter, listIssues, moveToStarted, nextIssues, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -96,6 +96,15 @@ describe('Linear queries', () => {
     await searchIssues('k', 'KERNEL-83', l.fetch)
     expect(l.calls[0].variables.filter).toEqual(OPEN)
     expect(l.calls[1].variables.filter).toEqual({ and: [OPEN, { or: [{ title: { containsIgnoreCase: 'KERNEL-83' } }, { number: { eq: 83 } }] }] })
+  })
+
+  it('lists Todo issues for Up next, urgent first and no priority last, keeping the order within a priority', async () => {
+    const n = (identifier: string, priority: number) => ({ identifier, title: identifier, url: `https://linear.app/cj/issue/${identifier}`, priority })
+    const l = linear(() => ({ issues: { nodes: [n('K-1', 0), n('K-2', 3), n('K-3', 1), n('K-4', 3), n('K-5', 4)] } }))
+    const out = await nextIssues('k', l.fetch)
+    expect(l.calls[0].variables.filter).toEqual({ state: { type: { eq: 'unstarted' } } })
+    expect(out.map((i) => i.id)).toEqual(['K-3', 'K-2', 'K-4', 'K-5', 'K-1'])
+    expect(out[0]).toEqual({ id: 'K-3', title: 'K-3', url: 'https://linear.app/cj/issue/K-3', source: 'linear', priority: 1 })
   })
 
   it('reads an issue marked as a duplicate with its state type', async () => {
