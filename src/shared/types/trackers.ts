@@ -47,6 +47,8 @@ export interface Tracker {
   kind: TrackerKind | 'none'
   /** Open issues whose title or number matches `query`, for New workspace and the From popover. */
   search: (query?: string) => Promise<IssueSummary[]>
+  /** Issues nobody has started, the most pressing first, for Up next in New chat with Rowan. A tracker without one lists `search()`. */
+  next?: () => Promise<IssueSummary[]>
   /** One issue in full. */
   issue: (id: string) => Promise<TrackerIssue>
   /** Moves the issue to its first started state when it hasn't started (D-140). The state's name when it moved. */

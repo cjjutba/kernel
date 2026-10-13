@@ -150,6 +150,11 @@ export interface KernelApi {
   'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   /**
+   * Up next in New chat with Rowan: the room tracker's issues nobody has started, the most pressing first. Linear lists its Todo
+   * issues by priority; a tracker with no such order lists its open issues as `issues.list` does.
+   */
+  'issues.next': { req: { roomId: string }; res: IssueSummary[] }
+  /**
    * Before New workspace starts on an issue: a branch on the remote, an open PR or another assignee that says someone else may
    * be on it (ConfirmIssueTaken.png, KERNEL-479). A check that can't answer adds a note instead of holding the start up.
    */
