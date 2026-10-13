@@ -8,6 +8,7 @@ import inbox from '@/public/images/inbox.png'
 import team from '@/public/images/team.png'
 import workspace from '@/public/images/workspace.png'
 import { BranchIcon, CheckpointIcon, InboxIcon, TeamIcon } from '@/components/ui/icons'
+import { Section } from '@/components/ui/Container'
 import { SectionHead } from '@/components/ui/SectionHead'
 import { Shot } from '@/components/ui/Shot'
 
@@ -48,7 +49,7 @@ const tabs: { value: string; label: string; icon: ReactNode; line: string; image
 
 export function ProductTour() {
   return (
-    <section id="features" aria-labelledby="tour-title" className="mx-auto max-w-312 px-6 pt-40">
+    <Section id="features" aria-labelledby="tour-title">
       <SectionHead eyebrow="The app" title="The whole team, in one window." titleId="tour-title" />
       <Tabs.Root defaultValue="workspaces">
         <div className="mt-14 flex justify-center">
@@ -71,11 +72,11 @@ export function ProductTour() {
         {/* All panels stay mounted and hidden, so switching never shifts the layout. Hidden images stay lazy. */}
         {tabs.map((t) => (
           <Tabs.Content key={t.value} value={t.value} forceMount className="outline-none tab-inactive:hidden">
-            <p className="mx-auto my-8 max-w-160 text-center text-callout text-muted">{t.line}</p>
+            <p className="mx-auto my-8 max-w-narrow text-center text-callout text-muted">{t.line}</p>
             <Shot src={t.image} alt={t.alt} sizes="(max-width: 1248px) calc(100vw - 48px), 1200px" />
           </Tabs.Content>
         ))}
       </Tabs.Root>
-    </section>
+    </Section>
   )
 }

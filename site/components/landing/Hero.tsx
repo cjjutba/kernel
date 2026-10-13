@@ -1,46 +1,43 @@
-import Link from 'next/link'
 import leadPlan from '@/public/images/lead-plan.png'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
+import { ArrowIcon, GitHubIcon } from '@/components/ui/icons'
+import { OutlineChip } from '@/components/ui/OutlineChip'
 import { Shot } from '@/components/ui/Shot'
-import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
+import { REPO_URL } from '@/lib/links'
+import { CtaBlock } from './CtaBlock'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
   return (
     <section id="top" aria-labelledby="hero-title" className="relative pt-32 text-center">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-245 bg-dots-hero" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-dots-hero bg-dots-hero" />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute top-150 left-1/2 h-140 w-full max-w-300 -translate-x-1/2 glow-hero"
+        className="pointer-events-none absolute top-glow-hero left-1/2 h-glow-hero w-full max-w-glow-hero -translate-x-1/2 glow-hero"
       />
       <div className="relative px-6">
-        <Link
+        <OutlineChip
           href="/changelog"
-          className="shimmer-pill inline-flex h-8 items-center gap-2 rounded-pill border border-line-strong bg-surface-2/85 pr-3 pl-1 text-small text-ink-2 hover:border-edge-hover hover:text-white"
+          className="shimmer-pill inline-flex h-8 items-center gap-2 rounded-pill bg-surface-2-glass pr-3 pl-1 text-small text-ink-2 hover:text-white"
         >
-          <span className="inline-flex h-6 items-center rounded-pill bg-ink px-2 text-tag font-semibold text-canvas">New</span>
+          <Badge>New</Badge>
           Kernel {version} is here
           <ArrowIcon className="text-muted" />
-        </Link>
+        </OutlineChip>
         <h1 id="hero-title" className="mt-8 text-display">
           Your coding agents,
           <br />
           working as a team.
         </h1>
-        <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
-          Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull
-          request is ready for you to merge.
-        </p>
-        <div className="mt-10 flex flex-wrap justify-center gap-3">
-          <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
-            Download for macOS
-          </Button>
-          <Button href={REPO_URL} variant="secondary" size="lg" external icon={<GitHubIcon />}>
-            View on GitHub
-          </Button>
-        </div>
-        <p className="mt-4 text-small text-faint">Free · For Macs with Apple silicon</p>
+        <CtaBlock
+          lead="Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull request is ready for you to merge."
+          secondary={
+            <Button href={REPO_URL} variant="secondary" size="lg" external icon={<GitHubIcon />}>
+              View on GitHub
+            </Button>
+          }
+        />
       </div>
       <div className="relative mt-16 px-6">
         <Shot
@@ -48,7 +45,7 @@ export function Hero({ version }: { version: string }) {
           alt="Kernel: Rowan's plan for four tasks waits for review, with the room's team and workspaces in the sidebar"
           sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
           preload
-          className="mx-auto max-w-320"
+          className="mx-auto max-w-hero-shot"
         />
       </div>
     </section>

@@ -7,18 +7,27 @@ type Props = {
   titleId: string
   lead?: ReactNode
   align?: 'center' | 'start'
+  /** `page` is a page's own heading: an h1 in the changelog title size, with a narrower lead. */
+  variant?: 'section' | 'page'
   className?: string
+  /** Shown after the lead, such as a link. */
+  children?: ReactNode
 }
 
-export function SectionHead({ eyebrow, title, titleId, lead, align = 'center', className = '' }: Props) {
+export function SectionHead({ eyebrow, title, titleId, lead, align = 'center', variant = 'section', className = '', children }: Props) {
   const center = align === 'center'
+  const page = variant === 'page'
+  const Heading = page ? 'h1' : 'h2'
   return (
-    <div className={`${center ? 'mx-auto max-w-250 text-center' : ''} ${className}`}>
+    <div className={`${center ? 'mx-auto max-w-head text-center' : ''} ${className}`}>
       <Eyebrow>{eyebrow}</Eyebrow>
-      <h2 id={titleId} className="mt-4 text-h2 text-balance">
+      <Heading id={titleId} className={page ? 'mt-4 text-changelog-title' : 'mt-4 text-h2 text-balance'}>
         {title}
-      </h2>
-      {lead ? <p className={`mt-4 text-lead text-muted ${center ? 'mx-auto max-w-140' : ''}`}>{lead}</p> : null}
+      </Heading>
+      {lead ? (
+        <p className={`mt-4 text-lead text-muted ${center ? 'mx-auto max-w-section-lead' : page ? 'max-w-section-lead' : ''}`}>{lead}</p>
+      ) : null}
+      {children}
     </div>
   )
 }

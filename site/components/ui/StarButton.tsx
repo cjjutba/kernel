@@ -2,16 +2,15 @@ import { formatStars } from '@/lib/format'
 import { getStarCount, STAR_COUNT_MIN } from '@/lib/github'
 import { REPO_URL } from '@/lib/links'
 import { GitHubIcon, StarIcon } from './icons'
+import { OutlineChip } from './OutlineChip'
 
 /** The split Star button. The count shows only from STAR_COUNT_MIN stars, and never as a made-up number. */
 export function StarButtonView({ count, className = '' }: { count: number | null; className?: string }) {
   const show = count !== null && count >= STAR_COUNT_MIN
   return (
-    <a
+    <OutlineChip
       href={REPO_URL}
-      target="_blank"
-      rel="noopener"
-      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md border border-line-strong text-label font-medium text-ink-2 hover:border-edge-hover hover:text-white ${className}`}
+      className={`group inline-flex h-8 items-stretch overflow-hidden rounded-md text-label font-medium text-ink-2 hover:text-white ${className}`}
     >
       <span className="inline-flex items-center gap-2 px-3 group-hover:bg-raised">
         <GitHubIcon size={15} />
@@ -26,7 +25,7 @@ export function StarButtonView({ count, className = '' }: { count: number | null
           <span className="sr-only"> stars</span>
         </span>
       ) : null}
-    </a>
+    </OutlineChip>
   )
 }
 

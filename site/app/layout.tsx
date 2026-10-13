@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <a
           href="#content"
-          className="sr-only z-50 rounded-md bg-ink px-3 text-ui font-medium text-canvas focus-visible:not-sr-only focus-visible:fixed focus-visible:top-4 focus-visible:left-4 focus-visible:inline-flex focus-visible:h-8 focus-visible:items-center"
+          className="sr-only z-skip rounded-md bg-ink px-3 text-ui font-medium text-canvas focus-visible:not-sr-only focus-visible:fixed focus-visible:top-4 focus-visible:left-4 focus-visible:inline-flex focus-visible:h-8 focus-visible:items-center"
         >
           Skip to content
         </a>

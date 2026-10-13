@@ -1,4 +1,6 @@
-import { Eyebrow } from '@/components/ui/Eyebrow'
+import { Section } from '@/components/ui/Container'
+import { ExternalLink } from '@/components/ui/ExternalLink'
+import { SectionHead } from '@/components/ui/SectionHead'
 import { ISSUES_URL } from '@/lib/links'
 
 const faqs = [
@@ -28,27 +30,28 @@ const faqs = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq gap-20 px-6 pt-40 max-faq:grid-cols-1 max-faq:gap-10">
-      <div>
-        <Eyebrow>FAQ</Eyebrow>
-        <h2 id="faq-title" className="mt-4 text-h2 text-balance">
-          Questions,
-          <br />
-          answered.
-        </h2>
-        <p className="mt-4 text-lead text-muted">
-          Something missing?{' '}
-          <a
-            href={ISSUES_URL}
-            target="_blank"
-            rel="noopener"
-            className="text-ink underline decoration-rule underline-offset-3 hover:text-white"
-          >
-            Ask on GitHub
-          </a>
-          .
-        </p>
-      </div>
+    <Section id="faq" aria-labelledby="faq-title" className="grid grid-faq gap-20 max-faq:grid-cols-1 max-faq:gap-10">
+      <SectionHead
+        eyebrow="FAQ"
+        title={
+          <>
+            Questions,
+            <br />
+            answered.
+          </>
+        }
+        titleId="faq-title"
+        align="start"
+        lead={
+          <>
+            Something missing?{' '}
+            <ExternalLink href={ISSUES_URL} className="text-ink underline decoration-rule underline-offset-3 hover:text-white">
+              Ask on GitHub
+            </ExternalLink>
+            .
+          </>
+        }
+      />
       <div>
         {faqs.map((f, i) => (
           <details key={f.q} open={i === 0} className="border-t border-line last:border-b">
@@ -60,6 +63,6 @@ export function Faq() {
           </details>
         ))}
       </div>
-    </section>
+    </Section>
   )
 }

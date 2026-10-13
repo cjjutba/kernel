@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { KernelMark } from '@/components/brand/KernelMark'
 import { Wordmark } from '@/components/brand/Wordmark'
+import { Container } from '@/components/ui/Container'
+import { ExternalLink } from '@/components/ui/ExternalLink'
 import { CONTRIBUTING_URL, DOWNLOAD_URL, ISSUES_URL, LICENSE_URL, REPO_URL, SECURITY_URL } from '@/lib/links'
 
 type FooterLink = { href: string; label: string; external?: boolean }
@@ -40,12 +42,12 @@ const FADE_ID = 'kernel-wordmark-fade'
 export function SiteFooter() {
   return (
     <footer className="overflow-hidden border-t border-line-faint pt-16">
-      <div className="mx-auto flex max-w-312 flex-wrap justify-between gap-12 px-6">
+      <Container className="flex flex-wrap justify-between gap-12">
         <div>
           <Link href="/" className="inline-flex">
             <Wordmark />
           </Link>
-          <p className="mt-4 max-w-75 text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
+          <p className="mt-4 max-w-tagline text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>
         </div>
         <nav aria-label="Footer" className="flex flex-wrap gap-20">
           {columns.map((col) => (
@@ -56,8 +58,12 @@ export function SiteFooter() {
                   <Link key={l.label} href={l.href} className={linkClass}>
                     {l.label}
                   </Link>
+                ) : l.external ? (
+                  <ExternalLink key={l.label} href={l.href} className={linkClass}>
+                    {l.label}
+                  </ExternalLink>
                 ) : (
-                  <a key={l.label} href={l.href} className={linkClass} {...(l.external ? { target: '_blank', rel: 'noopener' } : {})}>
+                  <a key={l.label} href={l.href} className={linkClass}>
                     {l.label}
                   </a>
                 )
@@ -65,11 +71,11 @@ export function SiteFooter() {
             </div>
           ))}
         </nav>
-      </div>
-      <div className="mx-auto mt-16 flex max-w-312 flex-wrap justify-between gap-4 px-6 pt-6 text-small text-faint rule-inset">
+      </Container>
+      <Container className="mt-16 flex flex-wrap justify-between gap-4 pt-6 text-small text-faint rule-inset">
         <span>© 2026 Christian Jerald Jutba</span>
         <span>Elastic License 2.0</span>
-      </div>
+      </Container>
       <div aria-hidden="true" className="mt-12 flex justify-center text-wordmark select-none wordmark-crop">
         <span className="inline-flex items-baseline">
           <KernelMark className="wordmark-k" fill={`url(#${FADE_ID})`}>

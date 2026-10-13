@@ -15,7 +15,7 @@ export function BriefMini() {
           To Rowan · Lead
         </span>
         <span className="flex-1" />
-        <span className="inline-flex size-7 items-center justify-center rounded-full bg-ink text-canvas">
+        <span className="inline-flex size-7 items-center justify-center rounded-pill bg-ink text-canvas">
           <SendIcon />
         </span>
       </div>

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Wordmark } from '@/components/brand/Wordmark'
 import { Button } from '@/components/ui/Button'
+import { Container } from '@/components/ui/Container'
 import { DownloadIcon } from '@/components/ui/icons'
 import { StarButton } from '@/components/ui/StarButton'
 import { DOWNLOAD_URL } from '@/lib/links'
@@ -15,8 +16,8 @@ const links = [
 
 export function SiteNav({ current }: { current?: '/changelog' }) {
   return (
-    <header className="sticky top-0 z-5 border-b border-white/6 bg-canvas/72 backdrop-blur-nav">
-      <div className="mx-auto flex h-16 max-w-312 items-center gap-2 px-6">
+    <header className="sticky top-0 z-nav border-b border-tint-strong bg-canvas-glass backdrop-blur-nav">
+      <Container className="flex h-16 items-center gap-2">
         <Link href="/" className="inline-flex items-center">
           <Wordmark />
         </Link>
@@ -28,7 +29,7 @@ export function SiteNav({ current }: { current?: '/changelog' }) {
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
-                className={`inline-flex h-8 items-center rounded-md px-3 text-ui transition-colors hover:bg-white/5 hover:text-ink ${active ? 'bg-white/5 text-ink' : 'text-muted'}`}
+                className={`inline-flex h-8 items-center rounded-md px-3 text-ui transition-colors hover:bg-tint hover:text-ink ${active ? 'bg-tint text-ink' : 'text-muted'}`}
               >
                 {label}
               </Link>
@@ -40,7 +41,7 @@ export function SiteNav({ current }: { current?: '/changelog' }) {
         <Button href={DOWNLOAD_URL} icon={<DownloadIcon size={14} />}>
           Download
         </Button>
-      </div>
+      </Container>
     </header>
   )
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Badge } from '@/components/ui/Badge'
 import { Shot } from '@/components/ui/Shot'
 import { formatDate } from '@/lib/format'
 import type { Release } from '@/lib/schema'
@@ -33,11 +34,7 @@ export function ReleaseEntry({ release, latest }: { release: Release; latest: bo
         <>
           <div className="flex items-center gap-2">
             <VersionPill>{release.version}</VersionPill>
-            {latest ? (
-              <span className="inline-flex h-5 items-center rounded-pill bg-ink px-2 text-badge font-semibold text-canvas">
-                Latest
-              </span>
-            ) : null}
+            {latest ? <Badge size="sm">Latest</Badge> : null}
           </div>
           <time dateTime={release.date} className="mt-2 block text-label text-muted">
             {formatDate(release.date)}

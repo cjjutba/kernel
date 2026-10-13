@@ -1,3 +1,5 @@
+import { Section } from '@/components/ui/Container'
+import { MonoLabel } from '@/components/ui/MonoLabel'
 import { SectionHead } from '@/components/ui/SectionHead'
 
 const columns = [
@@ -20,7 +22,7 @@ const columns = [
 
 export function Privacy() {
   return (
-    <section id="privacy" aria-labelledby="privacy-title" className="mx-auto max-w-312 px-6 pt-40">
+    <Section id="privacy" aria-labelledby="privacy-title">
       <SectionHead
         eyebrow="Privacy"
         title="Your Mac. Your plan. Your code."
@@ -30,12 +32,12 @@ export function Privacy() {
       <div className="mt-14 grid grid-auto-fit border-y border-line">
         {columns.map((col) => (
           <div key={col.label} className="p-8 not-first:border-l not-first:border-line first:pl-0 last:pr-0 max-nav:px-0 max-nav:py-6 max-nav:not-first:border-t max-nav:not-first:border-l-0">
-            <p className="font-mono text-micro leading-normal font-medium text-faint">{col.label}</p>
+            <MonoLabel>{col.label}</MonoLabel>
             <h3 className="mt-3 text-item">{col.title}</h3>
             <p className="mt-2 text-body leading-relaxed text-muted">{col.text}</p>
           </div>
         ))}
       </div>
-    </section>
+    </Section>
   )
 }

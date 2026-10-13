@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { ExternalLink } from './ExternalLink'
+
+type Variant = keyof typeof variants
+type Size = keyof typeof sizes
 
 type Props = {
   href: string
-  variant?: 'primary' | 'secondary'
-  size?: 'md' | 'lg'
+  variant?: Variant
+  size?: Size
   icon?: ReactNode
   /** Opens in a new tab, for links that leave the site. */
   external?: boolean
@@ -14,7 +18,7 @@ type Props = {
 
 const variants = {
   primary: 'bg-ink text-canvas hover:bg-white',
-  secondary: 'border border-edge bg-white/2 text-ink hover:border-edge-hover hover:bg-white/6 hover:text-white'
+  secondary: 'border border-edge bg-tint-faint text-ink hover:border-edge-hover hover:bg-tint-strong hover:text-white'
 }
 
 const sizes = {
@@ -22,8 +26,13 @@ const sizes = {
   lg: 'h-12 rounded-lg px-5 text-body'
 }
 
+/** The classes of a button, for a link that can't be a Button. */
+export function buttonClasses(variant: Variant = 'primary', size: Size = 'md') {
+  return `inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap transition-colors ${variants[variant]} ${sizes[size]}`
+}
+
 export function Button({ href, variant = 'primary', size = 'md', icon, external, className = '', children }: Props) {
-  const classes = `inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap transition-colors ${variants[variant]} ${sizes[size]} ${className}`
+  const classes = `${buttonClasses(variant, size)} ${className}`
   if (href.startsWith('/')) {
     return (
       <Link href={href} className={classes}>
@@ -32,10 +41,11 @@ export function Button({ href, variant = 'primary', size = 'md', icon, external,
       </Link>
     )
   }
+  const Anchor = external ? ExternalLink : 'a'
   return (
-    <a href={href} className={classes} {...(external ? { target: '_blank', rel: 'noopener' } : {})}>
+    <Anchor href={href} className={classes}>
       {icon}
       {children}
-    </a>
+    </Anchor>
   )
 }

@@ -1,3 +1,4 @@
+import { Section } from '@/components/ui/Container'
 import { SectionHead } from '@/components/ui/SectionHead'
 
 const items = [
@@ -29,13 +30,13 @@ const items = [
 
 export function Details() {
   return (
-    <section aria-labelledby="details-title" className="mx-auto max-w-312 px-6 pt-40">
+    <Section aria-labelledby="details-title">
       <SectionHead
         eyebrow="Details"
         title="The small things, done right."
         titleId="details-title"
         align="start"
-        className="max-w-160"
+        className="max-w-narrow"
       />
       <div className="mt-14 grid grid-auto-fit gap-12">
         {items.map((item) => (
@@ -45,6 +46,6 @@ export function Details() {
           </div>
         ))}
       </div>
-    </section>
+    </Section>
   )
 }

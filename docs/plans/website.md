@@ -193,6 +193,8 @@ Purple is reserved for "merged". Do not use it anywhere else.
 
 One scale, everywhere: 4, 8, 12, 16, 24, 32, 40, 48, 56, 64, 80, 96, 128, 160 px. These map to Tailwind's default 4 px spacing steps (`1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32, 40`), so no arbitrary values are needed.
 
+Besides the scale, a spacing utility may use only these control sizes: `0` (resets such as `inset-0`), `1.5` (PR chip side padding, 6 px), `2.5` (star count side padding, 10 px), `5` (20 px: small badge and PR chip height, large button padding), `7` (28 px: the mini buttons in the step mockups) and `9` (36 px: the tour tabs). Anything else gets a named token in `globals.css`: max widths are `--container-*` (`max-w-page` is the 1248 px container), decorative boxes off the scale are `--height-*` and `--inset-*` (`h-dots-hero`, `top-glow-hero`), stacking is `--z-index-*` (`z-raise`, `z-nav`, `z-skip`), see-through fills are `--color-tint*` and `--color-*-glass`, and motion is `--duration-*`. `tests/unit/rules.test.ts` holds the same list (KERNEL-681).
+
 | Rule | Value |
 | --- | --- |
 | Page gutter | 24 |
@@ -504,8 +506,12 @@ Run `@axe-core/playwright` on both pages at both viewports. Zero violations.
 
 ### 14.4 Rules as failing tests
 
-- No hex colors (`#rgb`, `#rrggbb`, `#rrggbbaa`) in `components/**` and `app/**/*.tsx`. Only `globals.css` may contain them.
-- No arbitrary Tailwind values (`-[` inside class strings) in `components/**` and `app/**`.
+- No hex colors (`#rgb`, `#rrggbb`, `#rrggbbaa`) in `components/**`, `app/**`, `lib/**` and `content/**`. Only `globals.css` may contain them, inside `@theme` (a mask's `#000` is alpha, not a color). Brand SVGs are exempt, and `THEME_COLOR` in `lib/site.ts` must equal `--color-canvas`.
+- No color functions (`rgb(`, `hsl(`, `oklch(` and the like) or Tailwind palette colors (`text-zinc-400`) in the same folders.
+- No arbitrary Tailwind values in `components/**` and `app/**`: no `-[`, `-(`, `[prop:value]`, `[&` variants or `/[` modifiers.
+- Spacing utilities use the scale in section 6.2 or its listed control sizes.
+- No `max-w-<number>`, `z-<number>`, `rounded-full`, `rounded-none`, opacity modifiers on color tokens (`bg-white/5`), `duration-<number>`, `ease-*`, shadows or `style={{` in components and pages.
+- Outside `@theme`, `globals.css` has no hex colors, px font sizes or literal durations.
 - No em dashes or en dashes in `components/**`, `content/**` and `app/**`.
 
 ### 14.5 Visual comparison

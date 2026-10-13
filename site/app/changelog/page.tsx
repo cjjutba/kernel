@@ -3,6 +3,7 @@ import { ReleaseEntry } from '@/components/changelog/ReleaseEntry'
 import { UpNext } from '@/components/changelog/UpNext'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
+import { Container } from '@/components/ui/Container'
 import type { Metadata } from 'next'
 import { publishedChangelog } from '@/content/changelog'
 import { pageMetadata } from '@/lib/site'
@@ -19,7 +20,7 @@ export default async function ChangelogPage() {
       <SiteNav current="/changelog" />
       <main id="content">
         <ChangelogHeader />
-        <div className="mx-auto max-w-262 px-6 pb-24">
+        <Container size="changelog" className="pb-24">
           {releases.map((release, i) => (
             <ReleaseEntry key={release.version} release={release} latest={i === 0} />
           ))}
@@ -30,7 +31,7 @@ export default async function ChangelogPage() {
               This is where it all starts. Older releases will appear here as Kernel grows.
             </p>
           ) : null}
-        </div>
+        </Container>
       </main>
       <SiteFooter />
     </>

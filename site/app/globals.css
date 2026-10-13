@@ -45,6 +45,13 @@
 
   --color-wordmark-top: #1b1c1f;
 
+  /* See-through fills. Tailwind's own opacity modifier mixes in oklab, so these do too: the pixels match bg-white/5. */
+  --color-tint-faint: color-mix(in oklab, var(--color-white) 2%, transparent);
+  --color-tint: color-mix(in oklab, var(--color-white) 5%, transparent);
+  --color-tint-strong: color-mix(in oklab, var(--color-white) 6%, transparent);
+  --color-canvas-glass: color-mix(in oklab, var(--color-canvas) 72%, transparent);
+  --color-surface-2-glass: color-mix(in oklab, var(--color-surface-2) 85%, transparent);
+
   --text-*: initial;
   --text-display: clamp(44px, 5.6vw, 80px);
   --text-display--line-height: 1;
@@ -120,6 +127,14 @@
   --leading-snug: 1.5;
   --leading-relaxed: 1.6;
 
+  /* Only the weights the site sets, so any other weight utility fails to generate. */
+  --font-weight-*: initial;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* Letter spacing comes with the --text-* tokens. */
+  --tracking-*: initial;
+
   --radius-*: initial;
   --radius-pill: 999px;
   --radius-frame: 16px;
@@ -138,12 +153,46 @@
   --blur-*: initial;
   --blur-nav: 14px;
 
+  /* Max widths, as max-w-<name>. */
+  --container-*: initial;
+  --container-page: 78rem; /* 1248: 1200 of content plus the gutters */
+  --container-hero-shot: 80rem; /* 1280: the hero screenshot */
+  --container-changelog: 65.5rem; /* 1048: the changelog column */
+  --container-head: 62.5rem; /* 1000: a centered section heading */
+  --container-narrow: 40rem; /* 640: a start aligned heading, the tour line */
+  --container-lead: 37.5rem; /* 600: the hero and final CTA lead */
+  --container-section-lead: 35rem; /* 560: the line under a section heading */
+  --container-tagline: 18.75rem; /* 300: the footer tagline */
+  --container-glow-hero: 75rem; /* 1200 */
+  --container-glow-final: 56.25rem; /* 900 */
+
+  /* Decorative boxes off the spacing scale, as h-<name>, top-<name> and bottom-<name>. */
+  --height-dots-hero: 61.25rem; /* 980 */
+  --height-dots-changelog: 32.5rem; /* 520 */
+  --height-glow-hero: 35rem; /* 560 */
+  --height-glow-final: 32.5rem; /* 520 */
+  --height-step-visual: 15rem; /* 240: the mockup on a How it works card */
+  --inset-glow-hero: 37.5rem; /* 600, from the top of the hero */
+  --inset-glow-final: 16.25rem; /* 260, below the final CTA, as -bottom-glow-final */
+
+  /* Stacking, as z-<name>. */
+  --z-index-raise: 1; /* above a section's decoration */
+  --z-index-nav: 5; /* the sticky nav */
+  --z-index-skip: 50; /* the skip link, above everything */
+
+  --ease-*: initial;
+  --animate-*: initial;
+  --duration-fast: 150ms; /* color changes on hover */
+  --duration-turn: 0.2s; /* the FAQ plus turning into a minus */
+  --duration-shimmer: 4.5s; /* one pass of the hero pill's shimmer, pause included */
+  --duration-shimmer-delay: 1.2s; /* before the first pass */
+
   /* The reference uses max-width: 880px and 760px. max-* variants are width < X, hence one more pixel. */
   --breakpoint-*: initial;
   --breakpoint-nav: 761px;
   --breakpoint-faq: 881px;
 
-  --default-transition-duration: 150ms;
+  --default-transition-duration: var(--duration-fast);
   --default-font-feature-settings: 'cv01', 'ss03';
 }
 
@@ -164,8 +213,8 @@
     background: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: 15px;
-    line-height: 1.55;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
     -webkit-font-smoothing: antialiased;
     font-feature-settings: 'cv01', 'ss03';
     overflow-x: clip;
@@ -176,7 +225,7 @@
   summary:focus-visible {
     outline: 2px solid color-mix(in srgb, var(--color-ink) 55%, transparent);
     outline-offset: 2px;
-    border-radius: 6px;
+    border-radius: var(--radius-chip);
   }
 
   summary {
@@ -226,6 +275,7 @@
 @utility bg-dots-hero {
   background-image: radial-gradient(color-mix(in srgb, var(--color-white) 10%, transparent) 1px, transparent 1px);
   background-size: 24px 24px;
+  /* #000 here is mask alpha, not a color. */
   mask-image: radial-gradient(ellipse 62% 58% at 50% 22%, #000 15%, transparent 75%);
 }
 
@@ -237,6 +287,7 @@
 @utility bg-dots-final {
   background-image: radial-gradient(color-mix(in srgb, var(--color-white) 9%, transparent) 1px, transparent 1px);
   background-size: 24px 24px;
+  /* #000 here is mask alpha, not a color. */
   mask-image: radial-gradient(ellipse 48% 75% at 50% 100%, #000 10%, transparent 70%);
 }
 
@@ -283,7 +334,7 @@
     background-size: 250% 100%;
     background-repeat: no-repeat;
     background-position: 150% 0;
-    animation: shimmer-pill 4.5s ease-in-out 1.2s infinite;
+    animation: shimmer-pill var(--duration-shimmer) ease-in-out var(--duration-shimmer-delay) infinite;
   }
 }
 
@@ -342,7 +393,7 @@
     height: 1.5px;
     border-radius: 1px;
     background: var(--color-muted);
-    transition: transform 0.2s;
+    transition: transform var(--duration-turn);
   }
 
   &::after {
