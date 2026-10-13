@@ -35,6 +35,8 @@ interface Policy { review: ReviewConfig; team: TeamConfig; base?: string }
 export class Reviews extends Feature {
   /** PRs whose reviews Kernel is starting, by workspace id, so an update meanwhile reads them as in progress. */
   private starting = new Set<string>()
+  /** Workspace id to the PR head where only automatic review being off kept a review round from starting. */
+  private notStarted = new Map<string, string>()
 
   /** Where a review worktree starts: the reviewed workspace's branch, or its copy on the remote when the local one is gone. */
   async reviewBase(repo: string, branch: string, remote: string): Promise<string> {
@@ -161,6 +163,21 @@ export class Reviews extends Feature {
   }
 
   /**
+   * Automatic review is off, so the ready PR gets no review round. Remembers the head when a round would have started, for
+   * the Lead's update to say why none did (feat-automatic-review-off-by-default): `[review]` plans a review of the PR, its head
+   * had no round, and no review workspace is open. Nothing is saved, so a restart forgets it and the next ready reads it again.
+   */
+  private async noteNotStarted(of: Workspace): Promise<void> {
+    this.notStarted.delete(of.id)
+    const head = of.prHead ?? ''
+    if (this.roundOf(of)?.head === head || this.openReview(of)) return
+    const { plan } = await this.planFor(of)
+    const now = this.store.workspace(of.id)
+    if (!plan.length || !now || now.status === 'archived' || now.prState !== 'ready' || (now.prHead ?? '') !== head || this.stopped) return
+    this.notStarted.set(of.id, head)
+  }
+
+  /**
    * A teammate's PR passed checks (KERNEL-549). While `pr.autoReview` is on, Kernel starts a review round on its head
    * (KERNEL-552): a review workspace with a chat per kind the first time, and after that a new chat for a kind it lacks and
    * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
@@ -171,7 +188,9 @@ export class Reviews extends Feature {
   async onReady(workspaceId: string): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || this.isLeadWorkspace(of)) return
-    if (this.settings.pr.autoReview === false || this.starting.has(of.id)) return
+    if (this.settings.pr.autoReview === false) return this.noteNotStarted(of)
+    this.notStarted.delete(of.id)
+    if (this.starting.has(of.id)) return
     const last = this.roundOf(of)
     const again = last?.head === (of.prHead ?? '') ? last : undefined
     if (again && (this.openReview(of) || !this.unreported(of, again).length)) return
@@ -358,6 +377,8 @@ export class Reviews extends Feature {
       ...(held.size ? { held: ordered(held) } : {}),
       ...(skipped.length ? { skipped } : {}),
       ...(round && left.length ? { stillBlocked: { rounds: round.n, kinds: left } } : {}),
+      // Only while the setting is still off and nobody asked for a review of this head meanwhile.
+      ...(this.settings.pr.autoReview === false && this.notStarted.get(ws.id) === (ws.prHead ?? '') && !open && !verdicts.length && !inProgress ? { notStarted: true } : {}),
       ...(open ? { open: { workspaceId: open.id, agentId: open.agentId, name: name(open.agentId), ...(open.status === 'failed' ? { failed: true } : {}) } } : {})
     }
   }

@@ -30,12 +30,12 @@ const AGENTS = {
   '.claude/agents/lumi.md': '---\nname: lumi\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Lumi, and you look at screens.'
 }
 
-/** A room with no reviewer agent and no built-ins (no starter folder), its `[review]` committed on main. */
+/** A room with no reviewer agent and no built-ins (no starter folder), its `[review]` committed on main. Automatic review is on unless `app` says otherwise. */
 async function setup(o: { settings?: string; files?: Record<string, string>; app?: object } = {}) {
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}), ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -179,6 +179,38 @@ describe('which reviews a PR gets', () => {
     bus.push({ type: 'pr', workspaceId: ws.id, state: 'ready' })
     await new Promise((r) => setTimeout(r, 300))
     expect(reviewsOf(ws.id)).toEqual([])
+  })
+
+  it('with auto review off, says so only when a review would have started (feat-automatic-review-off-by-default)', async () => {
+    const off = await setup({ settings: UX_ON, app: { pr: { autoReview: false } } })
+    const ws = await off.pr({ 'src/renderer/App.tsx': 'export {}\n' })
+    expect(off.k.reviews.reviewState(ws).notStarted).toBeUndefined()
+    await off.k.reviews.onReady(ws.id)
+    expect(off.reviewsOf(ws.id)).toEqual([])
+    expect(off.k.reviews.reviewState(ws).notStarted).toBe(true)
+    // A new head nobody read yet says nothing, and neither does the setting turned on.
+    expect(off.k.reviews.reviewState({ ...ws, prHead: 'f'.repeat(40) }).notStarted).toBeUndefined()
+    off.k.settings.pr.autoReview = true
+    expect(off.k.reviews.reviewState(ws).notStarted).toBeUndefined()
+
+    // `[review]` asks for no review of this PR, so none would have run with the setting on either.
+    const none = await setup({ settings: '[team]\nreviewer = "none"\n', app: { pr: { autoReview: false } } })
+    const quiet = await none.pr({ 'a.txt': 'a\n' })
+    await none.k.reviews.onReady(quiet.id)
+    expect(none.k.reviews.reviewState(quiet).notStarted).toBeUndefined()
+
+    // A review of the head already started, here by Kernel before the setting went off.
+    const had = await setup()
+    const reviewed = await had.pr({ 'a.txt': 'a\n' })
+    await had.k.reviews.onReady(reviewed.id)
+    expect(had.reviewsOf(reviewed.id)).toHaveLength(1)
+    had.k.settings.pr.autoReview = false
+    await had.k.reviews.onReady(reviewed.id)
+    expect(had.k.reviews.reviewState(had.k.store.workspace(reviewed.id)!).notStarted).toBeUndefined()
+    // With its review workspace archived, the round the head had still counts.
+    had.k.store.saveWorkspace({ ...had.reviewsOf(reviewed.id)[0], status: 'archived' })
+    await had.k.reviews.onReady(reviewed.id)
+    expect(had.k.reviews.reviewState(had.k.store.workspace(reviewed.id)!).notStarted).toBeUndefined()
   })
 
   it('starts the reviews when a PR moves to ready, and reads them as running meanwhile', async () => {

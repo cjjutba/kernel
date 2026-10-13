@@ -6,7 +6,7 @@ import type { PushEvent } from '../src/shared/ipc'
 import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedVersion, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { collapse, decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
+import { collapse, decide, LeadUpdates, NO_AUTO_REVIEW, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
 import { UPDATE_HEADER } from '../src/main/services/handoff'
 import { capText } from '../src/main/services/text'
 import { Sessions } from '../src/main/services/sessions'
@@ -480,6 +480,8 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR one kind approved while another still has to look at the latest commit (KERNEL-549)', [ev('pr.ready')], 'ready', { review: rs({ approved: ['code'], waiting: ['security'], open: { workspaceId: 'rv', agentId: 'kernel-reviewer', name: 'Theo' } }) }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
     ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: rs({ open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } }) }, ['PR #54 needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace rv).']],
     ['a PR that passed checks with auto review off (KERNEL-115)', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs() }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
+    ['a PR that passed checks with auto review off, which alone kept a review from starting', [ev('pr.ready')], 'ready', { autoReview: false, review: rs({ notStarted: true }) }, [`PR #54 passed checks and has no conflicts. Tell the user it is ready to merge, and tell them: "${NO_AUTO_REVIEW}"`]],
+    ['a PR that passed checks with auto review on, whatever the review state says', [ev('pr.ready')], 'ready', { autoReview: true, review: rs({ notStarted: true }) }, [UNREVIEWED]],
     ['a PR that passed checks with auto review off and no reviewer', [ev('pr.ready')], 'ready', { autoReview: false }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
     ['a PR the user had reviewed, approved, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: rs({ approved: ['code'] }) }, ['PR #54 passed checks, has no conflicts and the code review approved it. Tell the user it is ready to merge, with a short merge summary: what it changes, which reviews ran, and anything they should know.']],
     ['a PR reviewed at an earlier commit, with its review workspace closed', [ev('pr.ready')], 'ready', { autoReview: false, review: rs({ stale: true }) }, ['PR #54 passed checks and has no conflicts, but its last review was of an earlier commit and its review workspace is closed. Tell the user the review is out of date.']],

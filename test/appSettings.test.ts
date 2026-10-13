@@ -382,6 +382,8 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   /** An existing file that saved no permission mode reads as Accept edits, pinned (KERNEL-432). */
   const PINNED = { permissions: { mode: 'acceptEdits' } }
   const OLD_MODELS = { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high' }
+  /** Every default as a file from before KERNEL-225 saved it, automatic review on, which was the default then. */
+  const OLD_FULL = () => { const d = DEFAULT_SETTINGS('/home/cj'); return { ...d, pr: { ...d.pr, autoReview: true } } }
   const MAX_LIKE = { roles: { lead: { model: 'claude-opus-5-5', effort: 'high' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'high' }, engineers: { effort: 'high' }, qa: { effort: 'high' } }, agentLimit: 0 }
 
   it('reads the plan from the type `claude auth status` gives', () => {
@@ -407,9 +409,27 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it.each<ClaudePlan>(['max', 'team', 'enterprise', 'unknown'])('keeps everything as it was on %s, but for a Sonnet reviewer', async (plan) => {
     const { resolved } = await loadAppSettings(await fileOf(), '/home/cj', plan)
     expect(resolved.models).toMatchObject(MAX_LIKE)
-    expect(resolved.pr.autoReview).toBe(true)
+    expect(resolved.pr.autoReview).toBe(false)
     expect(resolved.plan).toBe(plan)
     expect(planDefaults(plan)).toEqual({ models: { roles: { reviewer: { model: 'claude-sonnet-5-5' } } } })
+  })
+
+  it.each<ClaudePlan>(['pro', 'max', 'team', 'enterprise', 'unknown'])('starts automatic review off on %s, and a saved choice wins', async (plan) => {
+    expect(DEFAULT_SETTINGS('/home/cj').pr.autoReview).toBe(false)
+    expect(planDefaults(plan)).not.toHaveProperty('pr')
+    const unset = await loadAppSettings(await fileOf(), '/home/cj', plan)
+    expect(unset.resolved.pr.autoReview).toBe(false)
+    expect(unset.resolved.planDefaulted).toContain('pr.autoReview')
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ version: 2, pr: { autoReview: true } }))
+    const on = await loadAppSettings(file, '/home/cj', plan)
+    expect(on.saved).toMatchObject({ pr: { autoReview: true } })
+    expect(on.resolved.pr.autoReview).toBe(true)
+    expect(on.resolved.planDefaulted).not.toContain('pr.autoReview')
+    // A file from before KERNEL-225 saved `true` on every launch, so it was never a choice and follows the default.
+    const old = await loadAppSettings(await fileOf(OLD_FULL()), '/home/cj', plan)
+    expect(old.resolved.pr.autoReview).toBe(false)
+    expect(old.resolved.planDefaulted).toContain('pr.autoReview')
   })
 
   it('starts the base defaults with a Sonnet reviewer and agent teams off, which nothing needs (D-104)', () => {
@@ -418,7 +438,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
 
   it('reads a file from before as unset: every launch saved the old defaults, so they pick up the plan', async () => {
     const { roles: _roles, ...rest } = DEFAULT_SETTINGS('/home/cj').models
-    const file = await fileOf({ ...DEFAULT_SETTINGS('/home/cj'), models: { ...rest, ...OLD_MODELS, reviewer: 'claude-opus-5-5', agentTeams: true }, hookPort: 7421, permissions: { ...DEFAULT_SETTINGS('/home/cj').permissions, alwaysAsk: ['rm -rf', 'make deploy'] } })
+    const file = await fileOf({ ...OLD_FULL(), models: { ...rest, ...OLD_MODELS, reviewer: 'claude-opus-5-5', agentTeams: true }, hookPort: 7421, permissions: { ...DEFAULT_SETTINGS('/home/cj').permissions, alwaysAsk: ['rm -rf', 'make deploy'] } })
     const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
     // Only what differs from the defaults survives: the port, the extra rule, and agent teams, which was saved on and nobody can tell from a choice.
     expect(saved).toEqual({ hookPort: 7421, permissions: { alwaysAsk: ['rm -rf', 'make deploy'], mode: 'acceptEdits' }, models: { agentTeams: true } })
@@ -432,7 +452,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it("reads the Address review and Create PR texts every launch saved as unset, so the new text reaches existing installs (KERNEL-222, KERNEL-468)", async () => {
     const old = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
     const oldCreate = '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.'
-    const full = DEFAULT_SETTINGS('/home/cj')
+    const full = OLD_FULL()
     const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old, createInstructions: oldCreate } }), '/home/cj', 'max')
     expect(saved).toEqual(PINNED)
     expect(resolved.pr.addressReviewInstructions).toBe(full.pr.addressReviewInstructions)
@@ -446,7 +466,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   })
 
   it("reads the Resolve conflicts, Fix checks and Address review texts every launch saved as unset, so the repo's steps come first (KERNEL-564)", async () => {
-    const full = DEFAULT_SETTINGS('/home/cj')
+    const full = OLD_FULL()
     const old = {
       resolveInstructions: '# Resolve conflicts\n1. Rebase on the base branch.\n2. Keep both sides where they do not overlap.\n3. Re-run tests and typecheck.\n4. Push and summarize what you changed.',
       fixChecksInstructions: '# Fix failing checks\n1. Run `gh pr checks` and read every failure.\n2. Reproduce it locally and fix the cause, not the test.\n3. Run the full suite, push, and summarize the fix.',
@@ -566,7 +586,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     await h['settings.set']({ patch: { models: { roles: { lead: { effort: 'high' } } } } })
     account.type = 'max'
     await h['account.get'](undefined)
-    expect(k.settings).toMatchObject({ plan: 'max', models: { roles: { lead: { model: 'claude-opus-5-5', effort: 'high' }, engineers: { effort: 'high' } }, agentLimit: 0 }, pr: { autoReview: true } })
+    expect(k.settings).toMatchObject({ plan: 'max', models: { roles: { lead: { model: 'claude-opus-5-5', effort: 'high' }, engineers: { effort: 'high' } }, agentLimit: 0 }, pr: { autoReview: false } })
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, models: { roles: { lead: { effort: 'high' } } } })
     // A sign-out says nothing about the plan, so it keeps the last one.
     account.signedIn = false
