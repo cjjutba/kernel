@@ -56,6 +56,8 @@ export interface Workspace {
   taskId?: string
   /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
   leadChatId?: string
+  /** The user's words that approved the hand-off with plan mode off, quoted from their message by the Lead (KERNEL-678). */
+  goAhead?: string
   /**
    * The chat with Rowan this workspace belongs to: the one that handed it off, kept after that tab closes (KERNEL-337), or, on a
    * `lead` workspace, the chat it hosts (KERNEL-405).

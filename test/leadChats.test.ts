@@ -70,7 +70,8 @@ async function setup(files: Record<string, string> = {}) {
   /** `extra` is what the MCP server passes a handler, as the call's abort signal. */
   const run = async (chat: Chat, name: string, args: Record<string, unknown>, extra: { signal?: AbortSignal } = {}) => {
     k.lead['leadTools'](room.id, rowan, chat)
-    const tool = kernelTools(wired!).find((t) => t.name === name)!
+    // These chats are about tabs, so their hand-offs skip the go-ahead check, which handoff.test.ts covers (KERNEL-678).
+    const tool = kernelTools({ ...wired!, userSaid: undefined }).find((t) => t.name === name)!
     const r = await tool.handler(args as never, extra)
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }

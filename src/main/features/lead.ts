@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
@@ -498,7 +498,7 @@ export class Lead extends Feature {
       plans: () => this.threadPlans(roomId, chat).map((a) => ({ tab: this.store.chat(a.chatId!)?.title ?? '', at: a.createdAt, plan: a.detail ?? '' })),
       // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
       planMode: () => !!this.store.chat(chat.id)?.plan,
-      createWorkspace: async ({ issue, images, ...o }) => {
+      createWorkspace: async ({ issue, images, goAhead, ...o }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
         const tabs = this.threadTabIds(chat)
@@ -513,6 +513,8 @@ export class Lead extends Feature {
         const review = o.reviewOf ?? o.linkReviewOf
         const ws = await this.k.workspaces.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat)
+        // The user's words that approved it, kept as the record of the go-ahead (KERNEL-678).
+        if (goAhead) this.updateWs(ws.id, { goAhead })
         // Rowan named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
@@ -573,6 +575,11 @@ export class Lead extends Feature {
       mergeWorkspace: (id) => this.k.prs.mergePr(id),
       leadMerge: () => this.settings.pr.leadMerge,
       userTurn: () => !this.sessions.kernelTurn(chat.id),
+      // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
+      userSaid: () => {
+        const last = this.store.items(chat.id).reverse().find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !i.from)
+        return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
+      },
       setWait: (id, on) => this.k.waits.setWait(id, on),
       refreshPr: (id) => this.k.refreshPr(id, { settle: true }),
       isRunning: (id) => this.k.archive.working(id),

@@ -16,7 +16,7 @@ import { waitRefusal } from '../src/main/services/waits'
 import { toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
-import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -284,13 +284,109 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
     expect(LEAD_RULE).toContain('Ask for plan approval only while the chat is in plan mode')
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
-    expect(LEAD_RULE).toContain('With plan mode off there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling mcp__kernel__create_workspace.')
-    expect(PLAN_MODE_OFF).toContain('ask the user before calling create_workspace')
+    expect(LEAD_RULE).toContain('With plan mode off, propose what you would hand off and to whom, ending with one yes-or-no question for one set of tasks. Call mcp__kernel__create_workspace only on a go-ahead')
+    expect(PLAN_MODE_OFF).toContain('there is no plan to approve')
     // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
     const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
     expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
+  })
+})
+
+describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNEL-678)', () => {
+  /** A real Kernel's Lead chat with plan mode off, whose user last wrote `said`, and its create_workspace. */
+  async function offLead(said?: string) {
+    const r = await realLead()
+    const { k, room, chat } = r
+    k.sessions.send = async () => ({ queued: false })
+    await k.sessions.configure(chat.id, { plan: false })
+    if (said) k.store.saveItem(chat.id, { kind: 'user', id: 'said', ts: Date.now(), parts: [{ type: 'text', text: said }] })
+    const lead = (await k.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead.leadToolDeps(room.id, lead, chat))
+    const run = async (name: string, args: object) => {
+      const out = await tools.find((t) => t.name === name)!.handler(args as never, {})
+      return { text: (out.content[0] as { text: string }).text, isError: !!(out as { isError?: boolean }).isError }
+    }
+    const handOff = (more: object = {}) => run('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Build it', ...more })
+    const teammates = () => k.store.workspaces(room.id).filter((w) => !w.lead)
+    return { ...r, run, handOff, teammates }
+  }
+
+  it('matches a quote in the message, ignoring case and whitespace', () => {
+    expect(quotesUser('Hand it  to\nnoor', 'Looks good. hand it to Noor, thanks')).toBe(true)
+    expect(quotesUser('hand it to Kai', 'hand it to Noor')).toBe(false)
+    expect(quotesUser('  ', 'hand it to Noor')).toBe(false)
+    expect(quotesUser(undefined, 'hand it to Noor')).toBe(false)
+    expect(quotesUser('yes', undefined)).toBe(false)
+  })
+
+  it('refuses a hand-off with no go-ahead, or one the latest message does not say, and creates nothing', { timeout: 60_000 }, async () => {
+    const t = await offLead('Yes, but should it also cover pnpm?')
+    expect(await t.handOff()).toEqual({ isError: true, text: NO_GO_AHEAD })
+    expect(await t.handOff({ go_ahead: 'hand it to Noor' })).toEqual({ isError: true, text: NO_GO_AHEAD })
+    expect(t.teammates()).toEqual([])
+    // An older message doesn't count once the user wrote again.
+    t.k.store.saveItem(t.chat.id, { kind: 'user', id: 'later', ts: Date.now() + 1, parts: [{ type: 'text', text: 'What would Noor change?' }] })
+    expect(await t.handOff({ go_ahead: 'Yes' })).toEqual({ isError: true, text: NO_GO_AHEAD })
+    expect(t.teammates()).toEqual([])
+  })
+
+  it('hands off in the same turn when the latest message says to, and keeps the quote', { timeout: 60_000 }, async () => {
+    const t = await offLead('hand it to Noor')
+    const r = await t.handOff({ go_ahead: 'Hand it to  Noor' })
+    expect(r.isError, r.text).toBe(false)
+    expect(t.teammates()).toEqual([expect.objectContaining({ agentId: 'noor', goAhead: 'Hand it to  Noor' })])
+  })
+
+  it('needs no go-ahead in plan mode or after an approved plan', { timeout: 60_000 }, async () => {
+    const t = await offLead('Plan the symlink work')
+    await t.k.sessions.configure(t.chat.id, { plan: true })
+    expect((await t.handOff({ title: 'In plan mode' })).isError).toBe(false)
+    // The approval takes the chat out of plan mode, and the hand-off that follows needs no quote.
+    const asked = t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })
+    for (let i = 0; i < 100 && !t.plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+    t.k.approvals.decide(t.plans()[0].id, { behavior: 'allow' })
+    await asked
+    await t.planSaved()
+    expect(t.k.store.chat(t.chat.id)?.plan).toBe(false)
+    expect((await t.handOff({ title: 'After the plan' })).isError).toBe(false)
+    expect(t.teammates().map((w) => w.goAhead)).toEqual([undefined, undefined])
+  })
+
+  it('needs no go-ahead for a review, or for a follow-up Kernel started on approved work', { timeout: 60_000 }, async () => {
+    const t = await offLead('hand it to Noor')
+    expect((await t.handOff({ go_ahead: 'hand it to Noor' })).isError).toBe(false)
+    const built = t.teammates()[0]
+    t.k.store.saveWorkspace({ ...built, prState: 'open', prNumber: 7 })
+    expect((await t.handOff({ title: 'Review it', review_of: built.id })).isError).toBe(false)
+    // A team update starts Kernel's turn: fixing the approved task needs no new yes.
+    t.k.sessions['turnsOf'](t.chat.id).from = 'kernel'
+    expect((await t.handOff({ title: 'Fix the failed checks' })).isError).toBe(false)
+    // The user's own turn after it needs a go-ahead again.
+    t.k.sessions['turnsOf'](t.chat.id).from = undefined
+    expect(await t.handOff({ title: 'Something new' })).toEqual({ isError: true, text: NO_GO_AHEAD })
+  })
+
+  it('tells the Lead to answer a yes that comes with questions first, and to ask once', () => {
+    const line = LEAD_RULE.split('\n').find((l) => l.startsWith('With plan mode off'))!
+    expect(line).toContain('ending with one yes-or-no question for one set of tasks')
+    expect(line).toContain('only on a go-ahead that approves it and raises nothing new, quoted in go_ahead')
+    expect(line).toContain('If the reply also asks questions, changes scope or only agrees with the idea, answer it, restate who gets what, and ask once.')
+    expect(line).toContain('Filing or editing tracker issues needs the same go-ahead.')
+    expect(line).toContain("Propose new findings, don't start them.")
+    expect(line).not.toContain('right away')
+  })
+
+  it('says the same in the rule, the instructions, the refusal and the starter Rowan, and the rule does not grow', async () => {
+    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, rowan]) {
+      for (const part of ['one yes-or-no question', 'raises nothing new, quoted in go_ahead', 'changes scope or only agrees with the idea', 'ask once']) expect(said).toContain(part)
+      expect(said).not.toMatch(/[\u2013\u2014]/)
+    }
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, rowan]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
+    // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(5395)
   })
 })
 
