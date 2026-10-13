@@ -127,9 +127,9 @@ export class Hooks extends Feature {
   }
 
   async hooksStatus(): Promise<HookStatus> {
-    // A workspace run has nothing installed and nothing to fix, whatever Claude's settings say (KERNEL-679).
+    // A workspace run has nothing installed, whatever Claude's settings say, and says why in place of Install (KERNEL-679).
     if (this.off) {
-      return { port: this.settings.hookPort, listening: !!this.hookServer?.listening, installed: false, events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: false, lastSeen: this.hookSeen.get(name) })), token: this.hookToken, needsInstall: false, build: this.build }
+      return { port: this.settings.hookPort, listening: !!this.hookServer?.listening, installed: false, events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: false, lastSeen: this.hookSeen.get(name) })), token: this.hookToken, needsInstall: false, build: this.build, problem: { kind: 'workspace-run' } }
     }
     const policy = await this.readPolicy().catch((e) => { console.warn('[hooks] could not read Claude Code settings', e); return undefined })
     // Kernel's entries an admin put in managed settings count too, and run when only managed hooks do.

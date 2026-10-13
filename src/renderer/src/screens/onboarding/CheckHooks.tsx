@@ -24,14 +24,15 @@ interface Card {
   code: string
   title: Text
   detail: Text
-  fixLabel: string
+  /** Left out when there is nothing to fix, so the card has no fix and no button to try again. */
+  fixLabel?: string
   command?: string
   line?: string
   copy?: { label: string; text: string }
-  retry: 'install' | 'check' | 'turnOn'
+  retry?: 'install' | 'check' | 'turnOn'
 }
 
-/** CheckHooksNotWritable.png, CheckHooksReadOnly.png, CheckHooksSymlink.png, CheckHooksManaged.png and CheckHooksOff.png (KERNEL-461). */
+/** CheckHooksNotWritable.png, CheckHooksReadOnly.png, CheckHooksSymlink.png, CheckHooksManaged.png and CheckHooksOff.png (KERNEL-461). A workspace run has no PNG (KERNEL-679). */
 export function problemCard(p: HookProblem): Card {
   const notInstalled = "Hooks aren't installed"
   const cantRun = "Hooks can't run"
@@ -49,6 +50,8 @@ export function problemCard(p: HookProblem): Card {
     }
     case 'off':
       return { status: cantRun, code: 'disableAllHooks', title: ['Your Claude settings turn hooks off'], detail: [[p.file], ' sets ', ['disableAllHooks'], ' to true, so Claude Code runs no hooks at all.'], fixLabel: `Kernel removes this line and keeps a copy in ${p.file.split('/').pop()}.kernel-backup`, line: '"disableAllHooks": true', retry: 'turnOn' }
+    case 'workspace-run':
+      return { status: 'Hooks are off', code: 'workspace run', title: ['Hooks are off in a workspace run'], detail: ['This copy of Kernel never changes ', ['~/.claude/settings.json'], ", so it doesn't see Claude sessions started outside it."] }
   }
 }
 
@@ -131,9 +134,9 @@ export function CheckHooks() {
 }
 
 /** The event list gives way to why the hooks can't be written or can't run, with one fix and one way to try again. */
-function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; busy: string | null; note: string | null; retry: Record<Card['retry'], () => Promise<void>> }) {
+function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; busy: string | null; note: string | null; retry: Record<NonNullable<Card['retry']>, () => Promise<void>> }) {
   const c = problemCard(problem)
-  const button = { install: ['Install hooks', 'Installing'], check: ['Check again', 'Checking'], turnOn: ['Turn hooks on', 'Turning on'] }[c.retry]
+  const button = c.retry && { install: ['Install hooks', 'Installing'], check: ['Check again', 'Checking'], turnOn: ['Turn hooks on', 'Turning on'] }[c.retry]
   return (
     <Modal
       title="Check hooks"
@@ -142,8 +145,8 @@ function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; bu
       footer={
         <>
           <span className="grow" />
-          <Button variant="ghost" onClick={actions.ui.closeModal}>Done</Button>
-          <Button variant="primary" busy={busy === c.retry} busyLabel={button[1]} disabled={busy !== null} onClick={() => void retry[c.retry]()}>{button[0]}</Button>
+          <Button variant={button ? 'ghost' : 'primary'} onClick={actions.ui.closeModal}>Done</Button>
+          {c.retry && button && <Button variant="primary" busy={busy === c.retry} busyLabel={button[1]} disabled={busy !== null} onClick={() => void retry[c.retry!]()}>{button[0]}</Button>}
         </>
       }
     >
@@ -155,12 +158,12 @@ function ProblemModal({ problem, busy, note, retry }: { problem: HookProblem; bu
             <p className="hk-card-title"><Rich text={c.title} /></p>
             <p className="hk-card-detail"><Rich text={c.detail} /></p>
           </div>
-          <div className="hk-fix">
+          {c.fixLabel && <div className="hk-fix">
             <p className="hk-fix-label">{c.fixLabel}</p>
             {c.command && <div className="hk-command"><span>{c.command}</span><CopyButton text={c.command} label="Copy" /></div>}
             {c.line && <div className="hk-line">{c.line}</div>}
             {c.copy && <div><CopyButton className="hk-admin" text={c.copy.text} label={c.copy.label} /></div>}
-          </div>
+          </div>}
         </div>
         <p className="hk-keep" role="status" aria-live="polite">{note ?? 'Agents keep working. Their statuses stop updating, and approvals fall back to the terminal.'}</p>
       </div>

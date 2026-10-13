@@ -388,7 +388,7 @@ describe('a dev run started inside a workspace (KERNEL-679)', () => {
     await same()
     const status = await h['hooks.status']()
     expect(status).toMatchObject({ installed: false, listening: true, port: next, build: 'run', needsInstall: false })
-    expect(status.problem).toBeUndefined()
+    expect(status.problem).toEqual({ kind: 'workspace-run' })
     expect(status.events.every((e) => !e.installed)).toBe(true)
     expect(await k.hooks.present()).toBe(false)
   })
