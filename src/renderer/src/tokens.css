@@ -34,6 +34,10 @@
   --merged-solid: #7c5ce0;
   --working: #7cb2ff;
   --needs: #f2c55c;
+  /* Amber and red as a fill: meter bars and warning icons. In dark they equal the text tokens. Light needs brighter ones, since
+     text-safe amber reads brown on a bar (feat-providers-redesign). */
+  --needs-fill: #f2c55c;
+  --del-fill: #f06363;
   --tint-working: #1c2b45;
   --tint-add: #173327;
   --tint-del: #2f191b;
@@ -112,6 +116,8 @@
   --merged-solid: #7c5ce0;
   --working: #1a56b0;
   --needs: #7a4f00;
+  --needs-fill: #d97706;
+  --del-fill: #dc3e42;
   --tint-working: #d6e4fb;
   --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
@@ -304,6 +310,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
 .tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; }
 .tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
+/* Underline tabs (Settings, Providers): text tabs on a hairline, the selected one ink with a 2px bar under it. */
+.tabs-underline { gap: 24px; border-bottom: 1px solid var(--panel-line); }
+.tabs-underline .tab { position: relative; height: 38px; padding: 0; border-radius: 0; font-size: 13.5px; transition: color 0.12s; }
+.tabs-underline .tab:hover { color: var(--ink-2); }
+.tabs-underline .tab[aria-selected='true'] { background: transparent; color: var(--ink); }
+.tabs-underline .tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); }
 .input { height: 34px; padding: 0 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); outline: none; }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }

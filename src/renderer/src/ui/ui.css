@@ -98,7 +98,8 @@
 /* meter */
 .meter { height: 6px; border-radius: var(--r-pill); background: var(--line-2); overflow: hidden; }
 .meter span { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
-.meter[data-hot='true'] span { background: var(--ink); }
+.meter[data-level='near'] span { background: var(--needs-fill); }
+.meter[data-level='full'] span { background: var(--del-fill); }
 
 /* code block */
 .code.boxed { border: 1px solid var(--line-2); overflow-wrap: anywhere; }

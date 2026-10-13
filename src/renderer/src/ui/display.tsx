@@ -44,11 +44,14 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return <div className={['card', className].filter(Boolean).join(' ')} {...rest} />
 }
 
-/** A usage bar. `value` is 0 to 1. Grey below 85%, the ink color from 85% (white in dark): it brightens as you near the limit (D-026). */
+/** How full a meter reads: amber from 75%, red from 90%, the context ring's steps (CONTEXT_NEAR, CONTEXT_WARN). `value` is 0 to 1. */
+export const meterLevel = (value: number): 'near' | 'full' | undefined => (value >= 0.9 ? 'full' : value >= 0.75 ? 'near' : undefined)
+
+/** A usage bar. `value` is 0 to 1. Grey, then amber from 75% and red from 90%, as the context ring does (feat-providers-redesign, amends D-026). */
 export function Meter({ value, label }: { value: number; label: string }) {
   const v = Math.max(0, Math.min(1, value))
   return (
-    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className="meter" data-hot={v >= 0.85 ? 'true' : undefined}>
+    <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(v * 100)} className="meter" data-level={meterLevel(v)}>
       <span style={{ width: `${v * 100}%` }} />
     </div>
   )
