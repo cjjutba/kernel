@@ -46,7 +46,11 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const [busy, run] = useBusy()
   const [retired, setRetired] = useState<AgentDef[]>(NO_AGENTS)
   const [adding, setAdding] = useState(false)
+  const [copying, setCopying] = useState(false)
   const starterAnchor = useRef<HTMLSpanElement>(null)
+  const copyAnchor = useRef<HTMLSpanElement>(null)
+  // Other rooms that are not archived and have an agent that is not retired: the ones this room can copy from.
+  const sources = useStore((x) => x.rooms.filter((r) => r.id !== roomId && !r.archived && (x.agents[r.id] ?? NO_AGENTS).some((a) => !a.retired)))
   useEffect(() => { if (roomId) void loadRoom(roomId) }, [roomId])
   // Retired agents sit in .claude/retired-agents (D-003). The list is read again when the team changes, so a retire shows here at once.
   useEffect(() => {
@@ -62,6 +66,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       const list = await call('agents.seed', { roomId, template: { kind: s.team.defaultTemplate } })
       actions.agents.set(roomId, list)
     } catch (e) { actions.ui.toast({ title: 'Could not add the team', sub: cleanError(e) }) }
+  })
+  const copyFrom = (fromRoomId: string) => run('copy', async () => {
+    try {
+      await call('agents.seed', { roomId, template: { kind: 'copy', fromRoomId } })
+      await loadRoom(roomId)
+    } catch (e) { actions.ui.toast({ title: 'Could not copy the team', sub: cleanError(e) }) }
   })
   const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
   const starters = STARTER_TEAMMATES.filter((m) => !team.some((a) => a.id === m.id))
@@ -119,6 +129,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents`}>
             <span className="set-actions">
               <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
+              {!!sources.length && (
+                <span className="set-starters" ref={copyAnchor}>
+                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another room<Icon name="chevron" size={10} stroke={1.9} /></Button>
+                  {copying && <Menu label="Copy from another room" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ right: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
+                </span>
+              )}
               <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
             </span>
           </Row>

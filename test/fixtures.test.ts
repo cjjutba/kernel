@@ -127,6 +127,7 @@ const noCanvas = [
   'TurnFilesLong',
   'TurnFilesNoReply',
   'TurnFilesHover',
+  'SettingsTeamEmpty',
 ]
 
 describe('fixtures', () => {
