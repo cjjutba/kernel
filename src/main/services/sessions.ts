@@ -63,6 +63,11 @@ interface Live {
   onKey?: boolean
   /** A Claude process started allowed to take Bypass permissions, which it keeps for life (KERNEL-447). Undefined on Codex. */
   bypass?: boolean
+  /**
+   * A Codex thread started in Bypass permissions, so with the MCP servers its tools line leaves out, which it keeps until its
+   * process restarts (bypass-allows-unlisted-mcp). Undefined on Claude.
+   */
+  threadBypass?: boolean
   /** The mode Kernel last started or switched the process in, which a Claude process keeps while Bypass permissions waits (KERNEL-572). */
   mode: RunMode
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
@@ -640,18 +645,20 @@ export class Sessions {
   /**
    * A Claude process takes Bypass permissions only if it started allowed to, and keeps that permission for life. So a change
    * across that line restarts it: an idle one ends now and a busy one when its turn and background tasks end, and the next
-   * message resumes the conversation in the new mode. Meanwhile it runs in the stricter mode of the two.
+   * message resumes the conversation in the new mode. Meanwhile it runs in the stricter mode of the two. A Codex thread
+   * keeps the MCP servers it started with, which Bypass permissions widens, so crossing into or out of Bypass restarts it the
+   * same way. Its approvals follow the new mode at once (bypass-allows-unlisted-mcp).
    */
   private moveTo(chat: Chat, ws: Workspace, live: Live): Promise<void> {
     const { mode, bypass } = this.modes(chat, ws)
-    const restart = live.bypass !== undefined && live.bypass !== bypass
-    const waits = restart && mode === 'bypassPermissions'
+    const restart = (live.bypass !== undefined && live.bypass !== bypass) || (live.threadBypass !== undefined && live.threadBypass !== (mode === 'bypassPermissions'))
+    const waits = restart && live.bypass !== undefined && mode === 'bypassPermissions'
     if (!waits) live.mode = mode
     const switched = waits ? Promise.resolve() : live.runner.setMode(mode)
     if (!restart) return switched
     if (live.running || live.tasks.size) {
       this.stale.add(chat.id)
-      if (bypass) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: 'Bypass permissions starts once this turn ends.' })
+      if (live.bypass !== undefined && bypass) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: 'Bypass permissions starts once this turn ends.' })
     } else this.end(chat.id, live)
     return switched
   }
@@ -1332,8 +1339,9 @@ export class Sessions {
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
+      live.threadBypass = mode === 'bypassPermissions'
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), allow: this.d.accessFor?.(ws)?.allow })
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), bypass: live.threadBypass })
     } else {
       live.bypass = bypass
       live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
