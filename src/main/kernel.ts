@@ -182,7 +182,7 @@ export class Kernel {
     this.store.saveMeta('cleanExit', false)
     // Settings are what the user chose over the defaults of the plan Kernel last read. Nothing is saved here: only a change is (KERNEL-225).
     this.config.plan = this.store.meta<ClaudePlan>('plan') ?? 'unknown'
-    const { saved, resolved } = await loadAppSettings(this.config.settingsFile, this.home, this.config.plan)
+    const { saved, resolved } = await loadAppSettings(this.config.settingsFile, this.home, this.config.plan, this.o.build)
     this.config.saved = saved
     this.settings = resolved
     this.o.onSettings?.(this.settings)

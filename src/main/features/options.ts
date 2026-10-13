@@ -1,4 +1,4 @@
-import type { AppUpdate, SharedFile } from '@shared/types'
+import type { AppUpdate, HookBuild, SharedFile } from '@shared/types'
 import type { Cipher } from '../services/env'
 import type { Log } from '../services/log'
 import type { Keychain } from '../services/providers/claudeHome'
@@ -75,4 +75,14 @@ export interface KernelOptions {
    * The app passes its `Log`. Fixture runs and tests leave it out, and those lines go only to the console.
    */
   log?: Pick<Log, 'info'>
+  /**
+   * The installed app or Kernel Dev (KERNEL-675). It picks the default hook port and which entries in Claude's settings are
+   * this build's. Tests and the installed app leave it out, which is `app`.
+   */
+  build?: HookBuild
+  /**
+   * The installed app's entries in Claude's settings were Kernel Dev's too until this launch: it just moved its data over, or
+   * it had the installed app's hook token and now has its own (KERNEL-675). Kernel Dev's start then adds its own next to them.
+   */
+  hooksWereShared?: boolean
 }

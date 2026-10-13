@@ -28,9 +28,24 @@ export class Hooks extends Feature {
 
   async start() {
     // Hooks from before KERNEL-206, or from another port or timeout, get a 401. Rewrite Kernel's own entries, never add any.
-    this.hooksNeedInstall = await this.write(() => refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken)).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
+    this.hooksNeedInstall = await this.write(() => this.adoptShared().then((adopted) => adopted || refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build))).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
     await this.listenHooks(this.settings.hookPort)
   }
+
+  /**
+   * Kernel Dev just moved its data, or stopped sharing the installed app's token (KERNEL-675). The installed app's entries
+   * were the hooks both builds ran on, so Kernel Dev installs its own next to them, once, and leaves them as they are. With
+   * none there, it adds nothing, as any start.
+   */
+  private async adoptShared(): Promise<boolean> {
+    if (!this.o.hooksWereShared || this.build !== 'dev') return false
+    if (await kernelHooksPresent(this.claudeSettings, 'dev') || !(await kernelHooksPresent(this.claudeSettings, 'app'))) return false
+    await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build)
+    return true
+  }
+
+  /** Whether this build's entries are in Claude's settings, current or not. A port or timeout change rewrites them only then. */
+  present(): Promise<boolean> { return kernelHooksPresent(this.claudeSettings, this.build).catch(() => false) }
 
   /** A write of the hooks file. One that works clears the last failure, and one Check hooks can explain is kept for it. */
   private async write<T>(fn: () => Promise<T>): Promise<T> {
@@ -69,6 +84,7 @@ export class Hooks extends Feature {
         approvals: this.approvals,
         approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
+        build: this.build,
         resolve: (cwd) => this.resolveCwd(cwd)
       })
       // A server that closes or errors on its own takes agent statuses and the logs with it (WorkspaceHooksDown.png).
@@ -85,7 +101,7 @@ export class Hooks extends Feature {
     // A busy new port must not take down the server that works. Check before closing.
     if (port !== this.settings.hookPort && (await portBusy(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
     // Any Kernel entry counts, so an old http install moves to the command form. Hooks are never added where there were none.
-    const wasInstalled = await kernelHooksPresent(this.claudeSettings).catch(() => false)
+    const wasInstalled = await this.present()
     await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
     this.hookServer = undefined
     if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
@@ -97,7 +113,7 @@ export class Hooks extends Feature {
 
   /** Install, and every rewrite after a port or timeout change. A write that works clears the start-up failure. */
   async writeHooks(port: number): Promise<string[]> {
-    const events = await this.write(() => installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken))
+    const events = await this.write(() => installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build))
     this.hooksNeedInstall = false
     return events
   }
@@ -111,8 +127,8 @@ export class Hooks extends Feature {
   async hooksStatus(): Promise<HookStatus> {
     const policy = await this.readPolicy().catch((e) => { console.warn('[hooks] could not read Claude Code settings', e); return undefined })
     // Kernel's entries an admin put in managed settings count too, and run when only managed hooks do.
-    const managed = new Set(policy ? installedEvents({ hooks: policy.managedHooks } as Parameters<typeof installedEvents>[0], this.hookToken) : [])
-    const installed = new Set([...managed, ...await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[])])
+    const managed = new Set(policy ? installedEvents({ hooks: policy.managedHooks } as Parameters<typeof installedEvents>[0], this.hookToken, this.build) : [])
+    const installed = new Set([...managed, ...await hookStatus(this.claudeSettings, this.hookToken, this.build).catch(() => [] as string[])])
     const problem = this.problem(policy, KERNEL_HOOK_EVENTS.every((e) => managed.has(e)))
     return {
       port: this.settings.hookPort,
@@ -121,6 +137,7 @@ export class Hooks extends Feature {
       events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) })),
       token: this.hookToken,
       needsInstall: this.hooksNeedInstall,
+      build: this.build,
       ...(problem ? { problem } : {})
     }
   }
@@ -133,7 +150,7 @@ export class Hooks extends Feature {
   private problem(policy: HooksPolicy | undefined, inManaged: boolean): HookProblem | undefined {
     if (policy?.managedOff) return { kind: 'managed', setting: 'disableAllHooks', ...this.source(policy.managedOff.path) }
     if (policy?.managedOnly && !inManaged) {
-      const block = JSON.stringify({ hooks: withKernelHooks({}, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken).hooks }, null, 2)
+      const block = JSON.stringify({ hooks: withKernelHooks({}, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build).hooks }, null, 2)
       return { kind: 'managed', setting: 'allowManagedHooksOnly', ...this.source(policy.managedOnly.path), block }
     }
     if (this.writeProblem) return this.writeProblem
@@ -157,6 +174,7 @@ export class Hooks extends Feature {
   }
 
   private get hookToken() { return hookToken(this.o.dataDir) }
+  private get build() { return this.o.build ?? 'app' }
   get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }
 
   handlers() {
@@ -174,7 +192,7 @@ export class Hooks extends Feature {
         if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
         return this.hooksStatus()
       },
-      'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
+      'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings, this.build); return this.pushHooks() },
       'hooks.turnOn': async () => { await this.write(() => turnHooksOn(this.claudeSettings)); return this.pushHooks() },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await this.writeHooks(port) })
     } satisfies Partial<Handlers>

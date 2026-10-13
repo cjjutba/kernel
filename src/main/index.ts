@@ -14,7 +14,7 @@ import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
 import { BOOT_UPDATE_MS, readNotes, Updater } from './updater'
-import { dataDirs, moveToDev, openBy, type DataDirs } from './dataDir'
+import { dataDirs, moveToDev, unshareHookToken } from './dataDir'
 import { isInstalledCopy, loginItemSettings, offerMove, replaceBox, runsFrom, type CopyInfo } from './loginItem'
 import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
@@ -75,33 +75,32 @@ const headless = process.env.KERNEL_HEADLESS === '1'
 if (headless) app.setActivationPolicy('accessory')
 
 // The installed app keeps its data in Kernel and a dev run in Kernel Dev, so dev from main never writes data an older
-// release can't read (KERNEL-408). Both share the hook entries in ~/.claude/settings.json, so only one runs at a time:
-// each checks the other's lock before taking its own, and quits before it opens anything. Fixture runs and the smoke test
-// keep their own folder.
+// release can't read (KERNEL-408). Each has its own hook token, port and entries in ~/.claude/settings.json, so both run
+// at once (KERNEL-675). Fixture runs and the smoke test keep their own folder.
 const dirs = smokeTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged)
 /** Said in a dialog once the app is ready, before Kernel quits without opening its data. */
 let refusal: { message: string; detail?: string } | undefined
-const otherOpen = (d: DataDirs) => ({ message: `${d.otherName} is open. Quit it, then open ${d.name} again.` })
-if (dirs) {
-  app.setPath('userData', dirs.own)
-  if (openBy(dirs.other)) refusal = otherOpen(dirs)
-}
+if (dirs) app.setPath('userData', dirs.own)
 
 // Two copies would share kernel.db, and the second one's start expires the first one's pending approvals. A second
 // launch (open -n) hands over to the running copy and quits. Fixture runs have no database and a userData of their own,
 // so they skip the lock.
-const primary = !smokeTest && !refusal && (!!fixtureName || app.requestSingleInstanceLock())
-if (!primary && !refusal) app.quit()
+const primary = !smokeTest && (!!fixtureName || app.requestSingleInstanceLock())
+if (!primary) app.quit()
 app.on('second-instance', () => focusWindow())
 
-// A dev run's first launch moves the data over from Kernel, once it holds its own lock. The move checks Kernel's lock
-// again first, so an installed app that opened in between stops it.
+// A dev run's first launch moves the data over from Kernel, once it holds its own lock. The move never copies a database
+// the installed app has open, so a first launch while Kernel runs waits for it to quit.
 let moved: string | undefined
+/** The installed app's hook entries were Kernel Dev's too until this launch: it just moved, or it had Kernel's token (KERNEL-675). */
+let hooksWereShared = false
 if (dirs && primary && !app.isPackaged) {
   try {
     const r = moveToDev({ from: dirs.other, to: dirs.own })
     if (r === 'moved') moved = `[kernel] moved the data from ${dirs.other} to ${dirs.own}`
-    if (r === 'in-use') refusal = otherOpen(dirs)
+    if (r === 'in-use') refusal = { message: `${dirs.otherName} is open. Quit it, then open ${dirs.name} again.`, detail: `${dirs.name} moves your data from ${dirs.otherName} on its first launch, and can't while ${dirs.otherName} has it open.` }
+    // A refused launch keeps the token as it is, so the launch that opens is the one that adds Kernel Dev's hooks.
+    else hooksWereShared = r === 'moved' || unshareHookToken(dirs)
   } catch (err) {
     console.error('[kernel] could not move the data', err)
     refusal = { message: `${dirs.name} could not move its data`, detail: `Your data is still in ${dirs.other}. ${err instanceof Error ? err.message : String(err)}` }
@@ -110,7 +109,7 @@ if (dirs && primary && !app.isPackaged) {
 
 // Kernel's log (KERNEL-288). Fixture runs leave it off, so screenshots and scripted runs never write to the real one. A dev
 // run can point it at another folder, as test/crash.e2e.test.ts does.
-const logDir = !app.isPackaged && process.env.KERNEL_LOG_DIR ? process.env.KERNEL_LOG_DIR : fixtureName ? undefined : join(app.getPath('home'), 'Library', 'Logs', 'Kernel')
+const logDir = !app.isPackaged && process.env.KERNEL_LOG_DIR ? process.env.KERNEL_LOG_DIR : fixtureName ? undefined : join(app.getPath('home'), 'Library', 'Logs', dirs?.name ?? 'Kernel')
 /** The log and Copy diagnostics hide the home folder and the hook token, read from its file so nothing makes one early. */
 const redaction = {
   home: app.getPath('home'),
@@ -329,6 +328,8 @@ app.whenReady().then(async () => {
     const appIcons = new Map<string, Promise<string | undefined>>()
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
+      build: app.isPackaged ? 'app' : 'dev',
+      hooksWereShared,
       telemetry: sends ? { ...__KERNEL_TELEMETRY__, os: process.getSystemVersion(), arch: process.arch } : undefined,
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !mainWindow()?.isFocused(),
