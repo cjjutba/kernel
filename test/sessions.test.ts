@@ -10,7 +10,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { NO_PROMPTS } from '../src/main/services/exec'
 import { bashVerdict, matchesRoomRule, roomRule } from '../src/main/services/bashGuard'
-import { IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
+import { IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
 import { Kernel } from '../src/main/kernel'
@@ -665,5 +665,41 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     await t.finish(call)
     expect(t.stopped(call)).toBe(true)
     expect((await t.start('Next')).options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+  })
+
+  const tasks = (call: (typeof sdk.calls)[number], ids: string[]) => call.feed({ type: 'system', subtype: 'background_tasks_changed', tasks: ids.map((task_id) => ({ task_id, task_type: 'local_bash', description: 'dev server' })) })
+
+  it('carries a chat a limit cut off over to the new account, even with a background task still running', async () => {
+    const t = await setup()
+    const call = await t.start()
+    tasks(call, ['t1'])
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 86_400 } })
+    await t.finish(call)
+    expect(t.stopped(call)).toBe(false)
+    const calls = sdk.calls.length
+    t.switchTo('personal')
+    // The process on Work ends with its task, and the chat picks up on Personal, once.
+    expect(t.stopped(call)).toBe(true)
+    expect(sdk.calls).toHaveLength(calls + 1)
+    const next = sdk.calls.at(-1)!
+    expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+    expect(next.options.resume).toBe('session-1')
+    expect(t.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+    expect(t.notes()).toEqual(['Now on personal'])
+  })
+
+  it('starts the next turn on the new account when the old process stayed for a background task', async () => {
+    const t = await setup()
+    const call = await t.start()
+    tasks(call, ['t1'])
+    await t.finish(call)
+    t.switchTo('personal')
+    // The task keeps the process on Work until something is sent.
+    expect(t.stopped(call)).toBe(false)
+    const next = await t.start('Run the tests')
+    expect(t.stopped(call)).toBe(true)
+    expect(next).not.toBe(call)
+    expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+    expect(t.notes()).toEqual(['Now on personal'])
   })
 })

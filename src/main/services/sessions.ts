@@ -404,13 +404,14 @@ export class Sessions {
 
   /**
    * The provider's account changed (KERNEL-406). A process runs on the account it started with, so an idle one ends now and
-   * a busy one when its turn ends. The next message resumes the conversation on the account that is active then.
+   * a busy one when its turn ends. The next message resumes the conversation on the account that is active then. One a
+   * usage limit cut off ends now even with background tasks: on that account they can't do anything.
    */
   restartProvider(provider: Provider) {
     for (const [id, live] of [...this.live]) {
       const chat = this.d.store.chat(id)
       if (!chat || chatProvider(chat) !== provider) continue
-      if (live.running || live.tasks.size) this.stale.add(id)
+      if (live.running || (live.tasks.size && this.cutOff.get(id) !== 'limit')) this.stale.add(id)
       else this.end(id, live)
     }
     // Auto depends on the account's models, which Kernel reads again for this one.
@@ -829,6 +830,10 @@ export class Sessions {
     const carrying = this.cutOff.get(chat.id) === 'quit'
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
+    // An idle process kept on another account, for its background tasks, ends here. The turn resumes the conversation on
+    // the account in use, the one `carryOn` checked for a limit, and the note says so.
+    const kept = this.live.get(chat.id)
+    if (kept && !kept.running && kept.account !== this.d.accountFor?.(chatProvider(chat))) this.end(chat.id, kept)
     chat = this.noteAccount(chat)
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
