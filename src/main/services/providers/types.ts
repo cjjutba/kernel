@@ -130,8 +130,9 @@ export interface RunnerHost {
    * `toolName` and `input` are the call that asked, when the plan came from a tool such as ExitPlanMode.
    */
   requestPlan(plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown }): Promise<Decision | undefined>
-  /** A Lead's hand-off texts: right after an approved plan, and the one reminder at a stop before anything was handed off. */
-  handoffAfterPlan(): string | undefined
+  /** The approved plan's note, once, for Claude's ExitPlanMode answer. A Codex approval goes as a message instead. */
+  afterPlan(): string | undefined
+  /** A Lead's one reminder at a stop before anything was handed off. */
   handoffAtStop(): string | undefined
   /** Send Kernel's own message as the chat's next turn, after what is queued: a plan's approval, a hand-off reminder (Codex). */
   followUp(text: string): void

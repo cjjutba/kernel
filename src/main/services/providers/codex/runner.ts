@@ -5,6 +5,7 @@ import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort } from '@shared/types'
 import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
+import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../../plans'
 import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
@@ -66,12 +67,6 @@ export interface CodexStart {
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
 const TEXT_MAX = 20_000
-
-/** What Kernel tells an agent whose plan the user approved, when it isn't the Lead (whose hand-off says more). */
-export const PLAN_APPROVED = 'The user approved your plan. Go ahead and carry it out.'
-
-/** What a plan the user wants changed goes back as, the next plan-mode turn. */
-export const planChanges = (text: string) => `The user wants changes to your plan: ${text}`
 
 /**
  * Codex runs commands through the login shell (`/bin/zsh -lc "..."`). Kernel's rules match what the agent meant, so the
@@ -487,7 +482,8 @@ export class CodexRunner implements Runner {
   private async planned(plan: string) {
     const result = await this.host.requestPlan(plan, { signal: this.planStop.signal })
     if (!result || this.isClosed && !this.host.chat()) return
-    if (result.behavior === 'allow') { this.host.followUp(this.host.handoffAfterPlan() ?? PLAN_APPROVED); return }
+    // An approval's note is Kernel's message, which `requestPlan` already queued.
+    if (result.behavior === 'allow') return
     const text = result.behavior === 'answer' ? result.text : result.message
     if (text?.trim()) this.host.followUp(planChanges(text.trim()))
   }

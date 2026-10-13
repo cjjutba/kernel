@@ -138,7 +138,8 @@ export class ClaudeRunner implements Runner {
         gates: () => host.settings().hooks,
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
-        handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
+        afterPlan: () => host.afterPlan(),
+        handoff: agent?.lead ? { atStop: () => host.handoffAtStop() } : undefined
       }),
       includeHookEvents: true,
       // One guess at the user's next message after each turn, read after `result` (KERNEL-530). The user's own Claude Code
@@ -646,6 +647,8 @@ function kernelHooks(o: {
   askUser: (command: string, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   held: () => Promise<void> | undefined
   networkAllowed?: () => boolean
+  /** The approved plan's note for the agent, once, as context on ExitPlanMode's answer (plan-cards-survive-restart). */
+  afterPlan?: () => string | undefined
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
@@ -656,7 +659,7 @@ function kernelHooks(o: {
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, handoff, tools, askTool, unlisted = 'ask', gates } = o
+  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -725,11 +728,14 @@ function kernelHooks(o: {
     hooks.TaskCompleted!.push({ hooks: [team.onTaskCompleted] })
     hooks.TeammateIdle!.push({ hooks: [team.onIdle] })
   }
+  if (afterPlan) {
+    // The approval reaches the agent with the plan's path, and a Lead's with "hand it off now", in the same turn.
+    const planned: HookCallback = async () => { const t = afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }
+    hooks.PostToolUse!.push({ matcher: 'ExitPlanMode', hooks: [planned] })
+  }
   if (handoff) {
-    // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
-    const afterPlan: HookCallback = async () => { const t = handoff.afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }
+    // A Lead's Stop before any workspace exists gets one reminder.
     const atStop: HookCallback = async () => { const t = handoff.atStop(); return t ? { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: t } } : {} }
-    hooks.PostToolUse!.push({ matcher: 'ExitPlanMode', hooks: [afterPlan] })
     hooks.Stop!.push({ hooks: [atStop] })
   }
   return hooks
@@ -795,8 +801,8 @@ const ROOM_ALLOWS: SyncHookJSONOutput = { hookSpecificOutput: { hookEventName: '
 /** The tools a room's tool rule can cover, as a hook matcher: every MCP tool, WebFetch and WebSearch. */
 export const ROOM_TOOLS = 'mcp__.*|WebFetch|WebSearch'
 
-/** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
-interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
+/** A Lead's hand-off hook: the Stop reminder. Returns the text to send, or nothing. */
+interface LeadHandoff { atStop: () => string | undefined }
 
 /**
  * What Claude Code 2.1.292 answers a resume of a session it has no transcript for, followed by the id, as the only entry

@@ -84,3 +84,38 @@ describe('approvals while Kernel quits (KERNEL-215)', () => {
     expect(() => abort.abort()).not.toThrow()
   })
 })
+
+describe('plan cards outlive a quit (plan-cards-survive-restart)', () => {
+  it('keeps a plan pending through quitting and at launch while its chat is open, and ends every other kind as before', async () => {
+    const store = await tempStore()
+    store.saveWorkspace({ id: 'ws', roomId: 'r', name: 'invoices', branch: 'feat/invoices', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveWorkspace({ id: 'gone', roomId: 'r', name: 'old', branch: 'feat/old', baseRef: 'main', path: '/tmp/old', mode: 'worktree', agentId: 'kai', port: 4301, status: 'archived', prState: 'none', createdAt: 1 })
+    const chat = { kind: 'chat' as const, model: 'claude-sonnet-5-5', effort: 'low' as const, plan: true, createdAt: 1, title: 'Plan' }
+    store.saveChat({ ...chat, id: 'open', workspaceId: 'ws' })
+    store.saveChat({ ...chat, id: 'closed', workspaceId: 'ws', closed: true })
+    store.saveChat({ ...chat, id: 'archived', workspaceId: 'gone' })
+    const run = new Approvals(store)
+    const abort = new AbortController()
+    const plan = run.request({ kind: 'plan', source: 'sdk', roomId: 'r', workspaceId: 'ws', chatId: 'open', title: 'Plan' }, { signal: abort.signal })
+    const tool = run.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'ws', chatId: 'open', title: 'Run pnpm db:reset' })
+    const question = run.request({ kind: 'question', source: 'sdk', roomId: 'r', workspaceId: 'ws', chatId: 'open', title: 'Which table?' })
+    const closed = run.request({ kind: 'plan', source: 'sdk', roomId: 'r', workspaceId: 'ws', chatId: 'closed', title: 'Plan' })
+    const archived = run.request({ kind: 'plan', source: 'sdk', roomId: 'r', workspaceId: 'gone', chatId: 'archived', title: 'Plan' })
+    // The session stopping aborts the plan's turn: its waiter gets null, the card stays.
+    run.quitting()
+    abort.abort()
+    expect(await plan.decision).toBeNull()
+    run.expirePending()
+    expect(await tool.decision).toBeNull()
+    const status = (r: { approval: { id: string } }) => store.approval(r.approval.id)?.status
+    expect([plan, tool, question, closed, archived].map(status)).toEqual(['pending', 'expired', 'expired', 'pending', 'pending'])
+    // The next launch ends the ones whose chat is closed or archived, and keeps the open chat's plan for `settle`.
+    const next = new Approvals(store)
+    next.expireStale()
+    expect([plan, closed, archived].map(status)).toEqual(['pending', 'expired', 'expired'])
+    expect(next.waitingPlans('open', 'r').map((a) => a.id)).toEqual([plan.approval.id])
+    expect(next.decide(plan.approval.id, { behavior: 'allow' })).toBeUndefined()
+    expect(next.settle(plan.approval.id, { behavior: 'allow' })?.status).toBe('allowed')
+    expect(next.waitingPlan(plan.approval.id)).toBeUndefined()
+  })
+})

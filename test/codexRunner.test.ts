@@ -9,11 +9,14 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
-import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
+import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
+
+/** The approval's note, which names the plan's file, or carries the plan when the file isn't saved yet. */
+const APPROVED = expect.stringMatching(/^Plan approved\. Build it from /)
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { GET_ISSUE, issueText, issueTools } from '../src/main/services/issueMcp'
@@ -503,8 +506,10 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     await t.idle()
     expect(t.store.chat('chat')?.plan).toBe(false)
     const [, next] = await t.sent('turn/start')
-    expect(next.params).toMatchObject({ input: [{ type: 'text', text: PLAN_APPROVED }], collaborationMode: { mode: 'default' }, sandboxPolicy: { type: 'workspaceWrite' } })
-    expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: PLAN_APPROVED }] })
+    expect(next.params).toMatchObject({ input: [{ type: 'text', text: APPROVED }], collaborationMode: { mode: 'default' }, sandboxPolicy: { type: 'workspaceWrite' } })
+    expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: APPROVED }] })
+    // The note replaces PLAN_APPROVED, and it is the one note the chat shows: the message itself.
+    expect(t.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
   })
 
   it("asks once when the Lead already asked with request_plan_approval in the same turn", async () => {
@@ -538,7 +543,9 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     await until(async () => (await t.sent('turn/start')).length === 3)
     await t.idle()
     const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
-    expect(inputs.slice(1)).toEqual([forProvider(HANDOFF_NOW, 'codex'), forProvider(HANDOFF_REMINDER, 'codex')])
+    expect(inputs[1]).toMatch(/^Plan approved\. Hand off each task from /)
+    expect(inputs[1]).toContain(forProvider(HANDOFF_NOW, 'codex'))
+    expect(inputs[2]).toBe(forProvider(HANDOFF_REMINDER, 'codex'))
     expect(inputs[1]).toContain('kernel_create_workspace')
     await new Promise((r) => setTimeout(r, 100))
     expect(await t.sent('turn/start')).toHaveLength(3)
@@ -674,7 +681,7 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
     expect(t.store.approval(card.id)?.status).toBe('pending')
     t.approvals.decide(card.id, { behavior: 'allow' })
     await until(async () => (await t.sent('turn/start')).length === 2)
-    expect((await t.sent('turn/start'))[1].params.input[0].text).toBe(PLAN_APPROVED)
+    expect((await t.sent('turn/start'))[1].params.input[0].text).toEqual(APPROVED)
     await t.idle()
   })
 
@@ -806,7 +813,7 @@ describe('switching accounts while a chat waits on the user, on Codex (KERNEL-61
     await until(async () => (await t.sent('turn/start')).length === 2)
     await t.idle()
     expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
-    expect((await t.sent('turn/start'))[1].params).toMatchObject({ input: [{ type: 'text', text: PLAN_APPROVED }] })
+    expect((await t.sent('turn/start'))[1].params).toMatchObject({ input: [{ type: 'text', text: APPROVED }] })
     expect(notes(t)).toEqual(['Now on personal'])
   })
 })

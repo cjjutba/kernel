@@ -1,6 +1,7 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
@@ -11,7 +12,7 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
-import { forProvider, Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { forProvider, Handoffs, LEAD_RULE, planApproval } from './handoff'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
 import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
@@ -279,6 +280,8 @@ export class Sessions {
   private crashed = new Set<string>()
   /** Chats Kernel gave a fresh session because the old one was gone, until a turn there ends well (KERNEL-286). */
   private renewed = new Set<string>()
+  /** A Claude chat's approved plan note, until ExitPlanMode's PostToolUse hook hands it to the agent (`afterPlan`). */
+  private approvedPlans = new Map<string, string>()
   /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
   private builtins?: Promise<BuiltinCommand[]>
   constructor(private d: SessionDeps) {}
@@ -344,6 +347,12 @@ export class Sessions {
     }
     this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: clean ? QUIT_NOTE : CRASH_NOTE })
     const queue = this.queued(chatId)
+    // A chat that was waiting on its plan card waits for the card again: no nudge, and nothing carries it on but what was
+    // queued, which still goes first (plan-cards-survive-restart).
+    if (this.d.approvals.waitingPlans(chatId, ws.roomId).length) {
+      if (queue.length) this.cutOff.set(chatId, 'quit')
+      return
+    }
     if (queue.length && !queue.some((q) => q.from === 'kernel' && isNudge(q.parts))) {
       this.queues.set(chatId, [...queue, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RELAUNCH_NUDGE }], ts: Date.now(), from: 'kernel' }])
       this.pushQueue(chatId)
@@ -1082,9 +1091,21 @@ export class Sessions {
    * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
    * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67).
    */
-  async planApproved(chatId: string) {
+  async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean } = {}): Promise<string> {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
-    if (this.isLeadChat(chatId)) this.handoffs.approved(chatId)
+    const lead = this.isLeadChat(chatId)
+    if (lead) this.handoffs.approved(chatId)
+    // One note on every path, naming the plan's file, or carrying its text when the file is gone (plan-cards-survive-restart).
+    const chat = this.mustChat(chatId)
+    const ws = this.d.store.workspace(chat.workspaceId)
+    const plan = ws && this.d.store.approvals({ roomId: ws.roomId }).find((a) => a.chatId === chatId && a.kind === 'plan')
+    const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
+    const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted })
+    const text = forProvider(note.text, chatProvider(chat))
+    // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
+    if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel' })
+    else this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: note.line })
+    return text
   }
 
   stop(chatId: string) {
@@ -1204,6 +1225,8 @@ export class Sessions {
    */
   async shutdown(budgetMs = QUIT_BUDGET_MS) {
     this.closing = true
+    // A plan card the stopping turns leave keeps waiting for the next launch.
+    this.d.approvals.quitting()
     const running = [...this.live.entries()].filter(([, l]) => l.running)
     // A Stop pressed just before the quit stands: that turn ends as a Stop, drops its queue and doesn't carry on.
     const stopping = (live: Live) => live.interrupted && !live.sendNext
@@ -1375,7 +1398,7 @@ export class Sessions {
       get interrupted() { return live.interrupted },
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
-      handoffAfterPlan: () => (this.handoffs.due(chatId) ? forProvider(HANDOFF_NOW, chatProvider(this.mustChat(chatId))) : undefined),
+      afterPlan: () => { const t = this.approvedPlans.get(chatId); this.approvedPlans.delete(chatId); return t },
       handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t && forProvider(t, chatProvider(this.mustChat(chatId))) },
       followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
@@ -1510,6 +1533,8 @@ export class Sessions {
     this.setStatus(ws, agent, 'needs')
     const asker = this.live.get(chatId)
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
+    // A new plan replaces one still waiting, as one a restart left up.
+    if (plan !== undefined) this.d.approvals.expireIds(this.d.approvals.waitingPlans(chatId, ws.roomId).map((p) => p.id))
     const { approval, decision } = this.d.approvals.request({
       kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
       toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions, ...(a.reason ? { reason: a.reason } : {})
@@ -1535,7 +1560,11 @@ export class Sessions {
     // A Codex plan comes after its turn ended (`CodexRunner.planned`), so it stays with the chat rather than a turn (KERNEL-563).
     const afterTurn = chatProvider(this.mustChat(chatId)) === 'codex'
     const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan }, { signal: o.signal, afterTurn }, plan)
-    if (result?.behavior === 'allow') await this.planApproved(chatId)
+    // Claude reads the note with ExitPlanMode's answer (`afterPlan`). A Codex turn has already ended, so it gets a message.
+    if (result?.behavior === 'allow') {
+      const note = await this.planApproved(chatId, { queue: afterTurn })
+      if (!afterTurn) this.approvedPlans.set(chatId, note)
+    }
     return result
   }
 
