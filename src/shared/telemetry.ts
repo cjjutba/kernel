@@ -40,8 +40,8 @@ export const EVENTS = {
   'handoff.reminder': {},
   /** A teammate's workspace was archived with no pull request and no commit of its own. */
   'handoff.no_commit': {},
-  /** create_workspace refused the agent the Lead named. */
-  'handoff.refused': { reason: { enum: ['unknown', 'ambiguous', 'self', 'no-teammates', 'helper'] } },
+  /** create_workspace refused the agent the Lead named, or a hand-off with no go-ahead from the user (KERNEL-678). */
+  'handoff.refused': { reason: { enum: ['unknown', 'ambiguous', 'self', 'no-teammates', 'helper', 'go-ahead'] } },
   /** An agent called a tool its file doesn't list. */
   'tool.blocked_by_agent_file': { tool: { enum: TOOL_KINDS } },
   /** A PR passed checks and nobody was there to review it. */
