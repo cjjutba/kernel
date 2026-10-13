@@ -117,7 +117,7 @@ const richAccounts: AccountProfile[] = [workClaude, personalClaude, keyAccount('
 const fableWindow: RateLimit = { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextOn(1, 9, 0)), model: 'claude-fable-5-1' }
 /** Reset times for the footer canvases: a clock time today, Monday for Claude's weekly window, and more than a week out for Codex's. */
 const inDays = (days: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.getTime() }
-// KERNEL-674: the accounts the footer canvases draw. Claude Code runs on 2nd account with Main account, a key and 3rd account beside it. Codex runs on its own login with work beside it.
+// KERNEL-674: the accounts the footer canvases draw. 2nd account and Main account report a Fable window, 3rd account doesn't. Claude Code runs on 2nd account with Main account, a key and 3rd account beside it. Codex runs on its own login with work beside it.
 const secondClaude = subscription('claude', 'cli', '2nd account', 'hazelleespela@gmail.com', 'Claude Pro', { active: true })
 const mainClaude = subscription('claude', 'main', 'Main account', 'main@example.com', 'Claude Max')
 const thirdClaude = subscription('claude', 'third', '3rd account', 'third@example.com', 'Claude Pro')
@@ -126,8 +126,9 @@ const footerCodex = subscription('codex', 'cli', 'cjjutbaofficial', 'cjjutbaoffi
 const workCodex = subscription('codex', 'work', 'work', 'work@example.com', 'ChatGPT Pro')
 const footerUsage = (codex5 = 31): RateLimit[] => [
   window5('claude', 'cli', 9, next(23, 0)), windowWeek('claude', 'cli', 19, nextOn(1, 3, 0)),
-  { type: 'seven_day_opus', status: 'allowed', utilization: 0.04, resetsAt: secs(nextOn(1, 3, 0)), model: 'claude-fable-5-1' },
+  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.04, resetsAt: secs(nextOn(1, 3, 0)) },
   window5('claude', 'main', 12, next(22, 0)), windowWeek('claude', 'main', 20, nextOn(2, 3, 0)),
+  { type: 'seven_day_overage_included', status: 'allowed', utilization: 0.31, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main' },
   window5('claude', 'third', 75, next(22, 30)), windowWeek('claude', 'third', 40, nextOn(3, 3, 0)),
   window5('codex', 'cli', codex5, next(18, 36)), windowWeek('codex', 'cli', 16, inDays(8, 13, 36)),
   window5('codex', 'work', 40, next(19, 0)), windowWeek('codex', 'work', 30, inDays(8, 14, 0))

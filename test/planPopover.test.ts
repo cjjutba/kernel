@@ -67,8 +67,16 @@ describe('the Usage popover sections, one per provider (KERNEL-619)', () => {
 
   it('lists the other signed-in accounts with their 5-hour use, and leaves out the one in use, signed-out ones and one waiting for Keychain access', () => {
     const section = planSection('claude', [...accounts, account('out', 'Claude Pro', false, { signedIn: false }), account('wait', 'Claude Pro', false, { keychainWait: true })], limits, now)
-    expect(section.others).toEqual([{ id: 'pro', label: 'pro', plan: 'Claude Pro', use: '5-hour 12% used' }])
-    expect(planSection('codex', accounts, limits, now).others).toEqual([{ id: 'team', label: 'team', plan: 'ChatGPT Pro', use: '5-hour 3% used' }])
+    expect(section.others.map(({ windows: _, ...o }) => o)).toEqual([{ id: 'pro', label: 'pro', plan: 'Claude Pro', use: '5-hour 12% used' }])
+    expect(planSection('codex', accounts, limits, now).others.map(({ windows: _, ...o }) => o)).toEqual([{ id: 'team', label: 'team', plan: 'ChatGPT Pro', use: '5-hour 3% used' }])
+  })
+
+  it('gives each other account its own 5-hour, Weekly and Fable windows, and none to a key', () => {
+    const fable = (accountId?: string) => window('seven_day_overage_included', 0.31, accountId)
+    const mixed = [account('cli', 'Claude Max', true), account('pro', 'Claude Pro', false), account('key', '', false, { auth: 'apiKey' })]
+    const others = planSection('claude', mixed, [...limits, window('seven_day', 0.2, 'pro'), fable('pro')], now).others
+    expect(others.find((o) => o.id === 'pro')?.windows.map((w) => [w.title, w.value, w.reported])).toEqual([['5-hour', 0.12, true], ['Weekly', 0.2, true], ['Weekly, Fable 5.1', 0.31, true]])
+    expect(others.find((o) => o.id === 'key')).toMatchObject({ use: 'Billed per token', windows: [] })
   })
 
   it('says Billed per token for a key in use, with no windows, and lists the subscriptions', () => {

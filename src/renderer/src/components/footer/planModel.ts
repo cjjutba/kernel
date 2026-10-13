@@ -15,12 +15,14 @@ export interface PlanWindow {
   note: string
 }
 
-/** Another signed-in account of the provider, offered under Switch. One waiting for Keychain access isn't offered, since a turn on it would wait too (KERNEL-618). `use` is its 5-hour use, or "Billed per token" for a key. */
+/** Another signed-in account of the provider, offered under Switch. One waiting for Keychain access isn't offered, since a turn on it would wait too (KERNEL-618). `use` is its 5-hour use for Compact, or "Billed per token" for a key. */
 export interface PlanOther {
   id: string
   label: string
   plan?: string
   use?: string
+  /** Its 5-hour, Weekly and model windows, as the active account's. Empty for a key, which says "Billed per token" in `use`. */
+  windows: PlanWindow[]
 }
 
 export interface PlanSection {
@@ -41,7 +43,10 @@ export interface PlanSection {
 }
 
 const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id
-const WINDOW_MODEL: Partial<Record<RateLimit['type'], string>> = { seven_day_opus: 'Opus 5.5', seven_day_sonnet: 'Sonnet 5.5' }
+const WINDOW_MODEL: Partial<Record<RateLimit['type'], string>> = { seven_day_opus: 'Opus 5.5', seven_day_sonnet: 'Sonnet 5.5', seven_day_overage_included: 'Fable 5.1' }
+
+/** Fable's weekly window: Claude Code's `seven_day_overage_included`, or a per-model window tagged with Fable. */
+export const isFable = (l: RateLimit): boolean => l.type === 'seven_day_overage_included' || l.model === 'claude-fable-5-1'
 
 /** The account's own windows: its provider's, on its id (`accountId` absent is the CLI's own login). */
 export const windowsOf = (usage: RateLimit[], a: Pick<AccountProfile, 'provider' | 'id'>): RateLimit[] =>
@@ -60,7 +65,7 @@ const note = (l: RateLimit | undefined, now: number): string => {
 /** 5-hour, Weekly, then one weekly window per model that has its own, each from this account's windows alone. */
 export function planWindows(usage: RateLimit[], account: AccountProfile, now: number): PlanWindow[] {
   const mine = windowsOf(usage, account)
-  const perModel = mine.filter((l) => l.type === 'seven_day_opus' || l.type === 'seven_day_sonnet' || (l.type !== 'five_hour' && l.type !== 'seven_day' && l.model))
+  const perModel = mine.filter((l) => l.type === 'seven_day_opus' || l.type === 'seven_day_sonnet' || l.type === 'seven_day_overage_included' || (l.type !== 'five_hour' && l.type !== 'seven_day' && l.model))
   const rows: { id: string; title: string; limit?: RateLimit }[] = [
     { id: 'five_hour', title: '5-hour', limit: live(mine.find((l) => l.type === 'five_hour' && !l.model), now) },
     { id: 'seven_day', title: 'Weekly', limit: live(mine.find((l) => l.type === 'seven_day' && !l.model), now) },
@@ -104,8 +109,9 @@ export function planSection(provider: Provider, accounts: AccountProfile[], usag
   const account = active?.signedIn ? active : undefined
   if (!account) return { provider, name, ...(active ? { signedOut: active } : {}), billed: false, windows: [], others: [] }
   const others = mine.filter((a) => a.id !== account.id && a.signedIn && !a.keychainWait).map((a): PlanOther => {
-    const use = a.auth === 'apiKey' ? 'Billed per token' : fiveHourUse(usage, a, now)
-    return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}) }
+    const key = a.auth === 'apiKey'
+    const use = key ? 'Billed per token' : fiveHourUse(usage, a, now)
+    return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}), windows: key ? [] : planWindows(usage, a, now) }
   })
   const { account: _, ...view } = accountView(account, usage, now)
   return { provider, name, account, ...view, others }
