@@ -9,7 +9,6 @@ const STOPS = [
   'Commands on your Never allow list',
   'Pushes to protected branches',
   'Network access, when it is off in Settings, Permissions',
-  'Anything outside an agent’s tools line',
   'Questions and plan approval'
 ]
 

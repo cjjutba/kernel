@@ -12,7 +12,7 @@ export const MODE_INFO: Record<PermissionMode, { label: string; desc: string; no
   auto: { label: 'Auto', desc: 'A classifier approves routine work and asks you about anything else. Commands on your Always ask list still come to you.' },
   bypassPermissions: {
     label: 'Bypass permissions', desc: 'Skips every prompt, including your Always ask list.',
-    note: 'It still stops for Never allow, pushes to protected branches, network off, an agent’s tools line, questions and plan approval.'
+    note: 'It still stops for Never allow, pushes to protected branches, network off, questions and plan approval.'
   }
 }
 
