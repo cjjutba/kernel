@@ -1095,12 +1095,13 @@ export class Sessions {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
     const lead = this.isLeadChat(chatId)
     if (lead) this.handoffs.approved(chatId)
-    // One note on every path, naming the plan's file, or carrying its text when the file is gone (plan-cards-survive-restart).
     const chat = this.mustChat(chatId)
-    const ws = this.d.store.workspace(chat.workspaceId)
+    // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
+    // text when the file is gone (plan-cards-survive-restart).
+    const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
     const plan = ws && this.d.store.approvals({ roomId: ws.roomId }).find((a) => a.chatId === chatId && a.kind === 'plan')
     const planFile = ws && plan?.planFile && existsSync(join(ws.path, plan.planFile)) ? plan.planFile : undefined
-    const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted })
+    const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
     const text = forProvider(note.text, chatProvider(chat))
     // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
     if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel' })

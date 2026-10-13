@@ -243,9 +243,9 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
     expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
-    // The approval's note names the plan's file, and the chat shows its line once.
-    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved. Hand off each task from \`.kernel/plans/symlink-node-modules.md\` now.\n\n${HANDOFF_NOW}`)
-    expect(k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved. Hand off each task from `.kernel/plans/symlink-node-modules.md` now.'])
+    // The Lead still has the plan in context, so the note names no file. The chat shows its line once.
+    expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
   })
 
   it('leaves plan mode once the plan is approved, as ExitPlanMode does, and tells the composer (D-074)', { timeout: 30_000 }, async () => {

@@ -15,7 +15,7 @@ import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/mai
 import type { Ask } from '../src/main/services/providers/types'
 import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
-import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE, planApproval } from '../src/main/services/handoff'
+import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
@@ -657,8 +657,8 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(await contexts(s.options, 'Stop')).toEqual([])
     await approvePlan(s)
     const [note] = await contexts(s.options, 'PostToolUse', 'ExitPlanMode')
-    expect(note).toBe(planApproval({ lead: true, plan: '1. Symlink node_modules into worktrees · Noor' }).text)
-    expect(note).toContain(HANDOFF_NOW)
+    expect(note).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
+    expect(s.store.items('chat').filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
     expect(await contexts(s.options, 'Stop')).toEqual([HANDOFF_REMINDER])
     // One reminder per approval: the next Stop ends the turn.
     expect(await contexts(s.options, 'Stop')).toEqual([])
@@ -667,10 +667,10 @@ describe('Approve and hand off (KERNEL-67)', () => {
   it("gives every agent the approval's note once with ExitPlanMode's answer, and shows its line in the chat", async () => {
     const s = await setup('acceptEdits', { agent: noor })
     await approvePlan(s)
-    const plan = '1. Symlink node_modules into worktrees · Noor'
-    expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([planApproval({ lead: false, plan }).text])
+    // The agent still has its plan in context, so the note names no file and carries no plan.
+    expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual(['Plan approved.'])
     expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([])
-    expect(s.store.items('chat').filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved. Build it from the plan below.'])
+    expect(s.store.items('chat').filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
     expect(s.store.chat('chat')?.plan).toBe(false)
     // It rides on the tool's answer, so no message and no extra turn follows.
     expect(s.store.items('chat').filter((i) => i.kind === 'user' && i.from === 'kernel')).toEqual([])
