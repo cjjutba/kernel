@@ -34,9 +34,10 @@ export interface HookStatus {
 
 /**
  * The installed app or Kernel Dev (`pnpm dev`). Each keeps its own token, port and hook entries, so both can run at once
- * (KERNEL-675).
+ * (KERNEL-675). `run` is a dev run started inside a Kernel workspace, by its run script or a terminal: a copy of its own
+ * with no entries in Claude's settings (KERNEL-679).
  */
-export type HookBuild = 'app' | 'dev'
+export type HookBuild = 'app' | 'dev' | 'run'
 
 /**
  * Why Kernel's hooks aren't installed or can't run, and the one step that fixes it (CheckHooksNotWritable.png and the four

@@ -6,9 +6,10 @@ const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 
 /**
  * The installed app's entries post to `/hooks`, as every release before KERNEL-675 did, and Kernel Dev's to `/hooks/dev`.
  * Each build tells its own entries apart by the path, and a release from before then doesn't count Kernel Dev's as its own,
- * because its pattern ends at `/hooks`.
+ * because its pattern ends at `/hooks`. A workspace run's path is `/hooks/run`, which Kernel never writes to Claude's
+ * settings (KERNEL-679).
  */
-export const hookPath = (build: HookBuild = 'app') => (build === 'dev' ? '/hooks/dev' : '/hooks')
+export const hookPath = (build: HookBuild = 'app') => (build === 'app' ? '/hooks' : `/hooks/${build}`)
 export const hookUrl = (port: number, build: HookBuild = 'app') => `http://127.0.0.1:${port}${hookPath(build)}`
 
 /** The header that proves a post came from the hook Kernel installed (KERNEL-206). The token is hex, so single quotes are safe. */
