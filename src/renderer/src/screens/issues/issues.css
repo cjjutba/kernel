@@ -81,7 +81,7 @@
 .is-foot .is-inner { gap: 12px; }
 .is-link { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
 .is-actions { display: flex; align-items: center; gap: 8px; }
-.is-room { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
+.select-chip.is-room { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
 .is-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: var(--fs-tile); font-weight: var(--fw-semibold); }
 .is-actions a.btn { text-decoration: none; }
 
