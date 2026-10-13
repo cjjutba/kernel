@@ -74,6 +74,13 @@ const SIGN_IN_MS = 15 * 60_000
 /** How long `readUsage` trusts an account's last read. Claude Code answers the usage call from a snapshot under a minute old. */
 const USAGE_FRESH_MS = 60_000
 
+/**
+ * How long a finished turn waits to read its account's usage, so the turns that finish meanwhile share one read
+ * (KERNEL-673). As long as USAGE_FRESH_MS: a read sooner could get Claude Code's snapshot from before the turn, and any read
+ * `readUsage` skips as fresh then ran after the turn ended.
+ */
+export const USAGE_AFTER_TURN_MS = USAGE_FRESH_MS
+
 /** How often the MCP sign-ins are shared at most, so chats starting together read the Keychain once (KERNEL-616). */
 const SHARE_EVERY_MS = 2_000
 
@@ -105,6 +112,8 @@ export class Providers extends Feature {
   private refused = new Set<string>()
   /** When `readUsage` last read each account, by `provider:id`, so opening the account menu twice reads once. */
   private usageReadAt = new Map<string, number>()
+  /** The read a finished turn asked for, by `provider:id`, which the turns that finish before it runs share (KERNEL-673). */
+  private afterTurn = new Map<string, NodeJS.Timeout>()
   /** Usage reads running, by account id, which Remove waits for so none writes to a folder it deleted. */
   private reading = new Map<string, Set<Promise<void>>>()
   /**
@@ -567,17 +576,35 @@ export class Providers extends Feature {
 
   /**
    * Reads every subscription account's usage windows and sign-in now (KERNEL-567): at launch and when the account menu or
-   * Settings, Providers opens (`usage.get`), every 10 minutes while agents work, and when the account in use nears or hits
+   * Settings, Providers opens (`usage.get`), every 10 minutes while agents work, a minute after a turn finishes on the
+   * account (`readUsageAfterTurn`), and when the account in use nears or hits
    * a limit (`Account.applyLimits`). An account read in the last minute isn't read again unless `force`, so a read that is
    * already running isn't doubled.
    */
-  async readUsage(o: { force?: boolean; provider?: Provider } = {}): Promise<RateLimit[]> {
+  async readUsage(o: { force?: boolean; provider?: Provider; account?: string } = {}): Promise<RateLimit[]> {
     if (this.stopped) return []
     const now = Date.now()
     const key = (r: UsageRead) => `${r.provider}:${r.accountId ?? CLI_ACCOUNT}`
-    const reads = this.usageReads({ probe: true, check: true, provider: o.provider }).filter((r) => o.force || now - (this.usageReadAt.get(key(r)) ?? 0) >= USAGE_FRESH_MS)
+    const reads = this.usageReads({ probe: true, check: true, provider: o.provider })
+      .filter((r) => (!o.account || (r.accountId ?? CLI_ACCOUNT) === o.account) && (o.force || now - (this.usageReadAt.get(key(r)) ?? 0) >= USAGE_FRESH_MS))
     for (const r of reads) this.usageReadAt.set(key(r), now)
     return this.sessions.usage(reads)
+  }
+
+  /**
+   * A turn on `accountId` (undefined for the CLI's own login) finished, so its account's usage is read USAGE_AFTER_TURN_MS
+   * from now, once for every turn on it that finishes before then (KERNEL-673). A failed read keeps the last numbers.
+   */
+  readUsageAfterTurn(provider: Provider, accountId: string | undefined) {
+    const account = accountId ?? CLI_ACCOUNT
+    const key = `${provider}:${account}`
+    if (this.stopped || this.afterTurn.has(key)) return
+    const timer = setTimeout(() => {
+      this.afterTurn.delete(key)
+      void this.readUsage({ provider, account }).catch(() => undefined)
+    }, USAGE_AFTER_TURN_MS)
+    timer.unref?.()
+    this.afterTurn.set(key, timer)
   }
 
   private tracked(id: string | undefined, read: Promise<void>): Promise<void> {

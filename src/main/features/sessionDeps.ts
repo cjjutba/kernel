@@ -1,3 +1,4 @@
+import { chatProvider } from '@shared/providers'
 import type { Kernel } from '../kernel'
 import type { SessionDeps } from '../services/sessions'
 import { agentAccessInRoom, aliasesInRoom, disabledInRoom } from '../services/settings'
@@ -67,6 +68,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       k.waits.releaseTaken(ws.id, chat.id, turn.by)
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
       if (!teammate) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
+      // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
+      k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
     },
     accountFor: (provider) => k.providers.active(provider),
     claudeEnv: () => k.providers.claudeEnv(),
