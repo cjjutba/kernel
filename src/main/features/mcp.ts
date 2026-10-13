@@ -1,9 +1,10 @@
-import type { AccountProfile, AgentDef, AgentReach, AgentWarning, McpAccount, McpAccountServer, McpServer, McpSignInAll, Provider } from '@shared/types'
+import type { AccountProfile, AgentDef, AgentReach, AgentWarning, McpAccount, McpAccountServer, McpConnect, McpServer, McpSignInAll, Provider } from '@shared/types'
+import { mcpCounts, mcpNeedsYou } from '@shared/mcpCounts'
 import type { Handlers } from '../kernel'
 import { bus } from '../bus'
 import { mcpWarnings, serverReach } from '../services/agentTools'
 import { buildEnv, withoutClaudeNames } from '../services/env'
-import { discoverMcp, toolServerName, withMissing, withStatus, type McpReport } from '../services/mcp'
+import { CONNECT_URL, discoverMcp, toolServerName, withMissing, withStatus, type McpReport } from '../services/mcp'
 import { claudeExecutable } from '../services/providers/binary'
 import { mcpReports, probeClaudeMcp, sessionEnv } from '../services/providers/claude'
 import { aliasesInRoom, disabledInRoom } from '../services/settings'
@@ -23,9 +24,13 @@ export class Mcp extends Feature {
   private readonly asked = new Set<string>()
   private readonly probes = new Map<string, Promise<void>>()
   /** What `mcp.accounts` last found on each account, by `provider:id` (KERNEL-626). */
-  private readonly onAccounts = new Map<string, Omit<McpAccount, 'label'>>()
+  private readonly onAccounts = new Map<string, Omit<McpAccount, 'label' | 'needsYou' | 'ready'>>()
   /** Account checks running, by `provider:id`, so two calls share one. */
   private readonly checks = new Map<string, Promise<void>>()
+  /** A check asked for while one runs, by `provider:id`, which runs once it ends so it sees what changed meanwhile (KERNEL-660). */
+  private readonly again = new Map<string, Promise<void>>()
+  /** When `mcp.recheck` last checked, for its throttle (KERNEL-660). */
+  private recheckedAt = 0
   /** Added accounts the after-add notice went out for, so it goes once. */
   private readonly announced = new Set<string>()
   /** Sign in to all while it runs, by provider. One runs at a time per provider, as one sign-in does. */
@@ -141,15 +146,27 @@ export class Mcp extends Feature {
     return (await this.k.providers.list()).filter((a) => a.auth === 'subscription' && a.signedIn && !a.legacyToken)
   }
 
-  /** Checks one account's servers. A check that fails keeps its reason and no servers. */
-  private checkAccount(provider: Provider, accountId: string): Promise<void> {
+  /**
+   * Checks one account's servers. A check that fails keeps its reason and no servers. Two calls share a running check, unless
+   * `fresh`, which runs one more after it, since a sign-in that finished meanwhile may not be in it (KERNEL-660). `checkedAt`
+   * is when the check started, so a sign-in during it counts as newer.
+   */
+  private checkAccount(provider: Provider, accountId: string, o: { fresh?: boolean } = {}): Promise<void> {
     const key = `${provider}:${accountId}`
     const running = this.checks.get(key)
-    if (running) return running
+    if (running && !o.fresh) return running
+    if (running) {
+      const queued = this.again.get(key)
+      if (queued) return queued
+      const next = running.then(() => { this.again.delete(key); return this.checkAccount(provider, accountId) })
+      this.again.set(key, next)
+      return next
+    }
     const p = (async () => {
+      const startedAt = Date.now()
       try {
         const servers = await this.k.providers.mcpServersOn(provider, accountId)
-        this.onAccounts.set(key, { provider, accountId, checkedAt: Date.now(), servers })
+        this.onAccounts.set(key, { provider, accountId, checkedAt: startedAt, servers })
       } catch (e) {
         this.onAccounts.set(key, { provider, accountId, error: (e as Error).message, servers: [] })
       }
@@ -162,12 +179,13 @@ export class Mcp extends Feature {
    * What Kernel knows of each account in `rows`, in their order, with every server of its provider (`withMissing`). A Claude
    * server that needed a sign-in and is off the account's `mcpSignIns` since got one, here or shared from another login, so
    * it is ready, and so is a Codex server signed in from Kernel since the account's check (KERNEL-646). Then the quiet ones:
-   * a server ignored on the account reads `ignored`, and one switched off in every room carries `roomOff`.
+   * a server ignored on the account reads `ignored`, and one switched off in every room carries `roomOff`. Last the counts,
+   * and the Codex accounts whose servers read the same (`sharedWith`, KERNEL-660).
    */
   private view(rows: AccountProfile[]): McpAccount[] {
     const ready = (s: McpAccountServer): McpAccountServer => ({ name: s.name, kind: s.kind, connector: s.connector, state: 'ready' })
     const roomOff = this.roomOff()
-    return withMissing(rows.map((a): McpAccount => {
+    const out = withMissing(rows.map((a): Omit<McpAccount, 'needsYou' | 'ready'> => {
       const base = { provider: a.provider, accountId: a.id, label: a.label, ...(a.email ? { email: a.email } : {}) }
       const had = this.onAccounts.get(`${a.provider}:${a.id}`)
       if (!had) return { ...base, servers: [] }
@@ -181,8 +199,9 @@ export class Mcp extends Feature {
         const off = roomOff(s.name) ? { roomOff: true } : {}
         return ignored.has(s.name) ? { name: s.name, kind: s.kind, connector: s.connector, state: 'ignored', ...off } : { ...s, ...off }
       })
-      return { ...a, servers }
+      return { ...a, servers, ...mcpCounts(servers) }
     })
+    return withShared(out)
   }
 
   /**
@@ -196,8 +215,31 @@ export class Mcp extends Feature {
     return (server) => lists.every((off) => off.has(toolServerName(server)))
   }
 
-  /** A server just signed in from Kernel (`Providers.mcpSignIn`). Only Codex needs it, since Claude's sign-ins land on `mcpSignIns`. */
-  signedIn(provider: Provider, server: string) { if (provider === 'codex') this.codexSignedIn.set(server, Date.now()) }
+  /**
+   * A server just signed in from Kernel (`Providers.mcpSignIn`). Codex's is kept, since Claude's sign-ins land on
+   * `mcpSignIns`. Every window hears at once, and again once the account is checked again (KERNEL-660).
+   */
+  signedIn(provider: Provider, accountId: string, server: string) {
+    if (provider === 'codex') this.codexSignedIn.set(server, Date.now())
+    void this.pushAccounts()
+    if (!this.stopped) void this.checkAccount(provider, accountId, { fresh: true }).then(() => this.pushAccounts())
+  }
+
+  /**
+   * Re-check on return (`mcp.recheck`, KERNEL-660): when Kernel's window gets focus, the accounts with something pending,
+   * servers that need the user or a check that failed, are checked again side by side. At most once every RECHECK_MS, and
+   * a call inside that only answers with what Kernel knows.
+   */
+  async recheck(): Promise<McpAccount[]> {
+    const rows = await this.mcpRows()
+    if (Date.now() - this.recheckedAt < RECHECK_MS) return this.view(rows)
+    this.recheckedAt = Date.now()
+    const pending = this.view(rows).filter((a) => a.error || a.needsYou > 0)
+    await Promise.all(pending.map((a) => this.checkAccount(a.provider, a.accountId, { fresh: true })))
+    const out = this.view(rows)
+    if (pending.length && !this.stopped) bus.push({ type: 'mcp.accounts', accounts: out })
+    return out
+  }
 
   /** Tells every window what `mcp.accounts` knows now, without checking anything. `Providers.mcpSignIn` calls it after a sign-in. */
   async pushAccounts() {
@@ -228,12 +270,43 @@ export class Mcp extends Feature {
 
   /**
    * Sign in to all (`accounts.mcpSignInAll`): every server that needs a sign-in on an account, one after another, through
-   * `Providers.mcpSignIn`, the ignored ones and ones switched off in every room left out. The account is checked first when
-   * `mcp.accounts` hasn't. A server a sign-in from another login or a server before it already covered is counted done
-   * without a sign-in. A failed sign-in goes on the list and the queue moves on. `cancelSignInAll` ends it before the next
-   * server. Codex since KERNEL-646.
+   * `Providers.mcpSignIn`, the ignored ones and ones switched off in every room left out. Codex since KERNEL-646.
    */
-  async signInAll(provider: Provider, accountId: string): Promise<McpSignInAll> {
+  signInAll(provider: Provider, accountId: string): Promise<McpSignInAll> {
+    return this.queue(provider, accountId, async (a) => ({ steps: waiting(a).map((server) => ({ server })) }))
+  }
+
+  /**
+   * Set up this account (`accounts.mcpSetUp`, KERNEL-660). Of the servers that need the user there (`mcpNeedsYou`), the ones
+   * not in `include` are ignored on the account in one write. The rest go in `include`'s order: one needing a sign-in joins
+   * the queue, and the claude.ai connectors not set up there become one `account.mcpConnect` step at the first one's turn.
+   * A failed server, or one Kernel can't set up, is left for the re-check.
+   */
+  setUp(provider: Provider, accountId: string, include: string[]): Promise<McpSignInAll> {
+    return this.queue(provider, accountId, async (a) => {
+      const needs = new Map(a.servers.filter(mcpNeedsYou).map((s) => [s.name, s]))
+      const ticked = new Set(include)
+      const ignored = [...needs.keys()].filter((name) => !ticked.has(name))
+      if (ignored.length) await this.k.providers.ignoreMcp(provider, accountId, ignored)
+      const connectors = [...ticked].filter((name) => needs.get(name)?.state === 'not-set-up' && needs.get(name)?.kind === 'connector')
+      const connect: McpConnect | undefined = connectors.length ? { provider, accountId, ...(a.email ? { email: a.email } : {}), url: CONNECT_URL, servers: connectors } : undefined
+      const steps: Step[] = []
+      for (const name of ticked) {
+        if (needs.get(name)?.state === 'needs-sign-in') steps.push({ server: name })
+        else if (connect && name === connectors[0]) steps.push({ connect })
+      }
+      return { steps, ignored }
+    })
+  }
+
+  /**
+   * Works through an account's servers one after another (`signInAll`, `setUp`): `plan` picks the steps from the account as
+   * `mcp.accounts` has it, which is checked first when it hasn't been. A sign-in goes through `Providers.mcpSignIn`, and a server
+   * a sign-in from another login or one before it already covered counts as done without one. A failed sign-in goes on the
+   * list and the queue moves on. A connectors step is pushed as `account.mcpConnect`. `cancelSignInAll` ends it before the
+   * next step. One runs at a time per provider, as one sign-in does. Progress goes out as `account.mcpSignInAll`.
+   */
+  private async queue(provider: Provider, accountId: string, plan: (a: McpAccount) => Promise<{ steps: Step[]; ignored?: string[] }>): Promise<McpSignInAll> {
     if (this.signingIn.has(provider)) throw new Error('Sign in to all is already running. Finish or cancel it first.')
     const state = { canceled: false }
     this.signingIn.set(provider, state)
@@ -244,12 +317,22 @@ export class Mcp extends Feature {
       if (!this.onAccounts.has(key)) await this.checkAccount(provider, accountId)
       const had = this.onAccounts.get(key)
       if (had?.error) throw new Error(had.error)
-      const row = (await this.mcpRows()).find((a) => a.provider === provider && a.id === accountId)
-      if (!row) throw new Error('That account is no longer in Kernel.')
-      run.servers = waiting(this.view([row])[0])
+      // The whole view, so the account has every server of its provider (`withMissing`).
+      const account = this.view(await this.mcpRows()).find((a) => a.provider === provider && a.accountId === accountId)
+      if (!account) throw new Error('That account is no longer in Kernel.')
+      const { steps, ignored } = await plan(account)
+      if (ignored?.length) run.ignored = ignored
+      run.servers = steps.flatMap((s) => ('server' in s ? [s.server] : []))
       push()
-      for (const server of run.servers) {
+      for (const step of steps) {
         if (state.canceled) break
+        if ('connect' in step) {
+          run.connect = step.connect
+          if (!this.stopped) bus.push({ type: 'account.mcpConnect', connect: step.connect })
+          push()
+          continue
+        }
+        const server = step.server
         const covered = provider === 'claude' ? !this.k.providers.mcpSignInsOn(accountId)?.some((s) => s.server === server) : (this.codexSignedIn.get(server) ?? 0) > (had?.checkedAt ?? 0)
         if (covered) { run.done.push(server); continue }
         run.current = server
@@ -296,10 +379,32 @@ export class Mcp extends Feature {
       },
       'mcp.accounts': async (req) => this.accounts(req ?? {}),
       'accounts.mcpSignInAll': async ({ provider, accountId }) => this.signInAll(provider, accountId),
-      'accounts.mcpIgnore': async ({ provider, accountId, server, ignored }) => this.ignore(provider, accountId, server, ignored)
+      'accounts.mcpIgnore': async ({ provider, accountId, server, ignored }) => this.ignore(provider, accountId, server, ignored),
+      'accounts.mcpSetUp': async ({ provider, accountId, include }) => this.setUp(provider, accountId, include),
+      'mcp.recheck': async () => this.recheck()
     } satisfies Partial<Handlers>
   }
 }
 
 /** The servers on an account that need a sign-in and warn: not ignored, which `view` already made `ignored`, and not off in every room. */
 const waiting = (a: McpAccount) => a.servers.filter((s) => s.state === 'needs-sign-in' && !s.roomOff).map((s) => s.name)
+
+/** How often `mcp.recheck` checks at most (KERNEL-660). */
+const RECHECK_MS = 10_000
+
+/** One step of `Mcp.queue`: a server to sign in to, or the claude.ai connectors to add in one go. */
+type Step = { server: string } | { connect: McpConnect }
+
+/**
+ * Each Codex account with the ids of the other Codex accounts whose servers read the same, name for name and state for state
+ * (KERNEL-660). Codex keeps MCP sign-ins in one store for every Codex account, so those show as one. Accounts not checked, or
+ * whose check failed, match none.
+ */
+function withShared(accounts: McpAccount[]): McpAccount[] {
+  const shape = (a: McpAccount) => (a.provider === 'codex' && a.checkedAt !== undefined && !a.error ? JSON.stringify(a.servers.map((s) => [s.name, s.state])) : undefined)
+  const shapes = accounts.map(shape)
+  return accounts.map((a, i) => {
+    const same = shapes[i] === undefined ? [] : accounts.filter((b, j) => j !== i && shapes[j] === shapes[i]).map((b) => b.accountId)
+    return same.length ? { ...a, sharedWith: same } : a
+  })
+}

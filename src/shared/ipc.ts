@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -411,6 +411,15 @@ export interface KernelApi {
    * account or Sign in to all. Resolves with `mcp.accounts`, also pushed (KERNEL-646).
    */
   'accounts.mcpIgnore': { req: { provider: Provider; accountId: string; server: string; ignored: boolean }; res: McpAccount[] }
+  /**
+   * Set up this account (KERNEL-660): takes every server that needs the user on the account (`McpAccount.needsYou`), ticked
+   * ones in `include`. The rest are ignored there in one write. The ticked ones are worked through in order: a sign-in runs
+   * through `accounts.mcpSignIn`, one after another, and the claude.ai connectors not set up there go as one
+   * `account.mcpConnect` push, at the first one's turn. A failed or not-set-up server Kernel can't fix waits for the re-check.
+   * Progress arrives as `account.mcpSignInAll` pushes, `accounts.cancelAdd` stops it, and a failed sign-in moves on and is
+   * listed at the end, as in Sign in to all.
+   */
+  'accounts.mcpSetUp': { req: { provider: Provider; accountId: string; include: string[] }; res: McpSignInAll }
   /** A provider's models with their efforts: Claude's from MODELS, Codex's from `model/list`, read once per launch. */
   'models.list': { req: { provider: Provider }; res: ProviderModel[] }
 
@@ -463,6 +472,12 @@ export interface KernelApi {
    * as `accounts.checkMcp` does. A Codex check lists the servers in the account's home. Changes arrive as `mcp.accounts`.
    */
   'mcp.accounts': { req: { refresh?: boolean; provider?: Provider; accountId?: string } | void; res: McpAccount[] }
+  /**
+   * Re-check on return (KERNEL-660): the renderer calls it when Kernel's window gets focus. Checks again only the accounts
+   * with something pending (`needsYou`, or a check that failed), at most once every 10 seconds, and resolves with
+   * `mcp.accounts` as it reads then. Changes arrive as `mcp.accounts` too. Kernel also re-checks an account after each sign-in.
+   */
+  'mcp.recheck': { req: void; res: McpAccount[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
   'integrations.connect': { req: { id: Integration['id']; token?: string }; res: Integration }
@@ -663,6 +678,8 @@ export type PushEvent =
   | { type: 'account.mcpSignInAll'; run: McpSignInAll }
   /** MCP servers need a sign-in on an account just added, after its first check. Once per account (KERNEL-626). */
   | { type: 'account.mcpNeeded'; needed: McpNeeded }
+  /** Set up this account's claude.ai connectors in one step: open claude.ai once for all of them (`accounts.mcpSetUp`, KERNEL-660). */
+  | { type: 'account.mcpConnect'; connect: McpConnect }
   /** What `mcp.accounts` knows changed: an account was checked, or a sign-in finished (KERNEL-626). */
   | { type: 'mcp.accounts'; accounts: McpAccount[] }
   /** Network reachability as main sees it (WorkspaceOffline.png). */
