@@ -1,4 +1,5 @@
 import type { ChangedFile, ChatItem } from '@shared/types'
+import { isQuitNote, userView } from './sender'
 
 /** What the transcript draws. A finished turn folds its work into one `group` row. */
 export type ThreadBlock =
@@ -11,6 +12,8 @@ export type ThreadBlock =
    * and when, and the reply's actions (KERNEL-346).
    */
   | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string }
+  /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
+  | { kind: 'relaunch'; id: string; note: Extract<ChatItem, { kind: 'note' }>; message: Extract<ChatItem, { kind: 'user' }> }
   /** A turn that ended badly. `output` is what the last failed tool printed. */
   | { kind: 'error'; id: string; message: string; output?: string }
 
@@ -85,7 +88,14 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
   }
   for (const item of items) {
     if (item.kind === 'tool' && QUESTION_TOOLS.has(item.name)) continue
-    if (item.kind === 'user') { finish(); blocks.push({ kind: 'item', item }) } else turn.push(item)
+    if (item.kind === 'user') {
+      finish()
+      const view = userView(item)
+      const last = blocks[blocks.length - 1]
+      if (view === 'hidden') continue
+      if (view === 'note' && last?.kind === 'item' && last.item.kind === 'note' && isQuitNote(last.item)) blocks[blocks.length - 1] = { kind: 'relaunch', id: last.item.id, note: last.item, message: item }
+      else blocks.push({ kind: 'item', item })
+    } else turn.push(item)
   }
   finish()
   return blocks

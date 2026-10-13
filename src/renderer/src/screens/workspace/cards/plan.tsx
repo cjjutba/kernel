@@ -6,7 +6,8 @@ import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
-import { outcome, planSteps, planText } from './steps'
+import { AnswerBubble } from './AnswerBubble'
+import { outcome, planAnswer, planSteps, planText } from './steps'
 import './cards.css'
 
 // A plan in its chat, the way Conductor shows one (D-092): the transcript shows a "Propose plan" row and the plan as a
@@ -89,26 +90,30 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
     return () => { cancelAnimationFrame(frame); clearTimeout(stop); resize.disconnect() }
   }, [a.id])
   const file = a.planFile?.slice(a.planFile.lastIndexOf('/') + 1)
+  const answer = planAnswer(a)
   return (
-    <div ref={ref} className="plan-inline">
-      <div className="trow">
-        <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
-        <span className="ink2">Propose plan</span>
-        {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
-        <IconButton icon={copied ? 'check' : 'copy'} size={14} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+    <>
+      <div ref={ref} className="plan-inline">
+        <div className="trow">
+          <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
+          <span className="ink2">Propose plan</span>
+          {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
+          <IconButton icon={copied ? 'check' : 'copy'} size={14} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+        </div>
+        {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
+        {a.status === 'expired' && <PlanExpired a={a} />}
       </div>
-      {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
-      {a.status !== 'pending' && <PlanOutcome a={a} />}
-    </div>
+      {answer && <AnswerBubble text={answer} />}
+    </>
   )
 }
 
-/** How the plan was decided, drawn like a PR note in the chat: the plan glyph, the outcome and a hairline (KERNEL-313). */
-function PlanOutcome({ a }: { a: Approval }) {
+/** Why a plan can no longer be decided, drawn like a PR note in the chat: the plan glyph, the reason and a hairline (KERNEL-313). A decided plan has the user's bubble instead. */
+function PlanExpired({ a }: { a: Approval }) {
   return (
     <div className="note inline" data-plan={a.status}>
       <Icon name="plan" size={14} />
-      <span className="note-text">{a.status === 'allowed' ? 'Plan approved' : outcome(a)}</span>
+      <span className="note-text">{outcome(a)}</span>
       <span className="note-rule" aria-hidden="true" />
     </div>
   )

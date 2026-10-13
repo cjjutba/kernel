@@ -178,16 +178,16 @@ describe('who sent a message, as the transcript draws it (KERNEL-120)', () => {
     expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user): what does this line mean?' }] })).toBe('bubble')
   })
 
-  it('draws a Kernel note with Copy and no Edit', async () => {
+  it('draws a Kernel note as one line, with no Edit', async () => {
     const React = await import('react')
     const { renderToStaticMarkup } = await import('react-dom/server')
     Object.assign(globalThis, { React })
     const path = '../src/renderer/src/screens/workspace/KernelNote'
     const { KernelNote } = await import(/* @vite-ignore */ path) as { KernelNote: (p: { item: ChatItem }) => React.ReactElement }
     const html = renderToStaticMarkup(React.createElement(KernelNote, { item: { kind: 'user', id: 'n', ts: 1, from: 'kernel', parts: [{ type: 'text', text: 'Your session ended unexpectedly.' }] } }))
-    expect(html).toContain('class="note"')
+    expect(html).toContain('note inline knote')
+    expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('Your session ended unexpectedly.')
-    expect(html).toContain('Copy')
     expect(html).not.toContain('Edit')
   })
 

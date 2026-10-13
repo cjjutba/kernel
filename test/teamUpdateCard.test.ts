@@ -136,7 +136,7 @@ describe('the Team update card', () => {
     expect(html).toContain('2 earlier updates left out')
     const odd = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: legacy('Update from Kernel (not the user):\nSomething Kernel no longer writes'), useNewest: () => false, workspaceOf: () => undefined }))
     expect(odd).not.toContain('tucard')
-    expect(odd).toContain('class="note"')
+    expect(odd).toContain('knote')
     expect(odd).toContain('Something Kernel no longer writes')
   })
 

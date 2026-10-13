@@ -97,7 +97,17 @@ button.ws-issue:hover { background: var(--surface-3); }
 button.msg-chip:hover { border-color: var(--line-4); }
 .msg-reply { gap: 6px; }
 .msg-kernel { gap: 4px; }
-.msg-kernel .msg-acts { margin-left: 6px; }
+/* Kernel's message as one note line that opens to its full text (KernelNote). */
+.knote { width: 100%; border: 0; font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.knote .note-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.knote { align-items: flex-start; }
+.knote > svg { margin-top: 4px; transition: transform 120ms; }
+.msg-kernel[data-open] .knote .note-text { overflow: visible; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+.msg-kernel[data-open] .knote .note-rule { display: none; }
+.msg-kernel[data-open] .knote > svg { transform: rotate(90deg); }
+.knote:hover { color: var(--ink-2); }
+.knote-full { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 2px 0 2px 20px; color: var(--ink-3); font-size: 12.5px; line-height: 1.6; }
+.knote-full p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
 .msg-reply .msg-acts { margin-left: -5px; }
 /* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */

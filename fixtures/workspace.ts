@@ -498,7 +498,7 @@ const LEAD_PLAN = [
 /** Rowan's plan for T-15 waiting on you in plan mode, in the Lead's chat: its write-up, then one row per task. */
 const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'rowan' }, { detail: LEAD_PLAN })
 
-/** The same plan once approved: it keeps its place with its Plan approved line, plan mode is off and each task has a workspace to open. */
+/** The same plan once approved: it keeps its place with your Approved bubble under it, plan mode is off and each task has a workspace to open. */
 const planApproved = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
   const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
@@ -507,6 +507,29 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
     chats: s.chats?.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
     approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'allowed' as const, steps: a.steps?.map((st, j) => ({ ...st, workspaceId: `ws-t15-${j}` })) } : a)),
     items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), reply] }
+  }
+}
+
+/** Rowan's plan after you asked for changes: your notes are the bubble. The Kernel message that carried them after a restart names the approval and stays hidden. */
+const planChanges = (f: Fixture): Partial<Fixture> => {
+  const s = planWaiting(f)
+  const notes = 'Split step 2 into its own PR, after step 1 merges.\nAnd have Theo review each PR as it lands.'
+  const kernel: ChatItem = { kind: 'user', id: 'pl-kernel', ts: at(10, 30), from: 'kernel', approvalId: s.approvals?.[0].id, parts: [{ type: 'text', text: `The user asked for changes to the plan: ${notes}` }] }
+  const reply: ChatItem = { kind: 'text', id: 'pl-rev', ts: at(10, 31), text: 'Understood. I will split step 2 out and bring the revised plan back.' }
+  return {
+    ...s,
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'denied' as const, answer: notes } : a)),
+    items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), kernel, reply] }
+  }
+}
+
+/** A plan a newer plan replaced: it says why in place of an answer. */
+const planReplaced = (f: Fixture): Partial<Fixture> => {
+  const s = planWaiting(f)
+  return {
+    ...s,
+    chats: s.chats?.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'expired' as const, expiredBy: 'replaced' as const } : a))
   }
 }
 
@@ -519,6 +542,17 @@ const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pd
 ], {
   approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: EXIT_PLAN }, title: 'Plan for invoice-pdf-button', detail: EXIT_PLAN }), ...f.approvals]
 }, { plan: true, model: 'claude-opus-5-5' })
+
+/** A scene that passes no approvals keeps the seed's: scene2 would otherwise set them to undefined. */
+const noApprovals = ({ approvals: _none, ...patch }: Partial<Fixture>): Partial<Fixture> => patch
+
+/** Kernel's own message in Kai's chat after a limit switch: one note line. */
+const kernelNote = scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('kn1', 'Build T-15b from the approved plan.', true),
+    { kind: 'text', id: 'kn-tx', ts: at(10, 28), text: 'Starting with the row actions menu.' },
+    { kind: 'result', id: 'kn-res', ts: at(10, 29), durationMs: 60_000, ok: true },
+    { kind: 'user', id: 'kn-msg', ts: at(10, 30), from: 'kernel', parts: [{ type: 'text', text: 'You hit your usage limit and Kernel moved this chat to your other account. Carry on from where you stopped, and check git status first, since some edits may be unsaved.' }] }
+  ], {})))
 
 /** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
@@ -1629,6 +1663,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApproved: scene(planApproved),
+  WorkspacePlanChanges: scene(planChanges),
+  WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
   // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
@@ -1710,6 +1746,25 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ]
     return { ...s, items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), ...reply] } }
   }),
+  // One question, answered: the card keeps the question and your answer is the bubble under it.
+  WorkspaceQuestionAnswered: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('q1a', 'Build T-15b from the approved plan.', true),
+    ...folded('q1', 6, 0),
+    { kind: 'result', id: 'q1-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [{ ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
+  })),
+  // Kernel's own message is one note line that opens to its full text with Copy, and after a quit it folds into the quit note's line.
+  WorkspaceKernelNote: kernelNote,
+  WorkspaceKernelNoteOpen: kernelNote, // the same, opened by scripts/shots.ts
+  WorkspaceRelaunch: scene((f) => noApprovals(scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('rl1', 'Build T-15b from the approved plan.', true),
+    tool('rl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
+    { kind: 'note', id: 'rl-note', ts: at(10, 29), text: 'Kernel quit while this agent was working.' },
+    { kind: 'user', id: 'rl-msg', ts: at(10, 31), from: 'kernel', parts: [{ type: 'text', text: 'Kernel restarted while you were working on this chat. Check git status for edits that were not saved, then carry on from where you stopped.' }] },
+    { kind: 'text', id: 'rl-tx', ts: at(10, 32), text: 'Checking git status, then back to the row actions.' },
+    { kind: 'result', id: 'rl-res', ts: at(10, 32), durationMs: 20_000, ok: true }
+  ], {}))),
   WorkspaceInterrupted: scene(() => ({
     items: { [ids.tableChat]: [
       userMsg('i0', 'Refactor the invoice table to use the shared DataTable component.'),
