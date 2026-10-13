@@ -22,7 +22,7 @@ export function useUsageActions() {
   const signIn = (provider: Provider, cli: boolean) => {
     if (!cli) {
       actions.ui.closeMenu()
-      return go({ name: 'settings', page: 'providers', tab: provider })
+      return go({ name: 'settings', page: 'accounts', tab: provider })
     }
     return run(`signin:${provider}`, async () => {
       try {

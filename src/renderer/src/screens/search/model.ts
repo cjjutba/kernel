@@ -5,7 +5,7 @@ import { PROVIDER_NAME } from '../../accountRows'
 import { isLeadWorkspace } from '../../lead'
 import { roomAgents } from '../../nav'
 import { roomLetter } from '../rooms/roomInfo'
-import { ROOM_PAGES } from '../settings/roomPages'
+import { NAV_PAGES, ROOM_PAGES } from '../settings/nav'
 import { hasChanges } from '../workspace/pr/model'
 import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
@@ -28,13 +28,8 @@ export interface PaletteItem {
   run: () => void
 }
 
-/** Settings pages the palette can jump to, with the names the Settings sidebar uses. */
-export const settingsPages: [SettingsPage, string][] = [
-  ['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Keyboard shortcuts'],
-  ['models', 'Models'], ['mcp', 'MCP servers'], ['permissions', 'Permissions'],
-  ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'],
-  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']
-]
+/** Settings pages the palette can jump to: the Settings sidebar's list, with its names (KERNEL-680). */
+export const settingsPages: [SettingsPage, string][] = NAV_PAGES.map((p) => [p.page, p.label])
 
 /**
  * How well `query` matches `text`: 0 for no match, higher is better. Every query character must appear in order.

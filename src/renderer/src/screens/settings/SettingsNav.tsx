@@ -4,28 +4,10 @@ import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Icon } from '../../ui'
-import type { IconName } from '../../icons'
-import { ROOM_PAGES } from './roomPages'
+import { NAV, ROOM_PAGES, navMatch } from './nav'
 
-export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: IconName }[] }[] = [
-  { title: 'Personal', items: [
-    { page: 'general', label: 'General', icon: 'sliders' }, { page: 'appearance', label: 'Appearance', icon: 'half' },
-    { page: 'notifications', label: 'Notifications', icon: 'bell' }, { page: 'account', label: 'Account and usage', icon: 'user' },
-    { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' }
-  ] },
-  { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'agents', label: 'Agents', icon: 'team' }, { page: 'providers', label: 'Providers', icon: 'providers' }, { page: 'mcp', label: 'MCP servers', icon: 'layers' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
-  ] },
-  { title: 'Workspaces', items: [
-    { page: 'git', label: 'Git and worktrees', icon: 'branch' }, { page: 'scripts', label: 'Scripts', icon: 'term' },
-    { page: 'prs', label: 'Pull requests', icon: 'pr' }
-  ] },
-  { title: 'System', items: [
-    { page: 'hooks', label: 'Hooks', icon: 'plug' }, { page: 'integrations', label: 'Integrations', icon: 'link' },
-    { page: 'bigterm', label: 'Big terminal', icon: 'bigterm' },
-    { page: 'privacy', label: 'Privacy', icon: 'lock' }, { page: 'about', label: 'About', icon: 'info' }
-  ] }
-]
+/** The groups the sidebar lists. They live in nav.ts so search and the command palette read the same list (KERNEL-680). */
+export const GROUPS = NAV
 
 /** A field you type into: Escape belongs to it, not to the page. */
 const isTextField = (el: HTMLElement) =>
@@ -41,7 +23,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
-  const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
+  const match = (label: string, keywords?: string[]) => navMatch(q, label, keywords)
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
   // Menus and modals take Escape before it gets here, so it only counts when none is open.
   useEffect(() => {
@@ -66,12 +48,12 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
     list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
-  const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label)) })).filter((g) => g.items.length)
+  const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label, i.keywords)) })).filter((g) => g.items.length)
   // Only the room whose page is open is expanded. On an app page every room is folded.
   const open = page === 'room' ? rooms.find((r) => r.id === roomId)?.id : undefined
   const searching = !!q.trim()
   // A search that matches a room's name shows all its pages, and one that matches a page name shows that page.
-  const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
+  const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label, p.keywords)) })).filter((r) => r.pages.length)
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
     <>

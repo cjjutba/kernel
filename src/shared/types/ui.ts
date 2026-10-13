@@ -24,7 +24,7 @@ export type Route =
   /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
   | { name: 'issues'; issueId?: string; roomId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
-  /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
+  /** `tab` puts that provider's accounts in view on Settings, Accounts (KERNEL-406). */
   /** `account` is the id of the account Skills and MCP puts first in view (KERNEL-627). */
   /**
    * `agentId` opens that agent's editor inside the Agents page it came from: `page: 'agents'` for the app's list, or `page: 'room'`

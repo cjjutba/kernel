@@ -243,7 +243,7 @@ describe('settings nothing read (KERNEL-540)', () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ version: 2, experimental: { voice: true, walking: false }, team: { addNewAgents: false, defaultTemplate: 'pair' } }))
     const { saved, resolved } = await loadAppSettings(file, '/home/cj')
-    expect(saved.experimental).toEqual({ walking: false })
+    expect(saved.experimental).toEqual({})
     expect(saved.team).toEqual({ defaultTemplate: 'pair' })
     expect('voice' in resolved.experimental).toBe(false)
     expect('addNewAgents' in resolved.team).toBe(false)

@@ -94,7 +94,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         if (view.limit) await call('usage.notifyOnReset', { type: view.limit })
         setSettled({ id: view.id, notified: true })
       })
-      case 'usage': return go({ name: 'settings', page: 'account' })
+      case 'usage': return go({ name: 'settings', page: 'accounts' })
       case 'wait': return setSettled({ id: view.id })
       case 'switch': return chat && view.switchTo && run(id, 'Could not switch the model', async () => {
         await call('chats.configure', { chatId: chat.id, model: view.switchTo })
@@ -134,9 +134,9 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
           actions.accounts.set(await call('accounts.list', undefined))
           if (view.signIn!.provider === 'claude') actions.account.set(await call('account.get', undefined))
         })
-        : go({ name: 'settings', page: 'providers', tab: view.signIn.provider }))
-      case 'providers': return go({ name: 'settings', page: 'providers', tab: 'codex' })
-      case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
+        : go({ name: 'settings', page: 'accounts', tab: view.signIn.provider }))
+      case 'providers': return go({ name: 'settings', page: 'accounts', tab: 'codex' })
+      case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })
         await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })
