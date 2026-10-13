@@ -1690,6 +1690,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
+  // One option picked, the next hovered and the one after focused from the keyboard: the pick is the strongest of the three (KERNEL-676, scripts/shots.ts).
+  WorkspaceQuestionStates: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qst1', 'Build T-15b from the approved plan.', true),
+    ...folded('qst', 6, 0),
+    { kind: 'result', id: 'qst-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf', 'Use a random name'] }), ...f.approvals]
+  })),
   // Long options read as an ink label with a muted description, and the recommended one carries a tag (KERNEL-414, KERNEL-416). Nothing is picked, so Send waits.
   WorkspaceQuestionLong: scene((f) => {
     const options = [

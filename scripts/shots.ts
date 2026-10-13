@@ -109,6 +109,15 @@ async function pickFirstOption(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
+async function questionStates(page: Page) {
+  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Tab')
+  await page.getByRole('radio', { name: /Add the client name/ }).hover()
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceQuestionOther is drawn on question 3 with the first two answered and a Something else answer typed.
 async function typeOtherAnswer(page: Page) {
   await stepToSecondQuestion(page)
@@ -355,6 +364,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedVersions: openVersions,
   WorkspaceKernelNoteOpen: openKernelNote,
   WorkspaceQuestion: pickFirstOption,
+  WorkspaceQuestionStates: questionStates,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
