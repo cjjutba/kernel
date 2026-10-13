@@ -137,6 +137,7 @@ export class ClaudeRunner implements Runner {
         askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         askTool: (tool, input, reason, signal) => this.askToolFromHook(tool, input, reason, signal),
         unlisted: o.access?.unlisted ?? 'ask',
+        bypassing: () => this.rules().mode === 'bypassPermissions',
         gates: () => host.settings().hooks,
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
@@ -658,10 +659,15 @@ function kernelHooks(o: {
   askTool?: (tool: string, input: unknown, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   /** The room's `[agents] unlisted_tools`. `ask` when unset. */
   unlisted?: UnlistedTools
+  /**
+   * Every mode Claude Code might run the step in is Bypass permissions (`rules()`), so an MCP tool `unlisted = "ask"` would ask
+   * about runs instead (bypass-allows-unlisted-mcp). Read at each call, since the mode changes during a process's life.
+   */
+  bypassing?: () => boolean
   /** Settings, Hooks, read each time a gate runs (KERNEL-537). */
   gates?: () => AppSettings['hooks'] | undefined
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', gates } = o
+  const { ctx, commands, verdict, roomAllows, askUser, held, networkAllowed = () => true, afterPlan, handoff, tools, askTool, unlisted = 'ask', bypassing = () => false, gates } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -710,9 +716,11 @@ function kernelHooks(o: {
       const { tool_name: tool, tool_input } = input as PreToolUseHookInput
       if (tools.allows(tool, tool_input)) return {}
       // An MCP server the file doesn't list, and disallowedTools doesn't take away: a room rule lets it through, and with
-      // `unlisted_tools = "ask"` the user decides. `hide` refuses it as before (KERNEL-537).
+      // `unlisted_tools = "ask"` the user decides, or Bypass permissions does as it would with no tools line. `hide` refuses
+      // it as before (KERNEL-537, bypass-allows-unlisted-mcp).
       if (tool.startsWith('mcp__') && !tools.disallows(tool)) {
         if (roomAllows(tool, tool_input)) return ROOM_ALLOWS
+        if (unlisted === 'ask' && bypassing()) return ROOM_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
@@ -797,7 +805,7 @@ export function teamGates(gates: () => AppSettings['hooks'] | undefined): { onBa
   }
 }
 
-/** What a PreToolUse hook answers for a step a room's Always allow rule covers (KERNEL-454). */
+/** What a PreToolUse hook answers for a step a room's Always allow rule covers (KERNEL-454), or an unlisted MCP tool in Bypass permissions. */
 const ROOM_ALLOWS: SyncHookJSONOutput = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
 
 /** The tools a room's tool rule can cover, as a hook matcher: every MCP tool, WebFetch and WebSearch. */

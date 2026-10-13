@@ -37,7 +37,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -57,7 +57,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
     ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
-    disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, onMcp: o.onMcp
+    disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp
   })
   const items = () => store.items(chat.id)
   const of = <K extends ChatItem['kind']>(kind: K) => items().filter((i): i is Extract<ChatItem, { kind: K }> => i.kind === kind)
@@ -486,6 +486,94 @@ describe("an agent file's tools on Codex (KERNEL-451)", () => {
     expect(mcpOverrides(undefined, user)).toEqual({})
     expect(mcpOverrides(undefined, user, ['notion', 'my.server', 'absent'])).toEqual({ 'mcp_servers.notion.enabled': false })
     expect(mcpOverrides(policy, user, ['linear'])).toEqual({ 'mcp_servers.linear.enabled': false, 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.enabled': false })
+  })
+
+  describe('in Bypass permissions (bypass-allows-unlisted-mcp)', () => {
+    const run = async (o: Parameters<typeof setup>[0]) => {
+      const t = track(await setup({ mode: 'bypassPermissions', agent: scoped, mcp: JSON.stringify(servers), ...o }))
+      await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+      await t.idle()
+      return t
+    }
+    const command = (id: string, cmd: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command: cmd } })
+    const narrowed = { 'mcp_servers.linear.enabled_tools': ['get_issue'], 'mcp_servers.github.disabled_tools': ['delete_repo', 'merge_pull_request'] }
+
+    it("keeps the servers the tools line leaves out on, while the room asks about them", async () => {
+      for (const access of [undefined, { unlisted: 'ask' as const, allow: [] }]) {
+        const t = await run({ access })
+        // Sentry stays on. Linear keeps the one tool the line names, and disallowedTools still takes from GitHub.
+        expect((await t.sent('thread/start'))[0].params.config).toEqual(narrowed)
+      }
+    })
+
+    it("still switches off the room's off servers, a server disallowedTools takes away, and every unlisted one when the room hides them", async () => {
+      expect((await (await run({ off: ['sentry'] })).sent('thread/start'))[0].params.config).toEqual({ ...narrowed, 'mcp_servers.sentry.enabled': false })
+      const taken = await run({ agent: { ...scoped, disallowedTools: [...scoped.disallowedTools!, 'mcp__sentry'] } })
+      expect((await taken.sent('thread/start'))[0].params.config).toEqual({ ...narrowed, 'mcp_servers.sentry.enabled': false })
+      const hidden = await run({ access: { unlisted: 'hide', allow: [] } })
+      expect((await hidden.sent('thread/start'))[0].params.config).toEqual({ ...narrowed, 'mcp_servers.sentry.enabled': false })
+    })
+
+    it('leaves them off while the chat plans, and in every other mode', async () => {
+      expect((await (await run({ chat: { plan: true } })).sent('thread/start'))[0].params.config).toMatchObject({ 'mcp_servers.sentry.enabled': false })
+      for (const mode of ['default', 'acceptEdits', 'auto'] as const) {
+        expect((await (await run({ mode })).sent('thread/start'))[0].params.config, mode).toEqual({ ...narrowed, 'mcp_servers.sentry.enabled': false })
+      }
+    })
+
+    it('restarts the thread with the new list when the chat crosses into or out of Bypass permissions', async () => {
+      const t = await run({ mode: 'acceptEdits' })
+      const last = async (n: number) => { await until(async () => (await t.sent('thread/resume')).length === n); return (await t.sent('thread/resume'))[n - 1].params.config }
+      await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+      expect(t.sessions.isRunning('chat')).toBe(false)
+      await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
+      expect(await last(1)).toEqual(narrowed)
+      await t.idle()
+      // Moving between modes on the same side of the line keeps the process.
+      await t.sessions.configure('chat', { mode: 'default' })
+      await t.sessions.send('chat', [{ type: 'text', text: 'and again' }])
+      expect(await last(2)).toEqual({ ...narrowed, 'mcp_servers.sentry.enabled': false })
+      await t.idle()
+      await t.sessions.configure('chat', { mode: 'acceptEdits' })
+      await t.sessions.send('chat', [{ type: 'text', text: 'once more' }])
+      await t.idle()
+      expect(await t.sent('thread/resume')).toHaveLength(2)
+      expect(await t.sent('thread/start')).toHaveLength(1)
+    })
+
+    it('builds an approved plan from a thread that has them, in the same conversation', async () => {
+      const t = track(await setup({ mode: 'bypassPermissions', agent: scoped, mcp: JSON.stringify(servers), chat: { plan: true } }))
+      await t.sessions.send('chat', [{ type: 'text', text: script({ notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. File the issue' } } }) }])
+      const card = await t.pending()
+      expect((await t.sent('thread/start'))[0].params.config).toMatchObject({ 'mcp_servers.sentry.enabled': false })
+      t.approvals.decide(card.id, { behavior: 'allow' })
+      await until(async () => (await t.sent('turn/start')).length === 2)
+      await t.idle()
+      expect((await t.sent('thread/resume')).map((m) => m.params)).toMatchObject([{ threadId: 'thread-1', config: narrowed }])
+      expect((await t.sent('turn/start'))[1].params).toMatchObject({ threadId: 'thread-1', collaborationMode: { mode: 'default' } })
+    })
+
+    it('keeps a busy thread until its turn ends', async () => {
+      const t = await run({ mode: 'acceptEdits' })
+      await t.sessions.send('chat', [{ type: 'text', text: script(command('c1', "/bin/zsh -lc 'pnpm build'")) }])
+      await t.pending()
+      await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+      expect(t.sessions.isRunning('chat')).toBe(true)
+      expect(await t.sent('thread/resume')).toEqual([])
+      t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
+      await t.idle()
+      await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
+      await until(async () => (await t.sent('thread/resume')).length === 1)
+      expect((await t.sent('thread/resume'))[0].params.config).toEqual(narrowed)
+    })
+  })
+
+  it('keeps an unlisted server on only when asked to, and a server named in part keeps only its tools', () => {
+    const policy = toolPolicy(['Read', 'mcp__linear__get_issue'], { disallowed: ['mcp__figma', 'mcp__notion__delete_page'] })!
+    expect(['linear', 'figma', 'notion', 'sentry'].map((s) => policy.server(s))).toEqual([{ on: true, only: ['get_issue'] }, { on: false }, { on: false }, { on: false }])
+    expect(['linear', 'figma', 'notion', 'sentry'].map((s) => policy.server(s, { unlisted: true }))).toEqual([{ on: true, only: ['get_issue'] }, { on: false }, { on: true, except: ['delete_page'] }, { on: true }])
+    const user = { linear: {}, figma: {}, notion: {}, sentry: {} }
+    expect(mcpOverrides(policy, user, ['sentry'], { unlisted: true })).toEqual({ 'mcp_servers.linear.enabled_tools': ['get_issue'], 'mcp_servers.figma.enabled': false, 'mcp_servers.notion.disabled_tools': ['delete_page'], 'mcp_servers.sentry.enabled': false })
   })
 })
 

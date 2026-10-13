@@ -62,8 +62,12 @@ export interface ToolPolicy {
   allows(tool: string, input?: unknown): boolean
   /** Whether the file's disallowedTools takes the tool away, rather than its tools line leaving it out. */
   disallows(tool: string): boolean
-  /** How much of an MCP server the session may reach. Kernel's own is always all of it. */
-  server(name: string): ServerAccess
+  /**
+   * How much of an MCP server the session may reach. Kernel's own is always all of it. With `unlisted`, a server the tools
+   * line leaves out counts as named, as in Bypass permissions with `unlisted_tools = "ask"` (bypass-allows-unlisted-mcp).
+   * disallowedTools still takes away what it names, and a server the line names in part keeps only those tools.
+   */
+  server(name: string, o?: { unlisted?: boolean }): ServerAccess
 }
 
 /** None of a server, all of it but `except`, or only `only`, by the tool's name on that server. */
@@ -129,13 +133,14 @@ export function toolPolicy(tools: string[] | undefined, o: { disallowed?: string
     || (tool.startsWith('mcp__') && (offAll || off.servers.has(tool.split('__')[1]))))
   const usable = (tool: string) => own(tool) || (listed(tool) && !disallows(tool))
   const allows = (tool: string, input?: unknown) => usable(tool) || (!o.readOnly && WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
-  const server = (name: string): ServerAccess => {
+  const server = (name: string, so: { unlisted?: boolean } = {}): ServerAccess => {
     if (name === 'kernel') return { on: true }
     if (offAll || off.servers.has(name)) return { on: false }
     const except = off.tools.filter((t) => t.server === name).map((t) => t.tool)
     if (line && !line.servers.has(name) && !allowed.has(name)) {
       const only = line.tools.filter((t) => t.server === name && !except.includes(t.tool)).map((t) => t.tool)
-      return only.length ? { on: true, only } : { on: false }
+      if (only.length) return { on: true, only }
+      if (!so.unlisted) return { on: false }
     }
     return except.length ? { on: true, except } : { on: true }
   }

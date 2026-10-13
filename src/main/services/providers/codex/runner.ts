@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
 import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort } from '@shared/types'
+import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, UnlistedTools } from '@shared/types'
 import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
@@ -61,8 +61,13 @@ export interface CodexStart {
   /** The MCP servers the room switched off, and its `[mcp.aliases]` the agent file's tools line reads through (KERNEL-464). */
   disabled?: string[]
   aliases?: Record<string, string>
-  /** The MCP servers the room's `[agents.<id>] allow` lets this agent use though its tools line doesn't name them (KERNEL-537). */
-  allow?: string[]
+  /** The room's `[agents]` table for this agent: `unlisted_tools`, and the MCP servers `allow` adds to its tools line (KERNEL-537). */
+  access?: { unlisted: UnlistedTools; allow: string[] }
+  /**
+   * The chat runs in Bypass permissions (`effectiveMode`, so not while it plans), and with `unlisted_tools = "ask"` the thread
+   * keeps the MCP servers its tools line leaves out. The thread keeps that list until its process restarts (bypass-allows-unlisted-mcp).
+   */
+  bypass?: boolean
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
@@ -284,18 +289,20 @@ export class CodexRunner implements Runner {
 
   /**
    * The agent file's limits on Codex's MCP servers, and the servers the room switched off, as the thread's config
-   * (KERNEL-451, KERNEL-464). Codex says which servers it has for this folder. When it can't, the chat says what doesn't
+   * (KERNEL-451, KERNEL-464). In Bypass permissions with `unlisted_tools = "ask"`, servers the tools line leaves out stay on
+   * (bypass-allows-unlisted-mcp). Codex says which servers it has for this folder. When it can't, the chat says what doesn't
    * hold, rather than failing to start.
    */
   private async mcpConfig(cwd: string): Promise<Record<string, JsonValue> | undefined> {
     const agent = this.host.agent
-    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.allow })
+    const policy = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: this.o.aliases, allow: this.o.access?.allow })
+    const unlisted = !!this.o.bypass && (this.o.access?.unlisted ?? 'ask') === 'ask'
     const off = this.o.disabled ?? []
     if (!policy && !off.length) return undefined
     try {
       const r = await this.rpc!.request<ConfigReadResponse>('config/read', { cwd } satisfies ConfigReadParams, { timeoutMs: 30_000 })
       const servers = r?.config?.mcp_servers
-      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, off)
+      const config = mcpOverrides(policy, servers && typeof servers === 'object' && !Array.isArray(servers) ? servers : {}, off, { unlisted })
       return Object.keys(config).length ? config : undefined
     } catch {
       const what = policy ? `${agent?.name ?? 'this agent'}'s file doesn't limit them` : 'the ones switched off in this room are on'

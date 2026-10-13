@@ -822,6 +822,68 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     expect(await use(gateOf(allowed.options)!, 'mcp__github__merge_pull_request')).toEqual({})
   })
 
+  describe('in Bypass permissions (bypass-allows-unlisted-mcp)', () => {
+    const asks = async (t: Awaited<ReturnType<typeof setup>>, tool: string) => {
+      const answer = use(gateOf(t.options)!, tool)
+      await flush()
+      const pending = t.store.approvals({ pendingOnly: true })
+      expect(pending, `${tool} should ask`).toMatchObject([{ kind: 'tool', toolName: tool }])
+      t.approvals.decide(pending[0].id, { behavior: 'deny' })
+      await answer
+    }
+    const allowed = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+
+    it('runs an MCP server the file does not list with no card, while the room asks about it', async () => {
+      for (const access of [undefined, { unlisted: 'ask' as const, allow: [] }]) {
+        const t = await setup('bypassPermissions', { agent: theo, deps: access ? { accessFor: () => access } : {} })
+        expect(await use(gateOf(t.options)!, 'mcp__linear__save_issue')).toEqual(allowed)
+        expect(await use(gateOf(t.options)!, 'mcp__claude_ai_Linear__get_issue')).toEqual(allowed)
+        expect(t.store.approvals({ pendingOnly: true })).toEqual([])
+        // Built-in tools the file leaves out are still refused.
+        expect(await use(gateOf(t.options)!, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+      }
+    })
+
+    it('still asks in every other mode', async () => {
+      for (const mode of ['default', 'acceptEdits', 'auto']) await asks(await setup(mode, { agent: theo, availability: () => ({ auto: true, bypass: true }) }), 'mcp__linear__save_issue')
+      // Plan mode in a Bypass chat runs in plan, so it asks too.
+      await asks(await setup('bypassPermissions', { agent: theo, chat: { plan: true } }), 'mcp__linear__save_issue')
+    })
+
+    it('still refuses what the room hides and what disallowedTools takes away, with the same reasons', async () => {
+      const hidden = await setup('bypassPermissions', { agent: theo, deps: { accessFor: () => ({ unlisted: 'hide', allow: [] }) } })
+      expect(await use(gateOf(hidden.options)!, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
+      const taken = await setup('bypassPermissions', { agent: { ...theo, disallowedTools: ['mcp__github'] } })
+      expect(await use(gateOf(taken.options)!, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
+      expect(taken.store.approvals({ pendingOnly: true })).toEqual([])
+    })
+
+    it('asks again once the chat leaves Bypass permissions, while the switch is pending and after it lands', async () => {
+      const t = await setup('bypassPermissions', { agent: theo })
+      t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'bypassPermissions' })
+      await flush()
+      let answer!: () => void
+      t.call.modeGate = new Promise((resolve) => { answer = resolve })
+      const switched = t.sessions.configure('chat', { mode: 'acceptEdits' })
+      await flush()
+      expect(t.call.modes).toEqual([])
+      await asks(t, 'mcp__linear__save_issue')
+      answer()
+      await switched
+      await asks(t, 'mcp__linear__save_issue')
+    })
+
+    it('asks while Claude Code reports a stricter mode, until it reports Bypass permissions again', async () => {
+      const t = await setup('bypassPermissions', { agent: theo })
+      t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'default' })
+      await flush()
+      await asks(t, 'mcp__linear__save_issue')
+      t.call.feed({ type: 'system', subtype: 'status', status: null, permissionMode: 'bypassPermissions', uuid: 's1', session_id: 's' })
+      await flush()
+      expect(await use(gateOf(t.options)!, 'mcp__linear__save_issue')).toEqual(allowed)
+    })
+  })
+
   it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {
     const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
     expect(options.disallowedTools).toEqual(['WebFetch', 'mcp__github', 'mcp__linear__save_issue'])
