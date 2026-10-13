@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.ks-dark{--k-canvas:#09090a;--k-panel:#121213;--k-card:#161618;--k-group:#141415;--k-surface-2:#1d1d1f;--k-surface-3:#232325;--k-row-hover:#1a1a1c;--k-line-2:#29292b;--k-line-3:#333335;--k-line-4:#424245;--k-panel-line:#222224;--k-pill-line:#232325;--k-input-bg:#151517;--k-ink:#f7f7f8;--k-ink-2:#d6d6d7;--k-ink-3:#b6b6b8;--k-muted:#919194;--k-faint:#6f6f72;--k-add:#4cb782;--k-needs-fill:#f2c55c;--k-del-fill:#f06363;--k-del-ink:#f58a8a;--k-tint-del:#2f191b;--k-del-line:#472428;--k-on-ink:#09090a;--k-ink-hover:#ffffff;--k-nav-hover:#18181a;--k-focus:rgba(247,247,248,.55);--k-frame:#29292b;--k-claude:#d97757}
+.ks-light{--k-canvas:#f3f3f4;--k-panel:#ffffff;--k-card:#ffffff;--k-group:#fafafa;--k-surface-2:#ffffff;--k-surface-3:#eeeef0;--k-row-hover:#f7f7f8;--k-line-2:#e6e6e9;--k-line-3:#d9d9de;--k-line-4:#c4c4ca;--k-panel-line:#ebebee;--k-pill-line:#e6e6e9;--k-input-bg:#ffffff;--k-ink:#18191b;--k-ink-2:#35383f;--k-ink-3:#4c4f56;--k-muted:#62666d;--k-faint:#8a8e96;--k-add:#166a45;--k-needs-fill:#d97706;--k-del-fill:#dc3e42;--k-del-ink:#c4292d;--k-tint-del:#fdeceb;--k-del-line:#f3d6d6;--k-on-ink:#f3f3f4;--k-ink-hover:#000000;--k-nav-hover:#ebebed;--k-focus:rgba(24,25,27,.55);--k-frame:#d6d6db;--k-claude:#d97757}
+.ks-app button:focus-visible,.ks-app select:focus-visible,.ks-app input:focus-visible{outline:2px solid var(--k-focus);outline-offset:1px}
+.ks-nav{background:transparent;color:var(--k-muted)}.ks-nav:hover{background:var(--k-nav-hover);color:var(--k-ink-2)}.ks-nav.on{background:var(--k-surface-3);color:var(--k-ink)}
+.ks-back{background:transparent;color:var(--k-ink-2)}.ks-back:hover{background:var(--k-nav-hover)}
+.ks-btn{background:transparent;transition:background .12s}.ks-btn:hover:not(:disabled){background:var(--k-surface-3)}
+.ks-primary{background:var(--k-ink);transition:background .12s}.ks-primary:hover:not(:disabled){background:var(--k-ink-hover)}
+.ks-danger{background:var(--k-tint-del);transition:filter .12s}.ks-danger:hover{filter:brightness(1.08)}
+.ks-icon{background:transparent;color:var(--k-muted);transition:color .12s,background .12s}.ks-icon:hover:not(:disabled){color:var(--k-ink);background:var(--k-surface-3)}
+.ks-link{background:transparent;color:var(--k-ink-3)}.ks-link:hover{color:var(--k-ink)!important}
+.ks-search{background:var(--k-panel);border:1px solid var(--k-panel-line)}.ks-search::placeholder{color:var(--k-muted)}.ks-search:focus{background:var(--k-input-bg);border-color:var(--k-line-4)}.ks-search:focus-visible{outline:none}
+.ks-field{background:var(--k-input-bg);border:1px solid var(--k-line-3);color:var(--k-ink)}.ks-field::placeholder{color:var(--k-faint)}.ks-field:hover,.ks-field:focus{border-color:var(--k-line-4)}.ks-field:focus-visible{outline:none}
+.ks-seg{background:transparent;color:var(--k-muted)}.ks-seg:hover{color:var(--k-ink-2)}.ks-seg.on{background:var(--k-surface-3);color:var(--k-ink)}
+.ks-select{appearance:none;-webkit-appearance:none;background:var(--k-input-bg);border:1px solid var(--k-line-3);color:var(--k-ink-2)}.ks-select:hover{border-color:var(--k-line-4)}
+.ks-chip{background:transparent;color:var(--k-muted)}.ks-chip:hover{color:var(--k-ink-2)}
+.ks-meter{display:block;height:3px;flex-shrink:0;border-radius:999px;background:var(--k-line-2);overflow:hidden}
+.ks-row{transition:background .12s}.ks-row:hover{background:var(--k-row-hover)}
+.ks-acts{opacity:0;transition:opacity .12s}.ks-row:hover .ks-acts,.ks-row:focus-within .ks-acts{opacity:1}
+.ks-open{background:transparent;color:inherit}.ks-open:focus-visible{outline-offset:3px!important;border-radius:6px}
+.ks-radio{background:transparent;color:inherit}
+.ks-tag{display:inline-flex;align-items:center;gap:4px;height:26px;box-sizing:border-box;padding:0 3px 0 9px;border-radius:7px;border:1px solid var(--k-line-3);background:var(--k-input-bg);color:var(--k-ink-2);font-size:12px}
+.ks-tag.locked{padding-right:9px;color:var(--k-ink-3);background:transparent;border-style:solid}
+.ks-tagx{background:transparent;color:var(--k-faint)}.ks-tagx:hover{color:var(--k-ink);background:var(--k-surface-3)}
+.ks-add{background:transparent;border:1px dashed var(--k-line-4);color:var(--k-muted)}.ks-add:hover{color:var(--k-ink-2);border-color:var(--k-ink-3)}
+.ks-badge{display:inline-flex;align-items:center;gap:5px;height:20px;box-sizing:border-box;padding:0 7px;border-radius:6px;border:1px solid var(--k-line-3);color:var(--k-muted);font-size:11.5px;font-weight:500;white-space:nowrap}
+.ks-mono{font-family:'Geist Mono',ui-monospace,monospace}
+</style>
+</helmet>
+<div class="ks-app {{ themeCls }}" style="position: relative; width: {{ frameW }}; height: {{ frameH }}; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid var(--k-frame); background: var(--k-canvas); color: var(--k-ink-2); font-family: 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="flex: 1; min-height: 0; display: flex">
+
+<nav aria-label="Settings" style="width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow: hidden">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<button type="button" class="ks-back" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg>Back to app</button>
+<div style="position: relative; display: flex; align-items: center; margin: 6px 0">
+<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-faint)" stroke-width="1.5" stroke-linecap="round" style="position: absolute; left: 9px; pointer-events: none"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<input type="text" class="ks-search" aria-label="Search settings" placeholder="Search settings" style="width: 100%; height: 30px; box-sizing: border-box; padding: 0 10px 0 29px; border-radius: 8px; color: var(--k-ink-2); font-family: inherit; font-size: 13px; outline: none">
+</div>
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+<p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--k-muted)">{{ g.title }}</p>
+<sc-for list="{{ g.items }}" as="n" hint-placeholder-count="5">
+<button type="button" class="{{ n.cls }}" aria-current="{{ n.current }}" aria-label="{{ n.aria }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.d }}"></path></svg><span style="flex: 1">{{ n.label }}</span><sc-if value="{{ n.hasBadge }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--k-muted)">{{ n.badge }}</span></sc-if></button>
+</sc-for>
+</sc-for>
+<p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--k-muted)">Rooms</p>
+<button type="button" class="ks-nav" aria-expanded="{{ isRoom }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--k-line-3); font-size: 9px; font-weight: 600; color: var(--k-ink-2)">K</span><span style="flex: 1; color: {{ roomNameColor }}">Kernel</span></button>
+<sc-if value="{{ isRoom }}" hint-placeholder-val="{{ false }}"><div style="margin: 2px 0 0 15px; padding-left: 8px; border-left: 1px solid var(--k-line-3); display: flex; flex-direction: column">
+<sc-for list="{{ roomNav }}" as="n" hint-placeholder-count="8"><button type="button" class="{{ n.cls }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.d }}"></path></svg><span>{{ n.label }}</span></button></sc-for>
+</div></sc-if>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0">
+<main style="position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--k-panel); border: 1px solid var(--k-panel-line); border-radius: 12px">
+<div style="max-width: 820px; margin: 0 auto; padding: 56px 24px 64px; box-sizing: border-box; display: flex; flex-direction: column; gap: 36px">
+
+<div style="display: flex; align-items: flex-end; gap: 12px">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<sc-if value="{{ notRoom }}" hint-placeholder-val="{{ true }}"><h1 style="margin: 0; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: -0.6px; color: var(--k-ink)">{{ title }}</h1></sc-if>
+<sc-if value="{{ isRoom }}" hint-placeholder-val="{{ false }}"><h1 style="margin: 0; display: flex; align-items: center; gap: 10px; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: -0.6px; color: var(--k-ink)"><button type="button" class="ks-link" aria-label="Kernel room settings" onClick="{{ noop }}" style="padding: 0; border: 0; font-family: inherit; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; color: var(--k-faint); cursor: pointer">Kernel</button><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-line-4)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M6 3.5 10.5 8 6 12.5"></path></svg><span>{{ title }}</span></h1></sc-if>
+<sc-if value="{{ hasSubtitle }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 13px; color: var(--k-muted)">{{ subtitle }}</p></sc-if>
+</div>
+<sc-if value="{{ hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-primary" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; border-radius: 10px; border: 1px solid var(--k-ink); color: var(--k-on-ink); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>{{ actionLabel }}</button></sc-if>
+<sc-if value="{{ isRoom }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-btn" aria-haspopup="menu" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 1.8h5.2L12.5 5v9.2H4z"></path><path d="M9 1.8V5h3.5"></path></svg><span class="ks-mono" style="font-size: 12px">settings.toml</span><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></button></sc-if>
+</div>
+
+<sc-for list="{{ sections }}" as="sec" hint-placeholder-count="3">
+<section aria-label="{{ sec.aria }}" style="display: flex; flex-direction: column; gap: 10px; margin-top: {{ sec.mt }}">
+<sc-if value="{{ sec.hasHead }}" hint-placeholder-val="{{ true }}"><div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 28px; padding-left: 2px">
+<sc-if value="{{ sec.collapsible }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-open" aria-expanded="{{ sec.open }}" onClick="{{ sec.toggle }}" style="display: inline-flex; align-items: baseline; gap: 8px; padding: 0; border: 0; font-family: inherit; text-align: left; cursor: pointer"><span style="font-size: 15px; font-weight: 500; color: var(--k-ink)">{{ sec.title }}</span><sc-if value="{{ sec.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--k-faint)">{{ sec.count }}</span></sc-if><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="align-self: center; transform: rotate({{ sec.chev }}); transition: transform .15s"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></button></sc-if>
+<sc-if value="{{ sec.plain }}" hint-placeholder-val="{{ true }}"><h2 style="margin: 0; display: inline-flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 500; color: var(--k-ink)">{{ sec.title }}<sc-if value="{{ sec.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--k-faint)">{{ sec.count }}</span></sc-if></h2></sc-if>
+<sc-if value="{{ sec.hasBadge }}" hint-placeholder-val="{{ false }}"><span class="ks-badge"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="{{ sec.badgeIcon }}"></path></svg>{{ sec.badge }}</span></sc-if>
+<sc-if value="{{ sec.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: var(--k-muted)">{{ sec.note }}</span></sc-if>
+<span style="flex: 1"></span>
+<sc-if value="{{ sec.hasAct }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-btn" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px 0 8px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>{{ sec.act }}</button></sc-if>
+</div></sc-if>
+
+<sc-if value="{{ sec.showStatus }}" hint-placeholder-val="{{ false }}"><div role="status" style="display: flex; align-items: center; gap: 12px; min-height: 60px; box-sizing: border-box; padding: 10px 12px 10px 16px; border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ sec.stColor }}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="{{ sec.stIcon }}"></path></svg>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 13.5px; font-weight: 500; color: var(--k-ink)">{{ sec.stTitle }}</span><span style="font-size: 12.5px; color: var(--k-muted)">{{ sec.stSub }}</span></span>
+<button type="button" class="ks-btn" onClick="{{ sec.stAction }}" style="height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer">{{ sec.stButton }}</button>
+</div></sc-if>
+
+<sc-if value="{{ sec.showAbout }}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 16px; padding: 18px 16px; border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<span aria-hidden="true" style="width: 48px; height: 48px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid var(--k-line-3); background: var(--k-input-bg); font-size: 20px; font-weight: 600; letter-spacing: -0.5px; color: var(--k-ink)">K</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px; font-weight: 600; color: var(--k-ink)">Kernel</span><span style="font-size: 12.5px; color: var(--k-muted)">Version <span class="ks-mono" style="color: var(--k-ink-3)">0.4.1</span> · {{ aboutState }}</span></span>
+<button type="button" class="ks-btn" onClick="{{ onCheck }}" style="height: 30px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ checkLabel }}</button>
+</div></sc-if>
+
+<sc-if value="{{ sec.showRows }}" hint-placeholder-val="{{ true }}"><div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+<div class="{{ r.rowCls }}" style="position: relative; display: flex; flex-wrap: wrap; align-items: center; column-gap: 16px; row-gap: 10px; min-height: 52px; box-sizing: border-box; padding: {{ r.pad }}; border-top: 1px solid {{ r.divider }}; border-radius: {{ r.radius }}">
+<sc-if value="{{ r.isChild }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; left: 24px; top: 0; height: {{ r.guideH }}; width: 1px; background: var(--k-line-4)"></span><span aria-hidden="true" style="position: absolute; left: 24px; top: 50%; width: 10px; height: 1px; background: var(--k-line-4)"></span></sc-if>
+<sc-if value="{{ r.isRadio }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.on }}" class="ks-radio" onClick="{{ r.pick }}" style="flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; font-family: inherit; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 14px; height: 14px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid {{ r.ring }}"><span style="width: 6px; height: 6px; border-radius: 50%; background: {{ r.dot }}"></span></span><span style="min-width: 0; display: flex; flex-direction: column; gap: 2px"><span class="{{ r.labelCls }}" style="font-size: {{ r.labelSize }}; font-weight: 500; color: var(--k-ink-2)">{{ r.label }}</span><span style="font-size: 12.5px; color: var(--k-muted)">{{ r.desc }}</span></span></button></sc-if>
+<sc-if value="{{ r.notRadio }}" hint-placeholder-val="{{ true }}"><span style="flex: 1 1 240px; min-width: 0; display: flex; align-items: center; gap: 12px">
+<sc-if value="{{ r.hasLead }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: {{ r.leadSize }}; height: {{ r.leadSize }}; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid var(--k-line-3); background: var(--k-input-bg); font-size: 12px; font-weight: 600; color: var(--k-ink-2)"><sc-if value="{{ r.hasLeadPath }}" hint-placeholder-val="{{ false }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="{{ r.leadPath }}"></path></svg></sc-if>{{ r.leadText }}</span></sc-if>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px; min-width: 0"><span id="{{ r.labelId }}" class="{{ r.labelCls }}" style="font-size: {{ r.labelSize }}; font-weight: 500; color: var(--k-ink-2); white-space: nowrap">{{ r.label }}</span><sc-if value="{{ r.hasRole }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: var(--k-muted); white-space: nowrap">{{ r.role }}</span></sc-if><sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span class="ks-badge">{{ r.tag }}</span></sc-if></span>
+<sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ false }}"><span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--k-muted)">{{ r.desc }}</span></sc-if>
+</span>
+</span></sc-if>
+<sc-if value="{{ r.hasIssue }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--k-ink-2)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-del-fill)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8"></path></svg>{{ r.issue }}</span></sc-if>
+<sc-if value="{{ r.hasValue }}" hint-placeholder-val="{{ false }}"><span class="{{ r.valueCls }}" style="min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: {{ r.valueColor }}">{{ r.value }}</span></sc-if>
+<sc-if value="{{ r.hasRightBadge }}" hint-placeholder-val="{{ false }}"><span class="ks-badge">{{ r.rightBadge }}</span></sc-if>
+<sc-if value="{{ r.hasReset }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-link" onClick="{{ r.onReset }}" style="padding: 0; border: 0; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Reset</button></sc-if>
+<sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ true }}"><button type="button" role="switch" aria-checked="{{ r.on }}" aria-labelledby="{{ r.labelId }}" onClick="{{ r.toggle }}" style="position: relative; width: 32px; height: 20px; flex-shrink: 0; padding: 0; border-radius: 999px; border: 1px solid {{ r.tg.border }}; background: {{ r.tg.bg }}; cursor: pointer"><span style="position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: {{ r.tg.knob }}; transform: translateX({{ r.tg.x }}); transition: transform .12s"></span></button></sc-if>
+<sc-if value="{{ r.isSeg }}" hint-placeholder-val="{{ false }}"><span role="radiogroup" aria-labelledby="{{ r.labelId }}" style="display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; flex-shrink: 0; gap: 2px; padding: 2px; border-radius: 9px; border: 1px solid var(--k-line-3); background: var(--k-input-bg)"><sc-for list="{{ r.opts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="{{ o.cls }}" onClick="{{ o.pick }}" style="height: 24px; padding: 0 10px; border: 0; border-radius: 7px; font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ false }}"><span style="position: relative; display: inline-flex; align-items: center; flex-shrink: 0"><select class="ks-select" aria-labelledby="{{ r.labelId }}" value="{{ r.value2 }}" onChange="{{ r.onSelect }}" style="min-width: {{ r.selW }}; height: 28px; box-sizing: border-box; padding: 0 28px 0 10px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer"><sc-for list="{{ r.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 10px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span></sc-if>
+<sc-if value="{{ r.isInput }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0"><input type="text" class="ks-field ks-mono" aria-labelledby="{{ r.labelId }}" spellcheck="false" autocomplete="off" placeholder="{{ r.placeholder }}" value="{{ r.inputValue }}" onChange="{{ r.onInput }}" style="width: {{ r.inputW }}; height: 28px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; font-size: 12px; text-align: {{ r.inputAlign }}"><sc-if value="{{ r.hasSuffix }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: var(--k-muted)">{{ r.suffix }}</span></sc-if></span></sc-if>
+<sc-if value="{{ r.hasButtons }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0"><sc-for list="{{ r.buttons }}" as="b" hint-placeholder-count="1"><button type="button" class="{{ b.cls }}" aria-label="{{ b.aria }}" onClick="{{ b.onClick }}" style="height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid {{ b.border }}; color: {{ b.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer">{{ b.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ r.hasHover }}" hint-placeholder-val="{{ false }}"><span class="ks-acts" style="display: inline-flex; align-items: center; gap: 4px"><sc-for list="{{ r.hover }}" as="h" hint-placeholder-count="1"><button type="button" class="ks-btn" aria-label="{{ h.aria }}" onClick="{{ noop }}" style="height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ h.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ r.isTags }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<sc-for list="{{ r.tags }}" as="t" hint-placeholder-count="3"><span class="{{ t.cls }}"><sc-if value="{{ t.locked }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" aria-label="Built in" role="img" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 1px"><path d="M4 7.5h8v6H4zM5.5 7.5v-2a2.5 2.5 0 0 1 5 0v2"></path></svg></sc-if><span class="{{ t.textCls }}">{{ t.text }}</span><sc-if value="{{ t.removable }}" hint-placeholder-val="{{ true }}"><button type="button" class="ks-tagx" aria-label="{{ t.aria }}" onClick="{{ t.remove }}" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; cursor: pointer"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button></sc-if></span></sc-for>
+<sc-if value="{{ r.hasAdd }}" hint-placeholder-val="{{ true }}"><button type="button" class="ks-add" aria-label="{{ r.addAria }}" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: 7px; font-family: inherit; font-size: 12.5px; cursor: pointer"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>{{ r.addLabel }}</button></sc-if>
+</div></sc-if>
+</div>
+</sc-for>
+</div></sc-if>
+
+<sc-if value="{{ sec.showTable }}" hint-placeholder-val="{{ false }}"><div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<div aria-hidden="true" style="display: grid; grid-template-columns: {{ sec.grid }}; column-gap: 16px; align-items: center; height: 32px; padding: 0 12px 0 16px; border-radius: 11px 11px 0 0; background: var(--k-group); font-size: 12px; color: var(--k-faint)"><sc-for list="{{ sec.cols }}" as="c" hint-placeholder-count="2"><span>{{ c }}</span></sc-for><span></span></div>
+<sc-for list="{{ sec.trows }}" as="t" hint-placeholder-count="3">
+<div class="ks-row" style="display: grid; grid-template-columns: {{ sec.grid }}; column-gap: 16px; align-items: center; min-height: 44px; box-sizing: border-box; padding: 8px 12px 8px 16px; border-top: 1px solid var(--k-panel-line); border-radius: {{ t.radius }}">
+<sc-for list="{{ t.cells }}" as="c" hint-placeholder-count="2"><span class="{{ c.cls }}" style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: {{ c.size }}; color: {{ c.color }}">{{ c.text }}</span></sc-for>
+<span class="ks-acts" style="display: flex; justify-content: flex-end; gap: 4px"><sc-if value="{{ t.hasActs }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-btn" aria-label="{{ t.editAria }}" onClick="{{ noop }}" style="height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Edit</button><button type="button" class="ks-icon" aria-label="{{ t.moreAria }}" aria-haspopup="menu" onClick="{{ noop }}" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><circle cx="3.5" cy="8" r="1.15"></circle><circle cx="8" cy="8" r="1.15"></circle><circle cx="12.5" cy="8" r="1.15"></circle></svg></button></sc-if></span>
+</div>
+</sc-for>
+</div></sc-if>
+
+<sc-if value="{{ sec.hasFoot }}" hint-placeholder-val="{{ false }}"><p style="margin: -2px 0 0; padding-left: 2px; font-size: 12.5px; color: var(--k-muted)">{{ sec.foot }}</p></sc-if>
+</section>
+</sc-for>
+
+</div>
+</main>
+</div>
+</div>
+
+<footer style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 12px; font-size: 12px; color: var(--k-muted); white-space: nowrap; overflow: hidden">
+<sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+<sc-if value="{{ c.isSep }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 1px; height: 14px; background: var(--k-line-3)"></span></sc-if>
+<sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ true }}"><button type="button" class="ks-chip" aria-label="{{ c.aria }}" style="display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 4px; border: 0; border-radius: 6px; font-family: inherit; font-size: 12px; cursor: pointer"><sc-if value="{{ c.hasMark }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="{{ c.markFill }}"><path d="{{ c.mark }}"></path></svg></sc-if><span style="color: {{ c.nameColor }}">{{ c.name }}</span><sc-if value="{{ c.hasMeter }}" hint-placeholder-val="{{ false }}"><span class="ks-meter" style="width: 28px"><span style="display: block; width: {{ c.width }}; height: 100%; border-radius: 999px; background: {{ c.fill }}"></span></span></sc-if><span style="font-variant-numeric: tabular-nums; color: {{ c.pctColor }}">{{ c.text }}</span></button></sc-if>
+</sc-for>
+<button type="button" class="ks-icon" aria-label="Refresh usage" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; padding: 0; border: 0; border-radius: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"></path><path d="M13 3v2.5h-2.5"></path></svg></button>
+<span style="flex: 1"></span>
+<button type="button" class="ks-icon" aria-label="Help" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"></path><path d="M6.4 6.4a1.7 1.7 0 0 1 3.2.6c0 1.1-1.6 1.4-1.6 2.3M8 11.3v.01"></path></svg></button>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"page":{"editor":"enum","options":["git","prs","terminal","integrations","hooks","privacy","about","roomGeneral","roomGit","roomSetup","roomEnv","roomAgents","roomPrs","roomPerms","roomSkills"],"default":"git"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"frameWidth":{"editor":null},"frameHeight":{"editor":null},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var props = this.props;
+    var set = function (p) { self.setState(p); };
+    var V = function (n) { return 'var(--k-' + n + ')'; };
+    var noop = function () {};
+    var page = props.page || 'git';
+    var vals = st.vals || {};
+    var val = function (id, d) { return vals[id] !== undefined ? vals[id] : d; };
+    var put = function (id, v) { var o = Object.assign({}, (self.state && self.state.vals) || {}); o[id] = v; set({ vals: o }); };
+    var opened = st.opened || {};
+    var rm = st.rm || {};
+    var tg = function (on) { return on ? { bg: V('ink'), border: V('ink'), knob: V('on-ink'), x: '12px' } : { bg: V('surface-3'), border: V('line-3'), knob: V('muted'), x: '0px' }; };
+    var MONO = 'ks-mono';
+
+    // One row model for every page: a label and description on the left, then whichever control the row needs.
+    var n = 0;
+    var R = function (label, o) {
+      n += 1;
+      return Object.assign({
+        label: label, labelId: 'ks-m-' + n, labelCls: '', labelSize: '13.5px', desc: '', hasDesc: false, role: '', hasRole: false, hasTag: false, tag: '',
+        hasLead: false, leadSize: '32px', hasLeadPath: false, leadPath: '', leadText: '',
+        isRadio: false, notRadio: true, on: false, ring: '', dot: '', pick: noop,
+        hasIssue: false, issue: '', hasValue: false, value: '', valueCls: '', valueColor: V('muted'), hasRightBadge: false, rightBadge: '', hasReset: false, onReset: noop,
+        isToggle: false, tg: tg(false), toggle: noop, isSeg: false, opts: [], isSelect: false, value2: '', options: [], onSelect: noop, selW: '128px',
+        isInput: false, placeholder: '', inputValue: '', onInput: noop, inputW: '220px', inputAlign: 'left', hasSuffix: false, suffix: '',
+        hasButtons: false, buttons: [], hasHover: false, hover: [], isTags: false, tags: [], hasAdd: false, addLabel: '', addAria: '',
+        isChild: false, guideH: '100%', pad: '12px 16px', rowCls: '', radius: '0'
+      }, o || {}, { hasDesc: !!(o && o.desc), desc: (o && o.desc) || '' });
+    };
+    var T = function (id, label, d, desc, o) { var on = val(id, d); return R(label, Object.assign({ desc: desc, isToggle: true, on: on, tg: tg(on), toggle: function () { put(id, !on); } }, o || {})); };
+    var SEL = function (id, label, d, list, desc, o) {
+      var v = val(id, d);
+      var extra = {};
+      // A room override: the first option is the app default, and a changed value can go back to it.
+      if (o && o.override) extra = { hasReset: v !== list[0][0], onReset: function () { put(id, list[0][0]); } };
+      return R(label, Object.assign({ desc: desc, isSelect: true, value2: v, options: list.map(function (x) { return { value: x[0], label: x[1] }; }), onSelect: function (e) { put(id, e.target.value); } }, extra, o || {}));
+    };
+    var SEG = function (id, label, d, list, desc) { var v = val(id, d); return R(label, { desc: desc, isSeg: true, opts: list.map(function (x) { return { label: x[1], on: v === x[0], cls: v === x[0] ? 'ks-seg on' : 'ks-seg', pick: function () { put(id, x[0]); } }; }) }); };
+    var B = function (label, kind, aria, fn) {
+      var k = kind || 'secondary';
+      return { label: label, aria: aria || label, onClick: fn || noop, cls: k === 'primary' ? 'ks-primary' : k === 'danger' ? 'ks-danger' : 'ks-btn',
+        border: k === 'primary' ? V('ink') : k === 'danger' ? V('del-line') : k === 'ghost' ? 'transparent' : V('line-3'),
+        color: k === 'primary' ? V('on-ink') : k === 'danger' ? V('del-ink') : k === 'ghost' ? V('ink-3') : V('ink-2') };
+    };
+    var BTNS = function (list) { return { hasButtons: true, buttons: list }; };
+    var VAL = function (label, value, buttons, desc, o) { return R(label, Object.assign({ desc: desc, hasValue: true, value: value, valueCls: MONO }, buttons ? BTNS(buttons) : {}, o || {})); };
+    var INP = function (id, label, d, desc, o) { var v = val(id, d); return R(label, Object.assign({ desc: desc, isInput: true, inputValue: v, onInput: function (e) { put(id, e.target.value); } }, o || {})); };
+    var TAGS = function (id, label, desc, list, addLabel, o) {
+      return R(label, Object.assign({ desc: desc, isTags: true, hasAdd: !!addLabel, addLabel: addLabel || '', addAria: (addLabel || '') + ' to ' + label, pad: '14px 16px',
+        tags: list.filter(function (t) { return !rm[id + ':' + t[0]]; }).map(function (t) {
+          var locked = !!t[1];
+          return { text: t[0], locked: locked, removable: !locked, cls: locked ? 'ks-tag locked' : 'ks-tag', textCls: t[2] === false ? '' : MONO, aria: 'Remove ' + t[0],
+            remove: function () { var x = Object.assign({}, rm); x[id + ':' + t[0]] = true; set({ rm: x }); } };
+        }) }, o || {}));
+    };
+    var RADIO = function (group, id, label, desc, d, o) {
+      var on = val(group, d) === id;
+      return R(label, Object.assign({ desc: desc, isRadio: true, notRadio: false, on: on, ring: on ? V('ink') : V('line-4'), dot: on ? V('ink') : 'transparent', pick: function () { put(group, id); }, rowCls: 'ks-row' }, o || {}));
+    };
+    var AGENT = function (name, role, desc, o) { return R(name, Object.assign({ desc: desc, role: role, hasRole: !!role, hasLead: true, leadSize: '28px', leadText: name.charAt(0), rowCls: 'ks-row', pad: '10px 12px 10px 14px' }, o || {})); };
+
+    var SHARED = 'M5.5 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2.5 12.5c.4-1.8 1.5-2.8 3-2.8s2.6 1 3 2.8M10.5 7a2 2 0 1 0 0-4M11.5 9.8c1.2.3 1.9 1.2 2.1 2.7';
+    var LOCAL = 'M2.5 4h11v7h-11zM6 13.5h4M8 11v2.5';
+    var CHECK = 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM5.6 8.2l1.7 1.7 3.2-3.6';
+    var S = function (id, title, rows, o) {
+      o = o || {};
+      var collapsible = !!o.collapsible;
+      var open = collapsible ? (opened[id] !== undefined ? opened[id] : !!o.open) : true;
+      var list = rows || [];
+      list.forEach(function (r, i) {
+        r.divider = i && !r.isChild ? V('panel-line') : 'transparent';
+        if (r.isChild) r.guideH = list[i + 1] && list[i + 1].isChild ? '100%' : '50%';
+        r.radius = list.length === 1 ? '11px' : i === 0 ? '11px 11px 0 0' : i === list.length - 1 ? '0 0 11px 11px' : '0';
+      });
+      var trows = (o.table || []).map(function (t, i, all) {
+        return { radius: i === all.length - 1 ? '0 0 11px 11px' : '0', hasActs: !!o.rowActs, editAria: 'Edit ' + t[0], moreAria: 'More for ' + t[0],
+          cells: t.map(function (c, ci) { var mono = (o.mono || [])[ci]; var muted = (o.muted || [])[ci]; return { text: c, cls: mono ? MONO : '', size: mono ? '12.5px' : '13px', color: muted || c === 'Not yet' || c === 'Not set' ? V('muted') : ci === 0 ? V('ink') : V('ink-2') }; }) };
+      });
+      return {
+        aria: title || o.aria || 'Settings', title: title, hasHead: !!title, collapsible: collapsible, plain: !collapsible, open: open, chev: open ? '90deg' : '0deg',
+        toggle: function () { var x = Object.assign({}, opened); x[id] = !open; set({ opened: x }); },
+        hasCount: !!o.count, count: o.count || '', hasBadge: !!o.badge, badge: o.badge === 'repo' ? 'Shared with the repo' : o.badge === 'mac' ? 'This Mac only' : '', badgeIcon: o.badge === 'repo' ? SHARED : LOCAL,
+        hasNote: !!o.note, note: o.note || '', hasAct: !!o.act, act: o.act || '', mt: o.mt || '0',
+        showRows: open && list.length > 0, rows: list,
+        showTable: open && !!o.table, grid: o.grid || '1fr', cols: o.cols || [], trows: trows,
+        showStatus: !!o.status, stTitle: o.status ? o.status.title : '', stSub: o.status ? o.status.sub : '', stIcon: o.status ? o.status.icon : '', stColor: o.status ? o.status.color : '', stButton: o.status ? o.status.button : '', stAction: o.status ? o.status.action || noop : noop,
+        showAbout: !!o.about, hasFoot: !!o.foot && open, foot: o.foot || ''
+      };
+    };
+
+    var GITHUB = 'M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.17c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.76 2.69 1.25 3.35.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.39-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.68.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z';
+    var LINEAR = 'M2.9 14.6l6.5 6.5A10 10 0 0 1 2.9 14.6zM2.5 11.6l9.9 9.9a10 10 0 0 0 2.4-.4L2.9 9.2a10 10 0 0 0-.4 2.4zM3.7 7.6l12.7 12.7a10 10 0 0 0 1.9-1.2L4.9 5.7a10 10 0 0 0-1.2 1.9zM6.3 4.4A10 10 0 1 1 19.6 17.7z';
+
+    var title = '', subtitle = '', action = '', sections = [];
+    var isRoom = page.indexOf('room') === 0;
+    var ROOM_DEF = function (v) { return 'Default (' + v + ')'; };
+
+    if (page === 'git') {
+      title = 'Git and worktrees';
+      subtitle = 'Defaults for every room. A room can change them on its Git page.';
+      sections = [
+        S('nw', 'New workspaces', [
+          SEG('type', 'Workspace type', 'worktree', [['worktree', 'New worktree'], ['current', 'Current branch']], 'A worktree is an isolated copy on its own branch.'),
+          SEL('base', 'Branch from', 'origin/main', [['origin/main', 'origin/main'], ['main', 'main'], ['origin/dev', 'origin/dev']], '', { selW: '168px' }),
+          SEL('remote', 'Remote', 'origin', [['origin', 'origin'], ['upstream', 'upstream']], 'Where agents push and open pull requests.'),
+          VAL('Worktree location', '~/kernel/worktrees', [B('Reveal')])
+        ]),
+        S('names', 'Branch names', [
+          INP('bnWs', 'Workspaces', '{type}/{task}-{slug}', 'Renamed from the task once work starts.'),
+          INP('bnLead', 'Lead chats', '{lead}/{slug}', 'Renamed from the chat title until pushed.')
+        ]),
+        S('current', 'Current branch', [
+          T('baseline', 'Treat existing changes as the baseline', true, 'They stay out of the diff, and agents never commit them.'),
+          T('oneCurrent', 'One current-branch workspace per room', true)
+        ]),
+        S('setup', 'Setup and archive', [
+          T('runSetup', 'Run setup when a workspace is created', true),
+          T('waitSetup', 'Wait for setup before the first message', false, 'The first message holds until setup passes.', { isChild: true, pad: '10px 16px 10px 44px' }),
+          T('startRun', 'Start the run script after setup', false),
+          T('runArchive', 'Run the archive script on archive', true),
+          SEL('stopAfter', 'Stop setup and archive scripts after', '15', [['5', '5 minutes'], ['10', '10 minutes'], ['15', '15 minutes'], ['30', '30 minutes']], 'Run scripts have no limit.')
+        ], { note: 'The scripts live on each room’s Setup and scripts page.' }),
+        S('cleanup', 'Cleanup', [
+          T('delBranch', 'Delete the branch on archive', false),
+          T('archiveMerge', 'Archive on merge', false, 'Review workspaces go too.'),
+          T('archiveChat', 'Archive a chat’s workspaces with it', true)
+        ])
+      ];
+    } else if (page === 'prs') {
+      title = 'Pull requests';
+      subtitle = 'How pull requests open, get reviewed and merge.';
+      sections = [
+        S('auto', 'Automatic merging', [
+          T('autoMerge', 'Merge without asking me', false, 'When reviews pass, checks are green and it’s under the size limit.'),
+          INP('size', 'Size limit', '400', 'Bigger changes come to you.', { inputW: '72px', inputAlign: 'right', hasSuffix: true, suffix: 'lines' }),
+          TAGS('paths', 'Paths you always review', 'Changes here always come to you. Locked ones are built in.', [['Kernel settings', true, false], ['Agent files', true, false], ['CLAUDE.md', true], ['AGENTS.md', true], ['CI workflows', true, false], ['db/migrations/**']], 'Add path')
+        ], { badge: 'mac' }),
+        S('merging', 'Merging', [
+          SEG('method', 'Merge method', 'squash', [['squash', 'Squash'], ['merge', 'Merge'], ['rebase', 'Rebase']]),
+          T('draft', 'Open as draft', false),
+          T('green', 'Require green checks to merge', true),
+          T('leadMerge', 'Let the Lead merge when you ask', true, 'Only when your own message asks.')
+        ]),
+        S('reviews', 'Reviews', [
+          T('autoReview', 'Review every pull request automatically', false, 'Off saves usage. You can still ask for a review.'),
+          T('waitReview', 'Wait for the reviewer’s approval to merge', false)
+        ], { note: 'Each room picks which reviews run.' }),
+        S('instructions', 'Instructions', [
+          R('Create PR', { desc: 'Sent when you press Create PR.', hasRightBadge: true, rightBadge: 'Customized', hasButtons: true, buttons: [B('Edit', 'secondary', 'Edit the Create PR instructions')] }),
+          R('Resolve conflicts', { desc: 'Sent when you press Resolve conflicts.', hasValue: true, value: 'Default', hasButtons: true, buttons: [B('Edit', 'secondary', 'Edit the Resolve conflicts instructions')] }),
+          R('Fix checks', { desc: 'Sent when you press Fix checks.', hasValue: true, value: 'Default', hasButtons: true, buttons: [B('Edit', 'secondary', 'Edit the Fix checks instructions')] }),
+          R('Address review', { desc: 'Sent when you press Address review.', hasValue: true, value: 'Default', hasButtons: true, buttons: [B('Edit', 'secondary', 'Edit the Address review instructions')] })
+        ], { note: 'A room can replace any of them.' })
+      ];
+    } else if (page === 'terminal') {
+      title = 'Big terminal';
+      subtitle = 'A terminal tab next to your chats. Hooks still report to Kernel.';
+      sections = [
+        S('tab', '', [
+          T('bigTab', 'Big terminal tab', true, 'Opens in the workspace folder.'),
+          T('termWorktrees', 'Terminal tabs only in worktrees', true, 'Never on your current branch.')
+        ]),
+        S('preset', 'New tab opens', [
+          RADIO('preset', 'claude', 'Claude Code', 'In the workspace folder.', 'claude'),
+          RADIO('preset', 'bypass', 'Claude Code, skipping prompts', 'Worktrees only.', 'claude'),
+          RADIO('preset', 'shell', 'Shell', 'Your login shell.', 'claude'),
+          RADIO('preset', 'codex', 'Codex', 'Found on your PATH.', 'claude'),
+          RADIO('preset', 'dev', 'pnpm dev', 'Custom command.', 'claude', { labelCls: MONO, labelSize: '12.5px', hasHover: true, hover: [{ label: 'Edit', aria: 'Edit pnpm dev' }, { label: 'Remove', aria: 'Remove pnpm dev' }] })
+        ], { act: 'Add command', foot: 'The + menu in the tab strip lists every preset.' })
+      ];
+    } else if (page === 'integrations') {
+      title = 'Integrations';
+      subtitle = 'Services Kernel works with directly. claude.ai connectors are on MCP servers.';
+      sections = [
+        S('services', '', [
+          R('GitHub', { desc: 'Signed in as cjjutba through the GitHub CLI.', hasLead: true, leadSize: '36px', hasLeadPath: true, leadPath: GITHUB, pad: '14px 16px', hasButtons: true, buttons: [B('Manage')] }),
+          R('Linear', { desc: 'Connected. Issues open as workspaces.', hasLead: true, leadSize: '36px', hasLeadPath: true, leadPath: LINEAR, pad: '14px 16px', hasButtons: true, buttons: [B('Disconnect', 'ghost')] })
+        ], { aria: 'Services' })
+      ];
+    } else if (page === 'hooks') {
+      title = 'Hooks';
+      subtitle = 'Claude Code reports each agent’s activity to Kernel through hooks.';
+      var tested = !!st.tested;
+      sections = [
+        S('status', '', [], { aria: 'Status', status: { title: 'Live on localhost:7425', sub: tested ? 'Test event received just now · 12 hooks installed' : 'Last event 44 min ago · 12 hooks installed', icon: CHECK, color: V('add'), button: 'Send test event', action: function () { set({ tested: true }); } } }),
+        S('maint', 'Maintenance', [
+          R('Kernel’s hooks', { desc: 'Its entries in ~/.claude/settings.json, nothing else.', hasButtons: true, buttons: [B('Remove', 'ghost'), B('Reinstall')] }),
+          VAL('Settings file', '~/.claude/settings.json', [B('Copy snippet'), B('Open')])
+        ]),
+        S('events', 'Events', [], { collapsible: true, count: '12 installed', grid: 'minmax(0, 1fr) 160px 72px', cols: ['Event', 'Last fired'], mono: [true, false],
+          table: [['SessionStart', '44 min ago'], ['SessionEnd', '44 min ago'], ['UserPromptSubmit', '46 min ago'], ['PreToolUse', '45 min ago'], ['PostToolUse', '45 min ago'], ['PostToolUseFailure', 'Not yet'], ['PermissionRequest', '1 h ago'], ['Notification', '1 h ago'], ['Stop', '44 min ago'], ['SubagentStop', '52 min ago'], ['TaskCompleted', 'Not yet'], ['TeammateIdle', 'Not yet']] }),
+        S('advanced', 'Advanced', [
+          INP('port', 'Hook server port', '7425', 'Moving it restarts the server and rewrites the hooks.', { inputW: '84px', inputAlign: 'right', hasButtons: true, buttons: [B('Move')] })
+        ], { collapsible: true })
+      ];
+    } else if (page === 'privacy') {
+      title = 'Privacy';
+      subtitle = 'Nothing is sent until you turn it on.';
+      sections = [
+        S('share', '', [T('diag', 'Share diagnostics', false, 'Errors and counts of what goes wrong. Never your code, prompts or names.')], { aria: 'Diagnostics' }),
+        S('whatsent', 'What’s sent', [
+          R('Sent', { desc: 'Kernel and macOS versions, your Mac’s chip, a random install id, event names and fixed values.' }),
+          R('Never sent', { desc: 'Code, diffs, prompts, chats, plans, file paths, and repo, room, branch or agent names.' })
+        ], { collapsible: true, open: true }),
+        S('latest', 'Latest events', [], { collapsible: true, open: true, count: '3', note: 'Kept on this Mac either way.', grid: 'minmax(0, 1fr) 140px 100px 72px', cols: ['Event', 'When', 'Status'], mono: [true, false, false], muted: [false, false, true],
+          table: [['handoff_refused', '2 min ago', 'Not sent'], ['usage_read_failed', '1 h ago', 'Not sent'], ['app_started', 'Today, 9:02 AM', 'Not sent']] })
+      ];
+    } else if (page === 'about') {
+      title = 'About';
+      sections = [
+        S('version', '', [], { aria: 'Version', about: true }),
+        S('more', '', [
+          VAL('Data folder', '~/Library/Application Support/Kernel', [B('Reveal')]),
+          R('Logs', { desc: 'For a bug report.', hasButtons: true, buttons: [B('Export logs')] }),
+          R('Onboarding', { desc: 'Walk through setup again.', hasButtons: true, buttons: [B('Show again')] })
+        ], { aria: 'Data and support', mt: '-12px' })
+      ];
+    } else if (page === 'roomGeneral') {
+      title = 'General';
+      subtitle = 'How this room is set up.';
+      sections = [
+        S('room', 'Room', [
+          R('Icon', { desc: 'Shown in the sidebar and on the room’s chats.', hasLead: true, leadSize: '28px', leadText: 'K', isSelect: true, value2: val('icon', 'github'), options: [{ value: 'github', label: 'GitHub avatar' }, { value: 'letter', label: 'Letter' }, { value: 'file', label: 'Choose a file…' }], onSelect: function (e) { put('icon', e.target.value); }, selW: '148px' }),
+          VAL('Repository', 'cjjutba/kernel', [B('Open on GitHub')]),
+          VAL('Local path', '~/Projects/kernel', [B('Reveal')])
+        ]),
+        S('issues', 'Issues', [
+          SEL('tracker', 'Issue tracker', 'linear', [['linear', 'Linear'], ['github', 'GitHub Issues'], ['none', 'None']], 'Detected from your Linear connection.'),
+          SEL('team', 'Linear team', 'KERNEL', [['KERNEL', 'KERNEL'], ['FISC', 'FISC']], 'Issues from this team open here.')
+        ]),
+        S('danger', 'Danger zone', [
+          R('Archive room', { desc: 'Stops every agent and archives its workspaces. You can restore it.', hasButtons: true, buttons: [B('Archive room', 'danger')] })
+        ])
+      ];
+    } else if (page === 'roomGit') {
+      title = 'Git';
+      subtitle = 'Anything left on Default follows Settings, Git and worktrees.';
+      var checked = !!st.checked;
+      sections = [
+        S('push', '', [], { aria: 'Push access', status: { title: 'Can push to origin', sub: checked ? 'Checked just now' : 'Reached github.com/cjjutba/kernel · checked 3 min ago', icon: CHECK, color: V('add'), button: 'Check again', action: function () { set({ checked: true }); } } }),
+        S('nw', 'New workspaces', [
+          SEL('rType', 'Workspace type', 'default', [['default', ROOM_DEF('New worktree')], ['worktree', 'New worktree'], ['current', 'Current branch']], '', { override: true, selW: '196px' }),
+          SEL('rBase', 'Branch from', 'origin/dev', [['default', ROOM_DEF('origin/main')], ['origin/dev', 'origin/dev'], ['main', 'main']], '', { override: true, selW: '196px' }),
+          SEL('rRemote', 'Remote', 'default', [['default', ROOM_DEF('origin')], ['upstream', 'upstream']], '', { override: true, selW: '196px' }),
+          INP('rLead', 'Lead chat branch names', '', '', { placeholder: '{lead}/{slug}  Default', inputW: '196px' })
+        ], { badge: 'repo' }),
+        S('cleanup', 'Cleanup', [
+          SEL('rDel', 'Delete the branch on archive', 'default', [['default', ROOM_DEF('Off')], ['on', 'On'], ['off', 'Off']], '', { override: true, selW: '196px' }),
+          SEL('rMerge', 'Archive on merge', 'default', [['default', ROOM_DEF('Off')], ['on', 'On'], ['off', 'Off']], '', { override: true, selW: '196px' }),
+          SEL('rChat', 'Archive a chat’s workspaces with it', 'default', [['default', ROOM_DEF('On')], ['on', 'On'], ['off', 'Off']], '', { override: true, selW: '196px' })
+        ], { badge: 'repo' })
+      ];
+    } else if (page === 'roomSetup') {
+      title = 'Setup and scripts';
+      subtitle = 'Everything that gets a new worktree ready.';
+      sections = [
+        S('files', 'Files to copy', [
+          TAGS('copy', 'Gitignored files', '6 files match in ~/Projects/kernel right now.', [['.env'], ['.env.local'], ['certs/*.pem']], 'Add pattern'),
+          T('symlink', 'Symlink node_modules', false, 'Faster setup. Workspaces share dependencies.')
+        ], { badge: 'mac' }),
+        S('scripts', 'Workspace scripts', [
+          VAL('Setup', 'pnpm install && pnpm build', [B('Edit', 'secondary', 'Edit the setup script')], 'Runs when a workspace is created.'),
+          R('Archive', { desc: 'Runs before a workspace is archived.', hasValue: true, value: 'Not set', hasButtons: true, buttons: [B('Add', 'secondary', 'Add an archive script')] }),
+          SEL('rWait', 'Wait for setup before the first message', 'default', [['default', ROOM_DEF('Off')], ['on', 'On'], ['off', 'Off']], '', { override: true, selW: '168px' })
+        ], { badge: 'mac' }),
+        S('run', 'Run scripts', [], { act: 'Add run script', badge: 'mac', grid: '140px minmax(0, 1fr) 96px', cols: ['Name', 'Command'], mono: [false, true], rowActs: true, table: [['dev', 'pnpm dev'], ['storybook', 'pnpm storybook --port $((KERNEL_PORT + 1))']] }),
+        S('running', '', [
+          SEG('runMode', 'Run mode', 'concurrent', [['concurrent', 'Concurrent'], ['one', 'One at a time']]),
+          VAL('Ports', '$KERNEL_PORT to $((KERNEL_PORT + 9))', null, 'Each workspace gets ten.')
+        ], { aria: 'Running', mt: '-22px' }),
+        S('preview', 'Preview URLs', [], { act: 'Add preview URL', badge: 'mac', grid: '140px minmax(0, 1fr) 96px', cols: ['Name', 'Address'], mono: [false, true], rowActs: true, table: [['App', 'http://localhost:$KERNEL_PORT'], ['Storybook', 'http://localhost:$((KERNEL_PORT + 1))']] })
+      ];
+    } else if (page === 'roomEnv') {
+      title = 'Environment';
+      subtitle = 'Variables for this room. Settings, Environment adds the ones for every room.';
+      action = 'Add variable';
+      sections = [
+        S('vars', 'Variables', [], { count: '2', grid: '220px minmax(0, 1fr) 96px', cols: ['Name', 'Value'], mono: [true, true], muted: [false, true], rowActs: true, table: [['API_BASE_URL', '••••••••••••'], ['SENTRY_DSN', '••••••••••••']] }),
+        S('envfiles', 'Env files', [], { act: 'Add env file', badge: 'mac', grid: '48px minmax(0, 1fr) 96px', cols: ['Order', 'File'], mono: [false, true], muted: [true, false], rowActs: true, table: [['1', '.env'], ['2', '.env.local']], foot: 'Read in order each time a chat or script starts. A later file wins.' })
+      ];
+    } else if (page === 'roomAgents') {
+      title = 'Agents';
+      subtitle = 'The agents in this repo, plus 7 from Settings, Agents.';
+      action = 'New agent';
+      var takes = function (id, name, role, desc, d, o) {
+        var on = val('t-' + id, d);
+        return AGENT(name, role, desc, Object.assign({ isToggle: true, on: on, tg: tg(on), toggle: function () { put('t-' + id, !on); } }, o || {}));
+      };
+      sections = [
+        S('roles', 'Roles', [
+          SEL('lead', 'Lead', 'rowan', [['rowan', 'Rowan'], ['noor', 'Noor']], 'Plans with you and hands out tasks.', { selW: '148px' }),
+          SEL('reviewer', 'Reviewer', 'theo', [['theo', 'Theo'], ['ivy', 'Ivy']], 'Reviews each pull request.', { selW: '148px' })
+        ], { badge: 'repo' }),
+        S('repo', 'In this repo', [
+          AGENT('Rowan', 'Lead', 'Plans sprint work and keeps Linear honest.', { hasValue: true, value: 'Hands out tasks' }),
+          takes('kai', 'Kai', 'Frontend', 'Builds renderer screens that match the designs.', true),
+          takes('noor', 'Noor', 'Engine', 'Owns the main process: sessions, hooks, git, IPC.', true),
+          takes('ivy', 'Ivy', 'QA', 'Runs tests and screenshots, writes regression tests.', true),
+          takes('lumi', 'Lumi', 'Designer', 'Guards fidelity to the canvas and DESIGN.md.', false),
+          AGENT('Theo', 'Reviewer', 'Reviews each pull request before it merges.', { hasValue: true, value: 'Reviews only' })
+        ], { count: '6', badge: 'repo', note: 'Switches pick who takes tasks.' }),
+        S('limits', '', [
+          SEL('openWs', 'Open workspaces', 'default', [['default', ROOM_DEF('No limit')], ['2', '2'], ['3', '3'], ['4', '4'], ['6', '6']], 'Workspaces the Lead keeps open here. Reviews don’t count.', { override: true, selW: '168px' })
+        ], { aria: 'Limits' }),
+        S('retired', 'Retired', [AGENT('Nova', 'Docs', 'Kept in .claude/retired-agents.', { hasButtons: true, buttons: [B('Restore')] })], { collapsible: true, count: '1' })
+      ];
+    } else if (page === 'roomPrs') {
+      title = 'Pull requests';
+      subtitle = 'Reviews and rules for this repo’s pull requests.';
+      var review = function (id, label, desc, on, req) {
+        var isOn = val('rv-' + id, on);
+        return R(label, { desc: desc, isSelect: true, value2: val('rq-' + id, req), options: [{ value: 'required', label: 'Required' }, { value: 'optional', label: 'Optional' }], onSelect: function (e) { put('rq-' + id, e.target.value); }, selW: '116px',
+          isToggle: true, on: isOn, tg: tg(isOn), toggle: function () { put('rv-' + id, !isOn); } });
+      };
+      sections = [
+        S('reviews', 'Reviews', [
+          review('code', 'Code review', 'Bugs, missing tests and unclear code. Run by Theo.', true, 'required'),
+          review('security', 'Security review', 'Leaked secrets, access checks and unsafe input.', false, 'required'),
+          review('ux', 'UX review', 'Changed screens: layout, copy and missing states.', true, 'optional')
+        ], { badge: 'repo' }),
+        S('rules', 'Rules', [
+          SEL('rounds', 'Stop after', '3', [['1', '1 round'], ['2', '2 rounds'], ['3', '3 rounds'], ['5', '5 rounds']], 'Then the pull request comes to you.'),
+          TAGS('rPaths', 'Paths you always review', 'Never merge automatically, on anyone’s Mac. Built-in paths apply too.', [['db/migrations/**'], ['src/main/kernel.ts']], 'Add path'),
+          TAGS('optional', 'Optional checks', 'A failing one doesn’t block, unless GitHub requires it.', [['Vercel*'], ['Claude Code Review', false, false]], 'Add check')
+        ], { badge: 'repo' }),
+        S('instr', 'Instructions', [
+          R('Create PR', { hasValue: true, value: 'App default', hasButtons: true, buttons: [B('Customize', 'secondary', 'Customize the Create PR instructions')] }),
+          R('Resolve conflicts', { hasRightBadge: true, rightBadge: 'Custom for this room', hasButtons: true, buttons: [B('Edit', 'secondary', 'Edit the Resolve conflicts instructions')] }),
+          R('Fix checks', { hasValue: true, value: 'App default', hasButtons: true, buttons: [B('Customize', 'secondary', 'Customize the Fix checks instructions')] }),
+          R('Address review', { hasValue: true, value: 'App default', hasButtons: true, buttons: [B('Customize', 'secondary', 'Customize the Address review instructions')] })
+        ], { badge: 'mac' })
+      ];
+    } else if (page === 'roomPerms') {
+      title = 'Permissions';
+      subtitle = 'How agents ask in this room. Never allow and protected branches are in Settings, Permissions.';
+      sections = [
+        S('mode', '', [SEL('rMode', 'Mode', 'default', [['default', ROOM_DEF('Bypass')], ['manual', 'Manual'], ['edits', 'Accept edits'], ['auto', 'Auto'], ['bypass', 'Bypass']], 'Chats in this room start in this mode.', { override: true, selW: '168px' })], { aria: 'Mode', badge: 'mac' }),
+        S('allowed', 'Always allowed', [
+          TAGS('cmds', 'Commands', 'Saved when you choose Always allow in this room.', [['pnpm test'], ['pnpm typecheck'], ['git status'], ['gh pr view']]),
+          TAGS('tools', 'Tools', 'MCP tools and web fetches, saved the same way.', [['WebFetch(github.com)'], ['mcp__linear__get_issue']])
+        ], { badge: 'mac', foot: 'Never allow and protected branches apply in every room, from Settings, Permissions.' })
+      ];
+    } else if (page === 'roomSkills') {
+      title = 'Skills and MCP';
+      subtitle = 'What agents can use in this room.';
+      var sw = function (id, label, desc, d, o) { return T('sk-' + id, label, d, desc, Object.assign({ labelCls: MONO, labelSize: '12.5px' }, o || {})); };
+      sections = [
+        S('skills', 'Skills', [
+          sw('issue', '/issue', 'Work a Linear issue end to end.', true),
+          sw('release', '/release', 'Release Kernel from main.', true),
+          sw('review', '/code-review', 'Review the current diff for bugs.', true),
+          sw('simplify', '/simplify', 'Clean up the changed code.', false)
+        ], { count: '4', badge: 'repo' }),
+        S('mcp', 'MCP servers', [
+          sw('github', 'github', 'stdio', true),
+          sw('linear', 'linear', 'http · linear plugin', true),
+          sw('posthog', 'posthog', 'stdio', true, { hasIssue: true, issue: 'Failed to start' }),
+          sw('playwright', 'playwright', 'stdio', true),
+          sw('figma', 'figma', 'http', false)
+        ], { count: '5', badge: 'repo', note: 'Sign-ins are on Settings, MCP servers.' })
+      ];
+    }
+
+    var P = {
+      sliders: 'M3 5h10M3 11h10M6 3.5v3M10 9.5v3', half: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 2.5v11', bell: 'M4.5 11V7.5a3.5 3.5 0 0 1 7 0V11l1 1.5h-9zM6.8 14h2.4',
+      user: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3.5 13.5c.6-2.3 2.3-3.5 4.5-3.5s3.9 1.2 4.5 3.5', kbd: 'M2.5 4.5h11v7h-11zM5 7h.01M8 7h.01M11 7h.01M5.5 9.5h5',
+      spark: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2', users: 'M6 7.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2.5 13c.5-2 1.8-3 3.5-3s3 1 3.5 3M10.5 7.5a2 2 0 1 0 0-4M11.5 10c1.2.3 2 1.3 2.3 3',
+      layers: 'M8 2.5l5.5 3-5.5 3-5.5-3zM2.5 8.5l5.5 3 5.5-3M2.5 11l5.5 3 5.5-3', shield: 'M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z',
+      braces: 'M5.5 3c-1.5 0-2 .7-2 2v1.3c0 .8-.4 1.2-1 1.7.6.5 1 .9 1 1.7V11c0 1.3.5 2 2 2M10.5 3c1.5 0 2 .7 2 2v1.3c0 .8.4 1.2 1 1.7-.6.5-1 .9-1 1.7V11c0 1.3-.5 2-2 2',
+      branch: 'M5 2.5v11M11 2.5v3c0 2.5-6 2-6 5', term: 'M2.5 3.5h11v9h-11zM5 6.5l2 1.5-2 1.5M8.5 10h2.5', pr: 'M4.5 2.5v11M11.5 6.5v7M11.5 6.5c0-2-1-3-3-3H7M8.5 2 7 3.5 8.5 5',
+      hook: 'M7 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.8.8M9 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.8-.8', plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0zM8 11.5v2',
+      big: 'M2.5 3.5h11v9h-11zM5 7l1.5 1L5 9', lock: 'M4 7.5h8v6H4zM5.5 7.5v-2a2.5 2.5 0 0 1 5 0v2', info: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 7.5V11M8 5.3v.01'
+    };
+    var NAMES = { git: 'Git and worktrees', prs: 'Pull requests', terminal: 'Big terminal', integrations: 'Integrations', hooks: 'Hooks', privacy: 'Privacy', about: 'About' };
+    var NAV = [
+      { title: 'Personal', items: [['General', 'sliders'], ['Appearance', 'half'], ['Notifications', 'bell'], ['Accounts', 'user'], ['Shortcuts', 'kbd']] },
+      { title: 'Agents', items: [['Models and effort', 'spark'], ['Agents', 'users'], ['MCP servers', 'layers'], ['Permissions', 'shield'], ['Environment', 'braces']] },
+      { title: 'Workspaces', items: [['Git and worktrees', 'branch'], ['Pull requests', 'pr'], ['Big terminal', 'big']] },
+      { title: 'System', items: [['Integrations', 'plug'], ['Hooks', 'hook'], ['Privacy', 'lock'], ['About', 'info']] }
+    ];
+    var current = NAMES[page] || '';
+    var groups = NAV.map(function (g) {
+      return { title: g.title, items: g.items.map(function (it) {
+        var on = it[0] === current;
+        var badge = it[0] === 'MCP servers' ? '10' : '';
+        return { label: it[0], d: P[it[1]], cls: on ? 'ks-nav on' : 'ks-nav', current: on ? 'page' : undefined, hasBadge: !!badge, badge: badge, aria: badge ? it[0] + ', ' + badge + ' need you' : it[0] };
+      }) };
+    });
+    var ROOM_PAGES = [['roomGeneral', 'General', 'sliders'], ['roomGit', 'Git', 'branch'], ['roomSetup', 'Setup and scripts', 'term'], ['roomEnv', 'Environment', 'braces'], ['roomAgents', 'Agents', 'users'], ['roomPrs', 'Pull requests', 'pr'], ['roomPerms', 'Permissions', 'shield'], ['roomSkills', 'Skills and MCP', 'layers']];
+    var roomNav = ROOM_PAGES.map(function (r) { var on = r[0] === page; return { label: r[1], d: P[r[2]], cls: on ? 'ks-nav on' : 'ks-nav', current: on ? 'page' : undefined }; });
+
+    var CLAUDE = 'm4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z';
+    var OPENAI = 'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z';
+    var C = function (o) { return Object.assign({ isSep: false, isChip: true, hasMark: false, mark: '', markFill: '', name: '', nameColor: V('muted'), hasMeter: false, width: '0%', fill: '', text: '', pctColor: V('muted'), aria: '' }, o); };
+    var chips = [
+      C({ hasMark: true, mark: CLAUDE, markFill: V('claude'), name: '2nd account', nameColor: V('ink-2'), hasMeter: true, width: '11%', fill: V('muted'), text: '5h 11% · wk 27% · Fable 5.1 4%', pctColor: V('ink-3'), aria: '2nd account, in use' }),
+      C({ name: 'Main account', text: '6%', aria: 'Switch to Main account' }),
+      C({ name: '3rd account', text: '100%', pctColor: V('del-fill'), aria: 'Switch to 3rd account' }),
+      { isSep: true, isChip: false },
+      C({ hasMark: true, mark: OPENAI, markFill: 'currentColor', name: 'Personal', nameColor: V('ink-2'), hasMeter: true, width: '0%', fill: V('muted'), text: '5h 0% · wk 16%', pctColor: V('ink-3'), aria: 'Personal, in use' })
+    ];
+
+    var checking = st.about || 'idle';
+    return {
+      themeCls: props.theme === 'light' ? 'ks-light' : 'ks-dark',
+      frameW: (parseInt(props.frameWidth, 10) || 1440) + 'px', frameH: (parseInt(props.frameHeight, 10) || 1000) + 'px', noop: noop,
+      groups: groups, chips: chips, isRoom: isRoom, notRoom: !isRoom, roomNav: roomNav, roomNameColor: isRoom ? V('ink') : 'inherit',
+      title: title, subtitle: subtitle, hasSubtitle: false, hasAction: !!action, actionLabel: action,
+      sections: sections,
+      aboutState: checking === 'done' ? 'Up to date, checked just now' : checking === 'busy' ? 'Checking for updates' : 'Up to date',
+      checkLabel: checking === 'busy' ? 'Checking' : 'Check for updates',
+      onCheck: function () { if (checking === 'busy') return; set({ about: 'busy' }); setTimeout(function () { set({ about: 'done' }); }, 1100); }
+    };
+  }
+}
+</script>
+</body>
+</html>
