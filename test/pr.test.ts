@@ -352,7 +352,18 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     let reads = 0
     const read = k.github.info
     k.github = { ...k.github, info: async (...a) => { reads++; return read(...a) } }
-    k.prs.recheckMs = 30
+    // The quick read's timer is held and fired by hand instead of run on a short real delay: the reads run real git before
+    // they reach the stub, so on a busy machine a short timer fires before the test has set up what it should read (KERNEL-667).
+    k.prs.recheckMs = 60_041
+    const held: Array<() => void> = []
+    const realSetTimeout = globalThis.setTimeout
+    const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => {
+      if (ms !== 60_041) return realSetTimeout(fn, ms, ...args)
+      held.push(fn)
+      return 0 as unknown as NodeJS.Timeout
+    }) as typeof setTimeout)
+    onTestFinished(() => { timers.mockRestore() })
+    const quickRead = () => { for (const fn of held.splice(0)) fn() }
     const unknown = (o: Partial<PrInfo> = {}) => info({ state: 'checks', conflictsUnknown: true, ...o })
 
     // Ready, then main moves: checks until GitHub settles, and one quick read follows it back to ready.
@@ -362,12 +373,15 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('checks')
     // A second unknown read before the quick one doesn't queue another.
     await k.prs.refreshPr(ws.id)
+    expect(held).toHaveLength(1)
     gh.pr = info({ state: 'ready' })
     reads = 0
+    quickRead()
     // The quick read runs real git before it reaches the stub, so wait for it, then check no second one follows.
     await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     expect(reads).toBe(1)
+    expect(held).toHaveLength(0)
     expect(k.store.workspace(ws.id)?.prState).toBe('ready')
 
     // A conflict stays a conflict, even with checks failing meanwhile, until GitHub says it is gone.
@@ -377,28 +391,25 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('conflict')
     gh.pr = unknown()
     reads = 0
+    quickRead()
     await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     // Still unknown after the quick read: the poll takes it from there.
     expect(reads).toBe(1)
+    expect(held).toHaveLength(0)
     expect(k.store.workspace(ws.id)?.prState).toBe('conflict')
     gh.pr = info({ state: 'ready' })
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('ready')
     expect(states).toEqual(['ready', 'checks', 'ready', 'conflict', 'ready'])
 
     // Archiving drops a pending quick read.
-    // A quick read that started while the archive was still running lands on its own time, so wait it out before counting.
-    let inflight = 0
-    const refresh = k.refreshPr.bind(k)
-    k.refreshPr = async (...a) => { inflight++; try { return await refresh(...a) } finally { inflight-- } }
     gh.pr = unknown()
     await k.prs.refreshPr(ws.id)
+    expect(held).toHaveLength(1)
     await k.archive.archiveWorkspace(ws.id)
-    await vi.waitFor(() => expect(inflight).toBe(0))
     reads = 0
+    quickRead()
     await wait(100)
-    // A read that starts after the archive must still show up, even when it lands late.
-    await vi.waitFor(() => expect(inflight).toBe(0))
     expect(reads).toBe(0)
     bus.off('push', onPush)
     await k.stop()

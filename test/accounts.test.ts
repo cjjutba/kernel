@@ -579,7 +579,11 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1 })
     const folder = (name: string) => t.k.providers.claudeHome(ids[name])
-    return { ...t, h, ids, room, repo, folder }
+    // `switchTo` makes the account the one in use before it saves and resumes the rooms, so a test that checks what the
+    // switch did waits for the switch itself, not for `active` (KERNEL-667).
+    const switching = vi.spyOn(t.k.providers, 'switchTo')
+    const switched = async () => { await until(() => switching.mock.results.length); await Promise.all(switching.mock.results.map((r) => r.value)) }
+    return { ...t, h, ids, room, repo, folder, switched }
   }
 
   /** A rejection of the 5-hour window, as a session reports it: on Claude's CLI login unless `l` says otherwise. */
@@ -588,12 +592,13 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   const notes = (k: Kernel, chatId = 'chat') => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
 
   it('moves Claude to the signed-in account with the lowest 5-hour use, notes it in the chat, and stays there when the old account resets', async () => {
-    const { k, ids, room, folder } = await setUp(['Side', 'Personal'])
+    const { k, ids, room, folder, switched } = await setUp(['Side', 'Personal'])
     sdk.usage = { '': 100, [folder('Side')]: 60, [folder('Personal')]: 20 }
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
     sdk.probes = []
     reject(k)
-    await until(() => k.providers.active('claude') === ids.Personal)
+    await switched()
+    expect(k.providers.active('claude')).toBe(ids.Personal)
     // Every account was read before Kernel picked, so it went by fresh numbers.
     expect(new Set(sdk.probes.map((p) => p.dir))).toEqual(new Set(['', folder('Side'), folder('Personal')]))
     expect(k.store.room(room.id)?.paused).toBeFalsy()
