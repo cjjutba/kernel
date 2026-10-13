@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { AccountProfile, Chat, RateLimit, Workspace } from '@shared/types'
 import { bannerFor, limitBannerExpired, limitBannerKey, type BannerInput } from '../src/renderer/src/screens/workspace/banners/model'
 import { tilde } from '../src/renderer/src/screens/settings/pages/Providers'
-import { accountDetail } from '../src/renderer/src/accountRows'
+import { accountRow, limitHit } from '../src/renderer/src/accountRows'
+import { meterLevel } from '../src/renderer/src/ui/display'
 import { fitEffort } from '../src/renderer/src/screens/workspace/composer/providerModels'
 import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
 
@@ -190,35 +191,56 @@ describe('the account the banners offer (KERNEL-569)', () => {
   })
 })
 
-describe('Settings, Providers text (KERNEL-406, KERNEL-561)', () => {
+describe('Settings, Providers rows (KERNEL-406, KERNEL-561, feat-providers-redesign)', () => {
   it('says what each account is and how much of its windows it used', () => {
     const usage: RateLimit[] = [{ type: 'five_hour', status: 'allowed', utilization: 0.62 }, { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'work' }, { type: 'five_hour', status: 'allowed', utilization: 0.07, provider: 'codex' }]
-    expect(accountDetail(accounts[0], usage)).toEqual(['Claude Max · Claude Code’s own login', '5-hour 62% used'])
-    expect(accountDetail(accounts[1], usage)).toEqual(['cj@acme.dev · Claude Team', '5-hour 12% used'])
-    expect(accountDetail({ ...accounts[2], plan: 'ChatGPT Plus' }, usage)).toEqual(['ChatGPT Plus · Codex’s own login', '5-hour 7% used'])
-    expect(accountDetail({ ...accounts[1], signedIn: false }, usage)).toEqual(['Signed out'])
+    expect(accountRow(accounts[0], usage)).toEqual({ windows: [{ title: '5-hour', pct: 62 }] })
+    expect(accountRow(accounts[1], usage)).toEqual({ sub: 'cj@acme.dev', windows: [{ title: '5-hour', pct: 12 }] })
+    expect(accountRow({ ...accounts[2], plan: 'ChatGPT Plus' }, usage)).toEqual({ windows: [{ title: '5-hour', pct: 7 }] })
+    expect(accountRow({ ...accounts[1], signedIn: false }, usage)).toEqual({ sub: 'Signed out', windows: [] })
+    expect(accountRow({ ...accounts[1], auth: 'apiKey' }, usage)).toEqual({ sub: 'Billed per token', windows: [] })
     expect(tilde('/Users/cj/.codex/config.toml')).toBe('~/.codex/config.toml')
   })
 
-  it('gives each window its reset time, and leaves out one that has already reset', () => {
+  it('gives each window its reset time, leaves out one that has already reset, and says when a full one resets', () => {
     const at = new Date(2026, 9, 11, 14, 10).getTime()
     const usage: RateLimit[] = [
       { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: (at + 3600_000) / 1000, accountId: 'work' },
       { type: 'seven_day', status: 'allowed', utilization: 0.3, resetsAt: (at - 60_000) / 1000, accountId: 'work' }
     ]
-    expect(accountDetail(accounts[1], usage, at)).toEqual(['cj@acme.dev · Claude Team', '5-hour 12% used · resets at 3:10 PM'])
+    expect(accountRow(accounts[1], usage, at)).toEqual({ sub: 'cj@acme.dev', windows: [{ title: '5-hour', pct: 12, reset: 'at 3:10 PM' }] })
+    const near: RateLimit[] = [
+      { type: 'five_hour', status: 'allowed', utilization: 0.74, resetsAt: (at + 3600_000) / 1000, accountId: 'work' },
+      { type: 'seven_day', status: 'allowed', utilization: 0.97, resetsAt: (at + 86400_000) / 1000, accountId: 'work' }
+    ]
+    expect(accountRow(accounts[1], near, at).resetNote).toBe('Weekly resets tomorrow at 2:10 PM')
   })
 
-  it('asks a legacy token account to sign in again, and gives its meters as of its last turn', () => {
+  it('says when no usage was read, and asks a legacy token account to sign in again with its meters as of its last turn', () => {
+    expect(accountRow(accounts[1], []).empty).toBe('No usage reported yet')
     const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', cli: false, auth: 'subscription', active: true, signedIn: true, usageFromTurns: true, legacyToken: true }
     const at = new Date(2026, 9, 11, 14, 10).getTime()
     const usage: RateLimit[] = [
       { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'side', readAt: at },
       { type: 'seven_day', status: 'allowed', utilization: 0.3, accountId: 'side', readAt: at - 60_000 }
     ]
-    expect(accountDetail(token, usage, at + 3600_000)).toEqual(['Sign in again to show email and plan', '5-hour 12% used', 'Weekly 30% used', 'As of its last turn at 2:10 PM'])
-    expect(accountDetail(token, usage, at + 2 * 86400_000).at(-1)).toBe('As of its last turn on Oct 11')
-    expect(accountDetail(token, [], at)).toEqual(['Sign in again to show email and plan', 'Usage shows after its first turn'])
+    expect(accountRow(token, usage, at + 3600_000)).toEqual({ sub: 'Sign in again to show email and plan', windows: [{ title: '5-hour', pct: 12 }, { title: 'Weekly', pct: 30 }], asOf: 'As of its last turn at 2:10 PM' })
+    expect(accountRow(token, usage, at + 2 * 86400_000).asOf).toBe('As of its last turn on Oct 11')
+    expect(accountRow(token, [], at)).toEqual({ sub: 'Sign in again to show email and plan', windows: [], empty: 'Usage shows after its first turn' })
+  })
+
+  it('turns a meter amber from 75% and red from 90%, as the context ring does', () => {
+    expect([0, 0.74, 0.75, 0.89, 0.9, 1].map(meterLevel)).toEqual([undefined, undefined, 'near', 'near', 'full', 'full'])
+  })
+
+  it('finds the window that stopped an account, and not one past its reset or on another account', () => {
+    const at = new Date(2026, 9, 11, 14, 10).getTime()
+    const weekly: RateLimit = { type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: (at + 86400_000) / 1000, accountId: 'work' }
+    expect(limitHit(accounts[1], [weekly], at)).toEqual({ window: 'weekly', reset: 'tomorrow at 2:10 PM' })
+    expect(limitHit(accounts[1], [{ ...weekly, resetsAt: (at - 60_000) / 1000 }], at)).toBeUndefined()
+    expect(limitHit(accounts[1], [{ ...weekly, status: 'allowed_warning' }], at)).toBeUndefined()
+    expect(limitHit(accounts[0], [weekly], at)).toBeUndefined()
+    expect(limitHit(accounts[0], [{ ...weekly, type: 'five_hour', accountId: undefined }], at)).toEqual({ window: '5-hour', reset: 'tomorrow at 2:10 PM' })
   })
 
   it("keeps an effort the new model takes, and cycles through the model's own levels", () => {

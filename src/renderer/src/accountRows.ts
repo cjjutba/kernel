@@ -32,21 +32,63 @@ const lastRead = (a: AccountProfile, usage: RateLimit[], now: number): string | 
   return read ? `As of its last turn ${when(read, now)}` : undefined
 }
 
-const ownLogin = (a: AccountProfile) => (a.cli ? `${PROVIDER_NAME[a.provider]}’s own login` : undefined)
-const joined = (...parts: (string | undefined)[]) => parts.filter(Boolean).join(' · ')
+/** "Claude Code’s own login" for the CLI's login, the heading of its row's menu. */
+export const ownLogin = (a: AccountProfile) => (a.cli ? `${PROVIDER_NAME[a.provider]}’s own login` : undefined)
+
+/** One usage window on an account row: its name, how much is used (0 to 100) and when it resets, as "tomorrow at 4:00 AM". */
+export interface RowWindow { title: string; pct: number; reset?: string }
+
+/** What an account row in Settings, Providers shows under its name (feat-providers-redesign). */
+export interface AccountRowView {
+  /** The email when the nickname isn't it, "Billed per token" for a key, "Signed out", or the legacy token's ask. */
+  sub?: string
+  /** The 5-hour and weekly windows Kernel has a live number for. A key has none. */
+  windows: RowWindow[]
+  /** Said in place of the meters when there is no window to show. */
+  empty?: string
+  /** When a token account's last turn read its windows. */
+  asOf?: string
+  /** When the windows at 75% or more reset: "Weekly resets tomorrow at 4:00 AM". */
+  resetNote?: string
+}
+
+/** A window from 75% on is close enough to say when it resets, the step where its meter turns amber. */
+const NEAR = 75
 
 /**
- * What an account row in Settings, Providers says under its name, a line each: the email when the nickname isn't it, the plan
- * and the CLI login, then the two windows. A key says how it is billed, a signed-out account says so, and a legacy token
- * account asks for a new sign-in and shows the windows its last turn read.
+ * What an account row says under its name, as data for the row to draw: one line under the name, the meters, and the notes
+ * under them. A key says how it is billed, a signed-out account says so, and a legacy token account asks for a new sign-in and
+ * shows the windows its last turn read.
  */
-export function accountDetail(a: AccountProfile, usage: RateLimit[], now = Date.now()): string[] {
-  if (!a.signedIn) return [joined('Signed out', ownLogin(a))]
-  if (a.auth === 'apiKey') return ['API key · billed per token']
-  const first = a.legacyToken ? 'Sign in again to show email and plan' : joined(a.email && a.email !== a.label ? a.email : undefined, a.plan, ownLogin(a))
-  const windows = usageLines(a, usage, now)
-  const read = a.usageFromTurns && windows.length ? lastRead(a, usage, now) : undefined
-  return [first, ...(windows.length ? windows : a.usageFromTurns ? ['Usage shows after its first turn'] : []), ...(read ? [read] : [])].filter(Boolean)
+export function accountRow(a: AccountProfile, usage: RateLimit[], now = Date.now()): AccountRowView {
+  if (!a.signedIn) return { sub: 'Signed out', windows: [] }
+  if (a.auth === 'apiKey') return { sub: 'Billed per token', windows: [] }
+  const mine = windowsOf(a, usage)
+  const windows = ([['five_hour', '5-hour'], ['seven_day', 'Weekly']] as const).flatMap(([type, title]): RowWindow[] => {
+    const w = mine.find((l) => l.type === type)
+    if (w?.utilization === undefined || (w.resetsAt !== undefined && w.resetsAt * 1000 <= now)) return []
+    return [{ title, pct: Math.round(w.utilization * 100), ...(w.resetsAt !== undefined ? { reset: resetPhrase(w.resetsAt, now) } : {}) }]
+  })
+  const sub = a.legacyToken ? 'Sign in again to show email and plan' : a.email && a.email !== a.label ? a.email : undefined
+  const near = windows.filter((w) => w.pct >= NEAR && w.reset)
+  const asOf = a.usageFromTurns && windows.length ? lastRead(a, usage, now) : undefined
+  return {
+    ...(sub ? { sub } : {}),
+    windows,
+    ...(windows.length ? {} : { empty: a.usageFromTurns ? 'Usage shows after its first turn' : 'No usage reported yet' }),
+    ...(asOf ? { asOf } : {}),
+    ...(near.length ? { resetNote: near.map((w) => `${w.title} resets ${w.reset}`).join('. ') } : {})
+  }
+}
+
+/**
+ * The 5-hour or weekly window that stopped an account: rejected and not reset since, by the rule `switchChoices` uses. It names
+ * the window in lower case for "hit its weekly limit" and says when it resets.
+ */
+export function limitHit(a: AccountProfile, usage: RateLimit[], now = Date.now()): { window: string; reset?: string } | undefined {
+  const hit = windowsOf(a, usage).find((l) => (l.type === 'five_hour' || l.type === 'seven_day') && l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now))
+  if (!hit) return undefined
+  return { window: hit.type === 'five_hour' ? '5-hour' : 'weekly', ...(hit.resetsAt !== undefined ? { reset: resetPhrase(hit.resetsAt, now) } : {}) }
 }
 
 /** The same for the account menu, where the plan sits beside the name, so it isn't in the lines. */

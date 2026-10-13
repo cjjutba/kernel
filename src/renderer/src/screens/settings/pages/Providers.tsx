@@ -1,20 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
+import { switchChoices } from '@shared/usage'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
-import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
-import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
+import { PROVIDER_NAME as NAME, accountRow, limitHit, ownLogin, useFreshUsage } from '../../../accountRows'
+import { Button, ConfirmDialog, Icon, MENU_SEPARATOR, SegmentedControl, Select, Tabs, Toggle, useBusy, type MenuEntry } from '../../../ui'
 import { noteCodexStatus } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
 import { SignInLine, joinNames, useMcpAccounts, useSignInAll } from './mcpAccounts'
+import { AccountRow, LimitBanner, type RowAction } from './providerRows'
 
-// Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406, and the API key accounts of
-// KERNEL-524). Kernel already calls teammates agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
+// Settings, Providers (SettingsProviders.png, KERNEL-406, the API key accounts of KERNEL-524, and the redesign in
+// feat-providers-redesign, drawn in design/providers/). Kernel already calls teammates agents, so the page is Providers.
+// Subscriptions and API keys are two sections: a key has no usage windows and Kernel never switches to one on its own.
 
-const SYSTEM: Record<Provider, string> = { claude: 'Use system Claude', codex: 'Use system Codex' }
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
+const EXECUTABLES = [{ value: 'bundled', label: 'Bundled with Kernel' }, { value: 'system', label: 'System, from your PATH' }, { value: 'custom', label: 'Custom folder…' }]
 
 /** The labels of the provider's other accounts in the same claude.ai organization (`AccountProfile.sameOrg` holds their ids). */
 const sameOrg = (a: AccountProfile, accounts: AccountProfile[]) => accounts.filter((x) => a.sameOrg?.includes(x.id)).map((x) => x.label)
@@ -28,8 +31,8 @@ export function Providers({ s }: { s: AppSettings }) {
   const setTab = (p: string) => go({ name: 'settings', page: 'providers', tab: p as Provider })
   return (
     <Page title="Providers">
-      <div className="set-tabs">
-        <Tabs label="Providers" value={provider} onChange={setTab} tabs={[{ id: 'claude', label: NAME.claude }, { id: 'codex', label: NAME.codex }]} />
+      <div className="prov-tabs">
+        <Tabs variant="underline" label="Providers" value={provider} onChange={setTab} tabs={[{ id: 'claude', label: NAME.claude }, { id: 'codex', label: NAME.codex }]} />
       </div>
       <ProviderTab key={provider} provider={provider} s={s} />
     </Page>
@@ -37,10 +40,14 @@ export function Providers({ s }: { s: AppSettings }) {
 }
 
 function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
-  const accounts = useStore((st) => st.accounts).filter((a) => a.provider === provider)
+  const all = useStore((st) => st.accounts)
+  const accounts = all.filter((a) => a.provider === provider)
+  const subscriptions = accounts.filter((a) => a.auth !== 'apiKey')
+  const keys = accounts.filter((a) => a.auth === 'apiKey')
   const usage = useStore((st) => st.usage)
   const [status, setStatus] = useState<ProviderStatus | null>(null)
-  const [adding, setAdding] = useState(false)
+  // Add account opens the sheet on Subscription, Add key on API key.
+  const [adding, setAdding] = useState<'subscription' | 'apiKey' | null>(null)
   // An added account signs in again through the same sheet, which shows the code field if asked.
   const [renewing, setRenewing] = useState<AccountProfile | null>(null)
   // A key account takes a new key through the same sheet, with its field only (KERNEL-524).
@@ -48,13 +55,15 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   // The row whose name is a field (KERNEL-561), and the row to give focus back to once its field is gone.
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
   const renamed = useRef<string | null>(null)
-  const activeAdded = accounts.find((a) => a.active && !a.cli && a.auth !== 'apiKey')
-  const activeKey = accounts.find((a) => a.active && a.auth === 'apiKey')
-  const sheetOpen = adding || !!renewing || !!replacing
+  // The row whose menu is open, and the account Remove asks about.
+  const [menu, setMenu] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<AccountProfile | null>(null)
+  const sheetOpen = !!adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
-  const all = useSignInAll()
+  const signInAll = useSignInAll()
   const mcp = useMcpAccounts()
   const needs = (a: AccountProfile) => mcp.accounts?.find((m) => m.provider === a.provider && m.accountId === a.id)?.needsYou ?? 0
+  const now = Date.now()
   useFreshUsage(true)
   // Claude Code lists each login's MCP servers that need a sign-in when the tab opens, once per login. Main keeps the answer on the account's row.
   useEffect(() => {
@@ -73,28 +82,97 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   useEffect(() => { void read().catch(() => undefined) }, [provider])
   useEffect(() => {
     if (renaming || busy !== null || !renamed.current) return
-    document.getElementById(`acct-rename-${renamed.current}`)?.focus()
+    document.querySelector<HTMLElement>(`[aria-label="More for ${CSS.escape(renamed.current)}"]`)?.focus()
     renamed.current = null
   }, [renaming, busy])
   const act = (key: string, title: string, fn: () => Promise<unknown>) => run(key, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
   })
-  const accountsCall = (key: string, title: string, fn: () => Promise<AccountProfile[]>) => act(key, title, async () => { actions.accounts.set(await fn()); await read() })
-  const signIn = (a?: AccountProfile) => {
-    const target = a ?? activeAdded
-    if (target && !target.cli) return setRenewing(target)
-    return act(a ? `signin:${a.id}` : 'signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider, ...(a ? { accountId: a.id } : {}) })); actions.accounts.set(await call('accounts.list', undefined)) })
+  const accountsCall = (key: string, title: string, fn: () => Promise<AccountProfile[]>, done?: () => void) => act(key, title, async () => { actions.accounts.set(await fn()); await read(); done?.() })
+  const signIn = (a: AccountProfile) => {
+    if (!a.cli) return setRenewing(a)
+    return act(`signin:${a.id}`, 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider, accountId: a.id })); actions.accounts.set(await call('accounts.list', undefined)) })
   }
-  const stopRenaming = () => { if (renaming) renamed.current = renaming.id; setRenaming(null) }
+  const switchTo = (a: AccountProfile) => accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }), () => actions.ui.toast({ title: `Switched to ${a.label}`, sub: 'Agents use it from their next turn.' }))
+  const signOut = (a: AccountProfile) => accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))
+  const remove = (a: AccountProfile) => accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }), () => actions.ui.toast({ title: `Removed ${a.label}` })).finally(() => setRemoving(null))
+  const stopRenaming = () => { if (renaming) renamed.current = accounts.find((a) => a.id === renaming.id)?.label ?? null; setRenaming(null) }
   const saveName = (a: AccountProfile, value: string) => {
     if (value.trim() === a.label) return stopRenaming()
     void accountsCall(`rename:${a.id}`, 'Could not rename the account', async () => {
       const next = await call('accounts.rename', { provider, accountId: a.id, label: value })
-      stopRenaming()
+      renamed.current = value.trim()
+      setRenaming(null)
       return next
     })
   }
+  const locked = busy !== null || sheetOpen
+
+  // The row's own action and its menu: one visible action, the rest one click away (feat-providers-redesign).
+  const actionFor = (a: AccountProfile): RowAction | undefined => {
+    if (a.keychainWait) return undefined
+    if (!a.signedIn && a.auth === 'apiKey') return { label: 'Replace key', onClick: () => setReplacing(a) }
+    if (!a.signedIn) return { label: 'Sign in', busy: busy === `signin:${a.id}`, busyLabel: 'Signing in', onClick: () => void signIn(a) }
+    if (a.legacyToken) return { label: 'Sign in again', onClick: () => setRenewing(a) }
+    if (a.active) return undefined
+    return { label: 'Switch to', busy: busy === `use:${a.id}`, busyLabel: 'Switching', onClick: () => void switchTo(a) }
+  }
+  const menuFor = (a: AccountProfile): (MenuEntry | typeof MENU_SEPARATOR)[] => [
+    { id: 'rename', label: 'Rename', onSelect: () => setRenaming({ id: a.id, value: a.label }) },
+    ...(a.auth === 'apiKey'
+      ? [{ id: 'key', label: 'Replace key', onSelect: () => setReplacing(a) }]
+      : a.signedIn && !a.legacyToken && !a.keychainWait
+        ? [{ id: 'signin', label: 'Sign in again', onSelect: () => void signIn(a) }, { id: 'out', label: 'Sign out', onSelect: () => void signOut(a) }]
+        : []),
+    ...(a.cli ? [] : [MENU_SEPARATOR, { id: 'remove', label: 'Remove', danger: true, onSelect: () => setRemoving(a) }])
+  ]
+  const row = (a: AccountProfile) => {
+    const view = accountRow(a, usage, now)
+    const others = sameOrg(a, accounts)
+    const editing = renaming?.id === a.id
+    return (
+      <AccountRow
+        key={a.id} account={a} view={a.keychainWait ? { ...view, windows: [], empty: undefined, resetNote: undefined } : view}
+        active={a.active && a.signedIn} action={actionFor(a)} pending={busy === `out:${a.id}` ? 'Signing out' : undefined} locked={locked}
+        menu={menuFor(a)} menuHeading={ownLogin(a)} menuOpen={menu === a.id} onMenu={(open) => setMenu(open ? a.id : null)}
+        rename={editing ? { value: renaming.value, saving: busy === `rename:${a.id}`, onChange: (value) => setRenaming({ id: a.id, value }), onSave: () => saveName(a, renaming.value), onCancel: stopRenaming } : undefined}
+      >
+        {a.signedIn && !a.keychainWait && (!!needs(a) || !!signInAll.of(a.provider, a.id).run) && (
+          <SignInLine
+            label={a.label} needs={needs(a)} {...signInAll.of(a.provider, a.id)} canceling={signInAll.canceling}
+            disabled={locked || signInAll.active !== null} onSetUp={() => actions.ui.openModal({ name: 'mcpSetUp', provider: a.provider, accountId: a.id })} onCancel={() => void signInAll.cancel(a.provider)}
+          />
+        )}
+        {a.keychainWait && (
+          <>
+            <span className="set-warn"><Icon name="warning" size={12} />Waiting for Keychain access</span>
+            <span className="set-warn-note">Allow Kernel in the macOS prompt to use this account.</span>
+          </>
+        )}
+        {!a.active && !!others.length && <span className="set-avail"><Icon name="info" size={14} />Same organization as {joinNames(others)}, so they may share limits</span>}
+      </AccountRow>
+    )
+  }
+
+  // The subscription in use hit a limit: say what happens next. With switching on Kernel moves to a subscription with room by itself,
+  // else the banner offers the account Kernel's own switch would pick (`switchChoices`, KERNEL-618), which can be a key.
+  const autoSwitch = s.accounts.switchAtLimit[provider]
+  const inUse = subscriptions.find((a) => a.active && a.signedIn)
+  const hit = inUse ? limitHit(inUse, usage, now) : undefined
+  const room = hit ? switchChoices(provider, accounts, usage, now).room : []
+  const roomSub = room.find((a) => a.auth !== 'apiKey')
+  const banner = hit && inUse
+    ? autoSwitch && roomSub
+      ? { text: `${inUse.label} hit its ${hit.window} limit. Kernel moves agents to ${roomSub.label} at their next turn.` }
+      : {
+        text: `${inUse.label} hit its ${hit.window} limit.${hit.reset ? ` Agents wait until it resets ${hit.reset}.` : ''}`,
+        action: room[0] ? { label: `Switch to ${room[0].label}`, busy: busy === `use:${room[0].id}`, busyLabel: 'Switching', onClick: () => void switchTo(room[0]) } : undefined
+      }
+    : undefined
+  const usable = subscriptions.filter((a) => a.signedIn && !a.keychainWait).length
+
   const binary = s.providers[provider]
+  const exe = binary.path ? 'custom' : binary.useSystem ? 'system' : 'bundled'
   const setPath = (key: string, o: { path?: string; useSystem?: boolean }) => act(key, 'Could not change the executable', async () => {
     setStatus(await call('providers.setPath', { provider, ...o }))
     actions.settings.set(await call('settings.get', undefined))
@@ -105,117 +183,98 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     setStatus(await call('providers.setPath', { provider, path: `${folder.replace(/\/$/, '')}/${provider}` }))
     actions.settings.set(await call('settings.get', undefined))
   })
-  const where = binary.path ? binary.path : binary.useSystem ? 'The one on your PATH' : 'Bundled with Kernel'
+  const pickExe = (value: string) => {
+    if (value === exe && value !== 'custom') return
+    if (value === 'custom') return void choose()
+    void setPath(value, { path: '', useSystem: value === 'system' })
+  }
+  const exePath = binary.path || (binary.useSystem ? status?.path : undefined)
+  const version = status ? status.version ?? 'Not found' : ''
+
   return (
     <>
-      <Section
-        title="Accounts"
-        action={<Button disabled={busy !== null || sheetOpen} onClick={() => setAdding(true)}>Add account</Button>}
-        note={accounts.some((a) => a.signedIn) ? 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.' : provider === 'codex' ? 'Sign in with your ChatGPT plan to run agents on Codex.' : 'Sign in with your Claude plan to run agents on Claude Code.'}
-      >
-        {accounts.map((a) => {
-          const editing = renaming?.id === a.id
-          const saving = busy === `rename:${a.id}`
-          return (
-            <div key={a.id} className="set-row">
-              <div className="set-text">
-                {editing
-                  ? (
-                    <input
-                      className="input set-rename" aria-label={`Name for ${a.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={a.email} disabled={saving} value={renaming.value}
-                      onFocus={(e) => e.currentTarget.select()} onChange={(e) => setRenaming({ id: a.id, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.nativeEvent.isComposing) return
-                        if (e.key === 'Enter') { e.preventDefault(); saveName(a, renaming.value) }
-                        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stopRenaming() }
-                      }}
-                    />
-                  )
-                  : <span className="set-label">{a.label}</span>}
-                {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
-                {a.signedIn && !a.keychainWait && (!!needs(a) || !!all.of(a.provider, a.id).run) && (
-                  <SignInLine
-                    label={a.label} needs={needs(a)} {...all.of(a.provider, a.id)} canceling={all.canceling}
-                    disabled={busy !== null || sheetOpen || all.active !== null} onSetUp={() => actions.ui.openModal({ name: 'mcpSetUp', provider: a.provider, accountId: a.id })} onCancel={() => void all.cancel(a.provider)}
-                  />
-                )}
-                {a.keychainWait && (
-                  <>
-                    <span className="set-warn"><Icon name="warning" size={12} />Waiting for Keychain access</span>
-                    <span className="set-warn-note">Allow Kernel in the macOS prompt to use this account.</span>
-                  </>
-                )}
-                {!a.active && !!sameOrg(a, accounts).length && <span className="set-avail"><Icon name="info" size={14} />Same organization as {joinNames(sameOrg(a, accounts))}</span>}
+      <section className="set-section">
+        <div className="set-section-head">
+          <h2>Subscriptions</h2>
+          <Button disabled={locked} onClick={() => setAdding('subscription')}>Add account</Button>
+        </div>
+        {banner && <LimitBanner text={banner.text} action={banner.action} locked={locked} />}
+        <div className="set-card">
+          {subscriptions.length
+            ? subscriptions.map(row)
+            : (
+              <div className="prov-empty">
+                <div className="set-text">
+                  <span className="set-label">Sign in to run agents on {NAME[provider]}</span>
+                  <span className="set-desc">Use your plan. Keys go under API keys.</span>
+                </div>
+                <Button variant="primary" disabled={locked} onClick={() => setAdding('subscription')}>Sign in</Button>
               </div>
-              {editing
-                ? (
-                  <div className="set-entry-actions set-rename-actions">
-                    <Button variant="ghost" aria-label={`Cancel renaming ${a.label}`} disabled={saving} onClick={stopRenaming}>Cancel</Button>
-                    <Button aria-label={`Save the name for ${a.label}`} busy={saving} busyLabel="Saving" onClick={() => saveName(a, renaming.value)}>Save</Button>
-                  </div>
-                )
-                : (
-                  <>
-                    {a.active && a.signedIn && <span className="set-tag">Active</span>}
-                    <div className="set-entry-actions">
-                      {!a.active && a.signedIn && !a.keychainWait && <Button variant="ghost" aria-label={`Switch to ${a.label}`} busy={busy === `use:${a.id}`} busyLabel="Switching" disabled={busy !== null} onClick={() => void accountsCall(`use:${a.id}`, 'Could not switch accounts', () => call('accounts.switch', { provider, accountId: a.id }))}>Switch to</Button>}
-                      {!a.signedIn && a.auth !== 'apiKey' && <Button variant="ghost" aria-label={`Sign in to ${a.label}`} busy={busy === `signin:${a.id}`} busyLabel="Signing in" disabled={busy !== null || sheetOpen} onClick={() => void signIn(a)}>Sign in</Button>}
-                      {!a.signedIn && a.auth === 'apiKey' && <Button variant="ghost" aria-label={`Replace the key for ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setReplacing(a)}>Replace key</Button>}
-                      <Button id={`acct-rename-${a.id}`} variant="ghost" aria-label={`Rename ${a.label}`} disabled={busy !== null} onClick={() => setRenaming({ id: a.id, value: a.label })}>Rename</Button>
-                      {a.signedIn && a.auth !== 'apiKey' && !a.legacyToken && !a.keychainWait && <Button variant="ghost" aria-label={`Sign out of ${a.label}`} busy={busy === `out:${a.id}`} busyLabel="Signing out" disabled={busy !== null} onClick={() => void accountsCall(`out:${a.id}`, 'Could not sign out', () => call('accounts.signOut', { provider, accountId: a.id }))}>Sign out</Button>}
-                      {a.signedIn && a.legacyToken && <Button variant="ghost" aria-label={`Sign in again to ${a.label}`} disabled={busy !== null || sheetOpen} onClick={() => setRenewing(a)}>Sign in again</Button>}
-                      {!a.cli && <Button variant="ghost" aria-label={`Remove ${a.label}`} busy={busy === `remove:${a.id}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void accountsCall(`remove:${a.id}`, 'Could not remove the account', () => call('accounts.remove', { provider, accountId: a.id }))}>Remove</Button>}
-                    </div>
-                  </>
-                )}
-            </div>
-          )
-        })}
-        <Row label="At a limit, switch to another account" desc={`Kernel moves agents to the ${NAME[provider]} account with the most room and says so in the chat. It never moves to an API key.`}>
-          <Toggle label="At a limit, switch to another account" checked={s.accounts.switchAtLimit[provider]} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { [provider]: v } } })} />
+            )}
+        </div>
+      </section>
+      <section className="set-section">
+        <div className="set-section-head">
+          <h2>API keys</h2>
+          <Button disabled={locked} onClick={() => setAdding('apiKey')}>Add key</Button>
+        </div>
+        <div className="set-card">
+          {keys.length
+            ? keys.map(row)
+            : (
+              <div className="prov-empty">
+                <div className="set-text">
+                  <span className="set-label">No API keys</span>
+                  <span className="set-desc">Add a key to run agents billed per token instead of a plan.</span>
+                </div>
+              </div>
+            )}
+        </div>
+      </section>
+      <Section title="Switching">
+        <Row
+          label="At a limit, switch to another subscription"
+          desc={usable < 2 ? 'Add another subscription to use this.' : `Kernel moves agents to the ${NAME[provider]} subscription with the most room and says so in the chat. It never moves to an API key.`}
+        >
+          <Toggle label="At a limit, switch to another subscription" disabled={usable < 2} checked={usable >= 2 && autoSwitch} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { [provider]: v } } })} />
         </Row>
-      </Section>
-      <Section title="Status" action={<Button busy={busy === 'refresh'} busyLabel="Refreshing" disabled={busy !== null} onClick={() => void act('refresh', 'Could not read the status', read)}>Refresh</Button>}>
-        <Row label="Version"><span className="set-value">{status?.version ?? (status ? 'Not found' : '')}</span></Row>
-        <Row label="Login method"><span className="set-value">{status ? status.loginMethod ?? 'Not signed in' : ''}</span></Row>
-        {status?.signedIn && status.plan && <Row label="Plan"><span className="set-value">{status.plan}</span></Row>}
-        {status?.signedIn && status.email && <Row label="Email"><span className="set-value">{status.email}</span></Row>}
-        {status?.error && <Row label="Problem" desc={status.error} />}
-        {activeKey
-          ? (
-            <Row label="Replace key" desc="Opens Add account, where you paste a new key for the active account">
-              <Button disabled={busy !== null || sheetOpen} onClick={() => setReplacing(activeKey)}>Replace key</Button>
-            </Row>
-          )
-          : (
-            <Row label={status?.signedIn ? 'Sign in again' : 'Sign in'} desc={`Opens ${provider === 'codex' ? 'ChatGPT' : 'Claude'}’s sign-in in your browser${status?.signedIn ? ', for the active account' : ''}`}>
-              <Button busy={busy === 'signin'} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn()}>Run login</Button>
-            </Row>
-          )}
       </Section>
       {provider === 'codex' && (
         <Section title="New chats">
-          <Row label="Codex personality for new chats" desc="How Codex talks to you. It doesn't change what it can do.">
-            <SegmentedControl label="Codex personality for new chats" value={s.providers.codex.personality} options={PERSONALITIES} onChange={(v) => void patchSettings({ providers: { codex: { personality: v as CodexPersonality } } })} />
+          <Row label="Personality" desc="How Codex talks to you in new chats. It doesn't change what it can do.">
+            <SegmentedControl label="Personality" value={s.providers.codex.personality} options={PERSONALITIES} onChange={(v) => void patchSettings({ providers: { codex: { personality: v as CodexPersonality } } })} />
           </Row>
         </Section>
       )}
-      <Section title="Executable">
-        <Row label={NAME[provider]} desc={`Agents run on this copy of ${NAME[provider]}`} full={<span className="set-value">{tilde(status?.path && binary.useSystem && !binary.path ? status.path : where)}</span>}>
-          <div className="set-entry-actions">
-            <Button variant="ghost" aria-label={`Choose the folder ${NAME[provider]} is in`} busy={busy === 'choose'} busyLabel="Choosing" disabled={busy !== null} onClick={() => void choose()}>Choose</Button>
-            {binary.path || binary.useSystem
-              ? <Button variant="ghost" busy={busy === 'bundled'} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>
-              : <Button variant="ghost" busy={busy === 'system'} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('system', { path: '', useSystem: true })}>{SYSTEM[provider]}</Button>}
+      <Section title="CLI">
+        {status?.error && (
+          <div className="set-row prov-problem">
+            <Icon name="warning" size={14} />
+            <div className="set-text">
+              <span className="set-label">Kernel can't run {NAME[provider]}</span>
+              <span className="set-desc">{status.error}</span>
+            </div>
+            {exe !== 'bundled' && <Button busy={busy === 'bundled'} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
           </div>
+        )}
+        <Row label="Executable" desc={<>{NAME[provider]} <span className="prov-mono">{version}</span>{exePath && <span className="prov-path">{tilde(exePath)}</span>}</>}>
+          <Select label="Executable" options={EXECUTABLES} value={exe} disabled={busy !== null} onChange={(e) => pickExe(e.target.value)} />
         </Row>
-        <Row label="CLI config file" full={<span className="set-value">{tilde(status?.configFile ?? '')}</span>}>
+        <Row label="Config file" desc={<span className="prov-path">{tilde(status?.configFile ?? '')}</span>}>
           <Button busy={busy === 'config'} busyLabel="Opening" disabled={busy !== null} onClick={() => void act('config', 'Could not open the file', () => call('providers.openConfig', { provider }))}>Open</Button>
         </Row>
       </Section>
-      {adding && <AddAccount provider={provider} onClose={() => { setAdding(false); void read().catch(() => undefined) }} />}
+      {adding && <AddAccount provider={provider} kind={adding} onClose={() => { setAdding(null); void read().catch(() => undefined) }} />}
       {renewing && <AddAccount provider={provider} signIn={{ label: renewing.label, accountId: renewing.id }} onClose={() => { setRenewing(null); void read().catch(() => undefined) }} />}
       {replacing && <AddAccount provider={provider} replaceKey={{ accountId: replacing.id, label: replacing.label }} onClose={() => { setReplacing(null); void read().catch(() => undefined) }} />}
+      {removing && (
+        <ConfirmDialog
+          title={`Remove ${removing.label}?`}
+          body={`${removing.auth === 'apiKey' ? `Kernel deletes the saved key for ${removing.label}.` : `Kernel signs out of ${removing.label} and deletes its saved login.`}${removing.active ? ` Agents move to ${accounts.find((x) => x.cli)?.label ?? `${NAME[provider]}’s own login`}.` : ''} You can add it again later.`}
+          confirmLabel="Remove" danger busy={busy === `remove:${removing.id}`} busyLabel="Removing"
+          onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
+        />
+      )}
     </>
   )
 }

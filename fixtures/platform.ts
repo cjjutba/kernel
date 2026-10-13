@@ -125,6 +125,16 @@ const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() 
   ...extra,
   ui: { route: { name: 'settings', page: 'providers', tab } }
 }))
+/**
+ * Work, the account in use, hit its weekly limit with switching off, so the page's banner offers Personal, which is past 75% of its
+ * 5-hour window: one red meter and one amber (feat-providers-redesign).
+ */
+const limitUsage = (): RateLimit[] => [
+  window5('claude', 'cli', 3, next(16, 10)), { ...windowWeek('claude', 'cli', 100, next(4, 0)), status: 'rejected' },
+  window5('claude', 'personal', 82, next(11, 20)), windowWeek('claude', 'personal', 10, nextOn(1, 3, 0)),
+  window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
+]
+const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { switchAtLimit: { claude: false, codex: false } } } })
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 /** Settings, Account and usage with the accounts of the Usage popover and Fable's weekly window on Work (KERNEL-665). */
@@ -422,6 +432,12 @@ export const platformFixtures: Record<string, Fixture> = {
     accounts: [{ ...workClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['personal'] }, { ...personalClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['cli'] }, keyAccount('claude'), ownCodex],
     providerStatus: { ...providerStatus, claude: { ...providerStatus.claude!, plan: 'Claude Team' } }
   }),
+  // feat-providers-redesign: the account in use at its weekly limit with switching off, the page in light, and Personal's menu and Remove.
+  SettingsProvidersLimit: limitPage(),
+  SettingsProvidersLimitLight: light(limitPage()),
+  SettingsProvidersLight: light(providersPage('claude')),
+  SettingsProvidersMenu: providersPage('claude'),
+  SettingsProvidersRemove: providersPage('claude'),
   // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
