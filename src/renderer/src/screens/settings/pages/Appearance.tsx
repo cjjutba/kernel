@@ -28,7 +28,7 @@ export function Appearance({ s }: { s: AppSettings }) {
   }
   return (
     <Page title="Appearance">
-      <Section title="Theme">
+      <Section title="Theme" plain>
         <div role="radiogroup" aria-label="Theme" className="pe-themes">
           {THEMES.map((t, i) => (
             <button key={t.value} id={`pe-theme-${t.value}`} type="button" role="radio" aria-checked={a.theme === t.value} tabIndex={a.theme === t.value ? 0 : -1} className="pe-theme" onClick={() => set({ theme: t.value })}
