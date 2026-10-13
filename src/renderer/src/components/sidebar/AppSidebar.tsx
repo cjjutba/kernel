@@ -14,6 +14,7 @@ import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { HistoryButtons } from '../PanelToggles'
 import { AccountButton } from './AccountMenu'
+import { isPlanApproval } from '../../screens/workspace/cards/steps'
 import { chatTrusts, chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
@@ -145,6 +146,8 @@ function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSe
   const arrive = useArriving(current && !leaving)
   // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
   const trust = folded && chatTrusts(owned).length > 0
+  // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. The shape still says the state (no-amber-icons).
+  const planning = tabs.some((c) => c.plan) || waiting.some(isPlanApproval)
   const g = chatGlyph({ ws, waiting, running, trust })
   // The icon is the one the chat has at rest. A wait on one of its own tabs stops the turn, so it shows no spinner; one on a hidden workspace doesn't.
   const busy = g.icon === 'spin' || (running && !waits.some((w) => w.key.startsWith('chat:')))
@@ -161,7 +164,7 @@ function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSe
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
-        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true"><Icon name={shown.icon} /></span>
+        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true"><Icon name={shown.icon} /></span>
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : busy && <RunningMark archivable={!!ws} />}
       </button>

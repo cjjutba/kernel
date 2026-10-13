@@ -4,6 +4,8 @@
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
+/* A chat in plan mode, or with a plan waiting, takes the plan blue on its icon only (DESIGN.md). It wins over the ink of a waiting icon and of an unread row. */
+.nav-item .nav-glyph[data-plan] svg { color: var(--plan); }
 /* Unread is a bold title in ink and a heavier icon, never a dot (KERNEL-508, DESIGN.md). The icon follows the title: ink and a 1.8 stroke in place of the muted 1.4.
    A glyph with a tone keeps its colour and only gets the stroke. Filled icons have stroke none, so the width leaves their shape alone. A row's title is the one .grow span. */
 .nav-item[data-unread] > .grow { font-weight: 600; color: var(--ink); }
