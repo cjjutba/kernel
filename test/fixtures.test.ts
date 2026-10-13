@@ -130,6 +130,7 @@ const noCanvas = [
   'TurnFilesNoReply',
   'TurnFilesHover',
   'SettingsTeamEmpty',
+  'NewAgentNoRoom',
 ]
 
 describe('fixtures', () => {

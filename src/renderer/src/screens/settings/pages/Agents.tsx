@@ -17,8 +17,8 @@ export function Agents() {
   const personal = (list ?? []).filter((a) => a.origin !== 'plugin')
   const plugin = (list ?? []).filter((a) => a.origin === 'plugin')
   const edit = (a: AgentDef) => go({ name: 'settings', page: 'agents', agentId: a.id })
-  // The draft and the file are made through a room, so New agent needs one to open from. The agent lands in ~/.claude/agents and joins them all.
-  const hire = () => roomId && actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
+  // With a room the draft is made through it. With none, the agent is personal: it lands in ~/.claude/agents and joins every room added later.
+  const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
   const row = (a: AgentDef, verb: string) => (
     <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={a.description ? <span className="set-clamp">{cleanDescription(a.description)}</span> : undefined}>
       <Button aria-label={`${verb} ${a.name}`} onClick={() => edit(a)}>{verb}</Button>
@@ -27,7 +27,7 @@ export function Agents() {
   return (
     <Page
       title="Agents" intro="Agents that join every room: your own files in ~/.claude/agents, and the ones plugins bring. A room’s Agents page adds the ones in its repo."
-      action={<Button variant="primary" disabled={!roomId} title={roomId ? undefined : 'Add a room first. New agent opens from a room.'} onClick={hire}>New agent</Button>}
+      action={<Button variant="primary" onClick={hire}>New agent</Button>}
     >
       {list && (
         <Section title="Yours">

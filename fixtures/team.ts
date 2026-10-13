@@ -656,6 +656,8 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
+  // No PNG: New agent from Settings, Agents with no room added. NewAgent.png without a room, so Rowan and the room's team are not named.
+  NewAgentNoRoom: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   // KERNEL-642: a repo's own agents in Settings, Agents: Architect's warning on its row, New agent and Add a starter agent at the top of In this repo, and Retired with Restore.
