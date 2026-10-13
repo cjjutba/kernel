@@ -12,8 +12,8 @@ import { AddAccount } from './AddAccount'
 import { SignInLine, joinNames, useMcpAccounts, useSignInAll } from './mcpAccounts'
 import { AccountRow, LimitBanner, type RowAction } from './providerRows'
 
-// Settings, Providers (SettingsProviders.png, KERNEL-406, the API key accounts of KERNEL-524, and the redesign in
-// feat-providers-redesign, drawn in design/providers/). Kernel already calls teammates agents, so the page is Providers.
+// Settings, Providers (KERNEL-406, the API key accounts of KERNEL-524, and the redesign in
+// feat-providers-redesign). Kernel already calls teammates agents, so the page is Providers.
 // Subscriptions and API keys are two sections: a key has no usage windows and Kernel never switches to one on its own.
 
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]

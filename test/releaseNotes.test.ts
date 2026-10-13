@@ -287,7 +287,7 @@ describe('the Release note check', () => {
   })
 
   it('exempts docs-only PRs, release branches and the skip label', () => {
-    expect(pr([['M', 'site/app/page.tsx'], ['M', 'docs/RELEASING.md'], ['M', '.github/workflows/site.yml'], ['A', 'test/x.test.ts'], ['M', '.claude/commands/issue.md'], ['M', 'design/screens/Home.png']])).toEqual({ ok: true, reason: 'no app files' })
+    expect(pr([['M', 'site/app/page.tsx'], ['M', 'docs/RELEASING.md'], ['M', '.github/workflows/site.yml'], ['A', 'test/x.test.ts'], ['M', '.claude/commands/issue.md'], ['M', 'design/site/home.png']])).toEqual({ ok: true, reason: 'no app files' })
     expect(pr([['M', 'package.json'], ['A', 'site/content/releases/0.2.0.md'], ['D', '.changes/unreleased/a.md']], { branch: 'release/0.2.0', dependenciesChanged: true })).toEqual({ ok: true, reason: 'release branch' })
     expect(pr([['M', 'pnpm-lock.yaml'], ['M', 'package.json']], { labels: ['skip-release-note'], dependenciesChanged: true })).toEqual({ ok: true, reason: 'skip label' })
     // Anyone can name a fork's branch release/x.

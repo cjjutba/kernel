@@ -219,7 +219,7 @@ export function ProviderMark({ provider, size = 16 }: { provider: Provider; size
   return provider === 'codex' ? <OpenAIMark size={size} /> : <ClaudeMark size={size} />
 }
 
-// Linear's states and priorities, copied from the ST and PR tables in design/canvas/source/templates/Issues.dc.html (KERNEL-160).
+// Linear's states and priorities, copied from Linear (KERNEL-160).
 // Monochrome: the state is said in words in the group header, and urgent is not colored. `tone` is a color token, never a hex.
 export type IssueStateShape = 'triage' | 'backlog' | 'todo' | 'started' | 'done' | 'canceled'
 interface StateDraw { label: string; dash?: string; inner?: string; fill?: boolean; tone: 'ink' | 'ink-2' | 'muted' }

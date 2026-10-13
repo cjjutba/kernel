@@ -1,4 +1,4 @@
-/* New workspace modal (KERNEL-16). Values from design/canvas/project/NewWorkspace.dc.html. */
+/* New workspace modal (KERNEL-16). */
 /* The shell does not clip it (below), so it rounds itself to the shell's inner radius, or its square box shows past the corners. */
 .nw { border-radius: calc(var(--r-xl) - 1px); background: var(--surface-2); }
 /* Its pickers open past the dialog's edges, so it never scrolls (D-080). It is short enough to fit any window Kernel allows. */

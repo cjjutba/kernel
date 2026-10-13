@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -191,19 +191,14 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
   })
 
   // KERNEL-571: Claude in Bypass runs with no sandbox, so Electron and Chromium start, chained after a `cd` as an agent runs them.
-  it('Claude in Bypass runs the screenshot commands, chained after a cd into its worktree', { timeout: 1_500_000 }, async () => {
+  it('Claude in Bypass runs the screenshot command, chained after a cd into its worktree', { timeout: 1_500_000 }, async () => {
     const here = process.cwd()
     const root = dirname(await realpath((await git(here, 'rev-parse', '--path-format=absolute', '--git-common-dir')).trim()))
     const dir = await realpath(await mkdtemp(join(homedir(), '.kernel-sandbox-shots-')))
     const wt = join(dir, 'wt')
     await git(here, 'worktree', 'add', '-q', '--detach', wt, 'HEAD')
     await linkNodeModules(root, wt)
-    const design = join(wt, 'design', 'screens', 'Settings.png')
-    const before = (await stat(design)).mtimeMs
-    const commands = [
-      `cd ${JSON.stringify(wt)} && node design/canvas/source/render.mjs Settings`,
-      `cd ${JSON.stringify(wt)} && pnpm shots Settings`
-    ]
+    const commands = [`cd ${JSON.stringify(wt)} && pnpm shots Settings`]
     const calls: { command?: string }[] = []
     const outputs: string[] = []
     let result: unknown
@@ -219,11 +214,11 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live sandbox in a worktree', () => {
         }
         if (m.type === 'result') result = { subtype: m.subtype, denials: m.permission_denials }
       }
-      const wrote = { render: (await stat(design)).mtimeMs > before, shot: existsSync(join(wt, 'shots', 'Settings.png')) }
+      const wrote = { shot: existsSync(join(wt, 'shots', 'Settings.png')) }
       evidence['claude.shots'] = { calls, outputs, result, wrote }
       console.log(`[live] claude shots ${JSON.stringify(wrote)}, calls ${JSON.stringify(calls)}`)
       expect(calls.map((c) => c.command)).toEqual(commands)
-      expect(wrote).toEqual({ render: true, shot: true })
+      expect(wrote).toEqual({ shot: true })
     } finally {
       await save()
       await git(here, 'worktree', 'remove', '--force', wt).catch(() => undefined)

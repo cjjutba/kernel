@@ -1657,7 +1657,7 @@ describe('Bypass permissions without the sandbox (KERNEL-571)', () => {
     expect(await t.runGuard('t2', 'git push origin main')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
     expect(await t.runGuard('t3', 'git push')).toEqual(denied(pushOwnBranch(['main'], 'feat/invoice-schema')))
     // The screenshot commands an agent chains after a cd run without a word from Kernel.
-    expect(await t.runGuard('t4', 'cd /tmp/ws && node design/canvas/source/render.mjs Settings')).toEqual({})
+    expect(await t.runGuard('t4', 'cd /tmp/ws && pnpm shots Settings')).toEqual({})
     const off = await setup('bypassPermissions', { permissions: { network: false } })
     expect(await off.runGuard('t5', 'curl https://github.com')).toEqual(denied(neverAllowed('curl https://github.com')))
     expect(await (off.options.canUseTool as CanUseTool)('WebFetch', { url: 'https://github.com' }, { signal: new AbortController().signal, toolUseID: 'w1', requestId: 'r' })).toEqual({ behavior: 'deny', message: NETWORK_OFF })

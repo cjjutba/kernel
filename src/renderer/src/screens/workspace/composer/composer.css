@@ -1,7 +1,7 @@
 /* composer */
 .composer-wrap { flex-shrink: 0; padding: 4px 24px 18px; }
 .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
-/* The box sits recessed on the chat (design/redesign/Composer.png, KERNEL-322). Its children sit above the plan glow, which is
+/* The box sits recessed on the chat (KERNEL-322). Its children sit above the plan glow, which is
    its ::before, so they are positioned with no z-index: the model, + and context popovers still open past the box. */
 .cmp { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
 .cmp > * { position: relative; }
@@ -154,7 +154,7 @@
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
    top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
    glow and the caret; its border is the modal shell's.
-   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
+   It moves slowly (KERNEL-322): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
    breathes every 8s while the box waits for input. Focus settles it. The strip opens over --plan-dur and one light crosses it.
    Every plan mode state change reads --plan-dur (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
    Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-4 in 160ms ease-out like the rest of the app.

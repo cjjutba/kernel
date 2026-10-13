@@ -2,8 +2,8 @@ import { Modal } from './Shell'
 import { actions } from '../store'
 import { SidebarToggle } from './PanelToggles'
 
-// Stand-ins for screens no lane has built yet (KERNEL-8). Each one lives in the file its lane replaces,
-// listed in the Component column of docs/SCREENS.md. Delete this file once nothing imports it.
+// Stand-ins for screens no lane has built yet (KERNEL-8). Each one lives in the file its lane replaces.
+// Delete this file once nothing imports it.
 
 export function PlaceholderPage({ title, issue }: { title: string; issue: string }) {
   return (

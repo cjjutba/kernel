@@ -23,7 +23,7 @@ pnpm build       # all three bundles
 
 Run one file with `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fails because the native modules are built for Electron (D-013 in `docs/DECISIONS.md`).
 
-If you change a screen, run `pnpm shots <Screen>` and `pnpm shots:compare <Screen>`. The second command puts your screenshot next to the design in `design/screens/` so you can compare them.
+If you change a screen, run `pnpm shots <Screen>` and attach the shot in `shots/<Screen>.png` to the PR.
 
 ## Pull requests
 
