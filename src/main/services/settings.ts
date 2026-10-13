@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from './conventions'
@@ -36,6 +36,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
       qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
       reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
     },
+    // The Lead and engineers hold long work, so they keep the model's window. A QA run or a review is short (feat-compact-window-per-role-with-plan).
+    compact: { lead: 'full', engineers: 'full', qa: '200k', reviewer: '200k' },
     leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
@@ -62,12 +64,14 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
 /**
  * The settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). The Lead's and the
  * reviewer's models and every role's effort live in `models.roles` since KERNEL-406. No plan sets `pr.autoReview` any more
- * (feat-automatic-review-off-by-default). It stays here so `planDefaulted` still says whether the user chose it.
+ * (feat-automatic-review-off-by-default). It stays here so `planDefaulted` still says whether the user chose it. Each role's
+ * compact window follows the plan too (feat-compact-window-per-role-with-plan).
  */
 export const PLAN_KEYS = [
   'models.roles.lead.model', 'models.roles.reviewer.model',
   'models.roles.lead.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
-  'models.agentLimit', 'pr.autoReview'
+  'models.agentLimit', 'pr.autoReview',
+  'models.compact.lead', 'models.compact.engineers', 'models.compact.qa', 'models.compact.reviewer'
 ] as const
 
 /**
@@ -101,7 +105,8 @@ export function planOf(subscriptionType: unknown): ClaudePlan {
 
 /**
  * What the plan changes about the app's defaults. Pro has a much lower 5-hour and weekly limit, so it gets Sonnet for the Lead
- * and the reviewer, medium effort and two teammates at a time. Every other plan, and one Kernel can't read, keeps the defaults
+ * and the reviewer, medium effort, two teammates at a time and a 200k compact window for every role
+ * (feat-compact-window-per-role-with-plan). Every other plan, and one Kernel can't read, keeps the defaults
  * but for a Sonnet reviewer (KERNEL-225). Automatic review is off on every plan, in the defaults themselves
  * (feat-automatic-review-off-by-default).
  */
@@ -110,6 +115,7 @@ export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSetti
     return {
       models: {
         roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
+        compact: { lead: '200k', engineers: '200k', qa: '200k', reviewer: '200k' },
         agentLimit: 2
       }
     }
@@ -125,6 +131,7 @@ export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSet
   const s = deepMerge(base, saved)
   s.models.effortByModel = effortMemory(s.models.effortByModel)
   s.models.roles = roleModels(s.models.roles, base.models.roles)
+  s.models.compact = compactWindows(s.models.compact, base.models.compact)
   s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
   s.pr.autoMerge = autoMergeOf(s.pr.autoMerge, defaults.pr.autoMerge)
   return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
@@ -272,6 +279,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.scripts.timeoutMinutes = whole(next.scripts.timeoutMinutes, 1, 240, current.scripts.timeoutMinutes)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
   next.models.roles = roleModels(next.models.roles, current.models.roles)
+  next.models.compact = compactWindows(next.models.compact, current.models.compact)
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   next.pr.autoMerge = autoMergeOf(next.pr.autoMerge, current.pr.autoMerge)
   return next
@@ -312,6 +320,12 @@ export function roleModels(v: unknown, fallback: Record<Role, RoleModel>): Recor
     if (!model) return [r, provider === fallback[r].provider ? { ...fallback[r], ...(effort ? { effort } : {}) } : fallback[r]]
     return [r, { provider, model, effort: effort ?? fallback[r].effort }]
   })) as Record<Role, RoleModel>
+}
+
+/** `models.compact` as Kernel reads it: each role's window when it is one of the two choices, else the fallback's (feat-compact-window-per-role-with-plan). */
+export function compactWindows(v: unknown, fallback: Record<Role, CompactWindow>): Record<Role, CompactWindow> {
+  const given = v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+  return Object.fromEntries(ROLES.map((r) => [r, COMPACT_WINDOWS.includes(given[r] as CompactWindow) ? given[r] : fallback[r]])) as Record<Role, CompactWindow>
 }
 
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)

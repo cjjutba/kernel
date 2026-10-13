@@ -722,6 +722,57 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 })
 
+describe('compact window per role (feat-compact-window-per-role-with-plan)', () => {
+  const WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+  const compact: AppSettings['models']['compact'] = { lead: 'full', engineers: '200k', qa: '200k', reviewer: '200k' }
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
+  const envOf = (call: Call) => call.options.env as Record<string, string>
+  const stopped = (call: Call) => !!call.options.abortController?.signal.aborted
+  const done = async (call: Call, uuid: string) => { call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 5 }); await flush() }
+
+  it("starts a chat with its role's window, and takes the variable away at the model's own window", async () => {
+    const mac = process.env[WINDOW]
+    process.env[WINDOW] = '500000'
+    onTestFinished(() => { if (mac === undefined) delete process.env[WINDOW]; else process.env[WINDOW] = mac })
+    const roles: unknown[] = []
+    const engineer = await setup('acceptEdits', { models: { compact }, agent: noor, deps: { roleFor: (ws, agent) => { roles.push([ws.id, agent?.id]); return 'engineers' } } })
+    expect(envOf(engineer.call)[WINDOW]).toBe('200000')
+    expect(roles).toEqual([['ws', 'noor']])
+    const lead = await setup('acceptEdits', { models: { compact }, deps: { roleFor: () => 'lead' } })
+    expect(envOf(lead.call)).not.toHaveProperty(WINDOW)
+    // Changing the model mid-chat keeps the process, and so its window.
+    await lead.sessions.configure(lead.chat.id, { model: 'claude-opus-5-5' })
+    expect(sdk.calls.at(-1)).toBe(lead.call)
+  })
+
+  it('restarts an idle chat when a compact window changes, and a busy one when its turn ends', async () => {
+    const s = await setup('acceptEdits', { models: { compact }, deps: { roleFor: () => 'engineers' } })
+    const settings = s.settings as unknown as AppSettings
+    const change = (to: object) => { const before = structuredClone(settings); Object.assign(settings.models, to); s.sessions.applySettings(before) }
+    // Mid-turn: the process finishes its turn on the window it started with.
+    change({ compact: { ...compact, engineers: 'full' } })
+    expect(stopped(s.call)).toBe(false)
+    await done(s.call, 'r1')
+    expect(stopped(s.call)).toBe(true)
+    await s.sessions.send(s.chat.id, [{ type: 'text', text: 'Run the tests' }])
+    const next = sdk.calls.at(-1)!
+    expect(next).not.toBe(s.call)
+    expect(envOf(next)).not.toHaveProperty(WINDOW)
+    // The next message resumes the same conversation.
+    await done(next, 'r2')
+    // Idle: it ends at once.
+    change({ compact: { ...compact, engineers: '200k' } })
+    expect(stopped(next)).toBe(true)
+    await s.sessions.send(s.chat.id, [{ type: 'text', text: 'And typecheck' }])
+    const third = sdk.calls.at(-1)!
+    expect(envOf(third)[WINDOW]).toBe('200000')
+    await done(third, 'r3')
+    // A setting that isn't a compact window leaves the process alone.
+    change({ agentLimit: 3 })
+    expect(stopped(third)).toBe(false)
+  })
+})
+
 describe('agent teams (KERNEL-73)', () => {
   it('starts sessions with agent teams on when the setting is on, and off when it is off', async () => {
     const on = await setup('acceptEdits', { models: { agentTeams: true } })

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -107,6 +107,8 @@ export interface SessionDeps {
   settings: () => AppSettings
   /** The agent a workspace runs. With `chat`, the one that chat runs, which a review chat picks by its kind (KERNEL-549). */
   agentFor: (ws: Workspace, chat?: Chat) => AgentDef | undefined
+  /** The role Settings, Models reads for a chat in this workspace run by `agent` (`Team.roleFor`). Without it a chat has no compact window of its own. */
+  roleFor?: (ws: Workspace, agent: AgentDef | undefined) => Role
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
   /**
@@ -907,12 +909,17 @@ export class Sessions {
   }
 
   /**
-   * Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher
-   * limit starts waiting work. The usage switches count too, so the limits go out again for Kernel to act on them (KERNEL-220).
+   * Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, a changed
+   * compact window restarts Claude's processes, and a higher limit starts waiting work. The usage switches count too, so the limits go out again for Kernel to act on them (KERNEL-220).
    */
   applySettings(before?: AppSettings) {
     const now = this.d.settings().permissions
     if (!before || before.permissions.mode !== now.mode || before.permissions.bypassOnlyInWorktrees !== now.bypassOnlyInWorktrees) this.applyModes()
+    // A process keeps the compact window it started with, so a changed one restarts them as an account switch does:
+    // an idle one now, a busy one when its turn ends (feat-compact-window-per-role-with-plan).
+    const was = before?.models?.compact
+    const compact = this.d.settings().models?.compact
+    if (was && compact && (Object.keys(compact) as Role[]).some((r) => was[r] !== compact[r])) this.restartProvider('claude')
     this.pushLimits()
   }
 
@@ -1303,6 +1310,12 @@ export class Sessions {
     try { this.d.store.saveMeta<SavedPid[]>(PIDS, [...this.pids].map(([pid, p]) => ({ pid, ...p }))) } catch { /* Kernel stopped */ }
   }
 
+  /** Where a chat in `ws` run by `agent` compacts: its role's window in Settings, Models (feat-compact-window-per-role-with-plan). */
+  private compactFor(ws: Workspace, agent: AgentDef | undefined): CompactWindow | undefined {
+    const role = this.d.roleFor?.(ws, agent)
+    return role && this.d.settings().models?.compact?.[role]
+  }
+
   private start(chat: Chat, ws: Workspace): Live {
     const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
@@ -1318,7 +1331,7 @@ export class Sessions {
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), allow: this.d.accessFor?.(ws)?.allow })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()
