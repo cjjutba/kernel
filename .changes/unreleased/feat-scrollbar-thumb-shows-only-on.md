@@ -1,4 +1,4 @@
 ---
 type: improved
 ---
-Scrollbars appear only while you scroll, not when the pointer moves, and fade out sooner.
+Scrollbars across the app, the sidebar's included, are now thin and show only while you scroll, then fade out a moment after you stop.
