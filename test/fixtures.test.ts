@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fixtures } from '../fixtures'
@@ -142,9 +142,17 @@ const noCanvas = [
   'NewAgentNoRoom',
 ]
 
+const boards: Record<string, string> = JSON.parse(readFileSync('design/settings-redesign/boards.json', 'utf8'))
+
 describe('fixtures', () => {
-  it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {
-    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !noCanvas.includes(name) && !existsSync(join('design/screens', `${name}.png`)))
+  it('every fixture key has a PNG in design/screens or a settings board, except the DevUi component gallery and noCanvas', () => {
+    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !noCanvas.includes(name) && !existsSync(join('design/screens', `${name}.png`)) && !boards[name])
+    expect(missing).toEqual([])
+  })
+
+  // KERNEL-680: a Settings fixture drawn on the settings canvas names its board, in dark and light.
+  it('every settings board a fixture names is rendered, dark and light', () => {
+    const missing = Object.values(boards).flatMap((b) => [b, `${b}Light`]).filter((b) => !existsSync(join('design/settings-redesign', `${b}.png`)))
     expect(missing).toEqual([])
   })
 
