@@ -6,6 +6,7 @@ P=SANDBOX if os.path.isdir(SANDBOX) else os.path.join(HERE,'..','project')+'/'
 T='/home/claude/tpl/' if os.path.isdir('/home/claude/tpl/') else os.path.join(HERE,'templates')+'/'
 rd=lambda n: open(T+n).read()
 helmet=rd('_helmet.html').replace('.cmp input::placeholder{color:#8a8f98}','input::placeholder,textarea::placeholder{color:#8a8f98}')
+helmet=helmet.replace('</helmet>','<style>\n'+rd('_usage.css')+'</style>\n</helmet>')
 foot_t=rd('_footer.html'); side_t=rd('_sidebar.html'); rooms=rd('_rooms.html')
 EMPTY='<p style="margin: 0; padding: 4px 8px 0; font-size: 12.5px; line-height: 1.5; color: #8a8f98">No rooms yet. <a href="NewRoom.dc.html" style="color: #d0d6e0">Create one</a></p>'
 PILL='''<a href="WhatsNew.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #3a3c42; color: #f7f8f8; text-decoration: none; font-size: 12px; font-weight: 500"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"></path></svg>Update ready</a>
@@ -18,13 +19,6 @@ RAIL='''<nav aria-label="Sidebar" style="width: 64px; flex-shrink: 0; box-sizing
 <a href="WorkspaceLead.dc.html" aria-label="Client A" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #1c1d21; color: #f7f8f8; font-size: 11px; font-weight: 600">A</a>
 <a href="WorkspaceLead.dc.html" aria-label="Client B" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #d0d6e0; font-size: 11px; font-weight: 600">B</a>
 </nav>'''
-# KERNEL-617: the plan pill reads Usage and opens one popover for Claude Code and Codex. A page that passes plan=usage_pill() draws the new pill,
-# and plan=usage_pill(popover) draws it open. Every other page keeps the old Claude Max pill until its PNG is redrawn for another issue.
-PLAN_CLAUDE='<a href="SettingsAccount.dc.html" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #23252a; font-size: 12px; color: #d0d6e0; text-decoration: none">Claude Max</a>'
-def usage_pill(popover=None):
-    on=popover is not None
-    style='display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #23252a; background: %s; font-family: inherit; font-size: 12px; color: %s; cursor: pointer'%('#1c1d21' if on else 'transparent','#f7f8f8' if on else '#d0d6e0')
-    return '<div style="position: relative; min-width: 0"><button type="button" aria-haspopup="dialog" aria-expanded="%s" style="%s">Usage</button>%s</div>'%('true' if on else 'false',style,popover or '')
 def fold_rooms(r):
     # KERNEL-205: a chat that started workspaces folds like a room. Its workspaces are hidden and it shows the question icon,
     # because the hidden invoice-schema needs you.
@@ -50,8 +44,8 @@ def room_icons(r, icons):
         assert m, room
         r=r[:m.start()]+m.group(1)+'overflow: hidden; '+m.group(2)+svg+m.group(3)+r[m.end():]
     return r
-def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=None, plan=None):
-    base=side_t.replace('%%PLAN%%', PLAN_CLAUDE if plan is None else plan)
+def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=None):
+    base=side_t
     if rows_html is not None:
         # KERNEL-336: the room list scrolls in the app (sidebar.css), so a page with its own rows clips them in a box instead of pushing the footer off the window.
         scroll='%%ROOMS%%\n\n<div style="flex: 1"></div>'
@@ -74,13 +68,14 @@ def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=No
     assert '%%' not in s, s[s.index('%%')-60:s.index('%%')+40]
     return s
 out=[]
-HOOKS_DOWN='''<a href="CheckHooks.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks down<span style="margin-left: 4px; color: #f7f8f8; text-decoration: underline">Check hooks</span></a>'''
-# KERNEL-401: a GitHub rate limit holding Kernel's PR reads off. A word with a muted time, not a link, beside where Hooks down shows.
-GH_PAUSED='''<span role="status" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10M11 3v10"></path></svg>GitHub paused<span style="margin-left: 4px; color: #8a8f98">PRs update at 3:41 PM</span></span>'''
-def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, gh_paused=False, fold=False, icons=None, rows_html=None, plan=None):
+U_DETAILED=rd('_usage_detailed.html')
+# KERNEL-672: the footer is full width. Usage sits bottom left in one row and Update ready bottom right; nothing else lives there (Hooks down is the banner
+# above the composer, and GitHub paused is gone). usage= picks the row, popover= opens the popover above it. The sidebar's bottom row is empty.
+def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, fold=False, icons=None, rows_html=None, usage=None, popover=''):
     t=t.replace('<!--HELMET-->',helmet)
-    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons,rows_html,plan))
-    t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else GH_PAUSED if gh_paused else '<span></span>'))
+    if '<!--FOOTER-->' in t and '.uf {' not in t: t=t.replace('</helmet>','<style>\n'+rd('_usage.css')+'</style>\n</helmet>',1)
+    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons,rows_html))
+    t=t.replace('<!--FOOTER-->',foot_t.replace('%%USAGE%%',usage or U_DETAILED).replace('%%UPDATEPILL%%', PILL if update else '').replace('%%POPOVER%%',popover))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
     assert 'Agent Office' not in t, name
     if light: t=lighten(t)
@@ -112,70 +107,42 @@ emit('UpdateReady', rd('Home.dc.html'), 'home', update=True)
 emit('HomeLight', rd('Home.dc.html'), 'home', light=True)
 emit('SidebarRoomsMenu', rd('Home.dc.html'), 'home', menu='rooms')
 emit('SidebarChatFolded', rd('Home.dc.html'), 'home', fold=True)
-emit('AccountMenu', rd('Home.dc.html'), 'home', menu='acct')
-MENU_ITEM='display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px'
-def menu_link(label, href, hint=''):
-    return '<a role="menuitem" class="mi" href="%s" style="%s"><span style="flex: 1">%s</span><span style="font-size: 12px; color: #8a8f98">%s</span></a>'%(href,MENU_ITEM,label,hint)
-def menu_account(name, plan, active, lines):
-    top='<span style="display: flex; align-items: baseline; gap: 8px"><span style="font-weight: 500">%s</span><span style="flex: 1; min-width: 0; font-size: 12px; color: #8a8f98">%s</span><span style="font-size: 12px; color: #8a8f98">%s</span></span>'%(name,plan,'Active' if active else 'Switch to')
-    rest=''.join('<span style="font-size: 12px; color: #8a8f98">%s</span>'%l for l in lines)
-    return '<a role="menuitem" class="mi" href="SettingsProviders.dc.html" style="display: flex; flex-direction: column; gap: 1px; padding: 7px 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px">%s%s</a>'%(top,rest)
-def menu_group(title, accounts):
-    return '<p style="margin: 0; padding: 8px 8px 4px; font-size: 12px; font-weight: 500; color: #d0d6e0">%s</p>%s'%(title,''.join(menu_account(*a) for a in accounts))
-MENU_RULE='<div style="height: 1px; margin: 6px 4px; background: #26272b"></div>'
-def account_menu():
-    claude=menu_group('Claude Code',[
-        ('Work','Claude Max',True,['5-hour 62% used · resets at 3:40 PM','Weekly 38% used · resets Monday at 9:00 AM']),
-        ('Personal','Claude Pro',False,['5-hour 8% used · resets at 5:10 PM','Weekly 14% used · resets Wednesday at 6:00 PM']),
-        ('Work key','',False,['API key · billed per token'])])
-    codex=menu_group('Codex',[
-        ('cj@example.com','ChatGPT Plus',True,['5-hour 7% used · resets at 4:15 PM','Weekly 21% used · resets Thursday at 8:00 AM']),
-        ('Personal','ChatGPT Pro',False,['5-hour 3% used · resets at 6:20 PM','Weekly 9% used · resets Friday at 8:00 AM']),
-        ('Work key','',False,['API key · billed per token'])])
-    items=menu_link('Settings','Settings.dc.html','⌘,')+menu_link('Keyboard shortcuts','SettingsShortcuts.dc.html')+menu_link('Usage','SettingsAccount.dc.html')+menu_link("What's new",'WhatsNew.dc.html')
-    return '<div role="menu" style="position: absolute; z-index: 60; width: 320px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px">'+claude+MENU_RULE+codex+MENU_RULE+items+MENU_RULE+menu_link('Manage accounts','SettingsProviders.dc.html')+'</div>'
-mp=P+'AccountMenu.dc.html'; mt=open(mp).read()
-ms=mt.index('<div role="menu" style="position: absolute; z-index: 60; width: 232px;'); me=mt.index('</div></details>',ms)
-open(mp,'w').write(mt[:ms]+account_menu()+mt[me+len('</div>'):])
-# KERNEL-617: the Usage popover. One section per provider: the account in use, its windows, then Switch. A provider that isn't signed in is one line.
-# The meter is muted and turns full ink from 85%, as the built Meter does. Account and usage stays at the bottom.
-def pop_rule(): return '<div style="height: 1px; background: #26272b"></div>'
-def pop_window(title, pct, note):
-    fill='#f7f8f8' if pct>=85 else '#8a8f98'
-    return ('<div style="display: flex; flex-direction: column; gap: 5px"><span style="font-size: 12.5px; color: #d0d6e0">%s</span>'
-            '<div role="meter" aria-label="%s" aria-valuenow="%d" aria-valuemin="0" aria-valuemax="100" style="height: 6px; border-radius: 3px; background: #23252a; overflow: hidden"><div style="width: %d%%; height: 100%%; border-radius: 3px; background: %s"></div></div>'
-            '<span style="font-size: 11.5px; color: #8a8f98">%s</span></div>')%(title,title,pct,pct,fill,note)
-def pop_switch(provider, rows):
-    out=''
-    for name,plan,right in rows:
-        out+=('<button type="button" aria-label="Switch %s to %s" class="mi" style="display: flex; align-items: baseline; gap: 8px; width: 100%%; height: 32px; box-sizing: border-box; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">'
-              '<span style="font-weight: 500">%s</span><span style="flex: 1; min-width: 0; font-size: 12px; color: #8a8f98">%s</span><span style="font-size: 12px; color: #8a8f98">%s</span></button>')%(provider,name,name,plan,right)
-    return '<div style="display: flex; flex-direction: column; gap: 2px"><span style="padding: 0 8px; font-size: 12px; font-weight: 500; color: #8a8f98">Switch</span>%s</div>'%out
-def pop_section(provider, who=None, windows=(), billed=False, switch=(), signed_out=False):
-    head='<span style="font-size: 12px; font-weight: 500; color: #d0d6e0">%s</span>'%provider
-    if signed_out:
-        body=('<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; min-width: 0; font-size: 13px; color: #d0d6e0">%s isn\u2019t signed in</span>'
-              '<button type="button" aria-label="Sign in to %s" style="flex-shrink: 0; height: 26px; padding: 0 10px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Sign in</button></div>')%(provider,provider)
-        return '<div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px">%s%s</div>'%(head,body)
-    name,plan,email=who
-    top=('<div style="display: flex; flex-direction: column; gap: 1px"><span style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 13px; font-weight: 500; color: #f7f8f8">%s</span><span style="flex: 1; min-width: 0; font-size: 12px; color: #8a8f98">%s</span></span>%s</div>')%(name,plan,('<span style="font-size: 12px; color: #8a8f98">%s</span>'%email) if email else '')
-    if billed: mid='<span style="font-size: 12.5px; color: #d0d6e0">Billed per token</span>'
-    else: mid='<div style="display: flex; flex-direction: column; gap: 12px">%s</div>'%''.join(pop_window(*w) for w in windows)
-    sw=pop_switch(provider,switch) if switch else ''
-    return '<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 8px">%s%s%s%s</div>'%(head,top,mid,sw and '<div style="margin: 0 -8px">%s</div>'%sw)
-def usage_popover(claude, codex):
-    foot=('<div style="padding: 6px"><a role="menuitem" class="mi" href="SettingsAccount.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Account and usage</span>'
-          '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 3.5 4.5 4.5L6 12.5"></path></svg></a></div>')
-    return ('<div role="dialog" aria-label="Usage" style="position: absolute; z-index: 60; left: 0; bottom: 32px; width: 304px; box-sizing: border-box; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">'
-            +claude+pop_rule()+codex+pop_rule()+foot+'</div>')
-POP_CLAUDE=pop_section('Claude Code',('Work','Claude Max','cj@example.com'),[('5-hour',62,'62% used \u00b7 resets at 3:40 PM'),('Weekly',38,'38% used \u00b7 resets Monday at 9:00 AM'),('Weekly, Fable 5.1',90,'90% used \u00b7 resets Monday at 9:00 AM')],switch=[('Personal','Claude Pro','5-hour 8% used'),('Work key','','Billed per token')])
-POP_CODEX=pop_section('Codex',('cj@example.com','ChatGPT Plus',''),[('5-hour',7,'7% used \u00b7 resets at 4:15 PM'),('Weekly',21,'21% used \u00b7 resets Thursday at 8:00 AM')],switch=[('Personal','ChatGPT Pro','5-hour 3% used')])
-POP_CLAUDE_KEY=pop_section('Claude Code',('Work key','API key',''),billed=True,switch=[('Work','Claude Max','5-hour 62% used'),('Personal','Claude Pro','5-hour 8% used')])
-POP_CODEX_OUT=pop_section('Codex',signed_out=True)
+# KERNEL-672: usage in the footer. The row and the popover come from the _usage_*.html templates (the v5 mock). A page picks a row with usage= and opens the popover above it with popover=.
+def usage_part(f): return rd(f)
+U_COMPACT=rd('_usage_compact.html'); U_CODEX_FULL=rd('_usage_codex_full.html')
+POP_DETAILED=rd('_usage_pop_detailed.html'); POP_COMPACT=rd('_usage_pop_compact.html'); POP_COMPACT_CODEX=rd('_usage_pop_compact_codex.html')
+MARK_CLAUDE=re.search(r'<span class="ft-pm">.*?</svg></span>', U_DETAILED).group(0)
+MARK_CODEX=re.findall(r'<span class="ft-pm">.*?</svg></span>', U_DETAILED)[1]
+def chip(label, mark, name, tail='', active=True):
+    return '<button type="button" class="chip%s" aria-label="%s">%s%s%s</button>'%(' on' if active else '',label,mark,name,tail)
+def pc(p): return '<span class="pc" data-tone="%s">%d%%</span>'%('full' if p>=90 else 'near' if p>=75 else 'ok',p)
+def mini(label,name,p): return '<button type="button" class="chip" aria-label="%s"><span class="cn dim">%s</span>%s</button>'%(label,name,pc(p))
+# An API key account has no windows, so its chip is the mark and the name. Signed out Codex is the mark and Sign in.
+U_KEY='<span class="ft-l">'+chip('Claude Code, API Key, active. Opens usage',MARK_CLAUDE,'<span class="cn">API Key</span>')+mini('Claude Code, 2nd account: 5-hour 9%. Switch to it','2nd account',9)+mini('Claude Code, Main account: 5-hour 12%. Switch to it','Main account',12)+mini('Claude Code, 3rd account: 5-hour 75%. Switch to it','3rd account',75)+'<span class="fdiv"></span>'+U_DETAILED[U_DETAILED.index('<button',U_DETAILED.index('<span class="fdiv">')):]
+U_OUT=U_DETAILED[:U_DETAILED.index('<span class="fdiv">')]+'<span class="fdiv"></span>'+chip('Codex, signed out. Opens usage',MARK_CODEX,'<span class="cn dim">Sign in</span>')+'</span>'
+def pop_codex_out(p):
+    i=p.index('<section class="pm-sec">',p.index('</section>')); j=p.index('</section>',i)+len('</section>')
+    sec=('<section class="pm-sec"><button type="button" class="pm-head" aria-expanded="false">'+MARK_CODEX.replace('ft-pm','pm-mark')+'<span class="pm-who"><span class="pm-line"><span class="pm-name">Codex</span><span class="pm-acct">Not signed in</span></span></span>'
+         '<span class="btn-s" style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border:1px solid var(--line-3);border-radius:var(--r);font-size:12px;font-weight:500;color:var(--ink)">Sign in</span></button></section>')
+    return p[:i]+sec+p[j:]
+def pop_claude_key(p):
+    # Claude Code on an API key: no email, no windows, Billed per token. 2nd account moves into Switch.
+    i=p.index('<span class="pm-acct">')+len('<span class="pm-acct">'); j=p.index('</span>',i)
+    p=p[:i]+'API Key'+p[j:]
+    i=p.index('<div class="pm-body">')+len('<div class="pm-body">'); j=p.index('<div class="plan-switch"')
+    p=p[:i]+'<span class="plan-title">Billed per token</span>'+p[j:]
+    p=p.replace('<span class="plan-other-name">API Key</span><span class="plan-other-plan ellipsis"></span><span class="plan-other-use">Billed per token</span>','<span class="plan-other-name">2nd account</span><span class="plan-other-plan ellipsis">Claude Pro</span><span class="plan-other-use">5-hour 9% used</span>')
+    return p
 hm=rd('Home.dc.html')
-emit('UsagePopover', hm, 'home', plan=usage_pill(usage_popover(POP_CLAUDE,POP_CODEX)))
-emit('UsagePopoverApiKey', hm, 'home', plan=usage_pill(usage_popover(POP_CLAUDE_KEY,POP_CODEX)))
-emit('UsagePopoverSignedOut', hm, 'home', plan=usage_pill(usage_popover(POP_CLAUDE,POP_CODEX_OUT)))
+emit('AccountMenu', hm, 'home', menu='acct', update=True)
+emit('UsageFooter', hm, 'home', update=True)
+emit('UsageFooterCompact', hm, 'home', update=True, usage=U_COMPACT)
+emit('UsageFooterCodexFull', hm, 'home', update=True, usage=U_CODEX_FULL)
+emit('UsagePopover', hm, 'home', update=True, popover=POP_DETAILED)
+emit('UsagePopoverCompact', hm, 'home', update=True, usage=U_COMPACT, popover=POP_COMPACT)
+emit('UsagePopoverCompactCodex', hm, 'home', update=True, usage=U_COMPACT, popover=POP_COMPACT_CODEX)
+emit('UsagePopoverApiKey', hm, 'home', update=True, usage=U_KEY, popover=pop_claude_key(POP_DETAILED))
+emit('UsagePopoverSignedOut', hm, 'home', update=True, usage=U_OUT, popover=pop_codex_out(POP_DETAILED))
 # KERNEL-258: Client B uses a GitHub avatar. Home shows it in the sidebar and on the room's card, so one room has one icon.
 hi=rd('Home.dc.html')
 tile='border: 1px solid #2a2b30; background: #1c1d21; font-size: 10.5px; font-weight: 600">{{ r.letter }}</span>'
@@ -246,7 +213,6 @@ WS=[
     ('WorkspaceSignedOut','signedout'),
     ('WorkspaceSetupFailed','setupfail'),
     ('WorkspaceHooksDown','hooks'),
-    ('WorkspaceGitHubPaused','ghpaused'),
     ('WorkspaceNewChat','newchat'),
     ('WorkspaceTerminal','terminal'),
     ('WorkspaceLead','lead'),
@@ -286,17 +252,12 @@ WS=[
 ]
 for n,sc in WS:
     if n in ('WorkspaceLead','WorkspaceQuestionLong'): continue  # KERNEL-356 and KERNEL-414 draw them with the Lead workspace, below
-    emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks', gh_paused=sc=='ghpaused')
-for n in ('WorkspaceAccountNote','WorkspaceAccountNoteLimit'):
-    q=P+n+'.dc.html'; s=open(q).read()
-    chip='text-decoration: none">Claude Max</a>'
-    assert s.count(chip)==1
-    open(q,'w').write(s.replace(chip,'text-decoration: none">Claude Pro</a>'))
+    emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws')
 # KERNEL-617: the limit banner when the only other account is signed out, and the warning after a switch to a plan that lacks a model. Both show the Usage pill.
 for n,sc in [
     ('WorkspaceProviderLimitSignedOut','providerlimitout'),
     ('WorkspaceSwitchWarning','switchwarn'),
-]: emit(n, ws.replace('%%SCENARIO%%',sc), 'ws', plan=usage_pill())
+]: emit(n, ws.replace('%%SCENARIO%%',sc), 'ws')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')

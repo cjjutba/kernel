@@ -734,7 +734,6 @@ export const platformFixtures: Record<string, Fixture> = {
   WorkspaceFolderMissing: scene((f) => ({ workspaces: withWorkspace(f, ids.table, { folderGone: true }), ui: open })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
-  WorkspaceGitHubPaused: scene(() => ({ ...workspaceFixtures.WorkspacePRReady, github: { pausedUntil: next(15, 41) } })),
   ConfirmArchive: scene((f) => ({
     gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
     push: f.push,

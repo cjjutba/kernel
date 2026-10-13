@@ -40,6 +40,70 @@ details.dd>summary::-webkit-details-marker{display:none}
 @keyframes skp{50%{opacity:.5}}
 @media (prefers-reduced-motion: reduce){.sk{animation:none}}
 </style>
+<style>
+.uf { --ink:#f7f8f8; --ink-2:#d0d6e0; --ink-3:#b7bcc4; --muted:#8a8f98; --faint:#62666d; --line:#1d1e22; --line-2:#26272b; --line-3:#2a2b30; --surface-2:#18191b; --surface-3:#1c1d21; --input-bg:#141516; --nav-hover:#141518; --needs:#f2c55c; --needs-fill:#f2c55c; --del:#f06363; --del-fill:#f06363; --r-sm:6px; --r:8px; --r-md:10px; --r-pill:999px; --canvas:#08090a; --claude:#d97757; }
+.uf * { box-sizing:border-box; }
+.uf button { font:inherit; color:inherit; cursor:pointer; }
+.uf .grow { flex:1; min-width:0; }
+.uf .ellipsis { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.uf .nv-e { font-size:11.5px; color:var(--muted); }
+.uf .popat { position:absolute; z-index:60; left:10px; bottom:34px; }
+.uf .menu-item:hover, .uf .chip:hover { background:var(--surface-3); }
+.uf { position:relative; height:34px; flex-shrink:0; display:flex; align-items:center; gap:4px; padding:0 10px; font-size:12px; color:var(--muted); }
+.uf .ft-l { display:inline-flex; align-items:center; gap:2px; }
+.uf .ft-pm { display:inline-flex; }
+.uf .chip { display:inline-flex; align-items:center; gap:8px; height:24px; padding:0 8px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--ink-2); font-size:12px; white-space:nowrap; }
+.uf .chip:hover { background:var(--nav-hover); }
+.uf .cn { color:var(--ink-2); font-weight:500; }
+.uf .cn.dim { color:var(--muted); font-weight:400; }
+.uf .fw { display:inline-flex; align-items:center; gap:5px; }
+.uf .wl { color:var(--muted); }
+.uf .fw + .fw { margin-left:8px; }
+.uf .pc, .uf .pm-mp { font-variant-numeric:tabular-nums; color:var(--ink-2); }
+.uf .fdiv { width:1px; height:14px; margin:0 6px; background:var(--line-2); }
+.uf [data-tone='near'] { color:var(--needs) !important; }
+.uf [data-tone='full'] { color:var(--del) !important; }
+.uf .meter { display:inline-block; border-radius:var(--r-pill); background:var(--line-2); overflow:hidden; flex-shrink:0; }
+.uf .meter > span { display:block; height:100%; border-radius:inherit; background:var(--muted); }
+.uf .meter[data-level='near'] > span { background:var(--needs-fill); }
+.uf .meter[data-level='full'] > span { background:var(--del-fill); }
+.uf .ft-pill { display:inline-flex; align-items:center; gap:7px; height:24px; padding:0 10px; border:1px solid var(--line-3); border-radius:var(--r-pill); background:transparent; color:var(--ink-2); font-size:12px; white-space:nowrap; }
+.uf .segmented { display:inline-flex; gap:2px; padding:2px; border:1px solid var(--line-2); border-radius:var(--r); background:var(--input-bg); }
+.uf .segmented button { height:24px; padding:0 10px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--muted); font-size:12.5px; }
+.uf .segmented button[aria-checked='true'] { background:var(--surface-3); color:var(--ink); font-weight:500; }
+.uf .menu-item { display:flex; align-items:center; gap:10px; width:100%; height:32px; padding:0 8px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--ink-2); text-align:left; font-size:13px; }
+.uf .menu-item svg { color:var(--muted); flex-shrink:0; }
+.uf .popover { border-radius:var(--r-md); border:1px solid var(--line-3); background:var(--surface-2); }
+.uf .pm { width:360px; overflow:hidden; }
+.uf .pm-top { display:flex; align-items:center; justify-content:space-between; height:48px; padding:0 10px 0 14px; border-bottom:1px solid var(--line-2); }
+.uf .pm-title { font-size:13px; font-weight:500; color:var(--ink); }
+.uf .pm-sec + .pm-sec { border-top:1px solid var(--line-2); }
+.uf .pm-head { display:flex; align-items:center; gap:10px; width:100%; padding:11px 14px; border:0; background:transparent; text-align:left; }
+.uf .pm-mark { display:inline-flex; width:14px; justify-content:center; color:var(--ink); }
+.uf .pm-who { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.uf .pm-line { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.uf .pm-name { font-size:13px; font-weight:500; color:var(--ink); white-space:nowrap; }
+.uf .pm-acct { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.uf .pm-chev { display:inline-flex; color:var(--muted); }
+.uf .pm-cw { display:inline-flex; align-items:baseline; gap:8px; font-size:12px; }
+.uf .pm-cl { color:var(--muted); }
+.uf .pm-minis { display:flex; align-items:center; gap:14px; padding:0 14px 12px 38px; margin-top:-3px; }
+.uf .pm-mini { display:inline-flex; align-items:center; gap:6px; font-size:12px; white-space:nowrap; }
+.uf .pm-ml { color:var(--muted); }
+.uf .pm-body { display:flex; flex-direction:column; gap:12px; padding:0 14px 8px 38px; margin-top:-4px; }
+.uf .plan-email { font-size:12px; color:var(--muted); }
+.uf .plan-rows { display:flex; flex-direction:column; gap:12px; }
+.uf .plan-row { display:flex; flex-direction:column; gap:5px; }
+.uf .plan-title { font-size:12.5px; color:var(--ink-2); }
+.uf .plan-note { font-size:11.5px; color:var(--muted); }
+.uf .plan-switch { display:flex; flex-direction:column; gap:2px; margin:0 -8px; }
+.uf .plan-switch-title { padding:0 8px; font-size:12px; font-weight:500; color:var(--muted); }
+.uf .menu-item.plan-other { align-items:baseline; gap:8px; color:var(--ink); }
+.uf .plan-other-name { font-weight:500; }
+.uf .plan-other-plan { flex:1; min-width:0; font-size:12px; color:var(--muted); }
+.uf .plan-other-use { font-size:12px; color:var(--muted); }
+.uf .plan-foot { padding:6px; border-top:1px solid var(--line-2); }
+</style>
 </helmet>
 <div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
 
@@ -79,7 +143,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
 <div style="flex: 1; min-height: 0; overflow-y: auto; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px">
-<div style="max-width: 700px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px">
+<div style="max-width: 700px; margin: {{ page.shift }} auto 0; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px">
 <div>
 <div style="display: flex; align-items: center; gap: 24px">
 <h1 style="flex: 1; min-width: 0; margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">{{ page.title }}</h1>
@@ -106,16 +170,21 @@ details.dd>summary::-webkit-details-marker{display:none}
 </div></sc-if>
 <sc-if value="{{ sec.notBanner }}" hint-placeholder-val="{{ true }}">
 <div style="display: flex; align-items: center; gap: 16px"><h2 style="flex: 1; min-width: 0; margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2><sc-if value="{{ sec.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ sec.tag }}</span></sc-if><sc-if value="{{ sec.hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 28px; margin: -3px 0; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: {{ sec.actBg }}; color: {{ sec.actColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><sc-if value="{{ sec.busy }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>{{ sec.action }}</button></sc-if></div>
+<sc-for list="{{ sec.cards }}" as="card" hint-placeholder-count="1">
 <div style="border-radius: 10px; border: 1px solid #1f2024; background: #141516">
-<sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+<sc-for list="{{ card.rows }}" as="r" hint-placeholder-count="3">
 <div style="display: flex; flex-wrap: {{ r.wrap }}; align-items: {{ r.align }}; column-gap: 24px; row-gap: 10px; min-height: {{ r.minH }}; box-sizing: border-box; padding: {{ r.pad }}; border-top: {{ r.border }}">
 <sc-if value="{{ r.isPreset }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" style="width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; margin-top: {{ r.ringTop }}; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid {{ r.ringBorder }}; opacity: {{ r.ringOpacity }}; background: {{ r.ringBg }}; color: #08090a; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer">{{ r.mark }}</button></sc-if>
 <div style="flex: 1 1 {{ r.basis }}; min-width: 0; display: flex; flex-direction: column; gap: 2px">
 <sc-if value="{{ r.isRule }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.labelAct }}" aria-expanded="{{ r.expanded }}" style="{{ r.labelStyle }}">{{ r.label }}</button></sc-if>
+<sc-if value="{{ r.isEdit }}" hint-placeholder-val="{{ false }}"><input type="text" aria-label="Name for {{ r.label }}" autocomplete="off" spellcheck="false" value="{{ r.label }}" placeholder="{{ r.placeholder }}" style="height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: 7px; border: 1px solid #3a3c42; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13.5px; font-weight: 500; outline: none"></sc-if>
 <sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}<sc-if value="{{ r.hasTail }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 400; color: #d0d6e0"> {{ r.tail }}</span></sc-if></span></sc-if>
 <sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
 <sc-if value="{{ r.hasNote }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.note }}</span></sc-if>
+<sc-if value="{{ r.hasStack }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ r.stack }}" as="sl" hint-placeholder-count="3"><span style="font-size: 12.5px; color: #8a8f98">{{ sl }}</span></sc-for></sc-if>
+<sc-if value="{{ r.hasWarn }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #d0d6e0"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f2c55c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1"></path></svg>{{ r.warn }}<sc-if value="{{ r.hasWarnStep }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="{{ r.warnStepLabel }}" style="padding: 0; border: 0; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer">{{ r.warnStep }}</button></sc-if></span></sc-if>
+<sc-if value="{{ r.hasWarnNote }}" hint-placeholder-val="{{ false }}"><span style="margin-left: 18px; font-size: 12.5px; color: #8a8f98">{{ r.warnNote }}</span></sc-if>
 <sc-if value="{{ r.hasAvail }}" hint-placeholder-val="{{ false }}"><span style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: #b7bcc4"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1"></path></svg>{{ r.avail }}</span></sc-if>
 <sc-if value="{{ r.hasMono }}" hint-placeholder-val="{{ false }}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #b7bcc4; {{ r.monoStyle }}">{{ r.mono }}</span></sc-if>
 </div>
@@ -142,8 +211,9 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: {{ r.codeColor }}"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre">{{ ln }}</span></sc-for></div></sc-if>
 <sc-if value="{{ r.isCommand }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">{{ r.value }}</span></sc-if>
 <sc-if value="{{ r.isNote }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-size: 12.5px; color: #8a8f98">{{ r.value }}</span></sc-if>
-<sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ r.tag }}</span></sc-if>
-<sc-if value="{{ r.hasActions }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; margin-right: -10px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" aria-label="{{ a.label }} {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div></sc-if>
+<sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; margin-top: {{ r.tagMt }}; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ r.tag }}</span></sc-if>
+<sc-if value="{{ r.hasActions }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; margin-top: {{ r.actMt }}; margin-right: -10px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" aria-label="{{ a.label }} {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div></sc-if>
+<sc-if value="{{ r.isEdit }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; align-items: center; gap: 4px"><button type="button" aria-label="Cancel renaming {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button><button type="button" aria-label="Save the name for {{ r.label }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Save</button></div></sc-if>
 <sc-if value="{{ r.isIcon }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 10px">
 <span aria-hidden="true" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 7px; border: 1px solid #2a2b30; font-size: 12px; font-weight: 600; color: #f7f8f8">{{ r.tileLetter }}<sc-if value="{{ r.tileAvatar }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg></sc-if></span>
 <button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
@@ -177,25 +247,17 @@ details.dd>summary::-webkit-details-marker{display:none}
 </div>
 </sc-for>
 </div>
+</sc-for>
 <sc-if value="{{ sec.hasNote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 0 2px; font-size: 12.5px; color: #8a8f98">{{ sec.note }}</p></sc-if>
 </sc-if>
 </section>
 </sc-for>
 </div>
 </div>
-<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
-<span></span>
-<span style="display: inline-flex; align-items: center; gap: 6px">
-<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
-<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
-<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
-<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
-<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
-<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="QuickAsk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
-</div></details>
-
-</span>
+<footer class="uf">
+<span class="ft-l"><button type="button" class="chip on" aria-label="Claude Code, 2nd account, active: 5-hour 9%, weekly 19%. Opens usage"><span class="ft-pm"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="var(--claude)" style="flex-shrink:0"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span><span class="cn">2nd account</span><span class="fw"><span class="wl">5h</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:9%"></span></span><span class="pc" data-tone="ok">9%</span></span><span class="fw"><span class="wl">wk</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:19%"></span></span><span class="pc" data-tone="ok">19%</span></span></button><button type="button" class="chip" aria-label="Claude Code, Main account: 5-hour 12%. Switch to it"><span class="cn dim">Main account</span><span class="pc" data-tone="ok">12%</span></button><button type="button" class="chip" aria-label="Claude Code, 3rd account: 5-hour 75%. Switch to it"><span class="cn dim">3rd account</span><span class="pc" data-tone="near">75%</span></button><span class="fdiv"></span><button type="button" class="chip on" aria-label="Codex, cjjutbaofficial, active: 5-hour 31%, weekly 16%. Opens usage"><span class="ft-pm"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" style="color:var(--ink);flex-shrink:0"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></span><span class="cn">cjjutbaofficial</span><span class="fw"><span class="wl">5h</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:31%"></span></span><span class="pc" data-tone="ok">31%</span></span><span class="fw"><span class="wl">wk</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:16%"></span></span><span class="pc" data-tone="ok">16%</span></span></button></span><span class="grow"></span>
 </footer>
+
 </div>
 
 <sc-if value="{{ page.hasModal }}" hint-placeholder-val="{{ false }}"><div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
@@ -205,15 +267,21 @@ details.dd>summary::-webkit-details-marker{display:none}
 <button type="button" aria-label="Close" style="width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button>
 </div>
 <sc-if value="{{ modal.isAccount }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
-<div role="radiogroup" aria-label="Account type" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
-<button type="button" role="radio" aria-checked="false" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
-<button type="button" role="radio" aria-checked="true" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: #24252a; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
-</div>
+<sc-if value="{{ modal.hasKinds }}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="Account type" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
+<button type="button" role="radio" aria-checked="{{ modal.subChecked }}" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ modal.subBg }}; color: {{ modal.subColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Subscription</button>
+<button type="button" role="radio" aria-checked="{{ modal.keyChecked }}" style="flex: 1; height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ modal.keyBg }}; color: {{ modal.keyColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">API key</button>
+</div></sc-if>
+<sc-if value="{{ modal.isSub }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 12.5px; color: #8a8f98">{{ modal.help }}</p></sc-if>
+<sc-if value="{{ modal.hasError }}" hint-placeholder-val="{{ false }}"><p role="alert" style="display: flex; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; color: #f7f8f8"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg>{{ modal.error }}</p></sc-if>
+<sc-if value="{{ modal.isWait }}" hint-placeholder-val="{{ false }}"><p role="status" style="margin: 0; font-size: 12.5px; color: #8a8f98">Finish signing in in your browser. <button type="button" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12.5px; text-decoration: underline; cursor: pointer">Open the page again</button></p></sc-if>
+<sc-if value="{{ modal.hasCode }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-code" style="font-size: 12px; font-weight: 500; color: #8a8f98">Code, if the sign-in page shows one</label><input id="acct-code" type="text" autocomplete="off" spellcheck="false" value="" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div></sc-if>
+<sc-if value="{{ modal.isKey }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 16px">
 <div style="display: flex; flex-direction: column; gap: 6px"><label for="acct-label" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="acct-label" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="Work key" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div>
 <div style="display: flex; flex-direction: column; gap: 6px">
 <div style="display: flex; align-items: baseline; justify-content: space-between"><label for="acct-key" style="font-size: 12px; font-weight: 500; color: #8a8f98">API key</label><button type="button" aria-label="Get a key at console.anthropic.com" style="padding: 0; border: 0; background: transparent; color: #b7bcc4; font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer">Get key</button></div>
 <input id="acct-key" type="password" autocomplete="off" spellcheck="false" value="{{ modal.key }}" placeholder="sk-ant-" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none">
 <span style="font-size: 12.5px; color: #8a8f98">{{ modal.hint }}</span></div>
+</div></sc-if>
 </div></sc-if>
 <sc-if value="{{ modal.isForm }}" hint-placeholder-val="{{ true }}"><div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
 <p style="margin: 0; color: #8a8f98">{{ modal.intro }}</p>
@@ -223,7 +291,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
 <span style="flex: 1"></span>
 <button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button>
-<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ modal.confirm }}</button>
+<sc-if value="{{ modal.hasConfirm }}" hint-placeholder-val="{{ true }}"><button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; opacity: {{ modal.confirmOpacity }}; cursor: pointer">{{ modal.confirm }}</button></sc-if>
 </div>
 </section></sc-if>
 </div>
@@ -291,9 +359,12 @@ class Component extends DCLogic {
     var text = function (label, desc) { return { label: label, type: 'text', desc: desc }; };
     var kbd = function (label, keys) { return { label: label, type: 'kbd', keys: keys }; };
     var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
+    // KERNEL-664: an account's heading row (label, email and plan, Active in words) and its windows under it. A key has no windows.
+    var usageAccount = function (label, who, on, windows) { return [account(label, [who], on, undefined, { heading: true })].concat(windows.map(function (w) { return Object.assign({}, w, { ofAccount: true }); })); };
     // KERNEL-406. A role row picks provider, model and effort. An account row says which one is active in words, never a dot.
     var role = function (label, provider, model, effort) { return { label: label, type: 'role', sels: [[provider, label + ' provider'], [model, label + ' model'], [effort, label + ' effort']] }; };
-    var account = function (label, desc, active, actions) { return { label: label, desc: desc, type: 'account', tag: active ? 'Active' : '', actions: actions }; };
+    var account = function (label, stack, active, actions, extra) { return Object.assign({ label: label, stack: stack, type: 'account', tag: active ? 'Active' : '', actions: actions }, extra || {}); };
+    var usage = function (five, fiveAt, week, weekAt) { return ['5-hour ' + five + '% used \u00b7 resets ' + fiveAt, 'Weekly ' + week + '% used \u00b7 resets ' + weekAt]; };
     var path = function (label, mono, desc, actions) { return { label: label, desc: desc, mono: mono, type: 'path', actions: actions }; };
     var providerTabs = function (on) { return ['Claude Code', 'Codex'].map(function (t, i) { return [t, i === on]; }); };
     // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
@@ -348,6 +419,15 @@ class Component extends DCLogic {
     };
     // KERNEL-437. A copied .env that looks like production: the files and why, never the values. Don't copy adds them to the room's exclusions, Keep copying remembers the choice.
     var prodBanner = { banner: { title: '2 files look like production', detail: 'Agents run commands in every worktree, so a migration or seed script there could reach a live database.', primary: 'Don\u2019t copy these files', secondary: 'Keep copying', files: [['.env', [['DATABASE_URL'], ' points to a remote database']], ['.env.production', [['STRIPE_SECRET_KEY'], ' is a live key']]] }, rows: [] };
+    var claudeWork = function (on) { return account('Work', ['cj@example.com \u00b7 Claude Max \u00b7 Claude Code\u2019s own login'].concat(usage(62, 'at 3:40 PM', 38, 'Monday at 9:00 AM')), on, on ? ['Rename', 'Sign out'] : ['Switch to', 'Rename', 'Sign out']); };
+    var claudePersonal = function (extra) { return account('Personal', ['cj@jutba.example \u00b7 Claude Pro'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], extra); };
+    var codexOwn = function (on) { return account('cj@example.com', ['ChatGPT Plus \u00b7 Codex\u2019s own login'].concat(usage(7, 'at 4:15 PM', 21, 'Thursday at 8:00 AM')), on, on ? ['Rename', 'Sign out'] : ['Switch to', 'Rename', 'Sign out']); };
+    var codexPersonal = function () { return account('Personal', ['cj@jutba.example \u00b7 ChatGPT Pro'].concat(usage(3, 'at 6:20 PM', 9, 'Friday at 8:00 AM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove']); };
+    var keyRow = function (on) { return account('Work key', ['API key \u00b7 billed per token'], on, on ? ['Rename', 'Remove'] : ['Switch to', 'Rename', 'Remove']); };
+    var AUTO = { claude: 'Kernel moves agents to the Claude Code account with the most room and says so in the chat. It never moves to an API key.', codex: 'Kernel moves agents to the Codex account with the most room and says so in the chat. It never moves to an API key.' };
+    var accountsSection = function (provider, rows) {
+      return { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: rows.concat([tog('autoswitch', 'At a limit, switch to another account', false, AUTO[provider])]) };
+    };
     var ROOMS = {
       a: { letter: 'A', repo: 'cjjutba/client-a', path: '~/Projects/client-a', team: 'Lead, Frontend, Backend, QA, Reviewer' },
       b: { letter: 'B', repo: 'cjjutba/client-b', path: '~/Projects/client-b', team: 'Lead, Backend, Reviewer' },
@@ -396,9 +476,14 @@ class Component extends DCLogic {
         { title: 'Notify me when', rows: [tog('n1', 'An agent asks for permission', true), tog('n2', 'A plan is ready for review', true), tog('n3', 'A PR is ready to merge', true), tog('n4', 'A check fails', true), tog('n5', 'A workspace is finished', true), tog('n6', 'An agent is idle for 10 minutes', false)] },
         { title: 'Delivery', rows: [sel('sound', 'Sound', ['Subtle', 'Chime', 'None']), sel('quiet', 'Quiet hours', ['Off', '23:00 to 07:00']), btn('Phone', 'Set up', 'Approve requests from your iPhone with Remote Control')] }
       ] },
+      // KERNEL-664: every signed-in account with its own windows, Claude Code then Codex, the account agents are on first (the Usage popover's order and copy).
       account: { title: 'Account and usage', sections: [
-        { title: 'Usage', rows: [meter('Current session', 62, '62% used · resets at 3:40 PM'), meter('This week, all models', 38, '38% used · resets Monday at 9:00 AM'), meter('This week, Fable 5.1', 90, '90% used · resets Monday at 9:00 AM')] },
-        { title: 'Claude', rows: [val('Plan', 'Claude Max'), btn('Details', 'Open /usage', 'The same numbers Claude Code shows'), tog('warn', 'Warn me before the weekly limit', true), tog('pause', 'Pause new work when close to the limit', true, 'Running agents finish their turn, new work waits')] },
+        { title: 'Claude Code', rows: [].concat(
+          usageAccount('Work', 'cj@example.com \u00b7 Claude Max', true, [meter('5-hour', 62, '62% used \u00b7 resets at 3:40 PM'), meter('Weekly', 38, '38% used \u00b7 resets Monday at 9:00 AM'), meter('Weekly, Fable 5.1', 90, '90% used \u00b7 resets Monday at 9:00 AM')]),
+          usageAccount('Personal', 'cj@jutba.example \u00b7 Claude Pro', false, [meter('5-hour', 8, '8% used \u00b7 resets at 5:10 PM'), meter('Weekly', 14, '14% used \u00b7 resets Wednesday at 6:00 PM')]),
+          usageAccount('Work key', 'API key \u00b7 Billed per token', false, [])) },
+        { title: 'Codex', rows: usageAccount('cj@example.com', 'ChatGPT Plus', true, [meter('5-hour', 7, '7% used \u00b7 resets at 4:15 PM'), meter('Weekly', 21, '21% used \u00b7 resets Thursday at 8:00 AM')]) },
+        { title: 'Claude settings', rows: [btn('Details', 'Open /usage', 'The same numbers Claude Code shows'), tog('warn', 'Warn me before the weekly limit', true), tog('pause', 'Pause new work when close to the limit', true, 'Running agents finish their turn, new work waits')] },
         { title: 'Session', rows: [btn('Sign out', 'Sign out', 'Agents stop until you sign in again')] }
       ] },
       shortcuts: { title: 'Shortcuts', sections: [
@@ -412,25 +497,21 @@ class Component extends DCLogic {
       ] },
       // KERNEL-406: Claude Code and Codex side by side. Kernel already calls teammates agents, so the page is Providers.
       providers: { title: 'Providers', tabs: providerTabs(0), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cj@example.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
-          account('Work', 'Claude Team \u00b7 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM', false, ['Use', 'Sign out', 'Remove'])
-        ] },
+        accountsSection('claude', [claudeWork(true), claudePersonal(), keyRow()]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
         { title: 'Executable', rows: [path('Claude Code', 'Bundled with Kernel', 'Agents run on this copy of Claude Code', ['Choose', 'Use system Claude']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.claude/settings.json' })] }
       ] },
       'providers-codex': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cj@example.com', 'ChatGPT Plus \u00b7 Codex\u2019s own login \u00b7 7% of the 5-hour limit used', true, ['Sign out'])
-        ] },
+        accountsSection('codex', [codexOwn(true), codexPersonal(), keyRow()]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'ChatGPT'), val('Plan', 'ChatGPT Plus'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser, for the active account')] },
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
       ] },
       'providers-codex-out': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
-        { title: 'Accounts', action: 'Add account', note: 'Sign in with your ChatGPT plan to run agents on Codex.', rows: [
-          account('Codex\u2019s own login', 'Not signed in', false, ['Sign in'])
-        ] },
+        accountsSection('codex', [
+          account('cj@example.com', ['Signed out \u00b7 Codex\u2019s own login'], false, ['Sign in', 'Rename']),
+          codexPersonal()
+        ]),
         { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'Not signed in'), btn('Sign in', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser')] },
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
@@ -584,21 +665,42 @@ class Component extends DCLogic {
     // KERNEL-435: the room's mode menu: Use app default, then the four modes.
     all['r-permissions-mode'] = Object.assign({}, all['r-permissions'], { nav: 'r-permissions' });
     all['r-permissions-mode'].sections = all['r-permissions'].sections.map(function (sec, i) { return i !== 0 ? sec : Object.assign({}, sec, { rows: [modesel('Permission mode', 'Chats here start in this mode. The app default is Auto.', MODES, 0, true)] }); });
-    // KERNEL-522: an API key is another account in the same list. Where a login row says its plan and usage, the key row says how it is billed.
-    // It has no Sign out and no meters of its own. The Add account sheet opens over the Claude Code tab, with Subscription and API key as its two steps.
-    var keyRow = account('Work key', 'API key · billed per token', false, ['Use', 'Remove']);
-    var withKey = function (page) { return Object.assign({}, page, { sections: page.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: sec.rows.slice(0, 1).concat([keyRow]) }); }) }); };
-    all['providers-apikey'] = Object.assign(withKey(all.providers), { nav: 'providers' });
-    all['providers-codex-apikey'] = withKey(all['providers-codex']);
-    all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
-    // A key in use changes nothing about the subscription behind it: its meters, plan and controls stay, with one line above them saying where agents are running.
-    all['account-apikey'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i ? sec : Object.assign({}, sec, { rows: [text('Agents are on Work key, billed per token.')].concat(sec.rows) }); }) });
-    // The key is the active account. Status reads the key: its login method, and no plan or email. Sign in again becomes Replace key, which opens Add account to paste a new key.
+    var rest = function (page) { return page.sections.slice(1); };
+    all['providers-apikey'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), keyRow()])].concat(rest(all.providers)) });
+    all['providers-codex-apikey'] = Object.assign({}, all['providers-codex'], { sections: [accountsSection('codex', [codexOwn(true), keyRow()])].concat(rest(all['providers-codex'])) });
+    var HELP = {
+      claude: 'Kernel opens Claude\u2019s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.',
+      codex: 'Kernel opens ChatGPT\u2019s sign-in in your browser, and names the account after its email. The account shares your MCP servers, plugins, skills and chats, and you switch to it in Settings or the account menu.'
+    };
+    all['providers-add-apikey'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'key', title: 'Add a Claude account', name: 'Work key', key: 'sk-ant-api03-5f1c9d27a0b84e63', hint: 'Billed per token to this key. Kernel only uses it after you switch to it.', confirm: 'Add key' } });
+    all['providers-add'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'sub', title: 'Add a Claude account', help: HELP.claude, confirm: 'Sign in with Claude' } });
+    all['providers-add-wait'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'wait', code: true, title: 'Add a Claude account', confirm: 'Send code' } });
+    all['providers-codex-add'] = Object.assign({}, all['providers-codex'], { modal: { account: true, step: 'sub', title: 'Add a Codex account', help: HELP.codex, confirm: 'Sign in with ChatGPT' } });
+    all['providers-codex-add-wait'] = Object.assign({}, all['providers-codex'], { modal: { account: true, step: 'wait', code: false, title: 'Add a Codex account' } });
+    all['providers-rename'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), claudePersonal({ renaming: true, placeholder: 'cj@jutba.example', actions: null }), keyRow()])].concat(rest(all.providers)) });
+    var legacy = account('Personal', ['Sign in again to show email and plan'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM'), ['As of its last turn at 2:10 PM']), false, ['Switch to', 'Rename', 'Sign in again', 'Remove']);
+    all['providers-legacy'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), legacy, keyRow()])].concat(rest(all.providers)) });
+    // KERNEL-617. An added account lists the MCP servers that need a sign-in on it, and says when it waits on the macOS Keychain or shares an organization with another account.
+    var personalMcp = account('Personal', ['cj@jutba.example \u00b7 Claude Pro'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], { warn: 'Needs sign-in: Google Drive, Gmail', warnStep: 'Sign in', warnStepLabel: 'Sign in to Google Drive and Gmail on Personal' });
+    all['providers-mcp'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), personalMcp, keyRow()])].concat(rest(all.providers)) });
+    var personalKeychain = account('Personal', ['cj@jutba.example \u00b7 Claude Pro'], false, ['Rename', 'Remove'], { warn: 'Waiting for Keychain access', warnNote: 'Allow Kernel in the macOS prompt to use this account.' });
+    all['providers-keychain'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [claudeWork(true), personalKeychain, keyRow()])].concat(rest(all.providers)) });
+    var workTeam = account('Work', ['cj@example.com \u00b7 Claude Team \u00b7 Claude Code\u2019s own login'].concat(usage(62, 'at 3:40 PM', 38, 'Monday at 9:00 AM')), true, ['Rename', 'Sign out']);
+    var personalTeam = account('Personal', ['cj@jutba.example \u00b7 Claude Team'].concat(usage(8, 'at 5:10 PM', 14, 'Wednesday at 6:00 PM')), false, ['Switch to', 'Rename', 'Sign out', 'Remove'], { avail: 'Same organization as Work' });
+    all['providers-sameorg'] = Object.assign({}, all.providers, { nav: 'providers', sections: [accountsSection('claude', [workTeam, personalTeam, keyRow()]), Object.assign({}, all.providers.sections[1], { rows: all.providers.sections[1].rows.map(function (r) { return r.label === 'Plan' ? val('Plan', 'Claude Team') : r; }) })].concat(all.providers.sections.slice(2)) });
+    all['providers-add-duplicate'] = Object.assign({}, all.providers, { nav: 'providers', modal: { account: true, step: 'sub', title: 'Add a Claude account', help: HELP.claude, error: 'That account is already in Kernel', confirm: 'Sign in with Claude' } });
+    // KERNEL-664: a key in use goes first and says it is billed per token. The subscriptions keep their last-read windows. Codex signed out is one line with Sign in.
+    var claudeKeyFirst = function (sec) { return Object.assign({}, sec, { rows: [].concat(
+      usageAccount('Work key', 'API key \u00b7 Billed per token', true, []),
+      usageAccount('Work', 'cj@example.com \u00b7 Claude Max', false, [meter('5-hour', 62, '62% used \u00b7 resets at 3:40 PM'), meter('Weekly', 38, '38% used \u00b7 resets Monday at 9:00 AM'), meter('Weekly, Fable 5.1', 90, '90% used \u00b7 resets Monday at 9:00 AM')]),
+      usageAccount('Personal', 'cj@jutba.example \u00b7 Claude Pro', false, [meter('5-hour', 8, '8% used \u00b7 resets at 5:10 PM'), meter('Weekly', 14, '14% used \u00b7 resets Wednesday at 6:00 PM')])) }); };
+    all['account-apikey'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i ? sec : claudeKeyFirst(sec); }) });
+    all['account-codex-out'] = Object.assign({}, all.account, { nav: 'account', sections: all.account.sections.map(function (sec, i) { return i === 1 ? { title: 'Codex', rows: [btn('Codex isn\u2019t signed in', 'Sign in')] } : sec; }) });
+    // KERNEL-664: the page scrolled down to the Codex section, which sits below the Claude Code accounts.
+    all['account-codex'] = Object.assign({}, all.account, { nav: 'account', shift: -560 });
+    all['account-codex-out'].shift = -560;
     all['providers-apikey-active'] = Object.assign({}, all.providers, { nav: 'providers', sections: [
-      Object.assign({}, all.providers.sections[0], { rows: [
-        account('cj@example.com', 'Claude Max · Claude Code’s own login · 62% of the 5-hour limit used', false, ['Use', 'Sign out']),
-        account('Work key', 'API key · billed per token', true, ['Remove'])
-      ] }),
+      accountsSection('claude', [claudeWork(false), keyRow(true)]),
       { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'API key'), btn('Replace key', 'Replace key', 'Opens Add account, where you paste a new key for the active account')] },
       all.providers.sections[2]
     ] });
@@ -627,6 +729,17 @@ class Component extends DCLogic {
       });
       return { title: g.title, items: items, show: items.length > 0 };
     });
+    var modalVals = function (m) {
+      if (!m.account) return Object.assign({ isAccount: false, isForm: true, hasConfirm: true, confirmOpacity: '1' }, m);
+      var step = m.step || 'key', on = '#24252a', off = 'transparent';
+      return Object.assign({
+        isAccount: true, isForm: false, hasError: !!m.error, hasKinds: step !== 'wait',
+        subChecked: step === 'sub' ? 'true' : 'false', subBg: step === 'sub' ? on : off, subColor: step === 'sub' ? '#f7f8f8' : '#8a8f98',
+        keyChecked: step === 'key' ? 'true' : 'false', keyBg: step === 'key' ? on : off, keyColor: step === 'key' ? '#f7f8f8' : '#8a8f98',
+        isSub: step === 'sub', isWait: step === 'wait', hasCode: !!m.code, isKey: step === 'key',
+        hasConfirm: step !== 'wait' || !!m.code, confirmOpacity: step === 'wait' ? '0.55' : '1'
+      }, m);
+    };
     var setVal = function (id, v) { var n = Object.assign({}, self.state.vals); n[id] = v; self.setState({ vals: n }); };
     var P = pageMap[s.page];
     var LABEL = 'font-size: 13.5px; font-weight: 500';
@@ -638,7 +751,7 @@ class Component extends DCLogic {
       var rows = sec.rows.filter(function (r) { return !r.under || openOf(r.under); });
       var MONO = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0";
       var banner = sec.banner ? { title: sec.banner.title, detail: sec.banner.detail, primary: sec.banner.primary, secondary: sec.banner.secondary, files: sec.banner.files.map(function (f) { return { name: f[0], why: f[1].map(function (w) { return typeof w === 'string' ? { t: w, style: '' } : { t: w[0], style: MONO }; }) }; }) } : {};
-      return { title: sec.title, hasAction: !!sec.action, action: sec.busy || sec.action || '', busy: !!sec.busy, actBg: sec.busy ? '#1c1d21' : 'transparent', actColor: sec.busy ? '#b7bcc4' : '#f7f8f8',
+      var built = { title: sec.title, hasAction: !!sec.action, action: sec.busy || sec.action || '', busy: !!sec.busy, actBg: sec.busy ? '#1c1d21' : 'transparent', actColor: sec.busy ? '#b7bcc4' : '#f7f8f8',
         isBanner: !!sec.banner, notBanner: !sec.banner, banner: banner, hasTag: !!sec.tag, tag: sec.tag || '', hasNote: !!sec.note, note: sec.note || '', rows: rows.map(function (r, i) {
         var v = r.id && s.vals[r.id] !== undefined ? s.vals[r.id] : undefined;
         var o = {
@@ -646,7 +759,7 @@ class Component extends DCLogic {
           border: i === 0 ? '0' : '1px solid #1d1e22', labelStyle: LABEL, labelAct: function () {},
           isSelect: r.type === 'select', isToggle: r.type === 'toggle', isSegment: r.type === 'segment', isButton: r.type === 'button',
           isValue: r.type === 'value', isCode: r.type === 'code', isKbd: r.type === 'kbd', isMeter: r.type === 'meter',
-          isRule: r.type === 'rule', notRule: r.type !== 'rule', isDisclose: r.type === 'instr' || r.type === 'kdisc', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
+          isRule: r.type === 'rule', notRule: r.type !== 'rule' && !r.renaming, isDisclose: r.type === 'instr' || r.type === 'kdisc', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
           pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
@@ -656,7 +769,8 @@ class Component extends DCLogic {
           hasStat: !!r.stat, stat: r.stat ? r.stat[0] : '', statOk: !!r.stat && r.stat[1] === 'ok', statFail: !!r.stat && r.stat[1] === 'fail', statBusy: !!r.stat && r.stat[1] === 'busy',
           statColor: r.stat ? { ok: '#d0d6e0', fail: '#f7f8f8', busy: '#b7bcc4', none: '#8a8f98' }[r.stat[1]] : '#d0d6e0',
           hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || '',
-          align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || ''
+          align: 'center', ringTop: '0', ringOpacity: '1', isModeSel: false, hasNote: !!r.note, note: r.note || '', hasAvail: !!r.avail, avail: r.avail || '',
+          hasStack: !!r.stack, stack: r.stack || [], hasWarn: !!r.warn, warn: r.warn || '', hasWarnStep: !!r.warnStep, warnStep: r.warnStep || '', warnStepLabel: r.warnStepLabel || r.warnStep || '', hasWarnNote: !!r.warnNote, warnNote: r.warnNote || '', isEdit: !!r.renaming, placeholder: r.placeholder || '', actMt: '0', tagMt: '0'
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
@@ -713,6 +827,9 @@ class Component extends DCLogic {
         }
         if (r.type === 'role') { o.isMulti = true; o.sels = r.sels.map(function (x) { return { value: x[0], aria: x[1] }; }); o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'account' || r.type === 'path') { o.wrap = 'nowrap'; o.basis = '120px'; }
+        if (r.type === 'account') { o.align = 'flex-start'; o.tagMt = '-1px'; o.actMt = '-5px'; }
+        if (r.ofAccount) { o.labelStyle = 'font-size: 13px; color: #d0d6e0'; }
+        if (r.renaming) { o.notRule = false; o.actMt = '0'; }
         if (r.type === 'preview') { o.isPreview = true; o.isButton = true; o.wrap = 'wrap'; }
         if (r.type === 'icon') {
           var avatar = r.kind === 'avatar';
@@ -767,15 +884,18 @@ class Component extends DCLogic {
         }
         return o;
       }) };
+      // KERNEL-664: an account's heading row starts its own card, so each account reads as one block under the provider.
+      built.cards = []; built.rows.forEach(function (row, k) { if (!built.cards.length || rows[k].heading) built.cards.push({ rows: [] }); var card = built.cards[built.cards.length - 1]; if (!card.rows.length) row.border = '0'; card.rows.push(row); });
+      return built;
     });
     return {
       accent: accent,
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       groups: groups,
       navShift: inRoom ? '-170px' : '0',
-      modal: P.modal ? Object.assign({ isAccount: !!P.modal.account, isForm: !P.modal.account }, P.modal) : {},
+      modal: P.modal ? modalVals(P.modal) : {},
       page: {
-        title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
+        title: P.title, shift: (P.shift || 0) + 'px', intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
         hasTabs: !!P.tabs, tabs: (P.tabs || []).map(function (t) { return { label: t[0], selected: t[1] ? 'true' : 'false', bg: t[1] ? '#1c1d21' : 'transparent', color: t[1] ? '#f7f8f8' : '#8a8f98' }; }),
         isRoom: !!P.isRoom, fileMain: P.shared ? 'Open settings.toml' : 'Open settings.local.toml', fileAlt: P.shared ? 'Open settings.local.toml' : 'Open settings.toml', hasModal: !!P.modal, menuShown: !!s.menu, menuOpen: s.menu ? 'true' : 'false', menuBg: s.menu ? '#1c1d21' : 'transparent',
         toggleMenu: function () { self.setState({ menu: !self.state.menu }); }
