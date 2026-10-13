@@ -1,100 +1,95 @@
-import { useId, useRef, useState, type FormEvent } from 'react'
+import './agents.css'
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { KERNEL_VARS, SCRIPT_VARS, SETUP_VARS } from '@shared/kernelVars'
 import type { Room, RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { actions, getState } from '../../../store'
-import { Button, ConfirmDialog, Icon, Modal, useBusy } from '../../../ui'
-import { NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { Button, ConfirmDialog, Modal, useBusy } from '../../../ui'
+import { DataTable, NoRoom, Page, RoomPage, Section, sourceLine, useRoomPage, type TableRow } from '../kit'
+import { RowMenu } from './RowMenu'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchRoomSettings } from '../useSettings'
 
-const NOTE = 'Changes apply to chats and scripts started afterwards.'
-
-/** Settings > Environment (SettingsEnvironment.png), and a room's Environment page (SettingsRoomEnvironment.png). One page serves both. */
+/** Settings > Environment, and a room's Environment page (AgentsPage.dc.html, KERNEL-680). One page serves both. */
 export function Environment({ roomId }: { roomId?: string }) {
   const { room, rs } = useRoomPage(roomId)
   const { env, error } = useEnv(roomId)
   if (roomId && !room) return <NoRoom />
+  const add = (primary: boolean) => <Button variant={primary ? 'primary' : 'secondary'} icon="plus" onClick={() => actions.ui.openModal({ name: 'envVar', roomId })}>Add variable</Button>
   const sections = (
     <>
-      <Section title="Variables" action={<Button onClick={() => actions.ui.openModal({ name: 'envVar', roomId })}>Add variable</Button>}>
-        <Variables roomId={roomId} room={room} env={env} error={error} />
-      </Section>
+      <Variables roomId={roomId} room={room} env={env} error={error} action={room ? add(false) : undefined} />
       {room && roomId && <EnvFiles roomId={roomId} rs={rs} env={env} />}
-      <KernelVars startOpen={!!room} />
+      {!room && <KernelVars />}
     </>
   )
   return room
-    ? <RoomPage room={room} rs={rs} title="Environment" intro={`Variables for ${room.name}. ${NOTE}`}>{sections}</RoomPage>
-    : <Page title="Environment" intro={`Variables every chat, script and big terminal tab gets, in every room. ${NOTE}`}>{sections}</Page>
+    ? <RoomPage room={room} rs={rs} title="Environment">{sections}</RoomPage>
+    : <Page title="Environment" action={add(true)}>{sections}</Page>
 }
 
-function Variables({ roomId, room, env, error }: { roomId?: string; room?: Room; env: EnvList | null; error: string | null }) {
-  const [deleting, setDeleting] = useState<string | null>(null)
-  const [busy, run] = useBusy<'delete'>()
-  if (error) return <div className="set-empty" role="alert">Could not read the variables. {error}</div>
+/**
+ * Your variables as a table: the name, the value as a fixed run of dots, Show on hover and a menu with Edit and Remove. Show asks main for
+ * the value, which lives only in this component's state while it is on screen. It hides again on a second press, or when focus leaves the row.
+ */
+function Variables({ roomId, room, env, error, action }: { roomId?: string; room?: Room; env: EnvList | null; error: string | null; action?: ReactNode }) {
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [revealed, setRevealed] = useState<Record<string, string>>({})
+  const [busy, run] = useBusy<string>()
+  // A hide that lands while a reveal is in flight cancels it, so a late answer never shows a value the user moved away from.
+  const request = useRef<Record<string, number>>({})
+  if (error) return <Section title="Variables" action={action}><div className="set-empty" role="alert">Could not read the variables. {error}</div></Section>
   if (!env) return null
-  const remove = (name: string) => run('delete', async () => {
+  const hide = (name: string) => { request.current[name] = (request.current[name] ?? 0) + 1; setRevealed(({ [name]: _gone, ...rest }) => rest) }
+  const show = (name: string) => run(`show:${name}`, async () => {
+    const mine = (request.current[name] = (request.current[name] ?? 0) + 1)
+    try {
+      const v = await call('env.reveal', { roomId, name })
+      if (mine === request.current[name]) setRevealed((r) => ({ ...r, [name]: v }))
+    } catch (e) {
+      if (mine === request.current[name]) actions.ui.toast({ title: `Could not show ${name}`, sub: cleanError(e) })
+    }
+  })
+  const remove = (name: string) => run('remove', async () => {
     try {
       await call('env.set', { roomId, name, value: null })
       await envChanged()
     } catch (e) {
-      actions.ui.toast({ title: `Could not delete ${name}`, sub: cleanError(e) })
+      actions.ui.toast({ title: `Could not remove ${name}`, sub: cleanError(e) })
     }
-    setDeleting(null)
+    setRemoving(null)
+  })
+  const rows: TableRow[] = env.names.map((name) => {
+    const value = revealed[name]
+    const shown = value !== undefined
+    return {
+      key: name,
+      cells: [
+        <span className="mono">{name}</span>,
+        shown ? <span className="ag-value">{value}</span> : <span className="ag-mask" role="img" aria-label="Value hidden">{'•'.repeat(12)}</span>
+      ],
+      actions: <>
+        <Button variant="ghost" aria-label={busy === `show:${name}` ? `Showing ${name}` : `${shown ? 'Hide' : 'Show'} ${name}`} busy={busy === `show:${name}`} busyLabel="Showing" onClick={() => (shown ? hide(name) : void show(name))}>{shown ? 'Hide' : 'Show'}</Button>
+        <RowMenu label={`More for ${name}`} items={[
+          { id: 'edit', label: 'Edit', icon: 'pen', onSelect: () => actions.ui.openModal({ name: 'envVar', roomId, editName: name }) },
+          { id: 'remove', label: 'Remove', icon: 'trash', danger: true, onSelect: () => setRemoving(name) }
+        ]} />
+      </>
+    }
   })
   return (
-    <>
-      {env.names.length === 0 && <div className="set-empty">No variables yet. Add one and chats and scripts started afterwards get it.</div>}
-      {env.names.map((name) => <VariableRow key={name} roomId={roomId} name={name} onDelete={() => setDeleting(name)} />)}
-      {deleting && (
+    <Section title="Variables" count={env.names.length} action={action} plain>
+      <DataTable label="Variables" columns={['Name', 'Value']} grid="minmax(0, 220px) minmax(0, 1fr)" rows={rows} empty="No variables yet. Add one and chats and scripts started afterwards get it." />
+      {removing && (
         <ConfirmDialog
-          title={`Delete ${deleting}?`}
-          body={`${room ? `Chats and scripts in ${room.name}` : 'Chats and scripts in every room'} stop getting ${deleting} once they start afterwards. The ones already running keep it.`}
-          confirmLabel="Delete" danger busy={busy === 'delete'} busyLabel="Deleting"
-          onConfirm={() => void remove(deleting)} onCancel={() => setDeleting(null)}
+          title={`Remove ${removing}?`}
+          body={`${room ? `Chats and scripts in ${room.name}` : 'Chats and scripts in every room'} stop getting ${removing} once they start afterwards. The ones already running keep it.`}
+          confirmLabel="Remove" danger busy={busy === 'remove'} busyLabel="Removing"
+          onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
       )}
-    </>
-  )
-}
-
-/**
- * One variable: its name, the value as a fixed run of dots, and Show, Edit and Delete. Show asks main for the value, which
- * lives only in this component's state while it is on screen. It hides again on a second press, or when focus leaves the row.
- */
-function VariableRow({ roomId, name, onDelete }: { roomId?: string; name: string; onDelete: () => void }) {
-  const [value, setValue] = useState<string | null>(null)
-  const [busy, run] = useBusy<'show'>()
-  const row = useRef<HTMLDivElement>(null)
-  // A hide that lands while a reveal is in flight cancels it, so a late answer never shows a value the user moved away from.
-  const request = useRef(0)
-  const hide = () => { request.current++; setValue(null) }
-  const show = () => run('show', async () => {
-    const mine = ++request.current
-    try {
-      const v = await call('env.reveal', { roomId, name })
-      if (mine !== request.current) return
-      setValue(v)
-    } catch (e) {
-      if (mine === request.current) actions.ui.toast({ title: `Could not show ${name}`, sub: cleanError(e) })
-    }
-  }).then(() => row.current?.querySelector('button')?.focus())
-  const shown = value !== null
-  return (
-    <div ref={row} tabIndex={-1} className="set-env-row" onBlur={(e) => { if (!row.current?.contains(e.relatedTarget as Node | null)) hide() }}>
-      <Row
-        label={<span className="set-mono">{name}</span>}
-        desc={shown ? <span className="set-env-value">{value}</span> : <span className="set-mask" role="img" aria-label="Value hidden">{'•'.repeat(8)}</span>}
-      >
-        <div className="set-entry-actions">
-          <Button variant="ghost" aria-label={busy === 'show' ? `Showing ${name}` : `${shown ? 'Hide' : 'Show'} ${name}`} busy={busy === 'show'} busyLabel="Showing" onClick={() => (shown ? hide() : void show())}>{shown ? 'Hide' : 'Show'}</Button>
-          <Button variant="ghost" aria-label={`Edit ${name}`} disabled={busy !== null} onClick={() => actions.ui.openModal({ name: 'envVar', roomId, editName: name })}>Edit</Button>
-          <Button variant="ghost" aria-label={`Delete ${name}`} disabled={busy !== null} onClick={onDelete}>Delete</Button>
-        </div>
-      </Row>
-    </div>
+    </Section>
   )
 }
 
@@ -113,25 +108,26 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
     await patchRoomSettings(roomId, { env: { files: next() } })
     await envChanged()
   })
+  // The list is one value, so its source shows once, under the table. Reset only shows for a list that overrides settings.toml:
+  // a list that lives only in the personal file can be emptied with Remove, so Reset adds nothing there.
+  const rows: TableRow[] = files.map((f) => ({
+    key: f.path,
+    cells: [<span className="mono"><FileLabel path={f.path} /></span>, f.missing ? 'Missing' : ''],
+    actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
+  }))
+  const source = sourceLine(rs, path)
   return (
     <>
       <Section
-        title="Env files"
-        action={<Button disabled={!env || busy !== null} onClick={() => setAdding(true)}>Add env file</Button>}
-        note="Read in this order each time a chat or script starts. A later file wins, and a missing file is skipped."
+        title="Env files" count={files.length} plain
+        action={<>
+          {rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}
+          <Button icon="plus" disabled={!env || busy !== null} onClick={() => setAdding(true)}>Add env file</Button>
+        </>}
+        note="Read in this order. A later file wins, and a missing file is skipped."
+        footnote={source}
       >
-        {env && files.length === 0 && <div className="set-empty">No env files. Add one, like .env, and its variables reach every chat and script.</div>}
-        {files.map((f, i) => (
-          // The list is one value, so its source shows on the first row. Reset only shows for a list that overrides settings.toml:
-          // a list that lives only in the personal file can be emptied with Remove, so Reset adds nothing there.
-          <Row key={f.path} label={<span className="set-mono"><FileLabel path={f.path} /></span>} source={i === 0 ? sourceLine(rs, path) : undefined}>
-            {f.missing && <span className="set-tag">Missing</span>}
-            <div className="set-entry-actions">
-              {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}
-              <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
-            </div>
-          </Row>
-        ))}
+        <DataTable label="Env files" columns={['File', 'Status']} grid="minmax(0, 1fr) 120px" rows={rows} empty="No env files. Add one, like .env, and its variables reach every chat and script." />
       </Section>
       {adding && <EnvFileForm paths={files.map((f) => f.path)} onSave={(added) => save('add', () => [...latest(), added])} onClose={() => setAdding(false)} />}
     </>
@@ -184,26 +180,12 @@ function EnvFileForm({ paths, onSave, onClose }: { paths: string[]; onSave: (add
   )
 }
 
-/** "Kernel's variables": every chat, script and big terminal tab gets them, and a variable can't take one of their names. */
-/** The room page draws the list open and the app page folded (SettingsRoomEnvironment.png, SettingsEnvironment.png). */
-function KernelVars({ startOpen }: { startOpen: boolean }) {
-  const [open, setOpen] = useState(startOpen)
-  const id = useId()
-  const label = `${open ? 'Hide' : 'Show'} Kernel's variables`
+/** "Kernel's variables": every chat, script and big terminal tab gets them, and a variable can't take one of their names. Folded by default. */
+function KernelVars() {
   const rows = [...Object.entries(KERNEL_VARS), ...Object.entries(SCRIPT_VARS).map(([n, d]) => [n, `${d} Scripts only.`] as const), ...Object.entries(SETUP_VARS).map(([n, d]) => [n, `${d} Setup only.`] as const)]
   return (
-    <section className="set-section">
-      <h2>Kernel's variables</h2>
-      <div className="set-card">
-        <Row label={label} desc="Set by Kernel in every chat, script and big terminal tab. You can't override them.">
-          <button type="button" className="set-disclose" aria-label={label} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}><Icon name="chevron" size={12} /></button>
-        </Row>
-        {open && (
-          <div id={id}>
-            {rows.map(([name, desc]) => <div key={name} className="set-kernel"><code>{name}</code><span>{desc}</span></div>)}
-          </div>
-        )}
-      </div>
-    </section>
+    <Section title="Kernel's variables" count={rows.length} note="Set in every chat, script and terminal. Read only." collapsible>
+      {rows.map(([name, desc]) => <div key={name} className="ag-kernel"><code>{name}</code><span>{desc}</span></div>)}
+    </Section>
   )
 }
