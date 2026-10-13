@@ -65,6 +65,8 @@ export interface AppSettings {
   }
   /** `roles` replaced one model per role and a global effort (KERNEL-406). `loadAppSettings` moves the old keys over. */
   models: { roles: Record<Role, RoleModel>; leadPlanMode: boolean; agentTeams: boolean
+    /** Where each role's Claude chats compact. One the user never set follows the plan (feat-compact-window-per-role-with-plan). */
+    compact: Record<Role, CompactWindow>
     /** Agents working at once, the Lead's chats left out (D-094). 0 means no limit. Was `maxConcurrent`, whose saved 4 was only the old default. */
     agentLimit: number
     /** Kernel tells the Lead when teammates finish a turn or their PRs change (KERNEL-72). */
@@ -108,6 +110,15 @@ export interface AppSettings {
 
 /** The roles Settings, Models and effort sets a default for. */
 export type Role = 'lead' | 'engineers' | 'qa' | 'reviewer'
+
+/**
+ * Where a Claude chat compacts: against a 200k window, or against its model's own (feat-compact-window-per-role-with-plan).
+ * Kept out of `RoleModel`, which the model pickers pass around.
+ */
+export type CompactWindow = '200k' | 'full'
+
+/** The windows a role can compact against, for Settings, Models. */
+export const COMPACT_WINDOWS: CompactWindow[] = ['200k', 'full']
 
 /** A role's default: the provider, the model on it, and the effort (KERNEL-406). An agent file's `model:` overrides it. */
 export interface RoleModel { provider: Provider; model: string; effort: Effort }
