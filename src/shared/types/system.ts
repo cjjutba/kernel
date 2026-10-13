@@ -57,6 +57,8 @@ export type HookProblem =
   | { kind: 'managed'; setting: 'allowManagedHooksOnly' | 'disableAllHooks'; source?: string; block?: string }
   /** The user's own `file` sets disableAllHooks. */
   | { kind: 'off'; file: string }
+  /** This is a dev run started inside a Kernel workspace, which never writes Claude's settings, so it has no hooks to fix (KERNEL-679). */
+  | { kind: 'workspace-run' }
 
 /**
  * Kernel's PR reads from GitHub (WorkspaceGitHubPaused.png, KERNEL-401). `pausedUntil` is set while a GitHub rate limit holds
