@@ -273,6 +273,17 @@ export class Team extends Feature {
     return (await this.globalAgents()).find((a) => a.id === agentId) ?? agent
   }
 
+  /**
+   * Settings, Agents > New agent with no room: the file goes to ~/.claude/agents, the page hears of it as `globalAgents`, and
+   * every room Kernel has read reads its team again, as after a save.
+   */
+  private async hireGlobal(draft: AgentDraft, scope: AgentScope = 'me'): Promise<AgentDef> {
+    const agent = await this.k.agentChanges.hireOwn(draft, scope)
+    this.pushGlobal()
+    await Promise.all([...this.agentCache.keys()].map((roomId) => this.reread(roomId).catch(() => undefined)))
+    return (await this.globalAgents()).find((a) => a.id === agent.id) ?? agent
+  }
+
   /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
   private adoptLead(roomId: string, lead: AgentDef | undefined) {
     const moved = lead ? this.k.lead.adoptLeadWorkspace(roomId, lead.id) : undefined
@@ -586,7 +597,7 @@ export class Team extends Feature {
       'agents.list': async ({ roomId, retired }) => (retired ? this.retiredOf(roomId) : this.listed(roomId, await this.agents(roomId))),
       'agents.save': async ({ roomId, agentId, patch, scope }) => this.saveAgentEdit(roomId, agentId, patch, scope),
       'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-      'agents.create': async ({ roomId, draft, scope }) => this.hireFromDraft(roomId, draft, scope),
+      'agents.create': async ({ roomId, draft, scope }) => (roomId ? this.hireFromDraft(roomId, draft, scope) : this.hireGlobal(draft, scope)),
       'agents.retire': async ({ roomId, agentId, handoffTo, scope }) => {
         const pr = await this.retire(roomId, agentId, handoffTo, scope)
         return { ok: true as const, ...(pr ? { pr } : {}) }

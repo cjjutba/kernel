@@ -97,6 +97,17 @@ export class AgentChanges extends Feature {
   }
 
   /**
+   * A new agent from Settings, Agents with no room: its file in ~/.claude/agents, which joins every room. A team agent goes in a
+   * room's repo, so it needs one. A room's file with the same name would win in that room, so the name must be free in each.
+   */
+  async hireOwn(draft: Pick<AgentDraft, 'id' | 'text'>, scope: AgentScope = 'me'): Promise<AgentDef> {
+    if (scope !== 'me') throw new Error("A team agent is saved in a room's repo. Open a room to add one.")
+    const id = draftId(draft)
+    for (const room of this.store.rooms()) await freeId(room.path, id)
+    return { ...(await createAgent(this.home, draft)), origin: 'personal' }
+  }
+
+  /**
    * A profile save. For me: the agent's own file in ~/.claude/agents, or Kernel's record of the change over the repo's file.
    * For the team: a pull request with only the fields the user changed, and the agent stays as it is until that merges.
    */
