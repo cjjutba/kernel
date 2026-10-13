@@ -254,7 +254,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .drag { -webkit-app-region: drag; }
 .nodrag { -webkit-app-region: no-drag; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; }
-/* The 32px strip under the main panel: health on the left, the update pill and Ask Rowan on the right (KERNEL-588). */
+/* The 32px strip under the main panel: health on the left, the update pill on the right (KERNEL-588). */
 .footer { height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
 /* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-084). */

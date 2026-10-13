@@ -470,7 +470,7 @@ export function AppSidebar() {
         })}
       </div>
       <div style={{ flex: 1 }} />
-      {/* Settings and What's new on the left, the Usage pill on the right, so Tab follows the same order. Ask Rowan and the update pill are in the footer (KERNEL-588). */}
+      {/* Settings and What's new on the left, the Usage pill on the right, so Tab follows the same order. The update pill is in the footer (KERNEL-588). */}
       <div className="sb-foot">
         <IconButton icon="gear" label="Settings" data-tip-kbd="⌘," onClick={() => actions.ui.openSettings()} />
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />

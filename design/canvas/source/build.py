@@ -212,9 +212,8 @@ for n,mode,title in [
     ('CheckHooksOff','hooks-off','Check hooks · hooks turned off'),
 ]:
     emit(n, tr.replace('%%MODE%%',mode).replace('%%TITLE%%',title), None)
-# The app's fixtures open the room menu over Team and Ask Rowan over Home.
+# The app's fixtures open the room menu over Team.
 emit('SidebarRoomMenu', rd('Team.dc.html'), None, menu='room')
-emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
 WS=[
     ('Workspace','done'),
@@ -497,15 +496,6 @@ G_PLAN=[U('Add PDF export to invoices. Spec first.'),
     {'kind':'ai','text':'I split PDF export into four tasks that can run in parallel.'},
     {'kind':'card','title':'Plan for T-15','sub':'Approved by you at 10:12','steps':G_STEPS},
     {'kind':'ai','text':'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.'}]
-G_ASK1=[U("What's the status of T-15? Who is blocked?"),
-    {'kind':'tool','text':"List this chat's workspaces",'cmd':'kernel workspaces'},
-    {'kind':'ai','text':"Nobody is blocked. Noor is still on the renderer, Kai's PR is open and Ivy waits on the renderer for the fixtures."},
-    {'kind':'meta','text':'6s · 10:49'}]
-G_ASK2=[U('Which tests cover the PDF fonts?'),
-    {'kind':'thinking','text':'Ivy owns the snapshot tests. I should check what they assert.'},
-    {'kind':'tool','text':'Search the tests','cmd':'rg -n "font" tests'},
-    {'kind':'ai','text':"Ivy's snapshot tests in invoice-pdf.spec.ts check the embedded fonts for all three invoice types. Noor's renderer has no unit test of its own yet."},
-    {'kind':'meta','text':'8s · 10:52'}]
 G_SHARED=[U("How is Kai's PR going?"),
     {'kind':'tool','text':"List this chat's workspaces",'cmd':'kernel workspaces'},
     {'kind':'tool','text':'Read the approved plan','cmd':'cat plans/t-15-invoice-pdf.md'},
@@ -663,8 +653,6 @@ Component.prototype.renderVals = function () { var v = __rv.call(this); v.under 
 emit('GroupedCloseLastTab', t, None, rows_html=r[0])
 r=g_rows(chats=('a','c','d'), unowned=('table','schema','org'), on='a')
 g_ws_page('GroupedCloseLastTabAfter', r, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN}, post=G_NO_CHANGES)
-# 12. Ask Rowan opens its answers as tabs of the chat you are in. The sidebar doesn't change.
-g_ws_page('GroupedAskRowan', a_rows, tabs=a_tabs([g_tab('q1'),g_tab('q2')]), tab='q2', chats={'q1':G_ASK1,'q2':G_ASK2}, post=G_NO_CHANGES)
 # 13. The palette lists the room's chats and says New tab for ⌘T.
 def p_it(glyph,label,keys=(),hint=''): return {'glyph':glyph,'label':label,'href':'Workspace.dc.html','keys':list(keys),'hint':hint,'hasHint':bool(hint)}
 GP=[('Suggested',[p_it('+','New chat in Client A',['⌘','N']),p_it('+','New tab',['⌘','T']),p_it('>','Big terminal tab',['⌘','⇧','T'])]),

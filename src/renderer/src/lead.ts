@@ -29,7 +29,7 @@ export function useLeadWaiting(roomId: string): Approval[] {
 
 /**
  * The workspace of the room's newest open chat with Rowan, or null when no chat is open (KERNEL-405). The engine never starts a
- * chat for it, so the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan land on New chat with Rowan instead. A failure toasts and
+ * chat for it, so the sidebar row, Cmd+K and Cmd+Shift+L land on New chat with Rowan instead. A failure toasts and
  * returns undefined.
  */
 async function leadWorkspace(roomId: string): Promise<Workspace | null | undefined> {

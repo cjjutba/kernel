@@ -35,7 +35,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   }
 }))
 
-describe('restore and Ask Rowan', () => {
+describe('restore', () => {
   it('recreates the worktree from the branch and keeps the chats', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
@@ -47,8 +47,7 @@ describe('restore and Ask Rowan', () => {
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
-    const sent: string[] = []
-    k.sessions.send = async (_chatId, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    k.sessions.send = async () => ({ queued: false })
 
     const room = await k.addRoom(repo)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
@@ -79,14 +78,11 @@ describe('restore and Ask Rowan', () => {
     await expect(k.restoreWorkspace(ws.id)).rejects.toThrow(/no longer exists/)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
 
-    // With no chat open, Ask Rowan starts one, with setup (KERNEL-405), and the question waits only for the chat's worktree
-    // (KERNEL-490, KERNEL-542). The next joins it.
-    const { chatId } = await k.handlers()['lead.ask']({ roomId: room.id, text: 'Who is blocked?' })
+    // With no chat open, a new chat with Rowan starts with setup (KERNEL-405), and its first message waits only for the chat's worktree
+    // (KERNEL-490, KERNEL-542).
+    const { id: chatId } = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Who is blocked?' })
     expect(k.sessions.queued(chatId).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Who is blocked?' }]])
     expect(k.store.chat(chatId)?.workspaceId).toBe((await k.leadChat(room.id)).workspaceId)
-    const again = await k.handlers()['lead.ask']({ roomId: room.id, text: 'And now?' })
-    expect(k.store.chat(again.chatId)?.workspaceId).toBe(k.store.chat(chatId)?.workspaceId)
-    expect(sent.at(-1)).toBe('And now?')
   }, 30000)
 })
 

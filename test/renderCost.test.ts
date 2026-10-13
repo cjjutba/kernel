@@ -114,7 +114,7 @@ describe('what a store event redraws', () => {
   it('draws the transcript, and nothing in the sidebar or another workspace, for a message in the chat on screen', async () => {
     const list = await renders(item(ON))
     expect(list).toContain('Transcript2')
-    expect(named(list, ['AppSidebar', 'RoomItem', 'ChatItemRow', 'WorkspaceItemRow', 'Toasts', 'AskRowanButton'])).toEqual([])
+    expect(named(list, ['AppSidebar', 'RoomItem', 'ChatItemRow', 'WorkspaceItemRow', 'Toasts'])).toEqual([])
     expect(ofOtherWorkspace(list, SCREEN)).toEqual([])
     expect(named(list, ['Workspace', 'Composer', 'RightPanel', 'BottomPanel', 'ChatTabs'])).toEqual([])
   })
@@ -122,7 +122,7 @@ describe('what a store event redraws', () => {
   it('draws only the chat\'s own sidebar row when an off-screen chat starts or stops', async () => {
     const list = await renders(running(OFF))
     expect(list).toContain(`WorkspaceItemRow[${OFF_WS}]`)
-    expect(named(list, ['AppSidebar', 'RoomItem', 'ChatItemRow', 'Toasts', 'AskRowanButton', ...SCREEN_PARTS])).toEqual([])
+    expect(named(list, ['AppSidebar', 'RoomItem', 'ChatItemRow', 'Toasts', ...SCREEN_PARTS])).toEqual([])
     expect(ofOtherWorkspace(list, OFF_WS)).toEqual([])
   })
 
@@ -134,7 +134,7 @@ describe('what a store event redraws', () => {
   it('draws only that workspace\'s sidebar row (and its room) when an off-screen workspace changes', async () => {
     const list = await renders(workspace(OFF_WS))
     expect(list).toContain(`WorkspaceItemRow[${OFF_WS}]`)
-    expect(named(list, ['AppSidebar', 'ChatItemRow', 'Toasts', 'AskRowanButton', 'UpdateCard', ...SCREEN_PARTS])).toEqual([])
+    expect(named(list, ['AppSidebar', 'ChatItemRow', 'Toasts', 'UpdateCard', ...SCREEN_PARTS])).toEqual([])
     expect(ofOtherWorkspace(list, OFF_WS)).toEqual([])
     expect(list.filter((r) => r === 'RoomItem')).toHaveLength(1)
   })
@@ -142,7 +142,7 @@ describe('what a store event redraws', () => {
   it('draws the workspace on screen, and no other row, when it changes', async () => {
     const list = await renders(workspace(SCREEN))
     expect(list).toContain('Workspace')
-    expect(named(list, ['AppSidebar', 'ChatItemRow', 'Toasts', 'AskRowanButton'])).toEqual([])
+    expect(named(list, ['AppSidebar', 'ChatItemRow', 'Toasts'])).toEqual([])
     expect(ofOtherWorkspace(list, SCREEN)).toEqual([])
   })
 })

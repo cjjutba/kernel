@@ -20,7 +20,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('the w
     const env: Record<string, string> = {}
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
     data = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
-    Object.assign(env, { KERNEL_FIXTURES: 'QuickAskOpenChat', KERNEL_HEADLESS: '1', KERNEL_FIXTURE_DATA: data })
+    Object.assign(env, { KERNEL_FIXTURES: 'Workspace', KERNEL_HEADLESS: '1', KERNEL_FIXTURE_DATA: data })
     app = await electron.launch({ args: ['.', '--force-device-scale-factor=1'], env })
     page = await app.firstWindow()
     await page.waitForSelector('html[data-fixture="ready"]', { state: 'attached', timeout: 15_000 })

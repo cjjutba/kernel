@@ -248,26 +248,6 @@ const lumiPrefill = { name: 'Lumi', description: 'A designer who checks every sc
 
 const home = { route: { name: 'home' } } as const
 
-/** Ask Rowan open over the invoice-table workspace. The Lead has two chats and the question went to the second. */
-const askedFromTable = (f: Fixture, leadGone: boolean): Partial<Fixture> => {
-  const h = homeScene(f)
-  const question = "What's the status of T-15? Who is blocked?"
-  const second = { id: 'chat-lead-status', workspaceId: ids.lead, title: 'Status question', kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(10, 32) }
-  return {
-    ...h,
-    workspaces: h.workspaces!.map((w) => (leadGone && w.id === ids.lead ? { ...w, status: 'archived' as const } : w)),
-    chats: [...f.chats, second],
-    items: {
-      ...f.items,
-      [second.id]: [
-        { kind: 'user', id: 'qs-q', ts: at(10, 32), parts: [{ type: 'text', text: question }] },
-        { kind: 'text', id: 'qs-a', ts: at(10, 33), text: 'T-15 is in review: Theo has the PR open. Nobody is blocked.' }
-      ]
-    },
-    ui: { route: { name: 'workspace', workspaceId: ids.table }, menu: 'quickAsk', quickAsk: { [ids.roomA]: { draft: '', asked: { chatId: second.id, since: at(10, 32), question } } } }
-  }
-}
-
 /** The Lead's workspace with three chats, on the first, and invoice-table as the second workspace (KERNEL-199). The test walks through Settings and back. */
 const navMemory = (f: Fixture): Partial<Fixture> => {
   const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(10, minute) })
@@ -589,15 +569,6 @@ const invoicePdfChat: HeldChat = {
   picks: { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: false, baseRef: '', pickedRef: '', filled: invoicePdfPrompt }
 }
 
-const minutesAgo = (minutes: number) => Date.now() - minutes * 60_000
-const ASK_HISTORY = [
-  { roomId: ids.roomA, chatId: ids.leadChat, question: "What's the status of T-15? Who is blocked?", at: minutesAgo(18) },
-  { roomId: ids.roomA, chatId: ids.leadChat, question: 'Which PRs can I merge right now?', at: minutesAgo(95) },
-  { roomId: ids.roomA, chatId: ids.leadChat, question: 'Why did the invoice-table checks fail?', at: minutesAgo(60 * 26) },
-  { roomId: ids.roomOwn, chatId: ids.leadChat, question: 'Summarize what shipped on Own app this week', at: minutesAgo(60 * 24 * 3) },
-  { roomId: ids.roomB, chatId: ids.leadChat, question: 'Is anyone working on the onboarding docs?', at: minutesAgo(60 * 24 * 9) }
-]
-
 /** Room setup done in a repo that brought its own agents (RoomSetupTeam.png). `team` is the repo's `[team]` table, if it has one. */
 const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
   const r = roomsScene(f)
@@ -628,23 +599,6 @@ export const teamFixtures: Record<string, Fixture> = {
   GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
   // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
-  QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
-  // Ask Rowan's history from the footer's clock: past questions newest first, each with its room and when (KERNEL-589). Times are
-  // relative to now, so the shot reads today, Yesterday and a weekday.
-  AskHistory: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'askHistory', askHistory: ASK_HISTORY } })),
-  AskHistoryEmpty: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'askHistory', askHistory: [] } })),
-  // With the sidebar hidden, Ask Rowan stays in the footer, the same place as with it open (KERNEL-588).
-  QuickAskNoSidebar: scene((f) => ({ ...homeScene(f), ui: { ...home, sidebar: false, menu: 'quickAsk' } })),
-  // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).
-  QuickAskAnswered: scene((f) => ({
-    ...homeScene(f),
-    push: [{ type: 'chat.item', chatId: ids.leadChat, item: { kind: 'text', id: 'qa-answer', ts: at(10, 33), text: 'T-15 is in review: Theo has the PR open. Nobody is blocked.' } }],
-    ui: { ...home, menu: 'quickAsk', quickAsk: { [ids.roomA]: { draft: '', asked: { chatId: ids.leadChat, since: at(10, 32), question: "What's the status of T-15? Who is blocked?" } } } }
-  })),
-  // No PNG: Open chat from a workspace that isn't the Lead's, with the question in the Lead's second chat (KERNEL-146). The test opens it in Electron.
-  QuickAskOpenChat: scene((f) => askedFromTable(f, false)),
-  // No PNG: the same, but the Lead's workspace is gone, so `lead.open` fails and Open chat must leave the tab alone.
-  QuickAskLeadGone: scene((f) => askedFromTable(f, true)),
   // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
   NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
@@ -673,7 +627,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }], held: invoicePdfChat } }
   })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
-  // The update pill stays in the footer, before Ask Rowan, while the sidebar is hidden (KERNEL-588).
+  // The update pill stays in the footer while the sidebar is hidden (KERNEL-588).
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),

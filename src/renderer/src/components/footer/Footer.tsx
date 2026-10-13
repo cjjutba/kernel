@@ -1,15 +1,13 @@
 import { actions, useStore } from '../../store'
 import { Icon } from '../../ui'
 import { githubPause } from './model'
-import { AskHistoryButton } from './AskHistory'
-import { AskRowanButton } from './QuickAsk'
 import { UpdatePill } from './UpdatePill'
 import './footer.css'
 
 /**
  * The 32px strip under every main panel (KERNEL-588). Health shows on the left only while something is wrong: the hook server down
  * (D-082; Settings, Hooks has the port and status) or a GitHub rate limit holding PR reads off until it ends (KERNEL-401). On the right,
- * the update pill once an update is ready, then Ask Rowan and, last, its history (KERNEL-589). It sits in the same place whatever is hidden.
+ * the update pill once an update is ready. It sits in the same place whatever is hidden.
  */
 export function Footer() {
   const down = useStore((s) => s.system.hooks?.listening === false)
@@ -29,8 +27,6 @@ export function Footer() {
       </span>
       <span className="grow" />
       <UpdatePill />
-      <AskRowanButton />
-      <AskHistoryButton />
     </footer>
   )
 }

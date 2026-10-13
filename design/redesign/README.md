@@ -65,7 +65,6 @@ A new chat whose setup is still running, failed or was stopped. Canvas: https://
 | `LeadPrsMergeAll` | Merge all on the Ready to merge heading (KERNEL-411) | `pr/LeadPrs.tsx` |
 | `LeadPrsMergeAllRunning` | Merge all running: "Merging 1 of 2" on the button, Merging and Next on the rows (KERNEL-411) | `pr/LeadPrs.tsx`, `pr/MergeButton.tsx` |
 | `LeadPrsMergeAllStopped` | Merge all stopped: where and why above the lists (KERNEL-411) | `pr/LeadPrs.tsx` |
-| `AskRowan` | Ask Rowan popover, empty | `components/footer/QuickAsk.tsx` |
 | `NewChat` | New chat empty state | `screens/workspace/Transcript.tsx` |
 | `SetupRunning` | New chat while setup runs: the queued bubble, the setup line, the Setup tab with Stop (KERNEL-430) | `screens/workspace/SetupWait.tsx`, `Panels.tsx` |
 | `SetupFollowUp` | A follow-up typed while setup runs joins the queued bubble (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
@@ -169,7 +168,7 @@ The `Panel*` screens draw the reworked right panel for KERNEL-510. They use the 
 
 ## Chat rail (KERNEL-535)
 
-The `ChatRail` screens draw a rail on the chat's right edge for jumping back to an earlier message. The chats, messages and Team updates in them are sample content, not spec. They draw the window without the footer (KERNEL-527), as the app is now, and the sidebar's bottom row holds Ask Rowan.
+The `ChatRail` screens draw a rail on the chat's right edge for jumping back to an earlier message. The chats, messages and Team updates in them are sample content, not spec. They draw the window without the footer (KERNEL-527), as the app is now.
 
 - **Marks.** One 2px line per message, right-aligned in a stack that starts 12px under the tab row, 8px apart. A message is 12px long. In Rowan's chat a Team update is 6px long. Marks rest in `--faint` and the message in view is `--ink`. That is the newest message whose top has passed the top edge of the view, or the last one when the view is at the bottom. The rail stays put while the transcript scrolls. When the stack would pass the transcript's height, the gap tightens to fit.
 - **Where it sits.** The rail is a 22px button, 6px in from the chat column's right edge, so it clears a scrollbar. The thread is 760px and centred, so with the right panel hidden at 1440 the rail sits in the empty gutter, about 190px from the thread. With the panel open the thread fills the column (726px at 1440) and the rail takes the column's 32px side padding. Its marks are 9px from the text and never cover it (`ChatRailNarrow`).
@@ -209,6 +208,5 @@ The `TurnFiles` screens draw the card under a finished reply that lists the file
 The canvas draws a few things KERNEL-274 left out on purpose. Don't treat them as spec:
 
 - The + for more terminals in the bottom panel.
-- The close button in the Ask Rowan header. Escape and clicking outside close it.
 - The centered composer on `NewChat`. The composer stays at the bottom, and only the title, subtitle and suggestions are redesigned.
 - Sample copy on the canvas, such as chat text, issue titles and the Kernel notes for PR states the engine doesn't send.
