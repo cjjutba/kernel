@@ -14,6 +14,8 @@ export class Approvals {
   private pending = new Map<string, Pending>()
   /** Kernel is quitting (`expirePending`): nothing new waits, and nothing is saved, since the database is about to close. */
   private closed = false
+  /** Kernel is quitting (`quitting`): a plan card whose waiter ends now stays pending for the next launch (plan-cards-survive-restart). */
+  private keepPlans = false
   constructor(private store?: Store) {}
 
   request(a: Omit<Approval, 'id' | 'status' | 'createdAt'>, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): { approval: Approval; decision: Promise<Decision | null> } {
@@ -39,6 +41,35 @@ export class Approvals {
 
   isPending(id: string) { return this.pending.has(id) }
 
+  /**
+   * A plan card that waits with no waiter, as one from before a restart. `decide` can't answer it, so the caller delivers
+   * the answer itself and settles the row here (plan-cards-survive-restart).
+   */
+  waitingPlan(id: string): Approval | undefined {
+    const a = this.store?.approval(id)
+    return a?.kind === 'plan' && a.status === 'pending' && !this.pending.has(id) ? a : undefined
+  }
+
+  /** Mark a waiting plan without a waiter as answered (`waitingPlan`). */
+  settle(id: string, decision: Decision): Approval | undefined {
+    const prev = this.waitingPlan(id)
+    if (!prev) return undefined
+    const next: Approval = { ...prev, status: decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered', ...(decision.behavior === 'answer' ? { answer: decision.text } : {}) }
+    this.save(next, `${next.status} ${next.title}`)
+    return next
+  }
+
+  /** The chat's plan cards still waiting, newest first, such as one a restart left up. */
+  waitingPlans(chatId: string, roomId: string): Approval[] {
+    return (this.store?.approvals({ roomId, pendingOnly: true }) ?? []).filter((a) => a.chatId === chatId && a.kind === 'plan')
+  }
+
+  /**
+   * Kernel is quitting. Its sessions stop next, and a plan card whose waiter ends on the way keeps its row pending, so it
+   * shows again at the next launch. Every other kind still ends as expired (KERNEL-215).
+   */
+  quitting() { this.keepPlans = true }
+
   /** Change a saved approval and tell every window, for example to link a plan step to the workspace it was handed to. */
   update(id: string, patch: Partial<Approval>): Approval | undefined {
     const prev = this.store?.approval(id)
@@ -51,10 +82,19 @@ export class Approvals {
 
   /**
    * At start: every approval saved as pending belongs to an earlier run, whose waiter is gone, so nobody can answer it
-   * (D-137). Each one is marked expired. Call before `Notifications.attach()`, which then settles their rows.
+   * (D-137). Each one is marked expired, except a plan whose chat is still open in a workspace that isn't archived: it
+   * shows again, and its answer goes to the chat as a message (plan-cards-survive-restart). Call before
+   * `Notifications.attach()`, which then settles their rows.
    */
   expireStale(): Approval[] {
-    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id)).map((a) => this.expire(a))
+    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id) && !this.outlivesQuit(a)).map((a) => this.expire(a))
+  }
+
+  private outlivesQuit(a: Approval): boolean {
+    if (a.kind !== 'plan' || !a.chatId || !this.store) return false
+    const chat = this.store.chat(a.chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    return !!chat && !chat.closed && !!ws && ws.status !== 'archived'
   }
 
   /**
@@ -84,18 +124,22 @@ export class Approvals {
    * Kernel is quitting: every approval still waiting ends as expired, while the database is still open, and its waiter
    * resolves null, so a hook falls back to Claude Code's own prompt. An abort that arrives after the database closes,
    * as a dropped hook connection's does, then finds nothing pending. Requests after this answer null at once without
-   * saving anything (KERNEL-215).
+   * saving anything (KERNEL-215). A plan's waiter resolves null too, and its row stays pending for the next launch.
    */
   expirePending(): Approval[] {
+    this.keepPlans = true
     this.closed = true
     return [...this.pending.keys()].flatMap((id) => this.finish(id, null, 'expired') ?? [])
   }
 
   private expire(a: Approval): Approval {
-    const next: Approval = { ...a, status: 'expired' }
+    return this.save({ ...a, status: 'expired' }, `expired ${a.title}`)
+  }
+
+  private save(next: Approval, text: string): Approval {
     this.store?.saveApproval(next)
     bus.push({ type: 'approval', approval: next })
-    bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `expired ${next.title}`, object: next.toolName })
+    bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text, object: next.toolName })
     return next
   }
 
@@ -107,12 +151,9 @@ export class Approvals {
     p.resolve(decision)
     const prev = this.store?.approval(id)
     if (!prev) return undefined
+    if (!decision && this.keepPlans && prev.kind === 'plan') return undefined
     const answered = decision?.behavior === 'answer' ? decision : undefined
-    const next: Approval = { ...prev, status, answer: answered ? answered.text : prev.answer, answers: answered?.answers ?? prev.answers }
-    this.store?.saveApproval(next)
-    bus.push({ type: 'approval', approval: next })
-    bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `${status} ${next.title}`, object: next.toolName })
-    return next
+    return this.save({ ...prev, status, answer: answered ? answered.text : prev.answer, answers: answered?.answers ?? prev.answers }, `${status} ${prev.title}`)
   }
 }
 

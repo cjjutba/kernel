@@ -89,8 +89,11 @@ export interface KernelToolDeps {
 
   /** Whether the Lead chat is in plan mode now. Read on each call, since the toggle can change mid-session. Left out, it counts as off (KERNEL-176). */
   planMode?: () => boolean
-  /** The user approved a plan, and a workspace was created. Together they hold the Lead to the hand-off (KERNEL-67). An approval also ends plan mode (D-074). */
-  planApproved?: () => void | Promise<void>
+  /**
+   * The user approved a plan, and a workspace was created. Together they hold the Lead to the hand-off (KERNEL-67). An approval
+   * also ends plan mode (D-074), and returns the approval's note with the plan's path, for the tool's result.
+   */
+  planApproved?: () => string | void | Promise<string | void>
   handedOff?: () => void
 }
 
@@ -355,7 +358,7 @@ export function kernelTools(d: KernelToolDeps) {
       const decision = await d.askUser({ kind: 'plan', title, detail: plan, steps }, signalOf(extra))
       if (!decision) return text('No answer yet. Wait and ask again later.')
       // Out of plan mode before the answer goes back, so the hand-off that follows runs outside it.
-      if (decision.behavior === 'allow') { await d.planApproved?.(); return text(`approved. ${HANDOFF_NOW}`) }
+      if (decision.behavior === 'allow') return text((await d.planApproved?.()) || `approved. ${HANDOFF_NOW}`)
       return text(`changes requested: ${decision.behavior === 'deny' ? decision.message ?? 'no details' : decision.text}`)
     }),
     tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {

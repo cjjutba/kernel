@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Decision } from '@shared/types'
 import type { Handlers } from '../kernel'
+import { planChanges } from '../services/handoff'
 import { attachmentNote, planExists, saveAttachments, savePlan } from '../services/plans'
 import { Feature } from './feature'
 
@@ -28,10 +29,29 @@ export class Inbox extends Feature {
     if (decision.behavior !== 'deny' || !decision.images?.length) return decision
     const { images, ...rest } = decision
     const a = this.store.approval(id)
-    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || !this.approvals.isPending(id)) return rest
+    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || (!this.approvals.isPending(id) && !this.approvals.waitingPlan(id))) return rest
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
     if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("The workspace folder is gone, so the images can't be saved.")
     return { ...rest, message: attachmentNote(rest.message, await saveAttachments(ws.path, images)) }
+  }
+
+  /**
+   * A plan card with no turn left waiting on it, since Kernel restarted (plan-cards-survive-restart). The
+   * answer goes to the chat as Kernel's message, which waits in the queue like any other while something holds the chat.
+   * Approve leaves plan mode and arms a Lead's hand-off as a live approval does. Request changes names the plan's file,
+   * which the revision overwrites.
+   */
+  private async answerPlan(id: string, decision: Decision) {
+    const a = this.approvals.waitingPlan(id)!
+    const chat = a.chatId ? this.store.chat(a.chatId) : undefined
+    if (!chat || chat.closed) throw new Error('This request already timed out or was answered.')
+    if (decision.behavior === 'allow') await this.sessions.planApproved(chat.id, { queue: true, restarted: true })
+    else {
+      decision = await this.withAttachments(id, decision)
+      const notes = (decision.behavior === 'deny' ? decision.message : decision.behavior === 'answer' ? decision.text : undefined)?.trim() || 'no details'
+      await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel' })
+    }
+    return this.approvals.settle(id, decision)!
   }
 
   handlers() {
@@ -39,7 +59,12 @@ export class Inbox extends Feature {
       'notifications.list': async () => this.notifications.list(),
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
-      'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, await this.withAttachments(id, decision)); if (!a) throw new Error('This request already timed out or was answered.'); return a },
+      'approvals.decide': async ({ id, decision }) => {
+        if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)
+        const a = this.approvals.decide(id, await this.withAttachments(id, decision))
+        if (!a) throw new Error('This request already timed out or was answered.')
+        return a
+      },
       'approvals.planFile': async ({ id }) => this.planFile(id),
       'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),

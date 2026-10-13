@@ -92,8 +92,28 @@ export const TEAMMATE_RULE = "If you can't go on until another teammate's PR mer
  */
 export const UPDATE_HEADER = 'Team update from Kernel, not from the user.'
 
-/** Sent with the approval itself: after ExitPlanMode as context, and in request_plan_approval's result. */
+/** Sent with the approval itself, after the Lead's approval line (`planApproval`). */
 export const HANDOFF_NOW = 'The user clicked Approve and hand off. Hand each task in the plan to a teammate now: call mcp__kernel__create_workspace once per task with a complete brief. Do not stop at the plan.'
+
+/** Added to an approval that reaches the agent after Kernel restarted, since the turn that asked was cut off. */
+export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check git status before you start.'
+
+/**
+ * The one note an approved plan sends, on every provider and every path (plan-cards-survive-restart).
+ * `line` is what the chat shows; `text` is what the agent reads: the line, a Lead's hand-off instruction, and the restart
+ * sentence when the plan waited through a restart. With no plan file, the plan's text stands in for its path.
+ */
+export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean }): { line: string; text: string } {
+  const file = o.planFile ? `\`${o.planFile}\`` : undefined
+  const line = o.lead
+    ? file ? `Plan approved. Hand off each task from ${file} now.` : 'Plan approved. Hand off each task from the plan below now.'
+    : file ? `Plan approved. Build it from ${file}.` : 'Plan approved. Build it from the plan below.'
+  const plan = !file && o.plan?.trim() ? o.plan.trim() : undefined
+  return { line, text: [line, plan, o.lead && HANDOFF_NOW, o.restarted && PLAN_RESTARTED].filter(Boolean).join('\n\n') }
+}
+
+/** What a plan the user wants changed goes back as: in a message after a restart, naming the file the revision overwrites, or in Codex's next plan-mode turn. */
+export const planChanges = (text: string, planFile?: string) => (planFile ? `Revise the plan in \`${planFile}\`: ${text}` : `The user wants changes to your plan: ${text}`)
 
 /** Sent once when the Lead tries to end the turn after an approval without creating a workspace. */
 export const HANDOFF_REMINDER = 'The user approved your plan for hand-off, and no workspace exists for it yet. Call mcp__kernel__create_workspace once per task now. If no task needs a workspace, say why in one line.'
