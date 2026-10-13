@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
@@ -12,7 +12,7 @@ import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, MessageActions, type MessageAction } from './MessageActions'
-import { ChipIcon, ImageButton, isPastedText, TextButton } from './composer/Chip'
+import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, groupLabel, turnFiles, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -196,13 +196,43 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * slot and no chevron, and a right-hand note.
  */
 /** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
-function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, children }: { icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
+function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
+  icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean
+  /** Runs on click before the row opens, and resolves true when it handled the click, so the row stays closed. */
+  onOpen?: () => Promise<boolean>
+  /** Runs when the row is hovered or focused from the keyboard, so `peek` can load. `peek` is drawn as the hover preview once it is there. */
+  onPeek?: () => void
+  peek?: ReactNode
+  children?: ReactNode
+}) {
   const [open, setOpen] = useState(false)
+  const [at, setAt] = useState<DOMRect | null>(null)
   const panel = useId()
   const can = !!children
+  const show = (el: HTMLElement) => { setAt(el.getBoundingClientRect()); onPeek?.() }
+  // The preview is placed once, so a scroll under it hides it rather than leave it behind.
+  useEffect(() => {
+    if (!at) return
+    const hide = () => setAt(null)
+    window.addEventListener('scroll', hide, true)
+    return () => window.removeEventListener('scroll', hide, true)
+  }, [at])
+  const click = () => {
+    setAt(null)
+    if (!onOpen) return setOpen(!open)
+    void onOpen().then((handled) => { if (!handled) setOpen((o) => !o) })
+  }
   return (
     <div className="col" style={{ gap: 4 }}>
-      <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
+      <button
+        type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
+        {...(onPeek && {
+          onMouseEnter: (e: MouseEvent<HTMLElement>) => show(e.currentTarget), onMouseLeave: () => setAt(null),
+          // Focus shows it from the keyboard only, so a click doesn't bring it back.
+          onFocus: (e: React.FocusEvent<HTMLElement>) => { if (e.currentTarget.matches(':focus-visible')) show(e.currentTarget) }, onBlur: () => setAt(null),
+          onKeyDown: (e: KeyboardEvent<HTMLElement>) => { if (e.key === 'Escape' && at) { e.stopPropagation(); setAt(null) } }
+        })}
+      >
         {(glyph || icon) && (
           <span className={`step-slot${glyph ? ' step-glyph' : ''}`} style={glyph ? undefined : { color: failed ? 'var(--del)' : 'var(--muted)' }}>
             {glyph || <Icon name={icon!} size={16} />}
@@ -213,6 +243,7 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
         {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
       </button>
+      {at && peek && <HoverPreview at={at} className="img-preview">{peek}</HoverPreview>}
       {open && can && <div id={panel} className="step-body" data-compact={compact || undefined}>{children}</div>}
     </div>
   )
@@ -278,13 +309,59 @@ function readImage(item: Tool): string | undefined {
   return path && IMAGE_FILE.test(path) ? path : undefined
 }
 
-const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
-  const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
-  const image = readImage(item)
+/** The workspace a transcript belongs to, so a Read image row can load its file. */
+const TranscriptWorkspace = createContext<string | null>(null)
+
+/** A path a Read row named, made relative to the workspace folder as `workspaces.readImage` takes it. Null when it is absolute and outside the folder. */
+function workspaceRelative(path: string, root?: string): string | null {
+  const base = root?.replace(/[\\/]+$/, '')
+  if (base && (path.startsWith(`${base}/`) || path.startsWith(`${base}\\`))) return path.slice(base.length + 1)
+  return /^([\\/]|[a-zA-Z]:[\\/])/.test(path) ? null : path
+}
+
+/**
+ * A Read row on an image file. Clicking opens the image in a tab beside the chat, as a chip in a message does; hovering the row shows the
+ * same small preview. The file loads on the first hover, focus or click and is kept. When it can't load (deleted, outside the workspace
+ * folder, too big) or there is no tab to open it in, the click opens the row to the path as any other row (KERNEL-671).
+ */
+function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image: string; file?: string; meta?: string; compact?: boolean }) {
+  const workspaceId = useContext(TranscriptWorkspace)
+  const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
+  const openImage = useContext(OpenImage)
+  const [loaded, setLoaded] = useState<ImagePart | null>(null)
+  const pending = useRef<Promise<ImagePart | null> | null>(null)
+  const rel = workspaceRelative(image, root)
+  const name = image.split(/[\\/]/).pop() ?? image
+  const load = (): Promise<ImagePart | null> => {
+    if (loaded) return Promise.resolve(loaded)
+    if (!workspaceId || rel === null) return Promise.resolve(null)
+    pending.current ??= call('workspaces.readImage', { workspaceId, path: rel, at: 'worktree' })
+      .then((r): ImagePart | null => (r ? { type: 'image', name, path: rel, dataUrl: r.dataUrl } : null))
+      .catch(() => null)
+      .then((part) => { if (part) setLoaded(part); else pending.current = null; return part })
+    return pending.current
+  }
   return (
     <StepRow
       icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
-      label={image ? 'Read image' : item.label} detail={item.detail} chip={image && <PartChip part={{ type: 'image', name: image.split(/[\\/]/).pop() ?? image }} />}
+      label="Read image" detail={item.detail} chip={<PartChip part={{ type: 'image', name }} />}
+      mono meta={meta} compact={compact}
+      onPeek={openImage ? () => void load() : undefined} peek={loaded && <img src={loaded.dataUrl} alt="" />}
+      onOpen={openImage ? async () => { const part = await load(); if (!part) return false; openImage(part); return true } : undefined}
+    >
+      {toolBody(item)}
+    </StepRow>
+  )
+}
+
+const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
+  const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
+  const image = readImage(item)
+  if (image) return <ReadImageRow item={item} image={image} file={file} meta={meta} compact={compact} />
+  return (
+    <StepRow
+      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
+      label={item.label} detail={item.detail}
       mono meta={meta} compact={compact}
     >
       {toolBody(item)}
@@ -551,6 +628,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
           <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
         )}
+        <TranscriptWorkspace.Provider value={workspaceId}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
@@ -559,6 +637,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
           {running && !planWaits && <Elapsed since={since} />}
           <div ref={end} />
         </div>
+        </TranscriptWorkspace.Provider>
       </div>
       {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
     </div>
