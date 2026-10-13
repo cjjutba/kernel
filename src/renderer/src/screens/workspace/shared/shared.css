@@ -35,8 +35,8 @@
 .shared-ver[aria-expanded='true'] { background: var(--surface-3); }
 .shared-ver svg { color: var(--muted); }
 .shared-menu-ver { font: 12.5px var(--mono); color: var(--ink-2); }
-.shared-width .segmented { padding: 2px; border-radius: 7px; background: transparent; border-color: var(--line-3); }
-.shared-width .segmented button { height: 20px; padding: 0 9px; border-radius: 5px; font-size: 12px; font-weight: 500; }
+.shared-width .segmented { padding: 2px; border-radius: var(--r); background: transparent; border-color: var(--line-3); }
+.shared-width .segmented button { height: 20px; padding: 0 9px; border-radius: var(--r-sm); font-size: 12px; font-weight: 500; }
 .shared-tools .btn.small svg { color: var(--muted); }
 .shared-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .shared-area { position: relative; flex: 1; min-height: 0; box-sizing: border-box; display: flex; justify-content: center; padding: 16px; overflow: hidden; background: var(--aside); }
@@ -86,10 +86,10 @@
 
 /* the zoom control in an image's toolbar (KERNEL-598): minus, the percent drawn, plus, in one hairline box the height of Comment beside it */
 .shared-zoom-ctl { display: inline-flex; align-items: center; height: 26px; box-sizing: border-box; padding: 0 1px; border: 1px solid var(--line-3); border-radius: var(--r-sm); }
-.shared-zoom-ctl .icon-btn { width: 22px; height: 22px; border-radius: 5px; }
+.shared-zoom-ctl .icon-btn { width: 22px; height: 22px; border-radius: var(--r-sm); }
 .shared-zoom-ctl [aria-disabled='true'] { opacity: 0.55; cursor: default; }
 .shared-zoom-ctl .icon-btn[aria-disabled='true']:hover { color: var(--muted); }
-.shared-zoom-pct { min-width: 46px; height: 22px; padding: 0 4px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-2); font: 12px var(--mono); }
+.shared-zoom-pct { min-width: 46px; height: 22px; padding: 0 4px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font: 12px var(--mono); }
 .shared-zoom-pct:hover:not([aria-disabled='true']) { background: var(--surface-3); }
 
 /* comment mode (KERNEL-311: WorkspaceSharedComment.png and the rest) */
@@ -102,19 +102,19 @@
 .shared-doc { position: relative; width: 640px; max-width: 100%; flex-shrink: 0; }
 .cm-banner { position: absolute; z-index: 6; top: 22px; left: 50%; transform: translateX(-50%); margin: 0; height: 28px; box-sizing: border-box; display: flex; align-items: center; padding: 0 12px; border: 1px solid var(--line-3); border-radius: var(--r); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; pointer-events: none; }
 .cm-layer { position: absolute; inset: 0; z-index: 2; cursor: crosshair; }
-.cm-hover { position: absolute; box-sizing: border-box; border: 1.5px solid var(--canvas); outline: 1px solid var(--ink); border-radius: 4px; pointer-events: none; }
-.cm-hover-label { position: absolute; left: -2px; bottom: calc(100% + 5px); height: 18px; box-sizing: border-box; display: flex; align-items: center; padding: 0 6px; border: 1px solid var(--ink); border-radius: 4px; background: var(--canvas); color: var(--ink); font: 11px var(--mono); white-space: nowrap; }
+.cm-hover { position: absolute; box-sizing: border-box; border: 1.5px solid var(--canvas); outline: 1px solid var(--ink); border-radius: var(--r-2xs); pointer-events: none; }
+.cm-hover-label { position: absolute; left: -2px; bottom: calc(100% + 5px); height: 18px; box-sizing: border-box; display: flex; align-items: center; padding: 0 6px; border: 1px solid var(--ink); border-radius: var(--r-2xs); background: var(--canvas); color: var(--ink); font: 11px var(--mono); white-space: nowrap; }
 .cm-pin { position: absolute; width: 22px; height: 22px; box-sizing: border-box; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; padding: 0; border: 1.5px solid var(--ink); outline: 1px solid var(--canvas); border-radius: 50%; background: var(--canvas); color: var(--ink); font: 600 11px var(--mono); cursor: pointer; }
 .cm-pin[data-active='true'] { border: 2px solid var(--canvas); outline: 1px solid var(--ink); background: var(--ink); color: var(--canvas); cursor: default; pointer-events: none; }
 .cm-pin:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .cm-pop { position: absolute; z-index: 5; width: 380px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--line-3); border-radius: var(--r-md); background: var(--surface-2); cursor: default; }
 .cm-title { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.cm-note { box-sizing: border-box; width: 100%; height: 58px; resize: none; padding: 8px 10px; border: 1px solid var(--input-line); border-radius: 7px; background: var(--panel); color: var(--ink-2); font: inherit; font-size: 13px; line-height: 20px; }
+.cm-note { box-sizing: border-box; width: 100%; height: 58px; resize: none; padding: 8px 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--panel); color: var(--ink-2); font: inherit; font-size: 13px; line-height: 20px; }
 .cm-note:focus-visible { outline: none; border-color: var(--ink-3); }
 .cm-sees { height: 22px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .cm-sees > span:first-child { flex-shrink: 0; white-space: nowrap; }
 .cm-chip { height: 22px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 7px; white-space: nowrap; overflow: hidden; border: 1px solid var(--chip-line); border-radius: var(--r-sm); background: var(--tint-muted); color: var(--ink-2); font: 11.5px var(--mono); }
-.cm-lines { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--card-line); border-radius: 7px; color: var(--muted); font: 11.5px/17px var(--mono); overflow-wrap: anywhere; }
+.cm-lines { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--card-line); border-radius: var(--r); color: var(--muted); font: 11.5px/17px var(--mono); overflow-wrap: anywhere; }
 .cm-gone { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
 .cm-link { padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; text-decoration: underline; }
 .cm-said { margin: 0; font-size: 13px; line-height: 20px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }

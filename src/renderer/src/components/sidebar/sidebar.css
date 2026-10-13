@@ -13,7 +13,7 @@
    room's letter for a chevron, which points down while the room is expanded (Conductor). A click alone does not. */
 .room-row:hover > .nav-item { background: var(--nav-hover); }
 .room-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
-.room-letter { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.room-letter { width: 18px; height: 18px; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .room-letter[data-current] { background: var(--surface-3); }
 .room-chev { display: none; }
 .room-chev[data-open='true'] svg { transform: rotate(90deg); }
@@ -23,7 +23,7 @@
    button holds another, and replaces the icon on hover or keyboard focus. It is transparent, not display: none, so Tab can reach it. */
 .chat-row { position: relative; }
 .chat-row:hover > .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
-.chat-chev { position: absolute; left: 20px; top: 50%; width: 16px; height: 16px; margin-top: -8px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; opacity: 0; }
+.chat-chev { position: absolute; left: 20px; top: 50%; width: 16px; height: 16px; margin-top: -8px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; opacity: 0; }
 .chat-chev:hover { color: var(--ink); }
 .chat-chev[aria-expanded='true'] svg { transform: rotate(90deg); }
 .chat-row:hover .chat-chev, .chat-row:has(:focus-visible) .chat-chev { opacity: 1; }
@@ -58,7 +58,7 @@
 /* The Usage pill and its popover, which opens above it (PlanMenu.tsx, UsagePopover.png). One section per provider: the account in use, its
    windows, then Switch. The meters are the shared Meter, white from 85%. A section's Switch rows bleed 8px past its padding and pad themselves
    back, so their hover fill is wider than their text. */
-.plan-pill { height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; }
+.plan-pill { height: 24px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; }
 .plan-pill:hover, .plan-pill[aria-expanded='true'] { background: var(--nav-hover); color: var(--ink); }
 .plan-pill:focus-visible { outline-offset: 2px; }
 .popover.plan-pop { width: 304px; padding: 0; max-height: calc(100vh - 56px); overflow-y: auto; }
@@ -126,7 +126,7 @@ button.hc-pr:hover { color: var(--ink); }
    of their own, and so does the Lead's row. A chat with workspaces to show carries data-guide and is drawn as a tree (KERNEL-631). The trunk is a 1px line 28px in, the
    centre of the chat's 16px icon (20px to 36px). It starts 2px under the icon, 25px down the 30px row, and each nested row carries its own length of it, from the 3px gap
    above the row to its centre, so no length depends on the block's height. A row that isn't the last also runs it on to the row's end, and its elbow is a 1px branch at
-   the icon's centre, 15px down, from the trunk to 4px short of the nested icon (38px in). The last row that isn't folding away turns the trunk into a └ with a 5px radius
+   the icon's centre, 15px down, from the trunk to 4px short of the nested icon (38px in). The last row that isn't folding away turns the trunk into a └ with a 6px radius (`--r-xs`)
    and nothing under it. They are --line-3, and --line-4 in the block that holds the open row. A folded chat has no workspaces drawn and so no tree. */
 .nav-group { --guide: var(--line-3); position: relative; display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
 .nav-group:has([aria-current='page']) { --guide: var(--line-4); }
@@ -134,7 +134,7 @@ button.hc-pr:hover { color: var(--ink); }
 .nav-group[data-guide] > .ws-row::before, .nav-group[data-guide] > .ws-row::after { content: ''; position: absolute; z-index: 1; pointer-events: none; }
 .nav-group[data-guide] > .ws-row::before { left: 28px; top: -3px; bottom: 0; width: 1px; background: var(--guide); }
 .nav-group[data-guide] > .ws-row::after { left: 29px; top: 15px; width: 5px; height: 1px; background: var(--guide); }
-.nav-group[data-guide] > .ws-row:nth-last-child(1 of :not(.row-fold))::before { bottom: auto; top: -3px; width: 6px; height: 19px; box-sizing: border-box; background: none; border-left: 1px solid var(--guide); border-bottom: 1px solid var(--guide); border-bottom-left-radius: 5px; }
+.nav-group[data-guide] > .ws-row:nth-last-child(1 of :not(.row-fold))::before { bottom: auto; top: -3px; width: 6px; height: 19px; box-sizing: border-box; background: none; border-left: 1px solid var(--guide); border-bottom: 1px solid var(--guide); border-bottom-left-radius: var(--r-xs); }
 .nav-group[data-guide] > .ws-row:nth-last-child(1 of :not(.row-fold))::after { display: none; }
 /* The sidebar's width is the container the diff counts are measured against (KERNEL-601): they show at 300px or more. The list's content box is the sidebar's width less
    the 10px and 8px of padding the frame gives it, so 300px is 282px here. */
