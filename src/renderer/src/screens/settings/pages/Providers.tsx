@@ -196,7 +196,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
       <section className="set-section">
         <div className="set-section-head">
           <h2>Subscriptions</h2>
-          <Button disabled={locked} onClick={() => setAdding('subscription')}>Add account</Button>
+          <Button variant="primary" disabled={locked} onClick={() => setAdding('subscription')}>Add account</Button>
         </div>
         {banner && <LimitBanner text={banner.text} action={banner.action} locked={locked} />}
         <div className="set-card">
@@ -216,7 +216,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
       <section className="set-section">
         <div className="set-section-head">
           <h2>API keys</h2>
-          <Button disabled={locked} onClick={() => setAdding('apiKey')}>Add key</Button>
+          <Button variant="primary" disabled={locked} onClick={() => setAdding('apiKey')}>Add key</Button>
         </div>
         <div className="set-card">
           {keys.length
