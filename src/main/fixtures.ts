@@ -115,7 +115,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { ...a, ...patch }
     },
     'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-    'agents.create': async ({ draft }) => ({ ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }),
+    'agents.create': async ({ roomId, draft, scope }) => {
+      if (roomId) return { ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }
+      if (scope === 'team') throw new Error("A team agent is saved in a room's repo. Open a room to add one.")
+      return { ...agentFromFile(`~/.claude/agents/${draft.id}.md`, draft.text), origin: 'personal', joinedAt: Date.now() }
+    },
     'agents.retire': async () => ok,
     'agents.restore': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), retired: false }),
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],

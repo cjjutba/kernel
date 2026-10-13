@@ -74,10 +74,13 @@ export interface KernelApi {
    * `team` opens a pull request that changes the file, returned as `pr`, and the agent stays as it is until that merges.
    */
   'agents.save': { req: { roomId: string; agentId: string; patch: AgentEdit; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
-  /** New agent > Describe: write a draft file from a description. */
-  'agents.draft': { req: { roomId: string; description: string; name?: string; model?: string }; res: AgentDraft }
-  /** New agent > Create agent. `me`, the default, saves the file in ~/.claude/agents. `team` opens a pull request that adds it (KERNEL-466). */
-  'agents.create': { req: { roomId: string; draft: AgentDraft; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
+  /** New agent > Describe: write a draft file from a description. Settings, Agents with no room leaves `roomId` out. */
+  'agents.draft': { req: { roomId?: string; description: string; name?: string; model?: string }; res: AgentDraft }
+  /**
+   * New agent > Create agent. `me`, the default, saves the file in ~/.claude/agents. `team` opens a pull request that adds it
+   * (KERNEL-466), so it needs `roomId`. Settings, Agents with no room leaves `roomId` out and creates only for `me`.
+   */
+  'agents.create': { req: { roomId?: string; draft: AgentDraft; scope?: AgentScope }; res: AgentDef & { pr?: AgentChangePr } }
   /**
    * The agent leaves the team on this Mac now, and its open workspaces go to `handoffTo`, or the Lead. `me`, the default,
    * leaves the file as it is. `team` also opens a pull request that moves it to .claude/retired-agents (D-003, KERNEL-466).

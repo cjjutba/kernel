@@ -98,4 +98,36 @@ describe('personal and plugin agents without a room (KERNEL-640)', () => {
     await vi.waitFor(() => expect(pushed.at(-1)?.map((a) => a.id)).toContain('mira'), { timeout: 5000 })
     expect(pushed.at(-1)?.find((a) => a.id === 'mira')).toMatchObject({ origin: 'personal', role: 'Writer' })
   })
+
+  it('drafts and creates a personal agent with no rooms, and the page hears of it', async () => {
+    const { k, h, home, pushed } = await boot()
+    expect(k.store.rooms()).toEqual([])
+    await h['agents.listGlobal']({})
+    const draft = await h['agents.draft']({ description: 'Writer. Drafts release notes.', name: 'Mira' })
+    expect(draft).toMatchObject({ id: 'mira', name: 'Mira' })
+    const mira = await h['agents.create']({ draft })
+    expect(mira).toMatchObject({ id: 'mira', origin: 'personal', file: join(home, '.claude', 'agents', 'mira.md') })
+    expect(await readFile(join(home, '.claude', 'agents', 'mira.md'), 'utf8')).toBe(`${draft.text.trimEnd()}\n`)
+    expect((await h['agents.listGlobal']({})).find((a) => a.id === 'mira')).toMatchObject({ origin: 'personal' })
+    await vi.waitFor(() => expect(pushed.at(-1)?.map((a) => a.id)).toContain('mira'), { timeout: 5000 })
+  })
+
+  it('refuses a team agent with no room, and writes nothing', async () => {
+    const { h, home } = await boot()
+    const draft = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
+    await expect(h['agents.create']({ draft, scope: 'team' })).rejects.toThrow("A team agent is saved in a room's repo. Open a room to add one.")
+    await expect(readFile(join(home, '.claude', 'agents', 'ivy.md'), 'utf8')).rejects.toThrow()
+  })
+
+  it('creates with no room open, and a room Kernel has read picks the agent up', async () => {
+    const { k, h } = await boot()
+    const room = await k.rooms.addRoom(await tempRepo({ 'README.md': '# shop\n', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nYou are Ivy.' }))
+    await k.team.agents(room.id)
+    // A room's file would win over the user's own, so its names are taken.
+    const ivy = await h['agents.draft']({ description: 'QA. Runs the tests.', name: 'Ivy' })
+    await expect(h['agents.create']({ draft: ivy })).rejects.toThrow('Ivy is already on the team.')
+    const nia = await h['agents.draft']({ description: 'Docs writer. Keeps the README current.', name: 'Nia' })
+    await h['agents.create']({ draft: nia })
+    expect(k.team.agentsSync(room.id).find((a) => a.id === 'nia')).toMatchObject({ origin: 'personal' })
+  })
 })
