@@ -1,64 +1,53 @@
-import { useMemo } from 'react'
-import { MODELS, type AccountProfile, type RateLimit } from '@shared/types'
-import { limitProvider } from '@shared/providers'
+import { PROVIDERS, type Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
+import { useFreshUsage } from '../../../accountRows'
+import { planAccounts, type PlanAccount } from '../../../components/sidebar/planModel'
 import { actions, go, useStore } from '../../../store'
 import { Button, Meter, Toggle, useBusy } from '../../../ui'
-import { resetPhrase } from '../../workspace/banners/model'
 import { Page, Row, Section } from '../kit'
 import { patchSettings, useSettings } from '../useSettings'
 
-const modelLabel = (id: string) => MODELS.find((m) => m.id === id)?.label ?? id
-const WINDOW_MODEL: Partial<Record<RateLimit['type'], string>> = { seven_day_opus: 'Opus 5.5', seven_day_sonnet: 'Sonnet 5.5' }
-
-/** The three windows the page shows, from rate_limit_event data: the session, the week, and one per model that has its own weekly limit. */
-export function usageRows(usage: RateLimit[]): { id: string; title: string; limit?: RateLimit }[] {
-  const perModel = usage.filter((l) => l.type === 'seven_day_opus' || l.type === 'seven_day_sonnet' || (l.type !== 'five_hour' && l.type !== 'seven_day' && l.model))
-  return [
-    { id: 'session', title: 'Current session', limit: usage.find((l) => l.type === 'five_hour') },
-    { id: 'week', title: 'This week, all models', limit: usage.find((l) => l.type === 'seven_day') },
-    ...(perModel.length
-      ? perModel.map((l) => ({ id: l.type, title: `This week, ${l.model ? modelLabel(l.model) : WINDOW_MODEL[l.type] ?? 'one model'}`, limit: l }))
-      : [{ id: 'model', title: 'This week, per model' }])
-  ]
+/** One account's card: its name with Active when agents are on it, then its own windows. A key has none, and says it is billed per token. */
+function AccountCard({ provider, a }: { provider: string; a: PlanAccount }) {
+  const who = [a.billed ? 'API key' : a.email, a.billed ? 'Billed per token' : a.plan].filter(Boolean).join(' · ')
+  return (
+    <div className="set-card" role="group" aria-label={`${provider} ${a.account.label}`}>
+      <Row label={a.account.label} desc={who}>{a.account.active && <span className="set-tag">Active</span>}</Row>
+      {a.windows.map((w) => (
+        <Row key={w.id} className="set-acct-win" label={w.title} full={
+          <div className="set-meter">
+            <Meter label={`${provider} ${a.account.label} ${w.title}`} value={w.value} />
+            <span className="set-meter-note">{w.note}</span>
+          </div>
+        } />
+      ))}
+    </div>
+  )
 }
 
 /**
- * The Claude account whose meters the page shows: the one in use, or with a key in use, the subscription agents were last on.
- * A key has no windows, and nothing reads the subscription's while it is idle, so its numbers stand as they were last read (KERNEL-524).
+ * Settings > Account and usage (SettingsAccount.png, KERNEL-665): one section per provider, Claude Code then Codex like the Usage popover, each with every
+ * signed-in account and its own windows. The numbers come from the same model as the popover and follow `usage` and `accounts` pushes.
  */
-export function meterAccount(accounts: AccountProfile[], usage: RateLimit[]): AccountProfile | undefined {
-  const claude = accounts.filter((a) => a.provider === 'claude')
-  const active = claude.find((a) => a.active)
-  if (active?.auth !== 'apiKey') return active
-  const read = (a: AccountProfile) => Math.max(0, ...usage.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === a.id).map((l) => l.readAt ?? 0))
-  return claude.filter((a) => a.auth !== 'apiKey').sort((a, b) => read(b) - read(a))[0]
-}
-
-export function accountWindows(usage: RateLimit[], account: AccountProfile | undefined): RateLimit[] {
-  return usage.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === (account?.id ?? 'cli'))
-}
-
-/** "62% used · resets at 3:40 PM". */
-export function usageNote(l: RateLimit | undefined, now: number): string {
-  if (l?.utilization === undefined) return 'No usage reported yet'
-  const used = `${Math.round(l.utilization * 100)}% used`
-  return l.resetsAt ? `${used} · resets ${resetPhrase(l.resetsAt, now)}` : used
-}
-
-/** Settings > Account and usage (SettingsAccount.png). The meters are white from 85%. */
 export function Account() {
-  // Claude's windows on the account Claude runs on now, or the subscription behind a key in use. Codex's have their own line on Settings, Providers (KERNEL-406).
   const accounts = useStore((s) => s.accounts)
-  const all = useStore((s) => s.usage)
-  const account = useStore((s) => s.account)
-  const keyInUse = accounts.find((a) => a.provider === 'claude' && a.active && a.auth === 'apiKey')
-  const shown = useMemo(() => meterAccount(accounts, all), [accounts, all])
-  const usage = useMemo(() => accountWindows(all, shown), [all, shown])
-  const plan = keyInUse ? shown?.plan : account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')
+  const usage = useStore((s) => s.usage)
   const s = useSettings()
-  const [busy, run] = useBusy<'signOut' | 'usage'>()
+  const [busy, run] = useBusy<'signOut' | 'usage' | `signin:${Provider}`>()
+  useFreshUsage(true)
   const now = Date.now()
+  const sections = PROVIDERS.filter((p) => accounts.some((a) => a.provider === p.id)).map((p) => ({ id: p.id, ...planAccounts(p.id, accounts, usage, now) }))
+  // The CLI's own login signs in right here. An added account asks for a code and keeps its name, which its sheet in Settings, Providers does.
+  const signIn = (provider: Provider, cli: boolean) => {
+    if (!cli) return go({ name: 'settings', page: 'providers', tab: provider })
+    return run(`signin:${provider}`, async () => {
+      try {
+        await call('providers.signIn', { provider })
+        actions.accounts.set(await call('accounts.list', undefined))
+        if (provider === 'claude') actions.account.set(await call('account.get', undefined))
+      } catch (e) { actions.ui.toast({ title: 'Could not sign in', sub: cleanError(e) }) }
+    })
+  }
   const signOut = () => run('signOut', async () => {
     try {
       actions.account.set(await call('account.signOut', undefined))
@@ -71,19 +60,22 @@ export function Account() {
   })
   return (
     <Page title="Account and usage">
-      <Section title="Usage">
-        {keyInUse && <Row label={`Agents are on ${keyInUse.label}, billed per token.`} />}
-        {(!keyInUse || usage.length > 0) && usageRows(usage).map((r) => (
-          <Row key={r.id} label={r.title} full={
-            <div className="set-meter">
-              <Meter label={r.title} value={r.limit?.utilization ?? 0} />
-              <span className="set-meter-note">{usageNote(r.limit, now)}</span>
-            </div>
-          } />
-        ))}
-      </Section>
-      <Section title="Claude">
-        {plan && <Row label="Plan"><span className="set-value">{plan}</span></Row>}
+      {sections.map((p) => (
+        <section key={p.id} className="set-section">
+          <h2>{p.name}</h2>
+          <div className="set-cards">
+            {p.accounts.map((a) => <AccountCard key={a.account.id} provider={p.name} a={a} />)}
+            {p.signedOut && (
+              <div className="set-card">
+                <Row label={`${p.name} isn’t signed in`}>
+                  <Button aria-label={`Sign in to ${p.name}`} busy={busy === `signin:${p.id}`} busyLabel="Signing in" disabled={busy !== null} onClick={() => void signIn(p.id, p.signedOut!.cli)}>Sign in</Button>
+                </Row>
+              </div>
+            )}
+          </div>
+        </section>
+      ))}
+      <Section title="Claude settings">
         <Row label="Details" desc="The same numbers Claude Code shows"><Button busy={busy === 'usage'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openUsage()}>Open /usage</Button></Row>
         {s && (
           <>

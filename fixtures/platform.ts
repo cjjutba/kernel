@@ -127,11 +127,8 @@ const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() 
 }))
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
-const accountUsage: RateLimit[] = [
-  { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
-  { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
-  { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextMonday()), model: 'claude-fable-5-1' }
-]
+/** Settings, Account and usage with the accounts of the Usage popover and Fable's weekly window on Work (KERNEL-665). */
+const accountPage = (extra: Partial<Fixture> = {}) => settingsPage('account', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow], ...extra })
 
 // KERNEL-26, KERNEL-191: the room pages read their own room's .kernel files, so the fixture gives Client A the values the canvas shows.
 // `sources` says which file set what: both files are there, so the settings files button offers both.
@@ -351,9 +348,12 @@ export const platformFixtures: Record<string, Fixture> = {
   Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
-  SettingsAccount: settingsPage('account', { usage: accountUsage }),
-  // KERNEL-524: Work key runs the agents, and the Claude Max login behind it keeps the numbers it had when the key took over.
-  SettingsAccountApiKey: settingsPage('account', { usage: accountUsage, account: { signedIn: true, name: 'Work key' }, accounts: [{ ...claudeAccounts[0], active: false }, keyAccount('claude', true), ...codexAccounts] }),
+  // KERNEL-665: every Claude Code and Codex account with its own windows, as the Usage popover lists them. The Codex shots are the page scrolled down to that section.
+  SettingsAccount: accountPage(),
+  // The key runs the agents, and the subscriptions keep the numbers they had when it took over (KERNEL-524).
+  SettingsAccountApiKey: accountPage({ accounts: [{ ...workClaude, active: false }, personalClaude, keyAccount('claude', true), ownCodex, personalCodex] }),
+  SettingsAccountCodex: accountPage({ accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex] }),
+  SettingsAccountCodexSignedOut: accountPage({ accounts: [workClaude, personalClaude, keyAccount('claude'), { ...ownCodex, signedIn: false }] }),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406: Frontend and Backend run on Codex. The rest stay on Claude.
   SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),

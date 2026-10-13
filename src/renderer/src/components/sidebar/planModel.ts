@@ -73,6 +73,27 @@ const fiveHourUse = (usage: RateLimit[], a: AccountProfile, now: number): string
   return w?.utilization === undefined ? undefined : `5-hour ${Math.round(w.utilization * 100)}% used`
 }
 
+/** One account on Settings, Account and usage: its label, plan and email, and its own windows, or "billed per token" for a key (KERNEL-665). */
+export interface PlanAccount {
+  account: AccountProfile
+  plan?: string
+  email?: string
+  billed: boolean
+  windows: PlanWindow[]
+}
+
+/** What both the popover and the page say about one signed-in account. */
+function accountView(account: AccountProfile, usage: RateLimit[], now: number): PlanAccount {
+  const key = account.auth === 'apiKey'
+  return {
+    account,
+    ...(key ? { plan: 'API key' } : account.plan ? { plan: account.plan } : {}),
+    ...(account.email && account.email !== account.label ? { email: account.email } : {}),
+    billed: key,
+    windows: key ? [] : planWindows(usage, account, now)
+  }
+}
+
 /** One provider's section. The account it runs on is the active one, which can be an API key (billed per token) or signed out. */
 export function planSection(provider: Provider, accounts: AccountProfile[], usage: RateLimit[], now: number): PlanSection {
   const name = PROVIDERS.find((p) => p.id === provider)!.label
@@ -80,19 +101,22 @@ export function planSection(provider: Provider, accounts: AccountProfile[], usag
   const active = mine.find((a) => a.active)
   const account = active?.signedIn ? active : undefined
   if (!account) return { provider, name, ...(active ? { signedOut: active } : {}), billed: false, windows: [], others: [] }
-  const key = account.auth === 'apiKey'
   const others = mine.filter((a) => a.id !== account.id && a.signedIn && !a.keychainWait).map((a): PlanOther => {
     const use = a.auth === 'apiKey' ? 'Billed per token' : fiveHourUse(usage, a, now)
     return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}) }
   })
-  return {
-    provider, name, account,
-    ...(key ? { plan: 'API key' } : account.plan ? { plan: account.plan } : {}),
-    ...(account.email && account.email !== account.label ? { email: account.email } : {}),
-    billed: key,
-    windows: key ? [] : planWindows(usage, account, now),
-    others
-  }
+  const { account: _, ...view } = accountView(account, usage, now)
+  return { provider, name, account, ...view, others }
+}
+
+/** Every signed-in account of the provider for the page: the one agents are on first, then the rest in list order. With none signed in, `signedOut` is the one Sign in goes to. */
+export function planAccounts(provider: Provider, accounts: AccountProfile[], usage: RateLimit[], now: number): { name: string; accounts: PlanAccount[]; signedOut?: AccountProfile } {
+  const name = PROVIDERS.find((p) => p.id === provider)!.label
+  const mine = accounts.filter((a) => a.provider === provider)
+  const signedIn = mine.filter((a) => a.signedIn)
+  const ordered = [...signedIn.filter((a) => a.active), ...signedIn.filter((a) => !a.active)]
+  const signedOut = mine.find((a) => a.active) ?? mine[0]
+  return { name, accounts: ordered.map((a) => accountView(a, usage, now)), ...(ordered.length || !signedOut ? {} : { signedOut }) }
 }
 
 /** Both providers' sections, Claude Code first. A provider with no accounts at all is left out: they haven't loaded yet. */
