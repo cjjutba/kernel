@@ -1,4 +1,4 @@
-import { EFFORT_LABELS, PROVIDERS, type AppSettings, type Provider, type Role, type RoleModel } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, PROVIDERS, type AppSettings, type CompactWindow, type Provider, type Role, type RoleModel } from '@shared/types'
 import { Select, Toggle } from '../../../ui'
 import { effortsOf, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
@@ -39,6 +39,8 @@ function RoleModels({ title, roleKey, current }: { title: string; roleKey: Role;
   )
 }
 
+const COMPACT_LABELS: Record<CompactWindow, string> = { '200k': '200k tokens', full: "Model's full window" }
+
 /** Settings > Models and effort (SettingsModels.png). The agent limit is enforced by the engine with a queue. */
 export function Models({ s }: { s: AppSettings }) {
   const m = s.models
@@ -46,6 +48,16 @@ export function Models({ s }: { s: AppSettings }) {
     <Page title="Models and effort">
       <Section title="Default model by role" note="An agent file with its own model line keeps that model. Its profile shows the pin.">
         {ROLES.map((r) => <RoleModels key={r.key} title={r.title} roleKey={r.key} current={m.roles[r.key]} />)}
+      </Section>
+      <Section title="Compact window by role" note="A chat compacts when it reaches this size. It applies to Claude models. A chat already past it compacts on its next turn.">
+        {ROLES.map((r) => {
+          const codex = m.roles[r.key].provider === 'codex'
+          return (
+            <Row key={r.key} label={r.title} desc={codex ? 'Codex manages its own context.' : undefined}>
+              <Select label={`${r.title} compact window`} value={m.compact[r.key]} disabled={codex} options={COMPACT_WINDOWS.map((w) => ({ value: w, label: COMPACT_LABELS[w] }))} onChange={(e) => void patchSettings({ models: { compact: { [r.key]: e.target.value as CompactWindow } } })} />
+            </Row>
+          )
+        })}
       </Section>
       <Section title="Defaults">
         <Row label="Start the Lead in plan mode"><Toggle label="Start the Lead in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
