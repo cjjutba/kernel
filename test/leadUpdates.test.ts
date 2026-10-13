@@ -1250,7 +1250,7 @@ describe('shared files in Team updates (KERNEL-302)', () => {
     const v: SharedVersion = { n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: String(n) }
     return [{ id, roomId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
   }
-  const SHARED = (title: string, n: number, source: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}). The user can open it from this update.`
+  const SHARED = (title: string, n: number, source: string, id: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}, id ${id}). The user can open it from this update.`
 
   it('never wakes the Lead on its own, and goes out with the next update that does, in row.shared rather than events', async () => {
     const { u, s, store, w1, nc } = await setup()
@@ -1261,7 +1261,7 @@ describe('shared files in Team updates (KERNEL-302)', () => {
     u.turnDone(w1, nc, done)
     await wait()
     expect(s.posts).toHaveLength(1)
-    expect(parts(s.posts[0]).body).toEqual([NOOR, SHARED('Checkout mockup', 1, '.kernel/shared/f1.html'), ...QUOTED])
+    expect(parts(s.posts[0]).body).toEqual([NOOR, SHARED('Checkout mockup', 1, '.kernel/shared/f1.html', 'f1'), ...QUOTED])
     const [row] = s.updates[0].rows
     expect(row.shared).toEqual([{ sharedId: 'f1', version: 1, title: 'Checkout mockup', kind: 'html' }])
     expect(row.events.map((e) => e.kind)).toEqual(['turn'])
@@ -1278,7 +1278,7 @@ describe('shared files in Team updates (KERNEL-302)', () => {
       { sharedId: 'f2', version: 1, title: 'Logo', kind: 'image' },
       { sharedId: 'f1', version: 2, title: 'Checkout, take two', kind: 'html' }
     ])
-    expect(parts(s.posts[0]).body.filter((l) => l.startsWith('- Shared'))).toEqual([SHARED('Logo', 1, '.kernel/shared/f2.html', 'image'), SHARED('Checkout, take two', 2, '.kernel/shared/f1.html')])
+    expect(parts(s.posts[0]).body.filter((l) => l.startsWith('- Shared'))).toEqual([SHARED('Logo', 1, '.kernel/shared/f2.html', 'f2', 'image'), SHARED('Checkout, take two', 2, '.kernel/shared/f1.html', 'f1')])
   })
 
   it("adds nothing for the Lead's own workspace", async () => {

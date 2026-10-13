@@ -553,6 +553,8 @@ export class Lead extends Feature {
         if (!own) throw new Error('this chat has no workspace to pass images from.')
         return attachedImages(own.path, paths)
       },
+      // An image a teammate in this room shared, at the version the Lead names (KERNEL-659).
+      sharedImage: (id, version) => this.k.sharing.sharedImage(roomId, id, version),
       askUser: async (o, signal) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.k.team.agents(roomId)

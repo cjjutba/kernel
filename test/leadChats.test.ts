@@ -403,6 +403,80 @@ describe("the user's screenshots passed on to a teammate (KERNEL-658)", () => {
   })
 })
 
+describe("a teammate's shared image passed on to another teammate (KERNEL-659)", () => {
+  const png = (what: string) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(what)])
+  const image = (what: string) => ({ type: 'image', name: 'login.png', dataUrl: `data:image/png;base64,${png(what).toString('base64')}` })
+  /** `setup` with Kai's "Shots" workspace, from which `share` shares a file as share_file does. */
+  async function sharer() {
+    const s = await setup()
+    await s.call(s.first, 'create_workspace', { agent: 'kai', title: 'Shots', brief: 'Take the shots' })
+    const shots = s.byTitle('Shots')
+    const share = async (rel: string, data: Buffer | string) => {
+      await mkdir(join(shots.path, '.kernel/shared'), { recursive: true })
+      await writeFile(join(shots.path, '.kernel/shared', rel), data)
+      const r = await s.k.sharing.shareFile(shots.id, s.k.chatTabs(shots.id).find((c) => c.kind !== 'terminal')!.id, { path: `.kernel/shared/${rel}` })
+      if (r.status === 'same') throw new Error('nothing new shared')
+      return r.file
+    }
+    return { ...s, shots, share }
+  }
+
+  it("sends the version named into a new workspace, where it stays that version after the teammate shares another", async () => {
+    const { k, first, call, byTitle, share } = await sharer()
+    delete (k.sessions as { send?: unknown }).send
+    const file = await share('login.png', png('first take'))
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Match the shot', images: [{ shared: file.id, version: 1 }] })).toMatch(/^Created /)
+    const ws = byTitle('Login layout')
+    const saved = join(ws.path, '.kernel/attachments/login.png')
+    await vi.waitFor(() => access(saved), { timeout: 10_000 })
+    const brief = k.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+    const said = k.store.items(brief.id).find((i) => i.kind === 'user')
+    expect(said?.kind === 'user' && said.parts).toEqual([{ type: 'text', text: 'Match the shot' }, image('first take')])
+    expect(await share('login.png', png('second take'))).toMatchObject({ id: file.id, versions: [{ n: 1 }, { n: 2 }] })
+    expect(await readFile(saved)).toEqual(png('first take'))
+  }, 30000)
+
+  it('sends a follow-up with the version named, next to a screenshot the user attached', async () => {
+    const { k, first, call, byTitle, share } = await sharer()
+    const root = k.store.workspace(first.workspaceId)!.path
+    await mkdir(join(root, '.kernel/attachments'), { recursive: true })
+    await writeFile(join(root, '.kernel/attachments/user.png'), png('from the user'))
+    const file = await share('login.png', png('first take'))
+    await share('login.png', png('second take'))
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    const parts: ChatPart[][] = []
+    k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
+    const id = byTitle('Login layout').id
+    expect(await call(first, 'message_agent', { workspace_id: id, text: 'Compare', images: [{ shared: file.id, version: 2 }, { path: '.kernel/attachments/user.png' }, { shared: file.id, version: 1 }] })).toBe('Sent.')
+    expect(parts).toEqual([[{ type: 'text', text: 'Compare' }, image('second take'), { ...image('from the user'), name: 'user.png' }, image('first take')]])
+  })
+
+  it('refuses a file that is not a PNG, JPEG, GIF or WebP, an unknown id or version, and a fourth image, and sends nothing', async () => {
+    const { k, first, call, byTitle, share } = await sharer()
+    const html = await share('mock.html', '<!doctype html><p>Mock</p>')
+    const md = await share('notes.md', '# Notes')
+    const pdf = await share('spec.pdf', '%PDF-1.4 spec')
+    const svg = await share('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>')
+    const shot = await share('login.png', png('first take'))
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Login layout', brief: 'Fix it' })
+    const parts: ChatPart[][] = []
+    k.sessions.send = async (_: string, p: ChatPart[]) => { parts.push(p); return { queued: false } }
+    const id = byTitle('Login layout').id
+    const send = (images: unknown[]) => call(first, 'message_agent', { workspace_id: id, text: 'x', images })
+    expect(await send([{ shared: html.id, version: 1 }])).toBe('Not sent: "mock.html" is HTML. Only shared images can be passed on.')
+    expect(await send([{ shared: md.id, version: 1 }])).toBe('Not sent: "Notes" is Markdown. Only shared images can be passed on.')
+    expect(await send([{ shared: pdf.id, version: 1 }])).toBe('Not sent: "spec.pdf" is a PDF. Only shared images can be passed on.')
+    expect(await send([{ shared: svg.id, version: 1 }])).toBe('Not sent: "logo.svg" v1 isn\'t a PNG, JPEG, GIF or WebP image.')
+    expect(await send([{ shared: 'nope', version: 1 }])).toBe('Not sent: there is no shared file nope in this room. Use the id a Team update names.')
+    // A good image first doesn't send on its own when the next one is refused.
+    expect(await send([{ shared: shot.id, version: 1 }, { shared: shot.id, version: 2 }])).toBe('Not sent: "login.png" has no v2. It has v1.')
+    expect(await send(Array.from({ length: 4 }, () => ({ shared: shot.id, version: 1 })))).toBe('Not sent: 4 images is over the limit of 3. Send only the ones the teammate needs to act on.')
+    expect(parts).toEqual([])
+    expect(await call(first, 'create_workspace', { agent: 'kai', title: 'Mock', brief: 'x', images: [{ shared: html.id, version: 1 }] })).toBe('Not created: "mock.html" is HTML. Only shared images can be passed on.')
+    expect(byTitle('Mock')).toBeUndefined()
+  })
+})
+
 describe("create_workspace when the room's scripts wait for trust (KERNEL-261)", () => {
   it("says Kai hasn't started after the Created prefix, and the Lead hears once that trusting sent the brief", async () => {
     const { k, room, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
