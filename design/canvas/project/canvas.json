@@ -1647,6 +1647,24 @@
       "x": 13680,
       "y": 22100
     },
+    "SettingsAccountCodex.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Account and usage, scrolled to the Codex account",
+      "w": 1440,
+      "x": 16720,
+      "y": 22100
+    },
+    "SettingsAccountCodexSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Account and usage, Codex signed out",
+      "w": 1440,
+      "x": 18240,
+      "y": 22100
+    },
     "SettingsProvidersApiKeyActive.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2385,6 +2403,8 @@
     "SettingsNotifications.dc.html",
     "SettingsAccount.dc.html",
     "SettingsAccountApiKey.dc.html",
+    "SettingsAccountCodex.dc.html",
+    "SettingsAccountCodexSignedOut.dc.html",
     "SettingsShortcuts.dc.html",
     "SettingsModels.dc.html",
     "SettingsProviders.dc.html",
