@@ -30,6 +30,7 @@ import {
   Copy01Icon,
   CpuIcon,
   Delete02Icon,
+  Download02Icon,
   Edit02Icon,
   File01Icon,
   FlaskConicalIcon,
@@ -103,7 +104,7 @@ const H = {
   chevron: ArrowDown01Icon,
   right: ArrowRight01Icon,
   check: Tick02Icon,
-  x: CancelCircleIcon,
+  x: Cancel01Icon,
   term: CommandLineIcon,
   bulb: Idea01Icon,
   plug: PlugSocketIcon,
@@ -166,16 +167,23 @@ const H = {
   clip: Attachment01Icon,
   book: BookOpen01Icon,
   collapse: UnfoldLessIcon,
-  listTree: ListTreeIcon
+  listTree: ListTreeIcon,
+  download: Download02Icon
 }
 
-/** `stroke` is in the old 16px grid; Hugeicons draws on 24, so 1.4 becomes 2.1. */
-const GRID = 24 / 16
+/** The size scale (DESIGN.md, Icons): 12 carets, chips and inline meta; 14 rows, buttons and menu items; 16 headers and the sidebar; 20 empty states. */
+export type IconSize = 12 | 14 | 16 | 20
 
-export function Icon({ name, size = 16, stroke = 1.4 }: { name: IconName | (string & {}); size?: number; stroke?: number }) {
-  const icon = (H as Record<string, typeof Search01Icon>)[name]
-  if (!icon) return <svg width={size} height={size} aria-hidden="true" />
-  return <HugeiconsIcon icon={icon} size={size} strokeWidth={stroke * GRID} aria-hidden="true" />
+/** One stroke for every glyph: 1.4 in the old 16px grid, which Hugeicons' 24 grid draws as 2.1. */
+const STROKE = 1.4 * (24 / 16)
+
+export function Icon({ name, size = 16 }: { name: IconName; size?: IconSize }) {
+  return <HugeiconsIcon icon={H[name]} size={size} strokeWidth={STROKE} aria-hidden="true" />
+}
+
+/** The big mark on Welcome and Home. Off the size scale and drawn thin, so nothing else uses it. */
+export function LargeMark({ size, stroke }: { size: number; stroke: number }) {
+  return <HugeiconsIcon icon={H.layers} size={size} strokeWidth={stroke * (24 / 16)} aria-hidden="true" />
 }
 
 export type IconName = keyof typeof H

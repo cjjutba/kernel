@@ -145,7 +145,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                     <span className="set-warn-note">Allow Kernel in the macOS prompt to use this account.</span>
                   </>
                 )}
-                {!a.active && !!sameOrg(a, accounts).length && <span className="set-avail"><Icon name="info" size={13} stroke={1.4} />Same organization as {joinNames(sameOrg(a, accounts))}</span>}
+                {!a.active && !!sameOrg(a, accounts).length && <span className="set-avail"><Icon name="info" size={14} />Same organization as {joinNames(sameOrg(a, accounts))}</span>}
               </div>
               {editing
                 ? (

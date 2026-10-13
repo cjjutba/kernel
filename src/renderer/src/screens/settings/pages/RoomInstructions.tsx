@@ -30,7 +30,7 @@ export function RoomInstructions({ roomId, s }: { roomId?: string; s: AppSetting
             <Row key={key} label={label} source={source} desc={source ? undefined : desc}
               onReset={set ? () => { setToggled((t) => ({ ...t, [key]: open })); void patchRoomSettings(roomId, { pr: { [key]: null } }) } : undefined}
               full={open && <TextField label={`${label} instructions`} value={rs?.pr?.[key] ?? s.pr[key]} onSave={(text) => save(key, text)} />}>
-              <button type="button" className="set-disclose" aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`} aria-expanded={open} onClick={() => setToggled((t) => ({ ...t, [key]: !open }))}><Icon name="chevron" size={10} stroke={1.9} /></button>
+              <button type="button" className="set-disclose" aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`} aria-expanded={open} onClick={() => setToggled((t) => ({ ...t, [key]: !open }))}><Icon name="chevron" size={12} /></button>
             </Row>
           )
         })}

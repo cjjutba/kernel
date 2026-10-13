@@ -32,7 +32,7 @@ function RoomRow({ room }: { room: Room }) {
         {room.hidden && <button type="button" className="rm-show" aria-label={`Show ${room.name} in the sidebar`} onClick={(e) => { e.stopPropagation(); show() }}>Show in sidebar</button>}
       </span>
       <span className="rm-source">
-        <Icon name={room.kind === 'folder' || (!room.repo && room.kind !== 'scratch') ? 'folder' : room.kind === 'scratch' ? 'burst' : 'branch'} size={15} />
+        <Icon name={room.kind === 'folder' || (!room.repo && room.kind !== 'scratch') ? 'folder' : room.kind === 'scratch' ? 'burst' : 'branch'} size={16} />
         <span className="mono ellipsis">{sourceOf(room)}</span>
       </span>
       <span className="row" style={{ gap: 8 }}>

@@ -301,12 +301,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
             <div className="row cmp-foot">
               <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
               <span ref={modelAnchor} style={{ position: 'relative' }}>
-                <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
+                <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={12} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
               <span ref={modeAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
-                  <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={11} stroke={1.9} />
+                  <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
                 </Button>
                 {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); setMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
               </span>
@@ -318,7 +318,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               </span>
               {running && !hasDraft
                 ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
-                : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} stroke={1.8} /></button>}
+                : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} /></button>}
             </div>
           </div>
         </div>

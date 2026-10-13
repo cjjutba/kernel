@@ -107,7 +107,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
         <div className="is-inner">
           <div className="is-actions">
             <span className="grow" />
-            {issue.url && <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open on GitHub<Icon name="ext" size={11} stroke={1.8} /></a>}
+            {issue.url && <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open on GitHub<Icon name="ext" size={12} /></a>}
             <Button size="lg" onClick={newChat}>New chat</Button>
             <Button size="lg" variant="primary" busy={busy === 'plan'} busyLabel="Sending" disabled={busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
           </div>

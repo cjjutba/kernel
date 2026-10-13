@@ -35,8 +35,8 @@ export function HistoryButtons() {
   const { canBack, canForward } = useStore((s) => s.ui.nav)
   return (
     <>
-      <IconButton className="nodrag" icon="arrowLeft" size={15} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
-      <IconButton className="nodrag" icon="arrowRight" size={15} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
+      <IconButton className="nodrag" icon="arrowLeft" size={16} label="Back" data-tip-kbd="⌘[" disabled={!canBack} onClick={() => actions.ui.back()} />
+      <IconButton className="nodrag" icon="arrowRight" size={16} label="Forward" data-tip-kbd="⌘]" disabled={!canForward} onClick={() => actions.ui.forward()} />
     </>
   )
 }
@@ -46,7 +46,7 @@ export function SidebarToggle() {
   const open = useStore((s) => s.ui.sidebar)
   return open ? null : (
     <>
-      <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
+      <IconButton icon="sidebar" size={16} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
       <HistoryButtons />
     </>
   )
@@ -55,5 +55,5 @@ export function SidebarToggle() {
 /** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
 export function RightPanelToggle({ name }: { name: string }) {
   const open = useStore((s) => s.ui.rightPanel)
-  return <IconButton icon="panelRight" size={15} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+  return <IconButton icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
 }

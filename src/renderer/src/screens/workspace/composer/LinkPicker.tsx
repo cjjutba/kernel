@@ -146,7 +146,7 @@ export function WorkspacePicker({ roomId, exclude, anchorRef, onPick, onClose, s
           return (
             <button key={w.id} type="button" role="option" aria-selected={on} tabIndex={-1} className="menu-item link-row" data-active={i === at}
               onMouseEnter={() => setAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => toggle(w.id)}>
-              <span className="link-box" data-on={on || undefined} aria-hidden="true">{on && <Icon name="check" size={10} stroke={2} />}</span>
+              <span className="link-box" data-on={on || undefined} aria-hidden="true">{on && <Icon name="check" size={12} />}</span>
               <span className="link-name ellipsis">{w.name}</span>
               <span className="grow mono link-sub ellipsis">{w.prNumber ? `#${w.prNumber}` : w.branch}</span>
             </button>

@@ -104,7 +104,7 @@ function Row({ row }: { row: LeadPr }) {
               </>
             )}
           <button type="button" className="lp-open" aria-label={`Open ${row.name}'s workspace${row.key ? ` for ${row.key}` : ''}`} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>
-            Open<Icon name="ext" size={11} stroke={1.5} />
+            Open<Icon name="ext" size={12} />
           </button>
         </span>
       </div>

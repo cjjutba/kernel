@@ -121,7 +121,7 @@ function PrLink({ url, number, tabbable = true, lone }: { url: string; number?: 
   return (
     <a className="tucard-pr" data-lone={lone || undefined} href={url} aria-label={`Open ${name} on GitHub`} tabIndex={tabbable ? undefined : -1} aria-hidden={tabbable ? undefined : true}
       onClick={(e) => { e.preventDefault(); void call('system.openExternal', { url }).catch(() => undefined) }}>
-      {number ? `PR #${number}` : 'PR'}<Icon name="ext" size={11} />
+      {number ? `PR #${number}` : 'PR'}<Icon name="ext" size={12} />
     </a>
   )
 }

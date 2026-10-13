@@ -17,7 +17,7 @@ export function FirstRoom() {
         <div className="ob-cards" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', width: 420 }}>
           {CARDS.map((c) => (
             <button key={c.name} type="button" className="ob-card" onClick={c.open}>
-              <Icon name={c.icon} size={18} stroke={1.3} />
+              <Icon name={c.icon} size={20} />
               <span className="col" style={{ gap: 3 }}><span className="ob-card-name">{c.name}</span><span className="ob-card-sub">{c.sub}</span></span>
             </button>
           ))}

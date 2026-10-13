@@ -14,7 +14,7 @@ export function FilterChip({ label, value, options, onChange }: { label: string;
     <span className="is-chip">
       <span className="muted">{label}</span>
       <span>{shown}</span>
-      <Icon name="chevron" size={10} stroke={1.9} />
+      <Icon name="chevron" size={12} />
       <select aria-label={`${label}: ${shown}`} value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -45,7 +45,7 @@ export function IssuesHeader({ head, where }: { head: RoomHead; where?: ReactNod
           <span className="is-slash" aria-hidden="true">/</span>
           <span ref={anchor} className="is-roommenu">
             <Button variant="ghost" className="is-roompick" aria-label={`Room: ${room.name}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-              <RoomIcon room={room} className="is-letter" fallback="?" />{room.name}<Icon name="chevron" size={10} stroke={1.9} />
+              <RoomIcon room={room} className="is-letter" fallback="?" />{room.name}<Icon name="chevron" size={12} />
             </Button>
             {open && (
               <Menu label="Room" anchorRef={anchor} onClose={() => setOpen(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}

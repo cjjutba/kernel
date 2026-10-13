@@ -32,7 +32,7 @@ export function UpdateCard() {
   return (
     <div className="update-card">
       <button type="button" className="update-card-x" aria-label="Close" disabled={busy} onClick={() => setClosedFor(version)}>
-        <Icon name="close" size={10} stroke={2} />
+        <Icon name="close" size={12} />
       </button>
       <span className="update-card-title">New update available</span>
       <div className="update-card-actions">

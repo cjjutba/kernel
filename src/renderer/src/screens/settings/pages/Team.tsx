@@ -131,7 +131,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
               <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
               {!!sources.length && (
                 <span className="set-starters" ref={copyAnchor}>
-                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another room<Icon name="chevron" size={10} stroke={1.9} /></Button>
+                  <Button aria-haspopup="menu" aria-expanded={copying} busy={busy === 'copy'} busyLabel="Copying" disabled={busy !== null} onClick={() => setCopying((o) => !o)}>Copy from another room<Icon name="chevron" size={12} /></Button>
                   {copying && <Menu label="Copy from another room" anchorRef={copyAnchor} onClose={() => setCopying(false)} style={{ right: 0, top: 34, width: 220 }} items={sources.map((r) => ({ id: r.id, label: r.name, onSelect: () => { setCopying(false); void copyFrom(r.id) } }))} />}
                 </span>
               )}
@@ -147,7 +147,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           <span className="set-actions">
             {!!files.length && !!starters.length && (
               <span className="set-starters" ref={starterAnchor}>
-                <Button aria-haspopup="menu" aria-expanded={adding} busy={busy === 'starter'} busyLabel="Adding" disabled={busy !== null} onClick={() => setAdding((o) => !o)}>Add a starter agent<Icon name="chevron" size={10} stroke={1.9} /></Button>
+                <Button aria-haspopup="menu" aria-expanded={adding} busy={busy === 'starter'} busyLabel="Adding" disabled={busy !== null} onClick={() => setAdding((o) => !o)}>Add a starter agent<Icon name="chevron" size={12} /></Button>
                 {adding && <Menu label="Starter agents" anchorRef={starterAnchor} onClose={() => setAdding(false)} style={{ right: 0, top: 34, width: 220 }} items={starters.map((m) => ({ id: m.id, label: `${m.name} · ${m.role}`, onSelect: () => { setAdding(false); void addStarter(m.id) } }))} />}
               </span>
             )}

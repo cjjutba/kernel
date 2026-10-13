@@ -121,7 +121,7 @@ export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider
           </div>
         )}
         {!keyForm && !started && duplicate && (
-          <p className="set-result" data-state="fail" role="alert"><Icon name="xCircle" size={14} stroke={1.6} />{failed?.replace(/\.$/, '')}</p>
+          <p className="set-result" data-state="fail" role="alert"><Icon name="xCircle" size={14} />{failed?.replace(/\.$/, '')}</p>
         )}
         {!keyForm && started && (
           <p className="set-help" role="status">Finish signing in in your browser.{step?.url && <> <button type="button" className="set-link" onClick={() => void call('system.openExternal', { url: step.url! })}>Open the page again</button></>}</p>

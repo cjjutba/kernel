@@ -69,7 +69,7 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
                   {m.leading ?? (m.icon && <Icon name={m.icon} />)}
                   <span className="grow ellipsis">{m.label}</span>
                   {m.note && <span className="menu-note">{m.note}</span>}
-                  {m.checked ? <Icon name="check" size={14} stroke={1.5} /> : m.note ? <span className="menu-check-slot" aria-hidden="true" /> : null}
+                  {m.checked ? <Icon name="check" size={14} /> : m.note ? <span className="menu-check-slot" aria-hidden="true" /> : null}
                   {m.shortcut && <span className="menu-kbd">{m.shortcut}</span>}
                   {sub ? <Icon name="right" size={12} /> : null}
                 </>

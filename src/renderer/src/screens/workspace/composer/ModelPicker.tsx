@@ -105,7 +105,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
                 <span className="pick-name">{m.label}</span>
                 {!elsewhere(m) && <span className="pick-effort">{effortLabel(rowEffort(m))}</span>}
                 <span className="grow" />
-                {m.id === model ? <span className="pick-check"><Icon name="check" size={14} stroke={1.6} /></span>
+                {m.id === model ? <span className="pick-check"><Icon name="check" size={14} /></span>
                   : elsewhere(m) ? <span className="pick-kbd">New chat</span>
                   : m.n ? <span className="pick-kbd">^⌘{m.n}</span> : null}
               </button>
@@ -125,7 +125,7 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
         </div>
       </div>
       <div className="pick-foot">
-        <button type="button" className="pick-link" onClick={() => { onClose(); actions.ui.go({ name: 'settings', page: 'models' }) }}><Icon name="sliders" size={13} />Edit</button>
+        <button type="button" className="pick-link" onClick={() => { onClose(); actions.ui.go({ name: 'settings', page: 'models' }) }}><Icon name="sliders" size={14} />Edit</button>
         <span className="pick-hint"><kbd className="kbd">⌘⇧/</kbd>Cycle effort</span>
       </div>
     </div>

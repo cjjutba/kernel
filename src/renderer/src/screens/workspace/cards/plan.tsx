@@ -92,10 +92,10 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   return (
     <div ref={ref} className="plan-inline">
       <div className="trow">
-        <span className="plan-doc-icon"><Icon name="doc" size={15} stroke={1.3} /></span>
+        <span className="plan-doc-icon"><Icon name="doc" size={16} /></span>
         <span className="ink2">Propose plan</span>
         {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
-        <IconButton icon={copied ? 'check' : 'copy'} size={13} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+        <IconButton icon={copied ? 'check' : 'copy'} size={14} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
       </div>
       {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
       {a.status !== 'pending' && <PlanOutcome a={a} />}

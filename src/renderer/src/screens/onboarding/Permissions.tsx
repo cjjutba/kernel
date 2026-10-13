@@ -112,7 +112,7 @@ export function Permissions() {
                       ref={(el) => { radios.current[m.mode] = el }} type="button" role="radio" className="ob-radio" aria-checked={on} aria-disabled={off}
                       aria-labelledby={`ob-mode-${m.mode}`} aria-describedby={[`ob-mode-${m.mode}-desc`, line && `ob-mode-${m.mode}-why`, m.caution && `ob-mode-${m.mode}-caution`].filter(Boolean).join(' ')} tabIndex={on ? 0 : -1}
                       onClick={() => choose(m.mode)} onKeyDown={(e) => onKey(e, i)}
-                    >{on && <Icon name="check" size={10} stroke={2.2} />}</button>
+                    >{on && <Icon name="check" size={12} />}</button>
                     <div className="ob-mode-body">
                       <span id={`ob-mode-${m.mode}`} className="ob-mode-title" onClick={() => choose(m.mode)}>
                         {m.title}
@@ -122,8 +122,8 @@ export function Permissions() {
                         {m.desc}
                         {m.note && <span className="ob-mode-note">{m.note}</span>}
                       </span>
-                      {line && <span id={`ob-mode-${m.mode}-why`} className="ob-mode-why"><Icon name="info" size={13} stroke={1.4} />{line}</span>}
-                      {m.caution && <span id={`ob-mode-${m.mode}-caution`} className="ob-caution"><Icon name="warning" size={14} stroke={1.4} />{m.caution}</span>}
+                      {line && <span id={`ob-mode-${m.mode}-why`} className="ob-mode-why"><Icon name="info" size={14} />{line}</span>}
+                      {m.caution && <span id={`ob-mode-${m.mode}-caution`} className="ob-caution"><Icon name="warning" size={14} />{m.caution}</span>}
                     </div>
                   </div>
                 )

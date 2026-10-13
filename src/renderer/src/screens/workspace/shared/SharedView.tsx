@@ -69,7 +69,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
       <div className="shared-tools">
         <span ref={anchor} style={{ position: 'relative' }}>
           <button type="button" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
-            v{version.n}<Icon name="chevron" size={12} stroke={1.4} />
+            v{version.n}<Icon name="chevron" size={12} />
           </button>
           {versions && <Menu label="Versions" anchorRef={anchor} onClose={() => setVersions(false)} style={{ left: 0, top: 'calc(100% + 6px)', width: 380 }} items={entries} />}
         </span>
@@ -78,7 +78,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         {file.kind === 'image' && <ZoomControl zoom={zoom} />}
         {!pdf && (
           <button ref={toggle} type="button" className="shared-comment" aria-pressed={commenting} disabled={!ready} onClick={() => setCommenting(!commenting)}>
-            <Icon name="comment" size={13} stroke={1.4} />Comment
+            <Icon name="comment" size={14} />Comment
           </button>
         )}
         {page && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}

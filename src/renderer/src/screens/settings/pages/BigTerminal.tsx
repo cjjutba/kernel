@@ -76,7 +76,7 @@ function PresetList({ presets, selected, onPick, onEdit, onRemove }: { presets: 
             <button
               ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-label={p.name} tabIndex={on ? 0 : -1} aria-describedby={`preset-desc-${p.id}`}
               onClick={() => onPick(p.id)} onKeyDown={(e) => onKey(e, i)}
-            >{on && <Icon name="check" size={10} stroke={2.2} />}</button>
+            >{on && <Icon name="check" size={12} />}</button>
             <div className="set-text" onClick={() => onPick(p.id)}>
               <span className="set-label">{p.name}</span>
               <span id={`preset-desc-${p.id}`} className="set-desc">{describe(p)}</span>

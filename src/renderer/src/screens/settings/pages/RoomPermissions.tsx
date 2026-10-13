@@ -42,7 +42,7 @@ function RoomMode({ room }: { room: Room }) {
     <Row label="Permission mode" desc={appMode ? `Chats here start in this mode. The app default is ${MODE_INFO[appMode].label}.` : 'Chats here start in this mode.'}>
       <div className="set-menu" ref={anchor}>
         <Button className="set-menu-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={`Permission mode: ${current ? MODE_INFO[current].label : 'Use app default'}`} onClick={() => actions.ui.toggleMenu('roomMode')}>
-          {current ? MODE_INFO[current].label : 'Use app default'}<Icon name="chevron" size={10} stroke={1.9} />
+          {current ? MODE_INFO[current].label : 'Use app default'}<Icon name="chevron" size={12} />
         </Button>
         {open && <Menu label="Permission mode" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 36, width: 236 }} items={entries} />}
       </div>

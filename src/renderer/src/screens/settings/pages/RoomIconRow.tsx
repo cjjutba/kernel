@@ -43,7 +43,7 @@ export function RoomIconRow({ room }: { room: Room }) {
   const tile = (child: React.ReactNode) => <span className="set-icon-mini" aria-hidden="true">{child}</span>
   const entries: MenuEntry[] = [
     { id: 'letter', label: 'Letter', leading: tile(roomLetter(room.name)), checked: kind === 'letter', onSelect: () => void choose('letter') },
-    ...(github ? [{ id: 'github', label: 'GitHub avatar', leading: kind === 'github' ? <RoomIcon room={room} className="set-icon-mini" /> : tile(<Icon name="user" size={11} />), checked: kind === 'github', onSelect: () => void choose('github') }] : []),
+    ...(github ? [{ id: 'github', label: 'GitHub avatar', leading: kind === 'github' ? <RoomIcon room={room} className="set-icon-mini" /> : tile(<Icon name="user" size={12} />), checked: kind === 'github', onSelect: () => void choose('github') }] : []),
     { id: 'image', label: 'Choose image', leading: kind === 'image' ? <RoomIcon room={room} className="set-icon-mini" /> : tile(<Icon name="image" size={12} />), checked: kind === 'image', onSelect: () => void choose('image') }
   ]
 
@@ -52,7 +52,7 @@ export function RoomIconRow({ room }: { room: Room }) {
       <div className="set-icon" ref={anchor}>
         <RoomIcon room={room} className="set-icon-tile" />
         <Button className="set-icon-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={busy ? BUSY[busy] : `Room icon: ${LABEL[kind]}`} busy={busy !== null} busyLabel={busy ? BUSY[busy] : undefined} onClick={() => actions.ui.toggleMenu('roomIcon')}>
-          {LABEL[kind]}<Icon name="chevron" size={10} stroke={1.9} />
+          {LABEL[kind]}<Icon name="chevron" size={12} />
         </Button>
         {open && <Menu label="Room icon" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 36, width: 224 }} items={entries} />}
       </div>

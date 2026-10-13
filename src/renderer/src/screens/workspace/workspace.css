@@ -162,6 +162,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
    for rooms (KERNEL-562, KERNEL-207), and an open row keeps the chevron. Opacity rather than display, so the slot keeps its size and
    nothing moves. The chevron sits on the icon's own 15px box, from the slot's top. An inert row has no chevron, so its icon stays. */
 .step-slot { position: relative; flex-shrink: 0; width: 15px; }
+/* A 16px glyph in the 15px slot, with the extra pixel taken from below so the row keeps the height it had at 15 (icon-sizes-and-stroke). */
+.step-slot:not(.step-glyph) > svg { margin-bottom: -1px; }
 .step-slot > :not(.step-chev) { transition: opacity 0.12s; }
 .chev.step-chev { position: absolute; top: 0; left: 0; width: 15px; height: 15px; align-items: center; justify-content: center; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
 .trow-btn:not(:disabled):hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
@@ -337,6 +339,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */
 .script-empty .btn.idle-run { margin-bottom: 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
+.script-empty-icon path { fill: currentColor; }
 .run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }

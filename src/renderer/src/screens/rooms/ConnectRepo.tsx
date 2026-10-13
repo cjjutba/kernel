@@ -75,7 +75,7 @@ export function ConnectRepo() {
             const [owner, name] = r.fullName.split('/')
             return (
               <button key={r.fullName} type="button" role="radio" aria-checked={picked === r.fullName} className="cr-repo" onClick={() => setPicked(r.fullName)}>
-                <Icon name="branch" size={15} />
+                <Icon name="branch" size={16} />
                 <span className="grow mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{owner}/</span>{name}</span>
                 <span className="cr-vis">{r.private ? 'Private' : 'Public'}</span>
                 <span className="cr-ago">{agoShort(r.updatedAt)}</span>

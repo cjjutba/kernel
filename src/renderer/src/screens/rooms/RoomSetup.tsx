@@ -104,9 +104,9 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             {(steps ?? []).map((s) => (
               <div key={s.id} className="ob-check" data-state={s.state} data-ok={s.state !== 'fail'}>
                 <span className="ob-ico rs-ico" data-state={s.state}>
-                  {s.state === 'ok' && <Icon name="check" size={15} stroke={1.7} />}
-                  {s.state === 'warn' && <Icon name="warning" size={15} />}
-                  {s.state === 'fail' && <Icon name="x" size={15} />}
+                  {s.state === 'ok' && <Icon name="check" size={16} />}
+                  {s.state === 'warn' && <Icon name="warning" size={16} />}
+                  {s.state === 'fail' && <Icon name="x" size={16} />}
                   {s.state === 'run' && <Spinner label={`${s.title} is running`} />}
                   {s.state === 'wait' && <span aria-label="Waiting" className="rs-dash">–</span>}
                 </span>

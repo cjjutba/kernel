@@ -108,7 +108,7 @@ export function OpenIn({ ws }: { ws: Workspace }) {
   return (
     <div className="open-in" role="group" aria-label="Open in" onKeyDown={onKeyDown}>
       <button type="button" className="open-in-main" aria-label={`Open in ${current?.name ?? 'editor'}`} data-tip-kbd="⌘O" onClick={() => void openIn(ws.path, current)}>
-        {current?.icon ? <img className="open-in-icon" src={current.icon} alt="" /> : <Icon name="code" size={15} />}
+        {current?.icon ? <img className="open-in-icon" src={current.icon} alt="" /> : <Icon name="code" size={16} />}
       </button>
       <span ref={anchor} className="open-in-anchor">
         <IconButton icon="chevron" size={12} label="Choose app to open in" aria-haspopup="menu" aria-expanded={open} onClick={toggle} />
