@@ -15,3 +15,9 @@ The popover is 360px, opens upward, and has a Detailed and Compact switch kept a
 **Refresh.** An icon button right after the row calls `usage.get` with `{ force: true }`, which reads every signed-in account again and answers when it is done. It spins, is disabled and says "Refreshing usage" meanwhile. A failed read keeps the last numbers.
 
 **The popover's Switch list.** In Detailed, each other account lists its 5-hour, weekly and Fable 5.1 weekly windows with the same meters and notes as the active account. A key still says "Billed per token", and Compact keeps one number.
+
+## Amendment: a shorter Detailed popover and a minimal account menu
+
+**Detailed is one row per window.** The active account lists each window as a label, a short meter, the percentage and the reset as muted text on the same row. Under Switch, each other account is one row: name, muted plan and `5h 12% · wk 20% · Fable 31%` with the same amber and red steps, no bars or reset times. A key row says "Billed per token". Compact and the folded Codex row are unchanged.
+
+**The account menu no longer shows usage.** It lists each provider's accounts as one row each, name and muted plan with a check on the one in use, and the whole row switches to that account. A key says "Billed per token" and a signed-out account says "Signed out". The Usage item is gone, since the footer opens usage.

@@ -33,15 +33,15 @@
 @container ft (max-width: 1040px) { .ft-other { display: none; } }
 @container ft (max-width: 820px) { .ft-num[data-fable] { display: none; } }
 
-/* The popover opens above the row from the footer's bottom left, 360px wide (UsagePopover.png). A row is a button that expands in place; the
+/* The popover opens above the row from the footer's bottom left, 392px wide. A row is a button that expands in place; the
    body bleeds in under the provider's name, 24px past the mark. Switch rows bleed 8px past the body's padding and pad themselves back, so their hover
    fill is wider than their text. The meters are the shared Meter: grey, amber from 75%, red from 90%. */
-.popover.usage-pop { width: 360px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
+.popover.usage-pop { width: 392px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
 .popover.usage-pop[data-side='top'] { bottom: calc(100% + 6px); }
 .pm-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
 .pm-title { font-size: 13px; font-weight: 500; color: var(--ink); }
 .pm-sec + .pm-sec, .pm-sec + .plan-foot { border-top: 1px solid var(--line-2); }
-.pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: 12px; }
+.pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: 12px; }
 button.pm-head:hover { background: var(--nav-hover); }
 button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .pm-mark { display: inline-flex; width: 14px; justify-content: center; color: var(--ink); }
@@ -53,17 +53,20 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .pm-chev[data-open] { transform: rotate(180deg); }
 .pm-cw { display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px; }
 .pm-cl { color: var(--muted); }
-.pm-minis { display: flex; align-items: center; gap: 14px; padding: 0 14px 12px 38px; margin-top: -3px; }
+.pm-minis { display: flex; align-items: center; gap: 14px; padding: 0 14px 10px 38px; margin-top: -3px; }
 .pm-mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 .pm-ml { color: var(--muted); }
 .pm-mini .meter { width: 48px; height: 4px; }
-.pm-body { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 8px 38px; margin-top: -4px; }
+.pm-body { display: flex; flex-direction: column; gap: 8px; padding: 0 14px 8px 38px; margin-top: -4px; }
 .plan-email { font-size: 12px; color: var(--muted); }
 .plan-billed { font-size: 12.5px; color: var(--ink-2); }
-.plan-rows { display: flex; flex-direction: column; gap: 12px; }
-.plan-row { display: flex; flex-direction: column; gap: 5px; }
-.plan-title { font-size: 12.5px; color: var(--ink-2); }
-.plan-note { font-size: 11.5px; color: var(--muted); }
+.plan-rows { display: flex; flex-direction: column; gap: 7px; }
+/* A window is one row: its label, a short meter, the number, and the reset as muted text on the right. */
+.plan-win { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.plan-wl { width: 54px; flex-shrink: 0; color: var(--ink-2); }
+.plan-win .meter { width: 56px; flex-shrink: 0; height: 4px; }
+.plan-win .pm-mp { width: 34px; flex-shrink: 0; text-align: right; }
+.plan-wr { flex: 1; min-width: 0; text-align: right; white-space: nowrap; color: var(--muted); }
 .plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; }
 .plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
@@ -71,11 +74,9 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .menu-item.plan-other[aria-busy='true']:disabled { color: var(--ink); }
 .plan-other-name { font-weight: 500; }
 .plan-other-plan { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.plan-other-use { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.plan-other-use { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.plan-num { display: inline-flex; gap: 4px; }
+.plan-sep { color: var(--faint); }
 .btn.plan-signin { height: 24px; padding: 0 10px; font-size: 12px; }
 .plan-foot { padding: 6px; }
 
-/* Under Switch, an account in Detailed lists its windows as the active account's, below its name. */
-.plan-other-box + .plan-other-box { margin-top: 8px; }
-.plan-other-wins { display: flex; flex-direction: column; gap: 10px; padding: 6px 8px 4px; }
-.plan-other-wins .plan-row { gap: 4px; }

@@ -23,6 +23,8 @@ export interface MenuEntry {
   title?: boolean
   /** Drawn in place of the label, note and shortcut, for an item that needs more than one line (an account and its usage). */
   content?: ReactNode
+  /** The accessible name, when `content` doesn't read well on its own. */
+  ariaLabel?: string
   disabled?: boolean
   /** Red text and icon. For the one destructive entry, such as Remove room (SidebarRoomMenu.png). */
   danger?: boolean
@@ -60,7 +62,7 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined} data-rich={m.content ? true : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" aria-label={m.ariaLabel} data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined} data-rich={m.content ? true : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >

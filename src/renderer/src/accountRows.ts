@@ -13,19 +13,6 @@ const when = (ms: number, now: number) => (new Date(ms).toDateString() === new D
 /** The account's own windows, as the engine last read them (`accountId` absent is the CLI's own login). */
 const windowsOf = (a: AccountProfile, usage: RateLimit[]) => usage.filter((u) => limitProvider(u) === a.provider && (u.accountId ?? 'cli') === a.id && !u.model)
 
-/**
- * The 5-hour and weekly windows of an account, one line each: "5-hour 62% used · resets at 3:40 PM". A window that has
- * reset since it was read says nothing, since the engine reads it again when the menu or Settings opens.
- */
-export function usageLines(a: AccountProfile, usage: RateLimit[], now = Date.now()): string[] {
-  const mine = windowsOf(a, usage)
-  return ([['five_hour', '5-hour'], ['seven_day', 'Weekly']] as const).flatMap(([type, name]) => {
-    const w = mine.find((l) => l.type === type)
-    if (w?.utilization === undefined || (w.resetsAt !== undefined && w.resetsAt * 1000 <= now)) return []
-    return [`${name} ${Math.round(w.utilization * 100)}% used${w.resetsAt !== undefined ? ` · resets ${resetPhrase(w.resetsAt, now)}` : ''}`]
-  })
-}
-
 /** When a token account's last turn read its windows, for "As of its last turn at 2:10 PM". */
 const lastRead = (a: AccountProfile, usage: RateLimit[], now: number): string | undefined => {
   const read = Math.max(0, ...windowsOf(a, usage).filter((l) => l.type === 'five_hour' || l.type === 'seven_day').map((l) => l.readAt ?? 0))
@@ -89,14 +76,6 @@ export function limitHit(a: AccountProfile, usage: RateLimit[], now = Date.now()
   const hit = windowsOf(a, usage).find((l) => (l.type === 'five_hour' || l.type === 'seven_day') && l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now))
   if (!hit) return undefined
   return { window: hit.type === 'five_hour' ? '5-hour' : 'weekly', ...(hit.resetsAt !== undefined ? { reset: resetPhrase(hit.resetsAt, now) } : {}) }
-}
-
-/** The same for the account menu, where the plan sits beside the name, so it isn't in the lines. */
-export function accountMenuLines(a: AccountProfile, usage: RateLimit[], now = Date.now()): string[] {
-  if (!a.signedIn) return ['Signed out']
-  if (a.auth === 'apiKey') return ['API key · billed per token']
-  const windows = usageLines(a, usage, now)
-  return a.legacyToken ? ['Sign in again to show email and plan', ...windows] : windows
 }
 
 /** Asks the engine for fresh usage while `active`: the account menu, or Settings, Providers, is open. What it reads arrives as pushes. */
