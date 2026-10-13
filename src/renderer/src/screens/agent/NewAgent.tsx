@@ -20,10 +20,11 @@ const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus'
 /**
  * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Rowan drafted,
  * and see them join. The step is part of the modal route, the form lives here, so Back keeps what was typed.
+ * With no `roomId` (Settings, Agents before any room exists) the agent is personal: it saves to ~/.claude/agents and there is no room to refine it in.
  */
-export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step; prefill?: NewAgentPrefill }) {
+export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Step; prefill?: NewAgentPrefill }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const agents = useStore((s) => s.agents[roomId])
+  const agents = useStore((s) => (roomId ? s.agents[roomId] : undefined))
   const [name, setName] = useState(prefill?.name ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
@@ -32,13 +33,15 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   const [busy, run] = useBusy<'draft' | 'create' | 'refine'>()
   const [error, setError] = useState<string | null>(null)
   const close = actions.ui.closeModal
+  // Done with no room goes back to Settings, Agents, where the new agent shows under Yours.
+  const finish = () => { close(); if (!roomId) actions.ui.go({ name: 'settings', page: 'agents' }) }
   const lead = agents?.find((a) => a.lead)
   const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', roomId, step: next, prefill: p })
 
   const makeDraft = () => run('draft', async () => {
     setError(null)
     try {
-      const d = await call('agents.draft', { roomId, description: description.trim(), name: name.trim() || undefined, model })
+      const d = await call('agents.draft', { ...(roomId ? { roomId } : {}), description: description.trim(), name: name.trim() || undefined, model })
       setDraft(d); setText(d.text)
       to('draft', { name, description, model, draft: d })
     } catch (e) { setError(cleanError(e)) }
@@ -47,8 +50,8 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   const create = () => draft && run('create', async () => {
     setError(null)
     try {
-      const def = await call('agents.create', { roomId, draft: { ...draft, text } })
-      actions.agents.set(roomId, [...(getState().agents[roomId] ?? []).filter((a) => a.id !== def.id), def])
+      const def = await call('agents.create', roomId ? { roomId, draft: { ...draft, text } } : { draft: { ...draft, text }, scope: 'me' })
+      if (roomId) actions.agents.set(roomId, [...(getState().agents[roomId] ?? []).filter((a) => a.id !== def.id), def])
       const done = { ...draft, id: def.id, name: def.name, file: def.file.includes('.claude/') ? `.claude/${def.file.split('.claude/')[1]}` : draft.file, text }
       setDraft(done)
       to('done', { name, description, model, draft: done })
@@ -56,7 +59,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   })
 
   // Hand the draft to Rowan to improve in his own chat. He proposes the final file with create_agent, and it comes back as an approval card.
-  const refine = () => draft && run('refine', async () => {
+  const refine = () => draft && roomId && run('refine', async () => {
     setError(null)
     try {
       // The question joins the room's newest chat with Rowan, or starts one (KERNEL-405). The answer lands on that tab.
@@ -105,7 +108,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><span className="spin" aria-hidden="true" />Sending to {rowan?.name ?? 'Rowan'}</> : `Refine it in a chat with ${rowan?.name ?? 'Rowan'}`}</button>
+          {roomId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><span className="spin" aria-hidden="true" />Sending to {rowan?.name ?? 'Rowan'}</> : `Refine it in a chat with ${rowan?.name ?? 'Rowan'}`}</button>}
         </div>
       </Modal>
     )
@@ -116,7 +119,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   return (
     <Modal
       title="New agent" onClose={close} width={600} top={122}
-      footer={<><span className="grow" /><Button variant="primary" size="lg" onClick={close}>Close</Button></>}
+      footer={<><span className="grow" /><Button variant="primary" size="lg" onClick={finish}>Close</Button></>}
     >
       <div className="na-done">
         <span className="tm-av xl" aria-hidden="true" style={{ background: joined ? shirtOf(joined, team, room) : undefined }}>{draft.name[0]}</span>
