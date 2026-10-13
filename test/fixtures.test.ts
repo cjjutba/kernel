@@ -7,6 +7,8 @@ import { fixtureHandlers } from '../src/main/fixtures'
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
+  'UsageFooterNoUpdate', // the usage footer with no update ready: the Help button alone at the right
+  'FooterHelpMenu', // the Help menu open upward from the footer's bottom right: What's new, Keyboard shortcuts, Report a problem
   'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
   'SettingsTeamOwnAgents', // a repo's own agents in Settings, Agents: a warning on a row, Add a starter agent and New agent, and Retired with Restore (KERNEL-642)
   'SettingsAgents', // Settings, Agents with no room open: a personal agent and two plugin agents (KERNEL-641)

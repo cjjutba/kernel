@@ -467,6 +467,9 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  // The Help button stays at the footer's right with no update, and its menu opens upward from it.
+  UsageFooterNoUpdate: usageHome({ update: undefined }),
+  FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
   // KERNEL-674: the popover opens upward from the footer. Claude Code is open in Detailed and Codex shows both windows folded.

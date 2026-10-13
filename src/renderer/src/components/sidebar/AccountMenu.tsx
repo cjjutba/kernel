@@ -66,16 +66,12 @@ export function AccountButton() {
                 ...groups,
                 MENU_SEPARATOR,
                 { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
-                { id: 'shortcuts', label: 'Keyboard shortcuts', onSelect: () => go({ name: 'settings', page: 'shortcuts' }) },
-                { id: 'new', label: "What's new", onSelect: () => actions.ui.openModal({ name: 'whatsNew' }) },
                 MENU_SEPARATOR,
                 { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'providers' }) }
               ]
             : [
                 ...(who ? [{ id: 'who', label: who, disabled: true }] : []),
                 { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
-                { id: 'shortcuts', label: 'Keyboard shortcuts', onSelect: () => go({ name: 'settings', page: 'shortcuts' }) },
-                { id: 'new', label: "What's new", onSelect: () => actions.ui.openModal({ name: 'whatsNew' }) },
                 MENU_SEPARATOR,
                 { id: 'switch', label: 'Switch account', onSelect: () => void leave('Could not switch account') },
                 { id: 'out', label: 'Sign out', onSelect: () => void leave('Could not sign out') }

@@ -21,3 +21,9 @@ The popover is 360px, opens upward, and has a Detailed and Compact switch kept a
 **Detailed is one row per window.** The active account lists each window as a label, a short meter, the percentage and the reset as muted text on the same row. Under Switch, each other account is one row: name, muted plan and `5h 12% · wk 20% · Fable 31%` with the same amber and red steps, no bars or reset times. A key row says "Billed per token". Compact and the folded Codex row are unchanged.
 
 **The account menu no longer shows usage.** It lists each provider's accounts as one row each, name and muted plan with a check on the one in use, and the whole row switches to that account. A key says "Billed per token" and a signed-out account says "Signed out". The Usage item is gone, since the footer opens usage.
+
+## Amendment: Help at the footer's bottom right
+
+**Help is the footer's far-right icon button**, always shown, with "Update ready" to its left when there is an update. Its menu opens upward: What's new, Keyboard shortcuts, then Report a problem. The account menu lost What's new and Keyboard shortcuts, so it is the accounts, Settings (⌘,) and Manage accounts. Settings is only in the account menu and on ⌘,, never in the footer.
+
+**Report a problem opens a prefilled GitHub issue in the browser** (`labels=bug`) with headings to fill in and an Environment block: Kernel's version, macOS version and architecture, and a line that logs are in ~/Library/Logs/Kernel and can be attached. Nothing is sent by Kernel and the body names no account, email, path or repo. It is renderer only, using `app.info` and `system.openExternal`.
