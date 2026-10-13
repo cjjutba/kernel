@@ -323,8 +323,10 @@ export interface KernelApi {
    * The usage windows Kernel has, at once, since the window waits on it at launch. It also starts a read of every
    * subscription account on both providers that Kernel didn't read in the last minute, and what that finds arrives as
    * `usage` and `accounts` pushes. The account menu and Settings, Providers ask when they open (KERNEL-567).
+   * With `force`, the footer's refresh button: it reads every signed-in account again, whatever it read in the last minute,
+   * and answers once that is done.
    */
-  'usage.get': { req: void; res: RateLimit[] }
+  'usage.get': { req: { force?: boolean } | void; res: RateLimit[] }
   /** "Notify me" on a limit banner: one notification when the window of `provider`'s account in use resets. Claude's by default. */
   'usage.notifyOnReset': { req: { type: RateLimit['type']; provider?: Provider }; res: Ok }
   'account.get': { req: void; res: ClaudeAccount }

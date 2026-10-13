@@ -283,7 +283,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       for (const e of f.activity) if (e.roomId === roomId && e.agentId) last[e.agentId] = Math.max(last[e.agentId] ?? 0, e.ts)
       return last
     },
-    'usage.get': async () => f.usage,
+    'usage.get': async (_req?: { force?: boolean } | void) => f.usage,
     'usage.notifyOnReset': async () => ok,
     'account.get': async () => account,
     'account.signIn': async () => account,
