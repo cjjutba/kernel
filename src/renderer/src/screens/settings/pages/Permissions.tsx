@@ -1,7 +1,7 @@
 import './agents.css'
 import { useRef, type KeyboardEvent } from 'react'
-import { PERMISSION_MODES, type AppSettings, type PermissionMode } from '@shared/types'
-import { MODE_INFO, pickMode, unavailable, useModeAvailability, type ModeAvailabilities } from '../../../permissionModes'
+import { PERMISSION_MODES, PROVIDERS, type AppSettings, type PermissionMode } from '@shared/types'
+import { pickMode, unavailable, useModeAvailability, type ModeAvailabilities } from '../../../permissionModes'
 import { Select, Toggle } from '../../../ui'
 import { useStore } from '../../../store'
 import { Page, Row, Section, SettingsLink, TagList } from '../kit'
@@ -13,6 +13,22 @@ const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 mi
  * The four modes as cards in a radio group (KERNEL-680). A mode no provider can run keeps its card, dimmed with the reason, and can't be
  * picked unless it is the saved one. One that only some providers can run says which can't. Arrow keys move the pick and the focus, and skip a dimmed mode.
  */
+/** The cards' own short copy (AgentsPage.dc.html). The composer's mode menu keeps MODE_INFO's longer lines. */
+const CARD: Record<PermissionMode, { label: string; desc: string }> = {
+  default: { label: 'Manual', desc: 'Asks before every edit and command.' },
+  acceptEdits: { label: 'Accept edits', desc: 'Edits files freely. Commands ask unless a rule allows them.' },
+  auto: { label: 'Auto', desc: 'Routine work runs. Anything else asks you.' },
+  bypassPermissions: { label: 'Bypass', desc: 'Skips prompts. Never allow, protected branches and network off still hold.' }
+}
+
+/** "Not on Codex yet" under a mode some provider can't run. The full reason is the note's tooltip. */
+function notOn(mode: PermissionMode, availability: ModeAvailabilities | null): string | undefined {
+  const key = mode === 'auto' ? 'auto' : mode === 'bypassPermissions' ? 'bypass' : null
+  if (!availability || !key) return undefined
+  const off = PROVIDERS.filter((p) => !availability[p.id][key]).map((p) => p.label)
+  return off.length ? `Not on ${off.join(' or ')} yet` : undefined
+}
+
 function ModeCards({ value, availability }: { value: PermissionMode; availability: ModeAvailabilities | null }) {
   const radios = useRef<(HTMLButtonElement | null)[]>([])
   const rows = PERMISSION_MODES.map((mode) => ({ mode, ...unavailable(mode, availability) }))
@@ -33,7 +49,8 @@ function ModeCards({ value, availability }: { value: PermissionMode; availabilit
       {rows.map(({ mode, lines, dim }, i) => {
         const on = mode === value
         const off = dim && !on
-        const info = MODE_INFO[mode]
+        const info = CARD[mode]
+        const note = notOn(mode, availability)
         return (
           <button
             key={mode} ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="ag-mode" aria-checked={on} aria-disabled={off || undefined}
@@ -41,8 +58,7 @@ function ModeCards({ value, availability }: { value: PermissionMode; availabilit
           >
             <span className="ag-mode-head"><span className="ag-ring" aria-hidden="true" />{info.label}</span>
             <span className="ag-mode-desc">{info.desc}</span>
-            {info.note && <span className="ag-mode-note">{info.note}</span>}
-            {lines.map((line) => <span key={line} className="ag-mode-note">{line}</span>)}
+            {note && <span className="ag-mode-note" data-tip={lines.join(' ')}>{note}</span>}
           </button>
         )
       })}

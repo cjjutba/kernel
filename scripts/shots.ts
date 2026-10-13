@@ -301,7 +301,7 @@ async function addDuplicate(page: Page) {
 // SettingsAccountsMenu is Personal's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
 // asking first. The menu, the field and the dialog are local to the page, so click them open.
 async function personalMenu(page: Page, item?: string) {
-  await page.getByRole('button', { name: 'More for Personal' }).click()
+  await page.getByRole('button', { name: 'More for Personal' }).first().click()
   if (item) await page.getByRole('menuitem', { name: item }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)

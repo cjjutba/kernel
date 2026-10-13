@@ -67,7 +67,7 @@ export function Accounts({ s }: { s: AppSettings }) {
   const read = (provider: Provider) => call('providers.status', { provider }).then((st) => { setStatuses((all) => ({ ...all, [provider]: st })); if (provider === 'codex') noteCodexStatus(st.signedIn); return st })
   const readAll = () => { for (const p of PROVIDERS) void read(p.id).catch(() => undefined) }
   useEffect(readAll, [])
-  useEffect(() => { if (tab) document.getElementById(`acct-group-${tab}`)?.scrollIntoView({ block: 'start' }) }, [tab])
+  useEffect(() => { if (tab) document.getElementById(`ac-group-${tab}`)?.scrollIntoView({ block: 'start' }) }, [tab])
   useEffect(() => {
     if (renaming || busy !== null || !renamed.current) return
     document.querySelector<HTMLElement>(`[aria-label="More for ${CSS.escape(renamed.current)}"]`)?.focus()
@@ -198,13 +198,13 @@ export function Accounts({ s }: { s: AppSettings }) {
   const finishSheet = (close: () => void) => () => { close(); readAll() }
   return (
     <Page title="Accounts" action={
-      <div className="acct-add" ref={addAnchor}>
+      <div className="ac-add" ref={addAnchor}>
         <Button variant="primary" icon="plus" aria-haspopup="menu" aria-expanded={addMenu} disabled={busy !== null || sheetOpen} onClick={() => setAddMenu(!addMenu)}>Add account</Button>
         {addMenu && <Menu label="Add account" anchorRef={addAnchor} onClose={() => setAddMenu(false)} style={{ right: 0, top: 36, width: 236 }} items={addItems.map((it) => ({ ...it, ...(it.onSelect ? { onSelect: () => { setAddMenu(false); it.onSelect?.() } } : {}) }))} />}
       </div>
     }>
       {holds.map((h) => (
-        <div key={h.provider} className="acct-hold" role="status">
+        <div key={h.provider} className="ac-hold" role="status">
           <span><b>{NAME[h.provider]} is on hold.</b> Every subscription is at a limit{h.until ? ` until ${h.until}` : ''}.</span>
           {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
         </div>
@@ -217,17 +217,17 @@ export function Accounts({ s }: { s: AppSettings }) {
         const third = mine.map((a) => rowCells(a, usage, now).third).find(Boolean)
         const heads = [{ long: '5-hour', short: '5h' }, { long: 'Weekly', short: 'Wk' }, { long: third ?? '', short: third ? 'Fable' : '' }]
         return (
-          <section key={p.id} id={`acct-group-${p.id}`} className="acct-group" aria-label={NAME[p.id]}>
-            <div className="acct-grid acct-head">
+          <section key={p.id} id={`ac-group-${p.id}`} className="ac-group" aria-label={NAME[p.id]}>
+            <div className="ac-grid ac-head">
               <h2><ProviderMark provider={p.id} size={14} />{NAME[p.id]}</h2>
-              {heads.map((h, i) => <span key={i} className="acct-colhead" aria-hidden="true"><span className="long">{h.long}</span><span className="short">{h.short}</span></span>)}
+              {heads.map((h, i) => <span key={i} className="ac-colhead" aria-hidden="true"><span className="long">{h.long}</span><span className="short">{h.short}</span></span>)}
               <span />
             </div>
-            <div className="acct-card">
+            <div className="ac-card">
               {ordered.length
                 ? ordered.map((a) => row(a, third))
                 : (
-                  <div className="acct-empty">
+                  <div className="ac-empty">
                     <div className="set-text"><span className="set-label">Sign in to run agents on {NAME[p.id]}</span><span className="set-desc">Use your plan, or add an API key.</span></div>
                     <Button variant="primary" disabled={locked} onClick={() => setAdding({ provider: p.id, kind: 'subscription' })}>Sign in</Button>
                   </div>
@@ -241,7 +241,7 @@ export function Accounts({ s }: { s: AppSettings }) {
           <Toggle label="Switch accounts at a limit" disabled={!canSwitch} checked={canSwitch && switching} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { claude: v, codex: v } } })} />
         </Row>
         <Row
-          label={<>Pause new work near a limit<button type="button" className="icon-btn acct-info" data-tip={PAUSE_HELP} aria-label="About pausing new work"><Icon name="info" size={14} /></button></>}
+          label={<>Pause new work near a limit<button type="button" className="icon-btn ac-info" data-tip={PAUSE_HELP} aria-label="About pausing new work"><Icon name="info" size={14} /></button></>}
           desc="Hold new tasks so running ones can finish."
         >
           <Toggle label="Pause new work near a limit" checked={s.usage.pauseNearLimit} onChange={(v) => void patchSettings({ usage: { pauseNearLimit: v } })} />
@@ -290,10 +290,10 @@ function CliRows({ provider, s, status, busy, act, setStatus }: {
   const version = status ? status.version ?? 'Not found' : ''
   const options = exe === 'custom' ? [...EXECUTABLES, { value: 'custom', label: 'Custom folder' }] : EXECUTABLES
   return (
-    <div className="acct-adv-group" role="group" aria-label={NAME[provider]}>
-      <div className="acct-adv-head"><ProviderMark provider={provider} size={12} />{NAME[provider]}</div>
+    <div className="ac-adv-group" role="group" aria-label={NAME[provider]}>
+      <div className="ac-adv-head"><ProviderMark provider={provider} size={12} />{NAME[provider]}</div>
       {status?.error && (
-        <div className="acct-problem">
+        <div className="ac-problem">
           <Icon name="warning" size={14} />
           <div className="set-text">
             <span className="set-label">Kernel can't run {NAME[provider]}</span>
@@ -302,10 +302,10 @@ function CliRows({ provider, s, status, busy, act, setStatus }: {
           {exe !== 'bundled' && <Button busy={busy === `${provider}:bundled`} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
         </div>
       )}
-      <Row label="Executable" labelId={`acct-exe-${provider}`} desc={<><span className="acct-mono">{version}</span>{exePath && <span className="acct-path">{tilde(exePath)}</span>}</>}>
-        <Select label={`${NAME[provider]} executable`} labelledBy={`acct-exe-${provider}`} options={options} value={exe} disabled={busy !== null} onChange={pickExe} align="right" actions={[{ label: 'Custom folder…', onSelect: () => void choose() }]} />
+      <Row label="Executable" labelId={`ac-exe-${provider}`} desc={<><span className="ac-mono">{version}</span>{exePath && <span className="ac-path">{tilde(exePath)}</span>}</>}>
+        <Select label={`${NAME[provider]} executable`} labelledBy={`ac-exe-${provider}`} options={options} value={exe} disabled={busy !== null} onChange={pickExe} align="right" actions={[{ label: 'Custom folder…', onSelect: () => void choose() }]} />
       </Row>
-      <Row label="Config file" desc={<span className="acct-path">{tilde(status?.configFile ?? '')}</span>}>
+      <Row label="Config file" desc={<span className="ac-path">{tilde(status?.configFile ?? '')}</span>}>
         <Button aria-label={`Open ${tilde(status?.configFile ?? '') || `${NAME[provider]} config file`}`} busy={busy === `${provider}:config`} busyLabel="Opening" disabled={busy !== null} onClick={() => void act(`${provider}:config`, 'Could not open the file', () => call('providers.openConfig', { provider }))}>Open</Button>
       </Row>
       {provider === 'codex' && (

@@ -57,6 +57,7 @@
 .ag-mode-desc { font-size: 12.5px; line-height: 1.45; color: var(--muted); }
 .ag-mode-note { margin-top: auto; font-size: 11.5px; color: var(--faint); }
 .ag-rule { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 10px; padding-top: 14px; padding-bottom: 14px; }
+.ag-rule > .set-text { flex: none; }
 
 .ag-vars-head { display: grid; column-gap: 16px; align-items: center; padding: 0 13px 0 17px; }
 .ag-mask { font: 12.5px var(--mono); letter-spacing: 1px; color: var(--faint); }

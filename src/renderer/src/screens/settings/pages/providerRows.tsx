@@ -71,13 +71,13 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
   const anchor = useRef<HTMLDivElement>(null)
   const detailsId = useId()
   // Escape, a press outside or a pick closes the menu and hands focus back to its button. Rename's field and Remove's dialog take it after.
-  const close = () => { onMenu(false); anchor.current?.querySelector<HTMLButtonElement>('.acct-more')?.focus() }
+  const close = () => { onMenu(false); anchor.current?.querySelector<HTMLButtonElement>('.ac-more')?.focus() }
   if (rename) {
     return (
-      <div className="acct-row" data-open="true">
-        <div className="acct-renaming">
+      <div className="ac-row" data-open="true">
+        <div className="ac-renaming">
           <input
-            className="acct-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
+            className="ac-rename" aria-label={`Name for ${account.label}`} autoComplete="off" spellCheck={false} autoFocus placeholder={account.email} disabled={rename.saving} value={rename.value}
             onFocus={(e) => e.currentTarget.select()} onChange={(e) => rename.onChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
@@ -93,37 +93,37 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
   }
   const keep = menuOpen || !!pending || !!action?.busy || action?.label === 'Sign in'
   return (
-    <div className="acct-row" data-open={open || undefined}>
-      <div className="acct-grid acct-main">
-        <button type="button" className="acct-disc" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>
-          <svg className="acct-chev" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
-          <span className="acct-who">
-            <span className="acct-name-line"><span className="acct-name">{account.label}</span>{active && <span className="acct-inuse">In use</span>}</span>
-            <span className="acct-line2">{line2}{back && <span className="acct-back"> · {back}</span>}</span>
+    <div className="ac-row" data-open={open || undefined}>
+      <div className="ac-grid ac-main">
+        <button type="button" className="ac-disc" aria-expanded={open} aria-controls={detailsId} onClick={onToggle}>
+          <svg className="ac-chev" width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 3.5 10.5 8 6 12.5" /></svg>
+          <span className="ac-who">
+            <span className="ac-name-line"><span className="ac-name">{account.label}</span>{active && <span className="ac-inuse">In use</span>}</span>
+            <span className="ac-line2">{line2}{back && <span className="ac-back"> · {back}</span>}</span>
           </span>
         </button>
         {note
-          ? <span className="acct-note">{note}</span>
+          ? <span className="ac-note">{note}</span>
           : cells.map((c, i) => (
-            <span key={i} className="acct-cell" data-tip={c?.reset ? `${c.title} resets ${c.reset}` : ''}>
-              {c && <><Meter value={c.pct / 100} label={`${account.label}, ${c.title}${c.reset ? `, resets ${c.reset}` : ''}`} /><span className="acct-pc" data-hot={c.pct >= 90 || undefined}>{c.pct}%</span></>}
+            <span key={i} className="ac-cell" data-tip={c?.reset ? `${c.title} resets ${c.reset}` : ''}>
+              {c && <><Meter value={c.pct / 100} label={`${account.label}, ${c.title}${c.reset ? `, resets ${c.reset}` : ''}`} /><span className="ac-pc" data-hot={c.pct >= 90 || undefined}>{c.pct}%</span></>}
             </span>
           ))}
-        <div className="acct-acts" ref={anchor} data-keep={keep || undefined}>
+        <div className="ac-acts" ref={anchor} data-keep={keep || undefined}>
           {pending
             ? <Button busy busyLabel={pending}>{pending}</Button>
             : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
           <IconButton
             icon="more" size={16} label={`More for ${account.label}`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked || !!pending}
-            className={menuOpen ? 'acct-more on' : 'acct-more'} onClick={() => onMenu(!menuOpen)}
+            className={menuOpen ? 'ac-more on' : 'ac-more'} onClick={() => onMenu(!menuOpen)}
           />
           {menuOpen && <Menu label={account.label} heading={menuHeading} anchorRef={anchor} onClose={close} style={{ right: 0, top: 32, width: 220 }} items={menu} />}
         </div>
       </div>
       {open && (
-        <div id={detailsId} role="region" aria-label={`${account.label} details`} className="acct-details">
+        <div id={detailsId} role="region" aria-label={`${account.label} details`} className="ac-details">
           <dl>
-            {details.map((d) => <div key={d.k} className="acct-kv"><dt>{d.k}</dt><dd>{d.v}</dd></div>)}
+            {details.map((d) => <div key={d.k} className="ac-kv"><dt>{d.k}</dt><dd>{d.v}</dd></div>)}
           </dl>
           {children}
         </div>
