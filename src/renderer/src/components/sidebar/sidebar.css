@@ -56,41 +56,6 @@
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
-.sb-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 2px; }
-/* The Usage pill and its popover, which opens above it (PlanMenu.tsx, UsagePopover.png). One section per provider: the account in use, its
-   windows, then Switch. The meters are the shared Meter: grey, amber from 75%, red from 90%. A section's Switch rows bleed 8px past its padding and pad themselves
-   back, so their hover fill is wider than their text. */
-.plan-pill { height: 24px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; }
-.plan-pill:hover, .plan-pill[aria-expanded='true'] { background: var(--nav-hover); color: var(--ink); }
-.plan-pill:focus-visible { outline-offset: 2px; }
-.popover.plan-pop { width: 304px; padding: 0; max-height: calc(100vh - 56px); overflow-y: auto; }
-.popover.plan-pop[data-side='top'] { bottom: calc(100% + 8px); }
-.plan-sec { display: flex; flex-direction: column; gap: 12px; padding: 12px 14px 8px; }
-.plan-sec:has(> .plan-out) { gap: 10px; padding-bottom: 12px; }
-.plan-sec + .plan-sec, .plan-sec + .plan-foot { border-top: 1px solid var(--line-2); }
-.plan-prov { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
-.plan-acct { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.plan-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.plan-name { min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.plan-plan { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.plan-email { font-size: 12px; color: var(--muted); }
-.plan-billed { font-size: 12.5px; color: var(--ink-2); }
-.plan-rows { display: flex; flex-direction: column; gap: 12px; }
-.plan-row { display: flex; flex-direction: column; gap: 5px; }
-.plan-title { font-size: 12.5px; color: var(--ink-2); }
-.plan-note { font-size: 11.5px; color: var(--muted); }
-.plan-switch { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
-.plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
-.menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
-.menu-item.plan-other:disabled { color: var(--faint); }
-.menu-item.plan-other[aria-busy='true']:disabled { color: var(--ink); }
-.plan-other-name { font-weight: 500; }
-.plan-other-plan { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
-.plan-other-use { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.plan-out { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
-.btn.plan-signin { height: 26px; padding: 0 10px; }
-.plan-foot { padding: 6px; }
-
 /* The scrolling list in the sidebar frame, in the app and in Settings (KERNEL-597). The frame pads 0 8px 0 10px, so the list bleeds out to its edges and
    pads itself back: the scrollbar lands on the column's right edge and rows stay where they were. The scrollbar is 6px and takes layout width, so the
    right padding is 8px less that, and the gutter is always held so rows line up with the ones above whether or not the list scrolls. The thumb itself,

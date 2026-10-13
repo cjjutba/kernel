@@ -1,30 +1,16 @@
-import { actions, useStore } from '../../store'
-import { Icon } from '../../ui'
-import { githubPause } from './model'
 import { UpdatePill } from './UpdatePill'
+import { UsageRow } from './UsageRow'
 import './footer.css'
 
 /**
- * The 32px strip under every main panel (KERNEL-588). Health shows on the left only while something is wrong: the hook server down
- * (D-082; Settings, Hooks has the port and status) or a GitHub rate limit holding PR reads off until it ends (KERNEL-401). On the right,
- * the update pill once an update is ready. It sits in the same place whatever is hidden.
+ * The 32px strip under every main panel (KERNEL-588). Usage for Claude Code and Codex sits on the left all the time, with the Usage popover opening
+ * above it (KERNEL-674). On the right, the update pill once an update is ready. It sits in the same place whatever is hidden. The hook server being
+ * down shows in the banner above the composer, and in Settings, Hooks, no longer here (D-082).
  */
 export function Footer() {
-  const down = useStore((s) => s.system.hooks?.listening === false)
-  const github = useStore((s) => s.system.github)
-  const paused = githubPause(github, Date.now())
   return (
     <footer className="footer ft">
-      {down && <button type="button" className="ft-hooks ft-down" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" size={14} />Hooks down<span className="ft-fix">Check hooks</span></button>}
-      {/* Always mounted, so a screen reader hears the pause start. The item does nothing, so it is no button; Tab reaches its tooltip. */}
-      <span role="status" className="ft-status">
-        {paused && (
-          <span className="ft-hooks ft-paused" tabIndex={0} data-tip={paused.why} aria-describedby="ft-github-why">
-            <Icon name="pause" size={14} />{paused.label}<span className="ft-sub">{paused.sub}</span>
-            <span id="ft-github-why" hidden>{paused.why}</span>
-          </span>
-        )}
-      </span>
+      <UsageRow />
       <span className="grow" />
       <UpdatePill />
     </footer>

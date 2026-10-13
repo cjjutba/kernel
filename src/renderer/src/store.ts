@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
@@ -115,6 +115,13 @@ function changesView(): 'list' | 'tree' {
   try { return localStorage.getItem(CHANGES_VIEW) === 'tree' ? 'tree' : 'list' } catch { return 'list' }
 }
 
+/** The Usage popover's Detailed or Compact, kept across launches (KERNEL-674). localStorage may be missing or blocked. */
+const USAGE_VIEW = 'kernel.usageView'
+function usageView(): UsageView {
+  try { return localStorage.getItem(USAGE_VIEW) === 'compact' ? 'compact' : 'detailed' } catch { return 'detailed' }
+}
+const usageOpenAtFirst = (view: UsageView): Provider[] => (view === 'detailed' ? ['claude'] : [])
+
 const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false, changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
@@ -199,7 +206,7 @@ let state: State = {
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
+  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
 }
 const listeners = new Set<() => void>()
 
@@ -463,6 +470,12 @@ export const actions = {
       setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, changesView: view } } }))
       try { localStorage.setItem(CHANGES_VIEW, view) } catch { /* not remembered */ }
     },
+    /** Detailed or Compact in the Usage popover. Each starts with its own rows open, so a switch closes what the other had open. */
+    setUsageView: (view: UsageView) => {
+      setUi({ usageView: view, usageOpen: usageOpenAtFirst(view) })
+      try { localStorage.setItem(USAGE_VIEW, view) } catch { /* not remembered */ }
+    },
+    toggleUsageProvider: (provider: Provider) => setState((s) => ({ ui: { ...s.ui, usageOpen: s.ui.usageOpen.includes(provider) ? s.ui.usageOpen.filter((p) => p !== provider) : [...s.ui.usageOpen, provider] } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
       // A file or diff tab is not a step, so switching chats from one steps from the chat you opened it from. Leaving the workspace keeps the tab (`go`).

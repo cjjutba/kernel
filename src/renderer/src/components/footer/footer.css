@@ -1,17 +1,68 @@
-/* Footer and the update pill (KERNEL-21, KERNEL-588). Tokens only. */
-.ft { padding: 0 4px 0 8px; }
-.ft-hooks { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
-.ft-down { height: 24px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; }
-.ft-down:hover { background: var(--surface-3); }
-.ft-fix { margin-left: 4px; color: var(--ink); text-decoration: underline; }
-/* The GitHub pause (KERNEL-401): a word, not a button, beside Hooks down. */
-.ft-status { display: inline-flex; }
-.ft-paused { height: 24px; padding: 0 6px; margin-left: -6px; border-radius: var(--r-sm); color: var(--ink-2); font-size: 12px; }
-.ft-paused:focus-visible { outline-offset: 2px; }
-.ft-sub { margin-left: 4px; color: var(--muted); }
+/* Footer, its usage row and the Usage popover (KERNEL-21, KERNEL-588, KERNEL-674). Tokens only. */
+.ft { padding: 0 10px; }
+.ft-usage { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; }
+.ft-chip { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; white-space: nowrap; }
+.ft-chip:hover, .ft-chip[aria-expanded='true'] { background: var(--nav-hover); }
+.ft-chip:disabled { color: var(--muted); cursor: default; background: transparent; }
+.ft-chip:focus-visible { outline-offset: 2px; }
+.ft-mark { display: inline-flex; }
+.ft-name { color: var(--ink-2); font-weight: 500; }
+.ft-name[data-dim] { color: var(--muted); font-weight: 400; }
+.ft-out { color: var(--muted); }
+.ft-win { display: inline-flex; align-items: center; gap: 5px; }
+.ft-win + .ft-win { margin-left: 8px; }
+.ft-wl { color: var(--muted); }
+.ft-bar { display: inline-flex; }
+.ft-bar .meter { width: 30px; height: 4px; }
+.ft-pc, .pm-mp { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.ft-pc[data-tone='near'], .pm-mp[data-tone='near'] { color: var(--needs); }
+.ft-pc[data-tone='full'], .pm-mp[data-tone='full'] { color: var(--del); }
+.ft-div { width: 1px; height: 14px; margin: 0 6px; background: var(--line-2); }
 .ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 12px; }
 .ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); color: var(--ink-2); }
 .ft-pill:hover { background: var(--surface-3); }
-.ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
+.ft-pill:focus-visible { outline-offset: 2px; }
 /* The pill fits the 32px footer. */
 .ft .ft-pill { height: 24px; }
+
+/* The popover opens above the row from the footer's bottom left, 360px wide (UsagePopover.png). A row is a button that expands in place; the
+   body bleeds in under the provider's name, 24px past the mark. Switch rows bleed 8px past the body's padding and pad themselves back, so their hover
+   fill is wider than their text. The meters are the shared Meter: grey, amber from 75%, red from 90%. */
+.popover.usage-pop { width: 360px; padding: 0; overflow: hidden auto; max-height: calc(100vh - 56px); }
+.popover.usage-pop[data-side='top'] { bottom: calc(100% + 6px); }
+.pm-top { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line-2); }
+.pm-title { font-size: 13px; font-weight: 500; color: var(--ink); }
+.pm-sec + .pm-sec, .pm-sec + .plan-foot { border-top: 1px solid var(--line-2); }
+.pm-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: 0; background: transparent; color: var(--ink-2); text-align: left; font-size: 12px; }
+button.pm-head:hover { background: var(--nav-hover); }
+button.pm-head:focus-visible { outline: 0; background: var(--hover); }
+.pm-mark { display: inline-flex; width: 14px; justify-content: center; color: var(--ink); }
+.pm-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pm-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.pm-name { font-size: 13px; font-weight: 500; color: var(--ink); white-space: nowrap; }
+.pm-acct { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-chev { display: inline-flex; color: var(--muted); }
+.pm-chev[data-open] { transform: rotate(180deg); }
+.pm-cw { display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.pm-cl { color: var(--muted); }
+.pm-minis { display: flex; align-items: center; gap: 14px; padding: 0 14px 12px 38px; margin-top: -3px; }
+.pm-mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
+.pm-ml { color: var(--muted); }
+.pm-mini .meter { width: 48px; height: 4px; }
+.pm-body { display: flex; flex-direction: column; gap: 12px; padding: 0 14px 8px 38px; margin-top: -4px; }
+.plan-email { font-size: 12px; color: var(--muted); }
+.plan-billed { font-size: 12.5px; color: var(--ink-2); }
+.plan-rows { display: flex; flex-direction: column; gap: 12px; }
+.plan-row { display: flex; flex-direction: column; gap: 5px; }
+.plan-title { font-size: 12.5px; color: var(--ink-2); }
+.plan-note { font-size: 11.5px; color: var(--muted); }
+.plan-switch { display: flex; flex-direction: column; gap: 2px; margin: 0 -8px; }
+.plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
+.menu-item.plan-other:disabled { color: var(--faint); }
+.menu-item.plan-other[aria-busy='true']:disabled { color: var(--ink); }
+.plan-other-name { font-weight: 500; }
+.plan-other-plan { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); }
+.plan-other-use { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.btn.plan-signin { height: 24px; padding: 0 10px; font-size: 12px; }
+.plan-foot { padding: 6px; }

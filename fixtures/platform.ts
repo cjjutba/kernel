@@ -115,8 +115,29 @@ const providerUsage = (readAt?: number): RateLimit[] => [
 const richAccounts: AccountProfile[] = [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex, keyAccount('codex')]
 /** Work's own login has Fable's weekly window at 90% beside its 5-hour and weekly ones (KERNEL-619). */
 const fableWindow: RateLimit = { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextOn(1, 9, 0)), model: 'claude-fable-5-1' }
-/** The home screen with the Usage popover open over the sidebar (KERNEL-619). */
-const usagePopover = (extra: Partial<Fixture>): Fixture => ({ ...teamFixtures.Home, usage: [...providerUsage(), fableWindow], ...extra, ui: { route: { name: 'home' }, menu: 'plan' } })
+/** Reset times for the footer canvases: a clock time today, Monday for Claude's weekly window, and more than a week out for Codex's. */
+const inDays = (days: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.getTime() }
+// KERNEL-674: the accounts the footer canvases draw. Claude Code runs on 2nd account with Main account, a key and 3rd account beside it. Codex runs on its own login with work beside it.
+const secondClaude = subscription('claude', 'cli', '2nd account', 'hazelleespela@gmail.com', 'Claude Pro', { active: true })
+const mainClaude = subscription('claude', 'main', 'Main account', 'main@example.com', 'Claude Max')
+const thirdClaude = subscription('claude', 'third', '3rd account', 'third@example.com', 'Claude Pro')
+const footerKey = (active = false): AccountProfile => ({ id: 'key', provider: 'claude', label: 'API Key', cli: false, auth: 'apiKey', active, signedIn: true })
+const footerCodex = subscription('codex', 'cli', 'cjjutbaofficial', 'cjjutbaofficial@gmail.com', 'ChatGPT Plus', { active: true })
+const workCodex = subscription('codex', 'work', 'work', 'work@example.com', 'ChatGPT Pro')
+const footerUsage = (codex5 = 31): RateLimit[] => [
+  window5('claude', 'cli', 9, next(23, 0)), windowWeek('claude', 'cli', 19, nextOn(1, 3, 0)),
+  { type: 'seven_day_opus', status: 'allowed', utilization: 0.04, resetsAt: secs(nextOn(1, 3, 0)), model: 'claude-fable-5-1' },
+  window5('claude', 'main', 12, next(22, 0)), windowWeek('claude', 'main', 20, nextOn(2, 3, 0)),
+  window5('claude', 'third', 75, next(22, 30)), windowWeek('claude', 'third', 40, nextOn(3, 3, 0)),
+  window5('codex', 'cli', codex5, next(18, 36)), windowWeek('codex', 'cli', 16, inDays(8, 13, 36)),
+  window5('codex', 'work', 40, next(19, 0)), windowWeek('codex', 'work', 30, inDays(8, 14, 0))
+]
+/** The home screen with an update ready, so the footer has its pill, and the Claude Code and Codex accounts above (KERNEL-674). */
+const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => ({
+  ...teamFixtures.UpdateReady, accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex], usage: footerUsage(), ...extra, ui: { ...teamFixtures.UpdateReady.ui, ...ui }
+})
+/** The popover open over the same home, in Detailed unless `view` says Compact. */
+const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
 /** Settings, Providers on one tab, with each account's nickname, plan and usage windows (KERNEL-561). */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
   accounts: richAccounts,
@@ -442,12 +463,19 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
   AccountMenu: { ...teamFixtures.Home, accounts: richAccounts, usage: providerUsage(), ui: { route: { name: 'home' }, menu: 'account' } },
-  // KERNEL-619: the plan pill reads Usage and opens Claude Code and Codex together, each from the account in use. Work's Fable window is at 90%. Codex lists one other account.
-  UsagePopover: usagePopover({ accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex, personalCodex] }),
-  // KERNEL-619: a key is in use on Claude Code, so it says Billed per token and Switch lists both subscriptions.
-  UsagePopoverApiKey: usagePopover({ accounts: [{ ...workClaude, active: false }, personalClaude, keyAccount('claude', true), ownCodex, personalCodex] }),
-  // KERNEL-619: Codex isn't signed in, so its section is one line with Sign in.
-  UsagePopoverSignedOut: usagePopover({ accounts: [workClaude, personalClaude, keyAccount('claude'), { ...ownCodex, signedIn: false }, personalCodex] }),
+  // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
+  UsageFooter: usageHome(),
+  UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
+  UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
+  // KERNEL-674: the popover opens upward from the footer. Claude Code is open in Detailed and Codex shows both windows folded.
+  UsagePopover: usagePopover(),
+  UsagePopoverCompact: usagePopover({}, { usageView: 'compact', usageOpen: [] }),
+  UsagePopoverCompactCodex: usagePopover({ accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex, workCodex] }, { usageView: 'compact', usageOpen: ['codex'] }),
+  // KERNEL-619: a key is in use on Claude Code, so it says Billed per token and Switch lists the subscriptions.
+  UsagePopoverApiKey: usagePopover({ accounts: [{ ...secondClaude, active: false }, mainClaude, footerKey(true), thirdClaude, footerCodex] }),
+  // KERNEL-619: Codex isn't signed in, so its row is one line with Sign in.
+  UsagePopoverSignedOut: usagePopover({ accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, { ...footerCodex, signedIn: false }] }),
   SearchSwitchAccount: { ...teamFixtures.CommandPalette, workspaces: teamFixtures.CommandPalette.workspaces.map((w) => (w.id === ids.schema ? { ...w, status: 'archived' as const } : w)), accounts: richAccounts, usage: providerUsage() },
   // KERNEL-455: Auto is the pick, and the fixture's availability has it working on Claude Code and not on Codex.
   SettingsPermissions: settingsPage('permissions', { settings: { ...autoMode(), permissions: { ...autoMode().permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),

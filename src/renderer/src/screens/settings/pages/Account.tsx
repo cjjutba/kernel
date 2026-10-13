@@ -1,7 +1,7 @@
 import { PROVIDERS, type Provider } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { useFreshUsage } from '../../../accountRows'
-import { planAccounts, type PlanAccount } from '../../../components/sidebar/planModel'
+import { planAccounts, type PlanAccount } from '../../../components/footer/planModel'
 import { actions, go, useStore } from '../../../store'
 import { Button, Meter, ProviderMark, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
