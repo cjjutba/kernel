@@ -518,7 +518,7 @@ const planChanges = (f: Fixture): Partial<Fixture> => {
   const reply: ChatItem = { kind: 'text', id: 'pl-rev', ts: at(10, 31), text: 'Understood. I will split step 2 out and bring the revised plan back.' }
   return {
     ...s,
-    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'denied' as const, answer: notes } : a)),
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'denied' as const, answer: notes, images: [{ type: 'image' as const, name: 'invoice-table.png', dataUrl: imageAfter, path: '.kernel/images/invoice-table.png' }] } : a)),
     items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), kernel, reply] }
   }
 }
