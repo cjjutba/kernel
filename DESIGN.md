@@ -104,7 +104,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 - Radii (KERNEL-666), one scale in `tokens.css` and never a hard-coded px value: `--r-2xs` 4px checkboxes and highlights, `--r-xs` 6px 18 to 20px marks (kbd, tags, letter tiles, avatars, inline code), `--r-sm` 8px rows, list items, 22 to 26px controls and chips, `--r` 10px buttons, inputs, tabs and segmented controls (28 to 34px tall), `--r-md` 12px cards, panels, menus and code blocks, `--r-lg` 16px composer, `--r-xl` 18px modals, `--r-pill` 999px pills, toggles and meters. A control's radius is about 0.35 times its height. An inner radius is never larger than its outer one: the outer minus the padding, and `calc(<outer token> - 1px)` inside a 1px border
 - 1px borders, no drop shadows anywhere
-- Icons: 16px stroke icons, 1.4 stroke width, round caps
+- Icons: Hugeicons free stroke-rounded set (`@hugeicons/core-free-icons`), 16px, stroke 2.1 on its 24px grid (the old 1.4 on a 16px grid), round caps
 
 ## Patterns
 
