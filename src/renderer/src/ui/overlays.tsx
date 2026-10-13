@@ -120,7 +120,7 @@ export function Popover({ open, onClose, children, label, align = 'left', side =
 }
 
 /**
- * The one modal shell. Blur scrim over the whole window (z-index 40), dialog above it (50), 14px radius, 1px border.
+ * The one modal shell. Blur scrim over the whole window (z-index 40), dialog above it (50), 18px radius, 1px border.
  * Escape and a press on the scrim play a short exit, then call `onClose` once. Mark a custom footer's Cancel `data-dismiss`
  * (and leave its `onClick` off) to get the same exit. A close that follows an action calls its own handler and leaves at once.
  * Focus moves in on open and back to the trigger on close.

@@ -1,7 +1,7 @@
 /* Bottom right of the main panel, above the footer (WorkspaceToast.png). */
 .app-toasts .toast-stack { right: 26px; bottom: 58px; }
 .app-toasts .toast-action { text-decoration: underline; text-underline-offset: 2px; }
-.app-toasts .toast-action[data-boxed] { height: 24px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: 6px; font-size: 12px; text-decoration: none; }
+.app-toasts .toast-action[data-boxed] { height: 24px; padding: 0 8px; border: 1px solid var(--line-3); border-radius: var(--r-sm); font-size: 12px; text-decoration: none; }
 
 /* The update card (KERNEL-164): a toast's surface and hairline, the close button on its top left corner like Conductor's. */
 .update-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-3); }

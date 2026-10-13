@@ -1,12 +1,12 @@
 /* The workspace header's Open in control (KERNEL-428): a split button, a hairline between the halves. Tokens only. */
-.open-in { position: relative; flex-shrink: 0; display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--line-3); border-radius: 7px; }
-.open-in-main { width: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px 0 0 6px; background: transparent; color: var(--muted); }
+.open-in { position: relative; flex-shrink: 0; display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--line-3); border-radius: var(--r); }
+.open-in-main { width: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: calc(var(--r) - 1px) 0 0 calc(var(--r) - 1px); background: transparent; color: var(--muted); }
 .open-in-main:hover { color: var(--ink); }
 .open-in-main:focus-visible { outline-offset: 2px; }
 .open-in-icon { width: 16px; height: 16px; flex-shrink: 0; }
 .open-in-main:hover .open-in-icon { filter: brightness(1.15); }
 /* The menu hangs off the chevron's wrapper, so a press on the left half counts as outside and closes it. */
 .open-in-anchor { position: relative; display: inline-flex; }
-.open-in .icon-btn { width: 22px; height: 100%; border-left: 1px solid var(--line-3); border-radius: 0 6px 6px 0; }
+.open-in .icon-btn { width: 22px; height: 100%; border-left: 1px solid var(--line-3); border-radius: 0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0; }
 /* A fill means open, never hover (DESIGN.md). */
 .open-in .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }

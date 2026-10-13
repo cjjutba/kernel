@@ -13,7 +13,7 @@
 .cmp-input[contenteditable='false'] { cursor: default; }
 .cmp-foot { gap: 12px; }
 /* The agent is its name and role in a pill, with no letter tile and no divider after it. The role stays muted: faint is about 3.4:1 on the box. */
-.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
 /* Its own padding is its hover fill, so it pulls left to sit 12px after the pill, as the canvas draws. */
 .cmp-model { margin-left: -8px; padding: 0 8px; color: var(--ink-2); gap: 6px; }
@@ -30,7 +30,7 @@
 .icon-btn.send:disabled { cursor: default; }
 .icon-btn.send.stop { background: transparent; border: 1px solid var(--line-4); }
 .icon-btn.send.stop:hover { background: var(--surface-3); }
-.icon-btn.stop span { width: 9px; height: 9px; border-radius: 2px; background: var(--ink); }
+.icon-btn.stop span { width: 9px; height: 9px; border-radius: calc(var(--r-2xs) - 1px); background: var(--ink); }
 
 .composer-inner { display: flex; flex-direction: column; gap: 10px; }
 .cmp-box { position: relative; }
@@ -50,10 +50,10 @@
 .img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
 .img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 
-.cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); }
+.cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }
 .cmp-ac-row + p { margin-top: 10px; }
-.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
@@ -114,7 +114,7 @@
 .link-id { flex-shrink: 0; min-width: 64px; font-size: 12px; color: var(--muted); }
 .link-name { flex-shrink: 0; max-width: 55%; color: var(--ink-2); }
 .link-sub { font-size: 11.5px; color: var(--muted); text-align: right; }
-.link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--on-ink); }
+.link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: var(--r-2xs); color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }
 .link-note { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
 .link-none { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 6px; }
@@ -123,15 +123,15 @@
 .link-foot { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 8px 0 14px; border-top: 1px solid var(--card-line); font-size: 12px; color: var(--muted); }
 
 .queue { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 8px; border: 1px dashed var(--line-4); font-size: 13px; }
+.queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-sm); border: 1px dashed var(--line-4); font-size: 13px; }
 .queue-text { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
 .queue-text:hover { color: var(--ink); }
 .queue-now { height: 24px; padding: 0 8px; font-size: 12px; }
-.queue-x { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+.queue-x { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); }
 .queue-x:hover { color: var(--ink); }
 
-.hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; border: 1px solid var(--card-line); background: var(--card-bg); font-size: 13px; }
-.hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
+.hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: 13px; }
+.hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
 .hunk-row input { margin-top: 3px; accent-color: var(--ink); }
 
 /* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). The mode keeps its icon and loses its name last. */
