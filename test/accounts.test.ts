@@ -10,6 +10,8 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { KernelOptions } from '../src/main/features/options'
 import { sessionEnv } from '../src/main/services/providers/claude'
+import { USAGE_AFTER_TURN_MS } from '../src/main/features/providers'
+import { sessionDeps } from '../src/main/features/sessionDeps'
 import { credentialsItem } from '../src/main/services/providers/claudeHome'
 import { joinLabels } from '@shared/waits'
 import { fakeCodex } from './helpers/fakeCodex'
@@ -20,7 +22,7 @@ import { tempRepo } from './helpers'
 // Claude Code's usage call, answered by the account each short session runs on: its CLAUDE_CONFIG_DIR, '' for the CLI's own
 // login (KERNEL-567). `usage` holds each account's 5-hour use in percent. `mcp` holds the MCP servers each account lists
 // (KERNEL-616), `*` for any added login not named. No Claude Code process starts.
-const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, mcp: {} as Record<string, { name: string; status: string; scope?: string }[]>, probes: [] as { dir: string; token?: string }[], hold: undefined as Promise<void> | undefined }))
+const sdk = vi.hoisted(() => ({ usage: {} as Record<string, number>, mcp: {} as Record<string, { name: string; status: string; scope?: string }[]>, probes: [] as { dir: string; token?: string }[], reads: [] as string[], hold: undefined as Promise<void> | undefined }))
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
   ...await original<object>(),
   query: ({ options }: { options: { env?: Record<string, string> } }) => {
@@ -32,6 +34,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
       interrupt: async () => {},
       mcpServerStatus: async () => sdk.mcp[dir] ?? (dir ? sdk.mcp['*'] : undefined) ?? [],
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
+        sdk.reads.push(dir)
         await sdk.hold
         const used = sdk.usage[dir]
         if (used === undefined) throw new Error('not supported')
@@ -59,7 +62,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 
 let fake: Awaited<ReturnType<typeof fakeCodex>>
 const saved = { log: process.env.FAKE_CODEX_LOG, codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
-beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.hold = undefined })
+beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
 afterEach(() => {
   // Assigning undefined would leave the string "undefined", and a read still running would log to a file of that name.
   if (saved.log === undefined) delete process.env.FAKE_CODEX_LOG; else process.env.FAKE_CODEX_LOG = saved.log
@@ -369,6 +372,67 @@ describe('Claude accounts (KERNEL-567)', () => {
     s.mergeLimits([{ type: 'five_hour', utilization: 0.93, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
     await new Promise((r) => setTimeout(r, 50))
     expect(sdk.probes.filter((x) => x.dir === folder)).toHaveLength(1)
+    await k.stop()
+  })
+
+  /** A Claude chat in a room on a temp repo, whose turns `turnDone` finishes on `account` (KERNEL-673). */
+  async function claudeChat(k: Kernel) {
+    const room = await k.addRoom(await tempRepo())
+    const ws: Workspace = { id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: room.path, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    k.store.saveWorkspace(ws)
+    const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', provider: 'claude', model: 'opus', effort: 'low', plan: false, createdAt: 1 }
+    k.store.saveChat(chat)
+    return (account?: string) => sessionDeps(k).onTurnDone!(ws, chat, { ok: true, interrupted: false, by: 'user', account })
+  }
+
+  it('reads the usage of the account a turn ran on once for the turns that finish within a minute, and pushes it (KERNEL-673)', async () => {
+    const { k, h } = await claudeKernel()
+    const side = await h['accounts.add']({ provider: 'claude' })
+    const folder = k.providers.claudeHome(side.id)
+    await until(() => new Set(sdk.reads).size === 2)
+    const turnDone = await claudeChat(k)
+    sdk.usage = { '': 30, [folder]: 40 }
+    sdk.reads = []
+    // Adding the account read it a moment ago, which a minute's wait would leave behind.
+    ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
+    const pushed: RateLimit[][] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'usage') pushed.push(e.limits) })
+    // The read starts on a real tick, so the timers it sets aren't the fake ones.
+    const read = k.providers.readUsage.bind(k.providers)
+    const asked = vi.spyOn(k.providers, 'readUsage').mockImplementation((o) => new Promise((r) => setImmediate(r)).then(() => read(o)))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      for (let i = 0; i < 10; i++) { turnDone(side.id); vi.advanceTimersByTime(USAGE_AFTER_TURN_MS / 20) }
+      vi.advanceTimersByTime(USAGE_AFTER_TURN_MS / 2 - 1)
+      expect(asked).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(1)
+    } finally { vi.useRealTimers() }
+    const mine = (limits: RateLimit[]) => limits.find((l) => l.type === 'five_hour' && limitProvider(l) === 'claude' && l.accountId === side.id)?.utilization
+    await until(() => pushed.some((l) => mine(l) === 0.4))
+    // Ten turns, one read, and only of the account they ran on.
+    expect(asked.mock.calls).toEqual([[{ provider: 'claude', account: side.id }]])
+    expect(sdk.reads).toEqual([folder])
+    await k.stop()
+  })
+
+  it('keeps the last numbers when the read after a turn fails, and the turn ends as usual (KERNEL-673)', async () => {
+    const { k } = await claudeKernel()
+    const turnDone = await claudeChat(k)
+    sdk.usage = { '': 30 }
+    await k.providers.readUsage({ force: true })
+    // Claude Code refuses the usage call for the CLI's own login.
+    sdk.usage = {}
+    sdk.reads = []
+    ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      expect(() => turnDone(undefined)).not.toThrow()
+      vi.advanceTimersByTime(USAGE_AFTER_TURN_MS)
+    } finally { vi.useRealTimers() }
+    await until(() => sdk.reads.length)
+    const hour = (await k.providers.readUsage()).filter((l) => l.type === 'five_hour' && limitProvider(l) === 'claude').map((l) => [l.accountId ?? 'cli', l.utilization])
+    expect(hour).toEqual([['cli', 0.3]])
+    expect(k.store.chat('chat')?.unreadAt).toBeTruthy()
     await k.stop()
   })
 

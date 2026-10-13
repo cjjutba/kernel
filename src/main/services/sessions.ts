@@ -165,8 +165,8 @@ export interface SessionDeps {
   onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
-  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
-  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy }) => void
+  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it; `account` is the one it ran on, undefined for the CLI's own login. */
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string }) => void
   /**
    * The session's process ended without being stopped. `midTurn` is true when a turn was running, so the agent's work
    * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
@@ -1535,7 +1535,7 @@ export class Sessions {
     live.cleared = false
     this.setRunning(chat, ws, live, false)
     // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user' })
+    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account })
     // Stop means stop: held messages are dropped, not sent. Send now keeps them.
     if (stopped) this.setQueue(chatId, [])
     else this.drain(chatId)
