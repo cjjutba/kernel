@@ -100,16 +100,22 @@ export const PLAN_RESTARTED = 'Kernel restarted while the plan waited, so check 
 
 /**
  * The one note an approved plan sends, on every provider and every path (plan-cards-survive-restart).
- * `line` is what the chat shows; `text` is what the agent reads: the line, a Lead's hand-off instruction, and the restart
- * sentence when the plan waited through a restart. With no plan file, the plan's text stands in for its path.
+ * `line` is what the chat shows; `text` is what the agent reads: the line and a Lead's hand-off instruction. The agent still
+ * has its plan in context, so the note is short. `queued` is the note sent as a message that starts a turn (Codex), which
+ * says to carry the plan out. Only after a restart does it name the plan's file, or carry the plan's text when the file is
+ * gone, and add the restart sentence, since the turn that planned was cut off.
  */
-export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean }): { line: string; text: string } {
+export function planApproval(o: { lead: boolean; planFile?: string; plan?: string; restarted?: boolean; queued?: boolean }): { line: string; text: string } {
+  if (!o.restarted) {
+    const line = 'Plan approved.'
+    return { line, text: o.lead ? `${line}\n\n${HANDOFF_NOW}` : o.queued ? `${line} Carry it out.` : line }
+  }
   const file = o.planFile ? `\`${o.planFile}\`` : undefined
   const line = o.lead
     ? file ? `Plan approved. Hand off each task from ${file} now.` : 'Plan approved. Hand off each task from the plan below now.'
     : file ? `Plan approved. Build it from ${file}.` : 'Plan approved. Build it from the plan below.'
   const plan = !file && o.plan?.trim() ? o.plan.trim() : undefined
-  return { line, text: [line, plan, o.lead && HANDOFF_NOW, o.restarted && PLAN_RESTARTED].filter(Boolean).join('\n\n') }
+  return { line, text: [line, plan, o.lead && HANDOFF_NOW, PLAN_RESTARTED].filter(Boolean).join('\n\n') }
 }
 
 /** What a plan the user wants changed goes back as: in a message after a restart, naming the file the revision overwrites, or in Codex's next plan-mode turn. */

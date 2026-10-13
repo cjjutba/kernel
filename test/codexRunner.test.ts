@@ -15,8 +15,8 @@ import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/mai
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 
-/** The approval's note, which names the plan's file, or carries the plan when the file isn't saved yet. */
-const APPROVED = expect.stringMatching(/^Plan approved\. Build it from /)
+/** The approval's note. Codex still has its plan in context, so the note names no file and carries no plan. */
+const APPROVED = 'Plan approved. Carry it out.'
 import { callTool, mcpOverrides, toolSpecs } from '../src/main/services/providers/codex/tools'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { GET_ISSUE, issueText, issueTools } from '../src/main/services/issueMcp'
@@ -543,8 +543,7 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     await until(async () => (await t.sent('turn/start')).length === 3)
     await t.idle()
     const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
-    expect(inputs[1]).toMatch(/^Plan approved\. Hand off each task from /)
-    expect(inputs[1]).toContain(forProvider(HANDOFF_NOW, 'codex'))
+    expect(inputs[1]).toBe(`Plan approved.\n\n${forProvider(HANDOFF_NOW, 'codex')}`)
     expect(inputs[2]).toBe(forProvider(HANDOFF_REMINDER, 'codex'))
     expect(inputs[1]).toContain('kernel_create_workspace')
     await new Promise((r) => setTimeout(r, 100))
