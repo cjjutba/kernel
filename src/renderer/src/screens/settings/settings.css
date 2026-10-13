@@ -4,10 +4,15 @@
 .set-list { flex: 1; display: flex; flex-direction: column; }
 .set-back { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
 .set-back:hover { background: var(--nav-hover); }
-.set-search { position: relative; margin: 8px 0 6px; }
-.set-search svg { position: absolute; left: 10px; top: 9px; color: var(--muted); }
-.set-search input { width: 100%; height: 32px; padding: 0 10px 0 30px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); outline: none; user-select: text; }
-.set-search input:focus { border-color: var(--ink-3); }
+/* A quiet field: the panel's hairline instead of --input-line, brighter on hover and focus, no ring. Its icon and placeholder say what it is
+   (feat-providers-redesign). */
+.set-search { position: relative; display: flex; align-items: center; margin: 6px 0 6px; }
+.set-search svg { position: absolute; left: 9px; color: var(--faint); pointer-events: none; }
+.set-search input { width: 100%; height: 30px; padding: 0 10px 0 29px; border-radius: var(--r-sm); border: 1px solid var(--panel-line); background: var(--panel); color: var(--ink-2); outline: none; user-select: text; transition: border-color 0.12s, background 0.12s; }
+.set-search input::placeholder { color: var(--muted); }
+.set-search input:hover { border-color: var(--line-3); }
+.set-search input:focus { border-color: var(--line-4); background: var(--input-bg); }
+.set-search input:focus-visible { outline: none; }
 .set-group { margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .nav-item.set-item { height: 28px; }
 .set-menu { position: relative; flex-shrink: 0; }
@@ -22,7 +27,7 @@
 .set-letter[data-image] { border: 0; }
 
 .set-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.set-page { max-width: 748px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
+.set-page { max-width: 848px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
 .set-page h1 { margin: 0; font-size: 26px; font-weight: 600; color: var(--ink); letter-spacing: -0.6px; }
 .set-intro { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
 .set-section { display: flex; flex-direction: column; gap: 10px; }
@@ -146,9 +151,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-env-value { font: 12.5px/1.6 var(--mono); color: var(--ink-3); overflow-wrap: anywhere; user-select: text; }
 .set-tag { flex-shrink: 0; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: 12px; line-height: 20px; color: var(--ink-3); }
 .set-row .set-tag + .set-entry-actions { margin-left: -12px; }
-.input.set-rename { width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); background: var(--input-bg); color: var(--ink); font: 500 13.5px var(--font); }
-.set-entry-actions.set-rename-actions { align-items: center; gap: 4px; margin-right: 0; }
-.set-card .set-rename-actions .btn:not(.ghost) { padding: 0 12px; }
 .set-kernel { display: flex; align-items: center; gap: 24px; min-height: 36px; box-sizing: border-box; padding: 8px 18px; border-top: 1px solid var(--panel-line); }
 .set-kernel code { flex-shrink: 0; font: 12.5px var(--mono); color: var(--ink-2); }
 .set-kernel span { flex: 1; min-width: 0; text-align: right; font-size: 12.5px; color: var(--muted); }
@@ -163,8 +165,39 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-radio[aria-checked='true'] { border-color: var(--ink); background: var(--ink); }
 .set-preset-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px/1.6 var(--mono); color: var(--ink-3); }
 
-/* Providers (KERNEL-406): the Claude Code and Codex tabs under the title */
-.set-tabs { margin-top: -10px; }
+/* Providers (KERNEL-406, feat-providers-redesign): underline tabs under the title, then Subscriptions and API keys. A row is the name and plan,
+   one line, the meters and their notes on the left; the Active pill or one action, then the menu, on the right. */
+.prov-tabs { margin-top: -14px; }
+.prov-row { position: relative; display: flex; align-items: flex-start; gap: 16px; padding: 14px 14px 14px 18px; border-top: 1px solid var(--panel-line); }
+.prov-row:first-child { border-top: 0; }
+.prov-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.prov-name { display: flex; align-items: baseline; gap: 8px; min-height: 20px; }
+.prov-plan { font-size: 12px; color: var(--muted); }
+.prov-meters { display: flex; flex-wrap: wrap; column-gap: 28px; row-gap: 6px; margin-top: 8px; }
+.prov-win { display: flex; align-items: center; gap: 10px; font-size: 12px; line-height: 16px; }
+.prov-win-name { width: 42px; color: var(--muted); }
+.prov-win .meter { width: 120px; }
+.prov-win-pct { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.prov-note { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.prov-faint { color: var(--faint); }
+.prov-side { position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-top: -4px; }
+.set-card .prov-side .btn { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.prov-more[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+/* In use: the one green in Settings, on the tint the sidebar's status pills use (D-084). */
+.prov-active { height: 22px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--pr-ready-line); background: var(--tint-add); color: var(--add); font-size: 12px; font-weight: 500; }
+/* The name as its field: the same size and weight, its text where the name was, and a border that brightens on focus with no ring. */
+.prov-rename { width: 240px; height: 28px; margin: -4px 0 -4px -9px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink); font: 500 13.5px var(--font); outline: none; user-select: text; transition: border-color 0.12s; }
+.prov-rename:focus { border-color: var(--line-4); }
+.prov-rename:focus-visible { outline: none; }
+.prov-empty { display: flex; align-items: center; gap: 24px; padding: 16px 18px; }
+.prov-banner { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 7px 8px 7px 14px; border-radius: var(--r-md); border: 1px solid var(--pr-fail-line); background: var(--tint-del); color: var(--ink-2); }
+.prov-banner > svg { flex-shrink: 0; color: var(--del-fill); }
+.prov-banner .btn { height: 28px; padding: 0 12px; font-size: 12.5px; }
+.prov-problem { flex-wrap: nowrap; align-items: flex-start; column-gap: 10px; }
+.prov-problem > svg { flex-shrink: 0; margin-top: 3px; color: var(--del-fill); }
+.prov-problem .set-label { color: var(--ink); }
+.prov-mono { font-family: var(--mono); color: var(--ink-3); }
+.prov-path { display: block; font: 12px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; user-select: text; }
 /* Models and effort (KERNEL-406): a role's provider, model and effort stay on its line */
 .set-role { flex-wrap: nowrap; }
 .set-role .set-text { flex-basis: 120px; }
@@ -178,7 +211,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-avail svg { flex-shrink: 0; color: var(--muted); }
 /* A warning under an account's name (KERNEL-619): an amber triangle, what is wrong and the way out. The link in it is ink and spins while its call runs. */
 .set-warn { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12.5px; color: var(--ink-2); }
-.set-warn > svg { flex-shrink: 0; color: var(--ink); }
+.set-warn > svg { flex-shrink: 0; color: var(--needs-fill); }
 .set-warn .set-link { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12.5px; }
 .set-warn .set-link:disabled { opacity: 0.55; cursor: default; }
 .set-warn .set-link[aria-busy='true'] { opacity: 1; color: var(--ink-3); text-decoration: none; }

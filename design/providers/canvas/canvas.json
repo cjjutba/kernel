@@ -1,0 +1,80 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Codex.dc.html": {
+      "h": 1100,
+      "is_interactive": true,
+      "title": "Providers, Codex",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Light.dc.html": {
+      "h": 1100,
+      "is_interactive": true,
+      "title": "Providers, light",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 1100,
+      "is_interactive": true,
+      "title": "Providers, Claude Code",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Narrow.dc.html": {
+      "h": 1100,
+      "is_interactive": true,
+      "title": "Providers, 1024px window",
+      "w": 1024,
+      "x": 4560,
+      "y": 0
+    },
+    "States.dc.html": {
+      "h": 2480,
+      "title": "Every state, dark",
+      "w": 1792,
+      "x": 0,
+      "y": 1220
+    },
+    "StatesLight.dc.html": {
+      "h": 2480,
+      "title": "Every state, light",
+      "w": 1792,
+      "x": 1872,
+      "y": 1220
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-13T09:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "title": {
+      "kind": "title1",
+      "maxW": 5584,
+      "text": "Providers redesign",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Codex.dc.html",
+    "Light.dc.html",
+    "Narrow.dc.html",
+    "States.dc.html",
+    "StatesLight.dc.html"
+  ],
+  "pages": [],
+  "title": "Kernel Providers redesign"
+}

@@ -239,8 +239,7 @@ async function openBaseBranch(page: Page) {
 
 // SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
 async function typeApiKey(page: Page) {
-  await page.getByRole('button', { name: 'Add account' }).click()
-  await page.getByRole('radio', { name: 'API key' }).click()
+  await page.getByRole('button', { name: 'Add key' }).click()
   await page.locator('#acct-label').fill('Work key')
   await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e63')
   await page.mouse.move(0, 0)
@@ -267,9 +266,11 @@ async function addDuplicate(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// SettingsProvidersRename is Personal's name turned into its field. Whether a row is being renamed is local to the page.
-async function renamePersonal(page: Page) {
-  await page.getByRole('button', { name: 'Rename Personal' }).click()
+// SettingsProvidersMenu is Personal's menu open, SettingsProvidersRename its name turned into a field and SettingsProvidersRemove its Remove
+// asking first. The menu, the field and the dialog are local to the page, so click them open.
+async function personalMenu(page: Page, item?: string) {
+  await page.getByRole('button', { name: 'More for Personal' }).click()
+  if (item) await page.getByRole('menuitem', { name: item }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -316,7 +317,9 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAddAccountCodex: (page) => openAddAccount(page),
   SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 'Sign in with ChatGPT'),
   SettingsAddAccountDuplicate: addDuplicate,
-  SettingsProvidersRename: renamePersonal,
+  SettingsProvidersRename: (page) => personalMenu(page, 'Rename'),
+  SettingsProvidersMenu: (page) => personalMenu(page),
+  SettingsProvidersRemove: (page) => personalMenu(page, 'Remove'),
   SearchSwitchAccount: typeSwitch,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,

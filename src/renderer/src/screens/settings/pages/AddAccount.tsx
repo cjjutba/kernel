@@ -23,9 +23,9 @@ const DUPLICATE = /already in Kernel/i
  * sign-in says why and offers Try again. API key: a name and the key, checked with the provider before it is
  * kept, and a refused key shows the provider's reason in the sheet. No pasted token (D-018).
  */
-export function AddAccount({ provider, signIn, replaceKey, onClose }: { provider: Provider; signIn?: { label: string; accountId?: string }; replaceKey?: { accountId: string; label: string }; onClose: () => void }) {
+export function AddAccount({ provider, signIn, replaceKey, kind: startKind = 'subscription', onClose }: { provider: Provider; signIn?: { label: string; accountId?: string }; replaceKey?: { accountId: string; label: string }; /** The choice the sheet opens on: Add key opens it on API key (feat-providers-redesign). */ kind?: Kind; onClose: () => void }) {
   const step = useStore((s) => (s.accountAdd?.provider === provider ? s.accountAdd : null))
-  const [kind, setKind] = useState<Kind>('subscription')
+  const [kind, setKind] = useState<Kind>(startKind)
   const [label, setLabel] = useState('')
   const [code, setCode] = useState('')
   const [apiKey, setApiKey] = useState('')
