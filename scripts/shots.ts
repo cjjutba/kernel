@@ -53,12 +53,6 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// The canvas draws SettingsAccountCodex and SettingsAccountCodexSignedOut scrolled 560px down, so the Codex section sits under the Claude Code accounts (KERNEL-665).
-const scrollSettingsBy = async (page: Page, px: number) => {
-  await page.locator('.set-scroll').evaluate((el, y) => { el.scrollTop = y }, px)
-  await page.waitForTimeout(300)
-}
-
 async function scrollToSection(page: Page, title: string) {
   await page.locator('.set-scroll').evaluate((el, t) => {
     const h = [...el.querySelectorAll('h2, h3')].find((x) => x.textContent?.trim() === t)
@@ -338,8 +332,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
   WorkspaceScrolledUp: scrollUp,
-  SettingsAccountCodex: (page) => scrollSettingsBy(page, 560),
-  SettingsAccountCodexSignedOut: (page) => scrollSettingsBy(page, 560),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
