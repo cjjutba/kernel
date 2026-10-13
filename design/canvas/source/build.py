@@ -73,6 +73,7 @@ U_DETAILED=rd('_usage_detailed.html')
 # above the composer, and GitHub paused is gone). usage= picks the row, popover= opens the popover above it. The sidebar's bottom row is empty.
 def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, fold=False, icons=None, rows_html=None, usage=None, popover=''):
     t=t.replace('<!--HELMET-->',helmet)
+    if '<!--FOOTER-->' in t and '.uf {' not in t: t=t.replace('</helmet>','<style>\n'+rd('_usage.css')+'</style>\n</helmet>',1)
     if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons,rows_html))
     t=t.replace('<!--FOOTER-->',foot_t.replace('%%USAGE%%',usage or U_DETAILED).replace('%%UPDATEPILL%%', PILL if update else '').replace('%%POPOVER%%',popover))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
