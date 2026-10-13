@@ -2,19 +2,20 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { KNOWN_CLIS, type AppSettings, type TerminalPreset } from '@shared/types'
 import { getState } from '../../../store'
 import { selectedPreset, useTerminalPresets } from '../../../terminalPresets'
+import './system.css'
 import { Button, Icon, Modal, Toggle, useBusy } from '../../../ui'
-import { Keys, Page, Row, Section } from '../kit'
+import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
 type Custom = AppSettings['terminal']['custom'][number]
 
-/** The line under a preset's name. A custom command says so, and a CLI Kernel found on the PATH says where. */
-const describe = (p: TerminalPreset): string => {
-  if (!p.builtin) return 'Custom command'
-  if (p.id === 'claude') return 'Claude Code in the workspace folder'
-  if (p.id === 'claude-skip') return 'Worktrees only, never your current branch'
-  if (p.id === 'shell') return 'Your login shell'
-  return 'Found on your PATH'
+/** The line under a preset's name. Skipping prompts follows "Terminal tabs only in worktrees". A CLI Kernel found on the PATH says so. */
+const describe = (p: TerminalPreset, onlyInWorktrees: boolean): string => {
+  if (!p.builtin) return 'Custom command.'
+  if (p.id === 'claude') return 'In the workspace folder.'
+  if (p.id === 'claude-skip') return onlyInWorktrees ? 'Worktrees only.' : 'Any workspace, your current branch included.'
+  if (p.id === 'shell') return 'Your login shell.'
+  return 'Found on your PATH.'
 }
 
 /** A custom command's id: its name as a slug. The prefix keeps it clear of the built-in and CLI ids, which main would refuse. */
@@ -25,7 +26,7 @@ function newId(name: string, taken: string[]): string {
   return id
 }
 
-/** Settings > Big terminal (SettingsBigTerminal.png): the tab's switches, then what a new tab runs. */
+/** Settings > Big terminal (MorePage terminal, KERNEL-680): the tab's switches, then what a new tab runs. */
 export function BigTerminal({ s }: { s: AppSettings }) {
   const t = s.terminal
   const presets = useTerminalPresets()
@@ -35,19 +36,18 @@ export function BigTerminal({ s }: { s: AppSettings }) {
   const remove = (c: Custom) => set({ custom: t.custom.filter((x) => x.id !== c.id), ...(t.preset === c.id ? { preset: 'claude' } : {}) })
   return (
     <>
-      <Page title="Big terminal" intro="A terminal tab next to your chats. Hooks still report to Kernel.">
-        <Section title="Tab">
-          <Row label="Big terminal tab" desc="Opens a terminal tab in the workspace folder"><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
-          <Row label="Only in worktrees" desc="Never skip permissions on your current branch"><Toggle label="Only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
-          <Row label="Shortcut"><Keys keys={['⌘', '⇧', 'T']} /></Row>
+      <Page title="Big terminal">
+        <Section label="Tab">
+          <Row label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
+          <Row label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
         </Section>
         <Section
-          title="New tab preset"
-          action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add custom command</Button>}
-          note="A new tab runs the selected preset. The + menu in the tab strip lists every preset."
+          title="New tab opens"
+          action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add command</Button>}
+          footnote="The + menu in the tab strip lists every preset."
         >
           {presets
-            ? <PresetList presets={presets} selected={selected} onPick={(id) => set({ preset: id })} onEdit={(id) => setEditing(t.custom.find((c) => c.id === id) ?? null)} onRemove={(id) => { const c = t.custom.find((x) => x.id === id); if (c) remove(c) }} />
+            ? <PresetList presets={presets} selected={selected} onlyInWorktrees={t.onlyInWorktrees} onPick={(id) => set({ preset: id })} onEdit={(id) => setEditing(t.custom.find((c) => c.id === id) ?? null)} onRemove={(id) => { const c = t.custom.find((x) => x.id === id); if (c) remove(c) }} />
             : <div className="set-empty">Looking for presets</div>}
         </Section>
       </Page>
@@ -57,7 +57,7 @@ export function BigTerminal({ s }: { s: AppSettings }) {
 }
 
 /** One preset is selected. Arrow keys move the selection and the focus, and only the selected one is in the tab order. */
-function PresetList({ presets, selected, onPick, onEdit, onRemove }: { presets: TerminalPreset[]; selected?: string; onPick: (id: string) => void; onEdit: (id: string) => void; onRemove: (id: string) => void }) {
+function PresetList({ presets, selected, onlyInWorktrees, onPick, onEdit, onRemove }: { presets: TerminalPreset[]; selected?: string; onlyInWorktrees: boolean; onPick: (id: string) => void; onEdit: (id: string) => void; onRemove: (id: string) => void }) {
   const radios = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0
@@ -72,21 +72,20 @@ function PresetList({ presets, selected, onPick, onEdit, onRemove }: { presets: 
       {presets.map((p, i) => {
         const on = p.id === selected
         return (
-          <div key={p.id} className="set-row set-preset">
+          <div key={p.id} className="set-row set-preset sys-preset set-hoverable" onClick={() => onPick(p.id)}>
             <button
               ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-label={p.name} tabIndex={on ? 0 : -1} aria-describedby={`preset-desc-${p.id}`}
-              onClick={() => onPick(p.id)} onKeyDown={(e) => onKey(e, i)}
+              onClick={(e) => { e.stopPropagation(); onPick(p.id) }} onKeyDown={(e) => onKey(e, i)}
             >{on && <Icon name="check" size={12} />}</button>
-            <div className="set-text" onClick={() => onPick(p.id)}>
-              <span className="set-label">{p.name}</span>
-              <span id={`preset-desc-${p.id}`} className="set-desc">{describe(p)}</span>
+            <div className="set-text">
+              <span className={['set-label', !p.builtin && 'mono'].filter(Boolean).join(' ')} title={p.command ?? undefined}>{p.name}</span>
+              <span id={`preset-desc-${p.id}`} className="set-desc">{describe(p, onlyInWorktrees)}</span>
             </div>
-            {p.command && <span className="set-preset-cmd" title={p.command}>{p.command}</span>}
             {!p.builtin && (
-              <div className="set-entry-actions">
+              <span className="set-acts" onClick={(e) => e.stopPropagation()}>
                 <Button variant="ghost" aria-label={`Edit ${p.name}`} onClick={() => onEdit(p.id)}>Edit</Button>
                 <Button variant="ghost" aria-label={`Remove ${p.name}`} onClick={() => onRemove(p.id)}>Remove</Button>
-              </div>
+              </span>
             )}
           </div>
         )

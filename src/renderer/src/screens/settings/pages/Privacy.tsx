@@ -1,21 +1,16 @@
+import './system.css'
 import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/types'
 import type { TelemetryRecord } from '@shared/telemetry'
 import { call } from '../../../api'
 import { Toggle } from '../../../ui'
-import { Page, Row, Section } from '../kit'
+import { DataTable, Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
-
-/** One event as the list shows it: when, its name, its values, and whether it left this Mac. */
-function parts(r: TelemetryRecord) {
-  const { name, ...props } = r.event
-  const time = new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  return { time, name, values: Object.entries(props).map(([k, v]) => `${k} ${v}`).join(', '), sent: r.sent ? 'sent' : 'kept' }
-}
+import { seenAgo } from './Hooks'
 
 /**
- * Settings > Privacy (SettingsPrivacy.png): usage data is opt-in (KERNEL-397). The switch, what goes with each event, what
- * never leaves the Mac, and the latest events exactly as Kernel keeps them. A build that can't send says so.
+ * Settings > Privacy (MorePage privacy, KERNEL-680): usage data is opt-in (KERNEL-397). The switch, then what's sent and the latest
+ * events exactly as Kernel keeps them, each folded. A build that can't send says so.
  */
 export function Privacy({ s }: { s: AppSettings }) {
   const [canSend, setCanSend] = useState<boolean | null>(null)
@@ -24,26 +19,21 @@ export function Privacy({ s }: { s: AppSettings }) {
   useEffect(() => { void call('app.info', undefined).then((i) => setCanSend(i.telemetry)).catch(() => setCanSend(false)) }, [])
   useEffect(() => { void call('telemetry.recent', undefined).then(setRecent).catch(() => setRecent([])) }, [on])
   return (
-    <Page title="Privacy" intro="Kernel can send anonymous usage data, so problems on other Macs show up without anyone filing a bug. Nothing is sent until you turn it on.">
-      <Section title="Usage data" note={canSend === false ? 'This build of Kernel can’t send usage data, so nothing leaves this Mac.' : undefined}>
-        <Row label="Share usage data" desc="Errors, and counts of what goes wrong, like a task Kernel couldn’t hand off. Sent once a minute.">
-          <Toggle label="Share usage data" checked={on} disabled={canSend === false} onChange={(v) => void patchSettings({ privacy: { telemetry: v ? 'on' : 'off' } })} />
+    <Page title="Privacy">
+      <Section label="Diagnostics" footnote={canSend === false ? 'This build of Kernel can’t send diagnostics, so nothing leaves this Mac.' : undefined}>
+        <Row label="Share diagnostics" desc="Errors and counts of what goes wrong. Never your code, prompts or names.">
+          <Toggle label="Share diagnostics" checked={on} disabled={canSend === false} onChange={(v) => void patchSettings({ privacy: { telemetry: v ? 'on' : 'off' } })} />
         </Row>
       </Section>
-      <Section title="What’s sent">
-        <Row label="With every event" desc="Kernel’s version, your Mac’s macOS version and chip, and a random install id tied to no account" />
-        <Row label="In each event" desc="Its name and a few fixed values, such as why a hand-off was refused. Never free text." />
+      <Section title="What’s sent" collapsible defaultOpen>
+        <Row label="Sent" desc="Kernel and macOS versions, your Mac’s chip, a random install id, event names and fixed values." />
+        <Row label="Never sent" desc="Code, diffs, prompts, chats, plans, file paths, and repo, room, branch or agent names." />
       </Section>
-      <Section title="Never sent">
-        <Row label="Your work" desc="Code, diffs and file contents, prompts, chats and plans, and anything Claude Code prints" />
-        <Row label="Names" desc="File paths, repo, room, branch and agent names, issue keys, emails and GitHub usernames" />
-      </Section>
-      <Section title="Latest events" note="Kept on this Mac whether sharing is on or off. Sent means it left this Mac.">
-        <Row label="Newest first" desc={recent.length ? undefined : 'No events yet.'} full={recent.length ? (
-          <ol className="set-preview set-events" tabIndex={0} aria-label="Latest events">
-            {recent.map((r, i) => { const p = parts(r); return <li key={i}><span>{p.time}</span><span>{p.name}</span><span>{p.values}</span><span>{p.sent}</span></li> })}
-          </ol>
-        ) : undefined} />
+      <Section title="Latest events" count={recent.length} note="Kept on this Mac either way." collapsible defaultOpen plain>
+        <DataTable
+          label="Latest events" columns={['Event', 'When', 'Status']} grid="minmax(0, 1fr) 140px 100px" empty="No events yet."
+          rows={recent.map((r, i) => ({ key: String(i), cells: [<span key="n" className="mono">{r.event.name}</span>, seenAgo(r.at), <span key="s" className={r.sent ? undefined : 'sys-muted'}>{r.sent ? 'Sent' : 'Not sent'}</span>] }))}
+        />
       </Section>
     </Page>
   )

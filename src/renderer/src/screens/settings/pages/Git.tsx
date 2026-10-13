@@ -1,19 +1,25 @@
+import './system.css'
 import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/types'
-import { call } from '../../../api'
-import { useStore } from '../../../store'
-import { SegmentedControl, Select, Toggle } from '../../../ui'
+import { call, cleanError } from '../../../api'
+import { actions, useStore } from '../../../store'
+import { Button, SegmentedControl, Select, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
 type Workspace = AppSettings['workspace']
 const set = (patch: Partial<Workspace>) => void patchSettings({ workspace: patch })
+const setScripts = (patch: Partial<AppSettings['scripts']>) => void patchSettings({ scripts: patch })
 const withCurrent = (list: string[], current: string) => [...new Set([current, ...list])].map((v) => ({ value: v, label: v }))
 const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
+/** How long a setup or archive script may run, in minutes. Main takes 1 to 240 (KERNEL-216). */
+const TIMEOUTS = [5, 10, 15, 30]
 
-/** Settings > Git and worktrees (SettingsGit.png). The defaults for every room. A room can override them from its own Git page. */
+/** Settings > Git and worktrees (MorePage git, KERNEL-680): the defaults for every room, then setup and archive scripts and cleanup. */
 export function Git({ s }: { s: AppSettings }) {
   const w = s.workspace
+  const a = s.scripts
+  const [busy, run] = useBusy()
   // The defaults belong to no room, so the branches and remotes to pick from are every room's.
   const roomIds = useStore((x) => x.rooms.filter((r) => !r.hidden && !r.archived).map((r) => r.id).join(','))
   const [branches, setBranches] = useState<string[]>([])
@@ -24,45 +30,47 @@ export function Git({ s }: { s: AppSettings }) {
     return () => { live = false }
   }, [roomIds])
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
+  const reveal = () => run('reveal', async () => {
+    try { await call('system.openInEditor', { path: s.worktreeRoot }) } catch (e) { actions.ui.toast({ title: 'Could not open the folder', sub: cleanError(e) }) }
+  })
   return (
-    <Page title="Git and worktrees" intro="Defaults for every room. Each room can override them on its own Git page.">
+    <Page title="Git and worktrees">
       <Section title="New workspaces">
-        <Row label="Default workspace type" desc="A worktree is an isolated copy on its own branch">
-          <SegmentedControl label="Default workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
+        <Row label="Workspace type" desc="A worktree is an isolated copy on its own branch.">
+          <SegmentedControl label="Workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
         </Row>
-        <Row label="Branch new workspaces from">
-          <Select label="Branch new workspaces from" value={w.baseRef} options={withCurrent(branches, w.baseRef)} onChange={(e) => set({ baseRef: e.target.value })} />
+        <Row label="Branch from"><Select label="Branch from" align="right" value={w.baseRef} options={withCurrent(branches, w.baseRef)} onChange={(v) => set({ baseRef: v })} /></Row>
+        <Row label="Remote" desc="Where agents push and open pull requests.">
+          <Select label="Remote" align="right" value={w.remote} options={withCurrent(remotes.length ? remotes : ['origin'], w.remote)} onChange={(v) => set({ remote: v })} />
         </Row>
-        <Row label="Remote origin" desc="Where to push, pull and open PRs">
-          <Select label="Remote origin" value={w.remote} options={withCurrent(remotes.length ? remotes : ['origin'], w.remote)} onChange={(e) => set({ remote: e.target.value })} />
+        <Row label="Worktree location">
+          <span className="set-actions">
+            <span className="set-value">{home(s.worktreeRoot)}</span>
+            <Button busy={busy === 'reveal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void reveal()}>Reveal</Button>
+          </span>
         </Row>
-        <Row label="Branch name pattern" desc="Renamed from your task once the workspace starts">
-          <BranchPattern value={w.branchPattern} />
-        </Row>
-        <Row label="Worktree location"><span className="set-value">{home(s.worktreeRoot)}</span></Row>
       </Section>
-      <Section title="Current branch workspaces">
-        <Row label="Treat existing changes as the baseline" desc="Changes already in your checkout are hidden from the diff and never committed by agents">
-          <Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} />
-        </Row>
-        <Row label="One current-branch workspace per room" desc="Two agents editing one checkout would overwrite each other">
-          <Toggle label="One current-branch workspace per room" checked={w.oneCurrentBranchPerRoom} onChange={(v) => set({ oneCurrentBranchPerRoom: v })} />
+      <Section title="Branch names">
+        <Row label="Workspaces" desc="Renamed from the task once work starts."><BranchPattern value={w.branchPattern} label="Workspace branch name pattern" /></Row>
+        <Row label="Lead chats" desc="Renamed from the chat title until pushed."><BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" /></Row>
+      </Section>
+      <Section title="Current branch">
+        <Row label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>
+        <Row label="One current-branch workspace per room"><Toggle label="One current-branch workspace per room" checked={w.oneCurrentBranchPerRoom} onChange={(v) => set({ oneCurrentBranchPerRoom: v })} /></Row>
+      </Section>
+      <Section title="Setup and archive" note="The scripts live on each room’s Setup and scripts page.">
+        <Row label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
+        <Row child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
+        <Row label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
+        <Row label="Run the archive script on archive"><Toggle label="Run the archive script on archive" checked={a.archiveOnArchive} onChange={(v) => setScripts({ archiveOnArchive: v })} /></Row>
+        <Row label="Stop setup and archive scripts after" desc="Run scripts have no limit.">
+          <Select label="Stop setup and archive scripts after" align="right" value={String(a.timeoutMinutes)} options={[...new Set([...TIMEOUTS, a.timeoutMinutes])].sort((x, y) => x - y).map((n) => ({ value: String(n), label: `${n} minute${n === 1 ? '' : 's'}` }))} onChange={(v) => setScripts({ timeoutMinutes: Number(v) })} />
         </Row>
       </Section>
       <Section title="Cleanup">
-        <Row label="Delete branch on archive"><Toggle label="Delete branch on archive" checked={w.deleteBranchOnArchive} onChange={(v) => set({ deleteBranchOnArchive: v })} /></Row>
-        <Row label="Archive on merge" desc="Review workspaces go too, once the PR they reviewed merges or closes"><Toggle label="Archive on merge" checked={w.archiveOnMerge} onChange={(v) => set({ archiveOnMerge: v })} /></Row>
-      </Section>
-      <Section title="Lead chats">
-        <Row label="Branch name pattern" desc="{lead} is the Lead's name. Renamed from the chat's title until it is pushed">
-          <BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" />
-        </Row>
-        <Row label="Wait for setup before the first message" desc="The first message waits in the chat until the setup script passes">
-          <Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} />
-        </Row>
-        <Row label="Archive a chat's workspaces with it" desc="Off leaves them in the sidebar under the room">
-          <Toggle label="Archive a chat's workspaces with it" checked={w.archiveChatWorkspaces} onChange={(v) => set({ archiveChatWorkspaces: v })} />
-        </Row>
+        <Row label="Delete the branch on archive"><Toggle label="Delete the branch on archive" checked={w.deleteBranchOnArchive} onChange={(v) => set({ deleteBranchOnArchive: v })} /></Row>
+        <Row label="Archive on merge" desc="Review workspaces go too."><Toggle label="Archive on merge" checked={w.archiveOnMerge} onChange={(v) => set({ archiveOnMerge: v })} /></Row>
+        <Row label="Archive a chat’s workspaces with it"><Toggle label="Archive a chat’s workspaces with it" checked={w.archiveChatWorkspaces} onChange={(v) => set({ archiveChatWorkspaces: v })} /></Row>
       </Section>
     </Page>
   )

@@ -1,63 +1,76 @@
-import type { AppSettings } from '@shared/types'
+import './system.css'
+import { useState } from 'react'
+import type { AppSettings, PrInstructions } from '@shared/types'
 import { ALWAYS_REVIEW } from '@shared/merge'
-import { SegmentedControl, Toggle } from '../../../ui'
-import { LinesField, Page, Row, Section, TextField } from '../kit'
+// The pure text builders: the default a PR instruction goes back to. Nothing here reads a file.
+import { addressReviewText, createPrText, fixChecksText, resolveText } from '@shared/prTexts'
+import { Button, SegmentedControl, Toggle } from '../../../ui'
+import { Page, Row, Section, TagList } from '../kit'
 import { patchSettings } from '../useSettings'
-import { NumberField, Pills } from './fields'
+import { NumberField } from './fields'
+import { INSTRUCTIONS, InstructionSheet } from './InstructionSheet'
 
 type Pr = AppSettings['pr']
 const set = (patch: Partial<Pr>) => void patchSettings({ pr: patch })
 const setAuto = (patch: Partial<Pr['autoMerge']>) => void patchSettings({ pr: { autoMerge: patch } })
 
-/** The paths Kernel always sends to the user, in words. A path this doesn't know shows as written. Files show in mono. */
-const BUILT_IN: Record<string, { text: string; mono?: boolean }> = {
-  '.kernel/**': { text: 'Kernel settings' },
-  '**/.claude/agents/**': { text: 'Agent files' },
-  '**/CLAUDE.md': { text: 'CLAUDE.md', mono: true },
-  '**/AGENTS.md': { text: 'AGENTS.md', mono: true },
-  '.github/workflows/**': { text: 'CI workflows' }
+/** The paths Kernel always sends to the user, in words. A path this doesn't know shows as written. */
+const BUILT_IN: Record<string, string> = {
+  '.kernel/**': 'Kernel settings',
+  '**/.claude/agents/**': 'Agent files',
+  '**/CLAUDE.md': 'CLAUDE.md',
+  '**/AGENTS.md': 'AGENTS.md',
+  '.github/workflows/**': 'CI workflows'
 }
 
+/** Kernel's own text for each instruction, which a row goes back to. */
+const DEFAULTS: PrInstructions = { createInstructions: createPrText(), resolveInstructions: resolveText(), fixChecksInstructions: fixChecksText(), addressReviewInstructions: addressReviewText() }
+
 /**
- * Settings > Pull requests (SettingsPRs.png). Merge automatically comes first: it is only this Mac's, off by default (KERNEL-557).
- * Then how PRs merge, and the default instructions each PR button sends to the agent. A room can replace any of them on its Instructions page.
+ * Settings > Pull requests (MorePage prs, KERNEL-680). Automatic merging comes first: it is only this Mac's, off by default (KERNEL-557).
+ * Then merging, reviews, and the default instructions each PR button sends, which open in a sheet. A room can replace any of them.
  */
 export function PRs({ s }: { s: AppSettings }) {
   const p = s.pr
   const auto = p.autoMerge
-  const dim = auto.on ? undefined : 'rv-dim'
+  const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
-    <Page title="Pull requests" intro="How pull requests are merged, and the default instructions agents get. Each room can override the instructions on its own Instructions page.">
-      <Section title="Merge automatically" action={<span className="set-tag">Only on this Mac</span>} note="This applies only on this Mac. A repo can add paths you always review, but it can’t turn on automatic merging for you.">
-        <Row label="Merge without asking me" desc="Kernel merges a pull request when every review passes, checks are green and the change is under the size below.">
-          <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />
-        </Row>
-        <Row className={dim} label="Size limit" desc="A change with more added and removed lines than this comes to you.">
-          <NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines })} />
-        </Row>
-        <Row className={dim} label="Always review yourself" desc="Paths you check yourself, on top of each room’s list. One path per line." full={<LinesField label="Always review yourself" value={auto.alwaysReview} onSave={(alwaysReview) => setAuto({ alwaysReview })} />} />
-        <Row label="Built-in paths" desc="Changes to these always come to you. You can’t turn this off." full={<Pills label="Built-in paths" items={ALWAYS_REVIEW.map((path) => BUILT_IN[path] ?? { text: path, mono: true })} />} />
-      </Section>
-      <Section title="Merging">
-        <Row label="Merge method">
-          <SegmentedControl label="Merge method" value={p.mergeMethod} onChange={(v) => set({ mergeMethod: v as Pr['mergeMethod'] })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
-        </Row>
-        <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
-        <Row label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
-        <Row label="Review every pull request automatically" desc="Kernel starts each room’s reviews when a pull request passes checks. Off saves usage, and you can still ask for a review.">
-          <Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} />
-        </Row>
-        <Row label="Wait for the reviewer's approval to merge, when a review ran"><Toggle label="Wait for the reviewer's approval to merge, when a review ran" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
-        <Row label="Let the Lead merge when you ask" desc="The Lead merges only when your own message asks. Each merge still needs passing checks and any reviewer's approval.">
-          <Toggle label="Let the Lead merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} />
-        </Row>
-      </Section>
-      <Section title="Instructions">
-        <Row label="Create PR" desc="Sent to the agent when you press Create PR" full={<TextField label="create-pr.md" value={p.createInstructions} onSave={(createInstructions) => set({ createInstructions })} />} />
-        <Row label="Resolve conflicts" desc="Sent when you press Resolve conflicts" full={<TextField label="resolve-conflicts.md" value={p.resolveInstructions} onSave={(resolveInstructions) => set({ resolveInstructions })} />} />
-        <Row label="Fix checks" desc="Sent when you press Fix checks" full={<TextField label="fix-checks.md" value={p.fixChecksInstructions} onSave={(fixChecksInstructions) => set({ fixChecksInstructions })} />} />
-        <Row label="Address review" desc="Sent when you press Address review" full={<TextField label="address-review.md" value={p.addressReviewInstructions} onSave={(addressReviewInstructions) => set({ addressReviewInstructions })} />} />
-      </Section>
-    </Page>
+    <>
+      <Page title="Pull requests">
+        <Section title="Automatic merging" scope="mac">
+          <Row label="Merge without asking me" desc="When reviews pass, checks are green and it’s under the size limit.">
+            <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />
+          </Row>
+          <Row label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines })} /></Row>
+          <Row label="Paths you always review" desc="Changes here always come to you. Locked ones are built in." full={
+            <div className="sys-paths"><TagList label="Paths you always review" value={auto.alwaysReview} locked={ALWAYS_REVIEW.map((path) => BUILT_IN[path] ?? path)} mono={false} addLabel="Add path" placeholder="db/migrations/**" onChange={(alwaysReview) => setAuto({ alwaysReview })} /></div>
+          } />
+        </Section>
+        <Section title="Merging">
+          <Row label="Merge method">
+            <SegmentedControl label="Merge method" value={p.mergeMethod} onChange={(v) => set({ mergeMethod: v as Pr['mergeMethod'] })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
+          </Row>
+          <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
+          <Row label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
+          <Row label="Let the Lead merge when you ask" desc="Only when your own message asks."><Toggle label="Let the Lead merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
+        </Section>
+        <Section title="Reviews" note="Each room picks which reviews run.">
+          <Row label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>
+          <Row label="Wait for the reviewer’s approval to merge"><Toggle label="Wait for the reviewer’s approval to merge" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
+        </Section>
+        <Section title="Instructions" note="A room can replace any of them.">
+          {INSTRUCTIONS.map((i) => {
+            const custom = !!p[i.key].trim() && p[i.key] !== DEFAULTS[i.key]
+            return (
+              <Row key={i.key} label={i.label} desc={`${i.desc}.`}>
+                <span className={custom ? 'set-badge' : 'sys-state'}>{custom ? 'Customized' : 'Default'}</span>
+                <Button aria-label={`Edit the ${i.label} instructions`} onClick={() => setEditing(i)}>Edit</Button>
+              </Row>
+            )
+          })}
+        </Section>
+      </Page>
+      {editing && <InstructionSheet title={editing.label} value={p[editing.key] || DEFAULTS[editing.key]} fallback={DEFAULTS[editing.key]} onSave={(text) => set({ [editing.key]: text ?? DEFAULTS[editing.key] })} onClose={() => setEditing(null)} />}
+    </>
   )
 }
