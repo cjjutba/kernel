@@ -89,6 +89,7 @@ export interface AppSettings {
   /**
    * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, only on PRs a reviewer looked at.
    * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
+   * Off until the user turns it on, on every plan (feat-automatic-review-off-by-default).
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
    * `autoMerge` has Kernel merge a PR every review approved by itself, off until the user turns it on (KERNEL-556). Settings, Pull requests has its switch, size limit and paths (KERNEL-557).
    */

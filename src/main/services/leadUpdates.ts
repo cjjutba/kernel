@@ -334,6 +334,11 @@ export interface ReviewState {
    * head, so Kernel starts no more by itself (KERNEL-552). Unset while a review runs.
    */
   stillBlocked?: { rounds: number; kinds: ReviewKind[] }
+  /**
+   * Automatic review is off, and it alone kept Kernel from starting a review of the head: the room's `[review]` asks for
+   * one and nobody asked for one meanwhile (feat-automatic-review-off-by-default).
+   */
+  notStarted?: boolean
 }
 
 /**
@@ -933,6 +938,12 @@ function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [
   return `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.${left}${auto} Tell the user it is ready to merge, with a short merge summary: ${summary.slice(0, -1).join(', ')}, and ${summary.at(-1)}.`
 }
 
+/**
+ * What Rowan tells the user about a PR that passed checks with no review, when automatic review being off is the only reason
+ * none started (feat-automatic-review-off-by-default). Rowan says it, so "me" is Rowan.
+ */
+export const NO_AUTO_REVIEW = 'No review started because automatic review is off. Turn it on in Settings, Pull requests, or ask me to review it.'
+
 /** The To do line for a PR Kernel merged by itself (KERNEL-556). Its event's line says why. */
 const autoMergedTodo = (pr: string, url: string | undefined) => `Tell the user Kernel merged ${pr} automatically and why, in a line or two${url ? `, with its link ${url}` : ''}.`
 
@@ -1089,7 +1100,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // No review looked at this PR: auto review is off (KERNEL-115), or none of the room's reviews covers what it changes.
         if (!review?.open && !review?.stale) {
           bus.track({ name: 'pr.ready_unreviewed', hasReviewer: !!c.reviewer })
-          wake(blocked || (c.autoReview === false ? `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.` : `${upper(pr)} passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.`))
+          wake(blocked || (c.autoReview === false ? `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge${review?.notStarted ? `, and tell them: "${NO_AUTO_REVIEW}"` : '.'}` : `${upper(pr)} passed checks and has no conflicts. No review runs on it, so tell the user it is ready for them to review and merge.`))
           break
         }
         // A review that stopped without a verdict on the latest commit, which Kernel didn't start again.
