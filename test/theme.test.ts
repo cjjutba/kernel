@@ -44,7 +44,7 @@ const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover
 const BORDERED = SURFACES.filter((s) => s !== 'hover')
 const TIERS = ['ink', 'ink-2', 'ink-3', 'muted']
 const LADDER = [...TIERS, 'faint']
-const STATUS = ['add', 'del', 'mod', 'merged', 'working', 'needs']
+const STATUS = ['add', 'del', 'mod', 'merged', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 // Pairs allowed under AA. Empty since KERNEL-611 moved dark del up to pass on hover.
 const BELOW_AA = new Set<string>()
@@ -104,9 +104,9 @@ describe('theme contrast', () => {
       for (const s of SURFACES) { const theme = name === 'light' ? light : dark; const c = contrast(over(ringOf(body), theme[s]), theme[s]); if (c < 3) fails.push(`${name} focus on ${s}: ${c.toFixed(2)}`) }
     expect(fails).toEqual([])
   })
-  it('hover card status words reach 4.5:1 on their pill in both themes', () => {
+  it('status words reach 4.5:1 on their tint in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['working', 'add', 'del', 'merged', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['add', 'del', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
@@ -205,5 +205,64 @@ describe('no hardcoded colors', () => {
       readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (/#[0-9a-fA-F]{3,8}\b(?![\w-])|\brgba?\(|\bhsla?\(/.test(line.replace(/\b(?:error|PR) #\d+/g, ''))) hits.push(`${f.slice(root.length + 1)}:${i + 1}: ${line.trim().slice(0, 80)}`) })
     }
     expect(hits).toEqual([])
+  })
+})
+
+// KERNEL-681: type sizes, weights, line heights, layers and motion come from tokens.css too, and so do the type, color and spacing of
+// an inline style. A value that isn't a token yet becomes one in tokens.css (DESIGN.md), never a literal in a screen.
+describe('design tokens beyond color', () => {
+  const src = join(root, 'src/renderer/src')
+  const all = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = join(dir, e.name)
+    return e.isDirectory() ? all(p) : /\.(tsx?|css)$/.test(e.name) ? [p] : []
+  })
+  const files = all(src)
+  const rel = (f: string) => f.slice(root.length + 1)
+  /** A CSS file with its comments blanked out, line breaks kept, so a duration in a comment isn't a hit and line numbers still match. */
+  const code = (f: string) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '))
+  const css = files.filter((f) => f.endsWith('.css') && !f.endsWith('tokens.css')).map((f) => [f, code(f)] as const)
+  const scan = (list: (readonly [string, string])[], test: (line: string) => boolean) =>
+    list.flatMap(([f, text]) => text.split('\n').flatMap((line, i) => (test(line) ? [`${rel(f)}:${i + 1}: ${line.trim().slice(0, 100)}`] : [])))
+  const decls = (line: string, prop: RegExp) => [...line.matchAll(new RegExp(`(?<![\\w-])(?:${prop.source})\\s*:\\s*([^;{}]*)`, 'g'))].map((m) => m[1])
+
+  it('font sizes are --fs tokens', () => {
+    expect(scan(css, (l) => decls(l, /font-size/).some((v) => /^-?[0-9.]+(px|rem|em)/.test(v.trim()))
+      || decls(l, /font/).some((v) => /\b[0-9.]+(px|rem|em)\b/.test(v.replace(/\/[0-9.]+px/g, ''))))).toEqual([])
+  })
+  it('weights are --fw tokens', () => {
+    expect(scan(css, (l) => decls(l, /font-weight/).some((v) => /^\s*\d/.test(v)) || decls(l, /font/).some((v) => /^\s*\d{3}\b/.test(v)))).toEqual([])
+  })
+  it('unitless line heights are --lh tokens, px ones sit with the control height they centre in', () => {
+    expect(scan(css, (l) => decls(l, /line-height/).some((v) => /^\s*[0-9.]+\s*(!important)?\s*$/.test(v)) || decls(l, /font/).some((v) => /\/[0-9.]+(?![0-9.]*px)/.test(v)))).toEqual([])
+  })
+  it('a layer over other components is a --z token; 1 to 9 order siblings inside one component', () => {
+    expect(scan(css, (l) => decls(l, /z-index/).some((v) => /^\s*\d{2,}/.test(v)))).toEqual([])
+  })
+  it('durations and curves are --dur and --ease tokens', () => {
+    const motion = /transition(?:-duration|-delay|-timing-function)?|animation(?:-duration|-delay|-timing-function)?/
+    expect(scan(css, (l) => /cubic-bezier\(/.test(l) || decls(l, motion).some((v) => /(?<![\w.-])(?!0s\b|0\.001ms\b)[0-9]*\.?[0-9]+m?s\b/.test(v)))).toEqual([])
+  })
+  it('an inline style holds no literal type, color or spacing: those are classes', () => {
+    const tsx = files.filter((f) => f.endsWith('.tsx') && !f.endsWith('DevUi.tsx')).map((f) => [f, readFileSync(f, 'utf8')] as const)
+    expect(scan(tsx, (l) => [...l.matchAll(/style=\{\{([^{}]*)\}\}/g)].some((m) =>
+      /(?:^|,)\s*(fontSize|fontWeight|lineHeight|color|background\w*|gap|margin\w*|padding\w*|border\w*)\s*:\s*(-?[0-9.]+|'[^']*')\s*(?:,|$)/.test(m[1])))).toEqual([])
+  })
+  it('checkboxes and selects are the shared controls, outside ui/', () => {
+    const tsx = files.filter((f) => f.endsWith('.tsx') && !rel(f).startsWith('src/renderer/src/ui/')).map((f) => [f, readFileSync(f, 'utf8')] as const)
+    expect(scan(tsx, (l) => /<input[^>]*type="checkbox"|<select\b/.test(l))).toEqual([])
+  })
+  it('every var() names a custom property that is defined', () => {
+    const text = files.map((f) => readFileSync(f, 'utf8')).join('\n')
+    const defined = new Set([...text.matchAll(/(--[\w-]+)\s*:/g), ...text.matchAll(/['"`](--[\w-]+)['"`]/g)].map((m) => m[1]))
+    const hits = files.flatMap((f) => readFileSync(f, 'utf8').split('\n').flatMap((line, i) =>
+      [...line.matchAll(/var\((--[\w-]+)/g)].filter((m) => !defined.has(m[1])).map((m) => `${rel(f)}:${i + 1}: ${m[1]}`)))
+    expect(hits).toEqual([])
+  })
+  it('every token in tokens.css is used', () => {
+    const text = files.map((f) => readFileSync(f, 'utf8')).join('\n')
+    const tokens = [...new Set([...tokensCss.matchAll(/(?<![\w-])(--[\w-]+)\s*:/g)].map((m) => m[1]))]
+    // The terminal reads its palette by a built name (`--term-${n}`), and the scrollbar transitions --scroll-thumb by name.
+    const unused = tokens.filter((t) => !t.startsWith('--term-') && t !== '--scroll-thumb' && !text.includes(`var(${t})`) && !text.includes(`var(${t},`) && !text.includes(`'${t}'`))
+    expect(unused).toEqual([])
   })
 })

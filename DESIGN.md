@@ -98,9 +98,11 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 ## Type
 
 - Geist Sans for UI (13px base, 14px in chat and composer, 12px meta), Geist Mono for code, branches, paths, shortcuts. Both ship with the app, so text looks the same on every platform (KERNEL-610). File names in the All files tree and the Changes tab are Geist Sans 13px, as in VS Code's explorer (KERNEL-399)
-- Weights 400 and 500; 600 only for page titles, names on cards and bold text in a reply, which also takes full ink (KERNEL-526)
+- Weights 400 and 500; 600 only for page titles, names on cards, letters in a tile or avatar, dialog and empty-state headings, and bold text in a reply, which also takes full ink (KERNEL-526, KERNEL-681)
 - Inline code in a reply is a chip: Geist Mono 12.5px in full ink on surface-2, with a line-3 hairline (KERNEL-526)
 - Sentence case everywhere. Plain words. No em dashes.
+- Every size, weight and unitless line height is a token in `tokens.css` (KERNEL-681). Sizes by role: `--fs-tile-*` 8 to 10px letters in tiles and avatars, `--fs-badge` 11px kbd and tags, `--fs-chip` 11.5px chips and mono meta, `--fs-meta` 12px, `--fs-code` 12.5px secondary and mono, `--fs-ui` 13px base, `--fs-row` 13.5px tab and list titles, `--fs-chat` 14px, `--fs-sub` 15px, `--fs-dialog` 16px, `--fs-title-sm` 20px, `--fs-title` 22px, `--fs-page` 26px, `--fs-display` 28px, `--fs-hero` 36px, and the markdown headings `--fs-md-h1` and `--fs-doc-h1` to `--fs-doc-h3`. Weights are `--fw-regular`, `--fw-medium` and `--fw-semibold`; line heights `--lh-*`. A px line height stays next to the control height it centres text in. A size the design needs that isn't here is a new token, never a literal in a screen, and `test/theme.test.ts` fails on one.
+- An inline style never carries type, color or spacing. One element's own spacing is a class in its screen's CSS, or one of the `!important` utilities in `tokens.css` (`.gap-6`, `.mt-8`, `.t-meta`, `.fw-medium`), which stand in for the style attribute they replaced.
 
 ## Shape
 
@@ -178,7 +180,9 @@ A button that waits on the main process shows it is working until the call retur
 
 ## Motion
 
-- Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays it.
+- Durations and curves are tokens (KERNEL-681): `--dur-fast` 120ms for hover and press feedback and every exit, `--dur-med` 160ms for a fade in, `--dur-slow` 200ms for a fold, swipe or modal entrance, `--dur-enter` 340ms for a toast sliding in, `--dur-delay` 80ms, plus the loops (`--dur-spin`, `--dur-pulse`, `--dur-ring`, `--dur-sweep`, `--dur-breathe`). Curves are `--ease-enter`, `--ease-exit`, `--ease-sweep` and `--ease-plan`; `ease-out`, `ease-in-out` and `linear` stay keywords.
+- Layers are tokens too: `--z-drawer` 15, `--z-scrim` 40, `--z-modal` 50, `--z-popover` 60 (menus, popovers, hover cards, autocomplete), `--z-submenu` 61, `--z-preview` 65, `--z-toast` 70, `--z-tooltip` 90. A z-index from 1 to 9 orders siblings inside one component and stays a number.
+- Plan mode (KERNEL-322): every plan mode change takes `--dur-plan`, 0.5s (KERNEL-418, KERNEL-565, KERNEL-650): the glow rises and fades, focus settles it, and a plan's strip opens. The glow breathes every 8s while the box waits for input, and one light crosses the strip over 1.6s once it is open. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays the older, slower timing.
 - Resize edge glow (KERNEL-419): fades in over 200ms ease-out after an 80ms delay and out over 120ms, growing from the middle. Reduced motion turns it on and off with no transition.
 - Toasts (toast-motion-and-swipe): a new toast's gap opens over 0.16s, then the toast slides in from past the right edge over 0.34s. It leaves the same way: it slides out over 0.2s, then its gap closes over 0.16s. A drag or a two-finger swipe moves it with your finger. Past 60px, or after a flick, it slides on out. Short of that it springs back.
 - Archive (KERNEL-579): archiving a chat or workspace is one short beat, played for the three cases in `design/redesign/canvas/ArchiveMotion.dc.html`. Every curve is `ease-out`.
