@@ -240,12 +240,14 @@ export function App() {
   // While a screen's chunk loads, show the boot shell again. `data-lazy` lets scripts/shots.ts wait for it to go.
   return (
     <Suspense fallback={<div className="app" data-lazy="pending"><Loading /></div>}>
-      <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
-        {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
-        <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
-          <Screen route={route} />
-          {!fullWindow(route) && <Footer />}
+      <div className="app app-col" data-sidebar={hidden ? 'hidden' : undefined}>
+        <div className="app-body">
+          {column && <Sidebar settingsList={route.name === 'settings' ? <SettingsNav page={route.page} roomId={route.roomId} section={route.section} /> : undefined} />}
+          <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
+            <Screen route={route} />
+          </div>
         </div>
+        {!fullWindow(route) && <Footer />}
         {modal && <ModalView modal={modal} />}
         <Toasts />
         <Tooltips />

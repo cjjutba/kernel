@@ -2,9 +2,8 @@ import './account.css'
 import { useRef } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Icon, Menu, MENU_SEPARATOR, type MenuEntry } from '../../ui'
+import { Icon, Menu, MENU_SEPARATOR, useBusy, type MenuEntry } from '../../ui'
 import { PROVIDERS, type AccountProfile, type Provider } from '@shared/types'
-import { accountMenuLines, useFreshUsage } from '../../accountRows'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'K'
 
@@ -23,27 +22,31 @@ export function AccountButton() {
   const open = useStore((s) => s.ui.menu === 'account')
   const anchor = useRef<HTMLDivElement>(null)
   const accounts = useStore((s) => s.accounts)
-  const usage = useStore((s) => s.usage)
-  useFreshUsage(open)
+  const [busy, run] = useBusy<string>()
   const name = account?.name ?? account?.login ?? 'Kernel'
   const who = [account?.login ?? account?.email, account?.plan].filter(Boolean).join(' · ')
   const multi = accounts.length > 2 || accounts.some((a) => a.provider === 'codex' && a.signedIn)
-  const switchTo = (provider: Provider, accountId: string) => void call('accounts.switch', { provider, accountId }).then(actions.accounts.set, (e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) }))
-  const accountEntry = (a: AccountProfile): MenuEntry => ({
-    id: `acct:${a.provider}:${a.id}`,
-    label: a.label,
-    content: (
-      <>
+  const switchTo = (provider: Provider, accountId: string) => void run(`${provider}:${accountId}`, () => call('accounts.switch', { provider, accountId }).then(actions.accounts.set, (e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) })))
+  // One row per account, the whole row the switch button. Usage lives in the footer (KERNEL-674).
+  const accountEntry = (a: AccountProfile): MenuEntry => {
+    const provider = PROVIDERS.find((p) => p.id === a.provider)?.label
+    const switching = busy === `${a.provider}:${a.id}`
+    const note = !a.signedIn ? 'Signed out' : a.auth === 'apiKey' ? 'Billed per token' : undefined
+    return {
+      id: `acct:${a.provider}:${a.id}`,
+      label: a.label,
+      disabled: busy !== null,
+      ariaLabel: !a.signedIn ? `${provider}, ${a.label}, signed out. Opens providers` : a.active ? `${provider}, ${a.label}, in use` : `Switch ${provider} to ${a.label}`,
+      content: (
         <span className="acct-row">
-          <span className="acct-name ellipsis"><span className="sr-only">{PROVIDERS.find((p) => p.id === a.provider)?.label}, </span>{a.label}</span>
-          <span className="acct-plan ellipsis">{a.plan}</span>
-          {a.signedIn && <span className="acct-state">{a.active ? 'Active' : 'Switch to'}</span>}
+          <span className="acct-name ellipsis">{a.label}</span>
+          <span className="acct-plan ellipsis">{a.auth === 'apiKey' ? undefined : a.plan}</span>
+          {switching ? <span className="spin" aria-hidden="true" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
         </span>
-        {accountMenuLines(a, usage).map((line, i) => <span key={i} className="acct-line">{line}</span>)}
-      </>
-    ),
-    onSelect: a.signedIn && !a.active ? () => switchTo(a.provider, a.id) : () => go({ name: 'settings', page: 'providers', tab: a.provider })
-  })
+      ),
+      onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'providers', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)
+    }
+  }
   const groups = PROVIDERS.flatMap((p, i) => {
     const mine = accounts.filter((a) => a.provider === p.id)
     return mine.length ? [...(i ? [MENU_SEPARATOR] : []), { id: `title:${p.id}`, label: p.label, title: true }, ...mine.map(accountEntry)] : []
@@ -63,18 +66,12 @@ export function AccountButton() {
                 ...groups,
                 MENU_SEPARATOR,
                 { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
-                { id: 'shortcuts', label: 'Keyboard shortcuts', onSelect: () => go({ name: 'settings', page: 'shortcuts' }) },
-                { id: 'usage', label: 'Usage', onSelect: () => go({ name: 'settings', page: 'account' }) },
-                { id: 'new', label: "What's new", onSelect: () => actions.ui.openModal({ name: 'whatsNew' }) },
                 MENU_SEPARATOR,
                 { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'providers' }) }
               ]
             : [
                 ...(who ? [{ id: 'who', label: who, disabled: true }] : []),
                 { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
-                { id: 'shortcuts', label: 'Keyboard shortcuts', onSelect: () => go({ name: 'settings', page: 'shortcuts' }) },
-                { id: 'usage', label: 'Usage', onSelect: () => go({ name: 'settings', page: 'account' }) },
-                { id: 'new', label: "What's new", onSelect: () => actions.ui.openModal({ name: 'whatsNew' }) },
                 MENU_SEPARATOR,
                 { id: 'switch', label: 'Switch account', onSelect: () => void leave('Could not switch account') },
                 { id: 'out', label: 'Sign out', onSelect: () => void leave('Could not sign out') }
