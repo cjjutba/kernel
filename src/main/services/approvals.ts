@@ -5,6 +5,12 @@ import { bus } from '../bus'
 
 type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
 
+/** Why a plan card expired, which the card says. */
+export type ExpiredBy = NonNullable<Approval['expiredBy']>
+
+/** A plan card: ExitPlanMode or the Lead's `request_plan_approval`, the same test as the composer's `isPlanApproval`. */
+const isPlan = (a: Approval) => a.kind === 'plan' || a.toolName === 'ExitPlanMode'
+
 /**
  * One queue for everything that needs the user: tool permissions (from canUseTool or the PermissionRequest
  * hook), plan approvals and questions from Rowan. request() waits until decide() is called, or the timeout
@@ -34,9 +40,10 @@ export class Approvals {
     return { approval, decision }
   }
 
-  decide(id: string, decision: Decision): Approval | undefined {
+  /** `notes`: on a plan's Request changes, what the user typed, before Kernel added lines for the images. Defaults to the message. */
+  decide(id: string, decision: Decision, notes?: string): Approval | undefined {
     const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
-    return this.finish(id, decision, status)
+    return this.finish(id, decision, status, { notes })
   }
 
   isPending(id: string) { return this.pending.has(id) }
@@ -50,13 +57,12 @@ export class Approvals {
     return a?.kind === 'plan' && a.status === 'pending' && !this.pending.has(id) ? a : undefined
   }
 
-  /** Mark a waiting plan without a waiter as answered (`waitingPlan`). */
-  settle(id: string, decision: Decision): Approval | undefined {
+  /** Mark a waiting plan without a waiter as answered (`waitingPlan`). `notes` as in `decide`. */
+  settle(id: string, decision: Decision, notes?: string): Approval | undefined {
     const prev = this.waitingPlan(id)
     if (!prev) return undefined
-    const next: Approval = { ...prev, status: decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered', ...(decision.behavior === 'answer' ? { answer: decision.text } : {}) }
-    this.save(next, `${next.status} ${next.title}`)
-    return next
+    const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
+    return this.save({ ...prev, status, answer: answerOf(prev, decision, notes) }, `${status} ${prev.title}`)
   }
 
   /** The chat's plan cards still waiting, newest first, such as one a restart left up. */
@@ -87,7 +93,15 @@ export class Approvals {
    * `Notifications.attach()`, which then settles their rows.
    */
   expireStale(): Approval[] {
-    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id) && !this.outlivesQuit(a)).map((a) => this.expire(a))
+    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id) && !this.outlivesQuit(a)).map((a) => this.expire(a, this.staleBy(a)))
+  }
+
+  /** Why a plan from an earlier run can't show again: its workspace was archived or its chat closed meanwhile. */
+  private staleBy(a: Approval): ExpiredBy | undefined {
+    if (!isPlan(a) || !a.chatId || !this.store) return undefined
+    const chat = this.store.chat(a.chatId)
+    if (chat && this.store.workspace(chat.workspaceId)?.status === 'archived') return 'archived'
+    return chat?.closed ? 'closed' : undefined
   }
 
   private outlivesQuit(a: Approval): boolean {
@@ -102,21 +116,21 @@ export class Approvals {
    * back instead of waiting on a workspace that is gone.
    */
   expireWorkspace(workspaceId: string): Approval[] {
-    return (this.store?.approvals({ workspaceId, pendingOnly: true }) ?? []).map((a) => this.finish(a.id, null, 'expired') ?? this.expire(a))
+    return (this.store?.approvals({ workspaceId, pendingOnly: true }) ?? []).map((a) => this.finish(a.id, null, 'expired', { by: 'archived' }) ?? this.expire(a, 'archived'))
   }
 
   /**
    * The turn or the session that put these approvals up is gone (KERNEL-563). Each one still pending ends as expired: one
    * with a waiter resolves null, as in `expireWorkspace`, and one left without a waiter is marked expired. One already
-   * answered keeps its answer. A quit leaves them to `expirePending`.
+   * answered keeps its answer. A quit leaves them to `expirePending`. `by` is why, which a plan card keeps (`expiredBy`).
    */
-  expireIds(ids: Iterable<string>): Approval[] {
+  expireIds(ids: Iterable<string>, by?: ExpiredBy): Approval[] {
     if (this.closed) return []
     return [...ids].flatMap((id) => {
-      const ended = this.finish(id, null, 'expired')
+      const ended = this.finish(id, null, 'expired', { by })
       if (ended) return [ended]
       const row = this.store?.approval(id)
-      return row?.status === 'pending' ? [this.expire(row)] : []
+      return row?.status === 'pending' ? [this.expire(row, by)] : []
     })
   }
 
@@ -132,8 +146,8 @@ export class Approvals {
     return [...this.pending.keys()].flatMap((id) => this.finish(id, null, 'expired') ?? [])
   }
 
-  private expire(a: Approval): Approval {
-    return this.save({ ...a, status: 'expired' }, `expired ${a.title}`)
+  private expire(a: Approval, by?: ExpiredBy): Approval {
+    return this.save({ ...a, status: 'expired', ...expiredBy(a, by) }, `expired ${a.title}`)
   }
 
   private save(next: Approval, text: string): Approval {
@@ -143,7 +157,7 @@ export class Approvals {
     return next
   }
 
-  private finish(id: string, decision: Decision | null, status: Approval['status']): Approval | undefined {
+  private finish(id: string, decision: Decision | null, status: Approval['status'], o: { by?: ExpiredBy; notes?: string } = {}): Approval | undefined {
     const p = this.pending.get(id)
     if (!p) return undefined
     if (p.timer) clearTimeout(p.timer)
@@ -152,9 +166,20 @@ export class Approvals {
     const prev = this.store?.approval(id)
     if (!prev) return undefined
     if (!decision && this.keepPlans && prev.kind === 'plan') return undefined
-    const answered = decision?.behavior === 'answer' ? decision : undefined
-    return this.save({ ...prev, status, answer: answered ? answered.text : prev.answer, answers: answered?.answers ?? prev.answers }, `${status} ${prev.title}`)
+    if (!decision) return this.save({ ...prev, status, ...expiredBy(prev, o.by) }, `${status} ${prev.title}`)
+    const answers = decision.behavior === 'answer' ? decision.answers ?? prev.answers : prev.answers
+    return this.save({ ...prev, status, answer: answerOf(prev, decision, o.notes), answers }, `${status} ${prev.title}`)
   }
+}
+
+/** Only a plan card says why it expired. */
+const expiredBy = (a: Approval, by?: ExpiredBy): Pick<Approval, 'expiredBy'> => (by && isPlan(a) ? { expiredBy: by } : {})
+
+/** What the row keeps as the user's answer: an answer's text, or the notes of Request changes on a plan, which the chat shows as the user's. */
+function answerOf(prev: Approval, decision: Decision, notes?: string): string | undefined {
+  if (decision.behavior === 'answer') return decision.text
+  if (decision.behavior === 'deny' && isPlan(prev)) return (notes ?? decision.message)?.trim() || undefined
+  return prev.answer
 }
 
 /** Tools that are a question to the user, not a permission. No setting may answer them for the user. */

@@ -658,19 +658,20 @@ describe('Approve and hand off (KERNEL-67)', () => {
     await approvePlan(s)
     const [note] = await contexts(s.options, 'PostToolUse', 'ExitPlanMode')
     expect(note).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
-    expect(s.store.items('chat').filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
+    // The settled card says the plan was approved, so the chat adds no note.
+    expect(s.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
     expect(await contexts(s.options, 'Stop')).toEqual([HANDOFF_REMINDER])
     // One reminder per approval: the next Stop ends the turn.
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
-  it("gives every agent the approval's note once with ExitPlanMode's answer, and shows its line in the chat", async () => {
+  it("gives every agent the approval's note once with ExitPlanMode's answer, and adds no note to the chat", async () => {
     const s = await setup('acceptEdits', { agent: noor })
     await approvePlan(s)
     // The agent still has its plan in context, so the note names no file and carries no plan.
     expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual(['Plan approved.'])
     expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([])
-    expect(s.store.items('chat').filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
+    expect(s.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
     expect(s.store.chat('chat')?.plan).toBe(false)
     // It rides on the tool's answer, so no message and no extra turn follows.
     expect(s.store.items('chat').filter((i) => i.kind === 'user' && i.from === 'kernel')).toEqual([])

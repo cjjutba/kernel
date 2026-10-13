@@ -562,7 +562,7 @@ export class Lead extends Feature {
         // A turn that stopped while the team was read shows no card: an abort that has already fired never fires again.
         if (signal?.aborted) return null
         // A new plan replaces one still waiting, as one a restart left up (plan-cards-survive-restart).
-        if (o.kind === 'plan') this.approvals.expireIds(this.approvals.waitingPlans(chat.id, roomId).map((p) => p.id))
+        if (o.kind === 'plan') this.approvals.expireIds(this.approvals.waitingPlans(chat.id, roomId).map((p) => p.id), 'replaced')
         // The turn stopping, as when the user writes in the message box instead, ends the card as expired (KERNEL-496).
         const { approval, decision } = this.approvals.request({
           kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions,

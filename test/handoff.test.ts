@@ -243,9 +243,22 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
     expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
-    // The Lead still has the plan in context, so the note names no file. The chat shows its line once.
+    // The Lead still has the plan in context, so the note names no file. The settled card says it, so the chat adds no note.
     expect(((await asked).content[0] as { text: string }).text).toBe(`Plan approved.\n\n${HANDOFF_NOW}`)
-    expect(k.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(['Plan approved.'])
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
+  })
+
+  it('ends a plan still waiting as replaced when the Lead asks again', { timeout: 30_000 }, async () => {
+    const { k, chat, tool, plans } = await realLead()
+    await k.sessions.configure(chat.id, { plan: true })
+    const first = tool.handler(plan as never, {})
+    for (let i = 0; i < 100 && !plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+    const old = plans()[0]
+    void tool.handler(plan as never, {})
+    for (let i = 0; i < 100 && plans().length < 2; i++) await new Promise((r) => setTimeout(r, 20))
+    await first
+    expect(k.store.approval(old.id)).toMatchObject({ status: 'expired', expiredBy: 'replaced' })
+    expect(plans().filter((a) => a.status === 'pending')).toHaveLength(1)
   })
 
   it('leaves plan mode once the plan is approved, as ExitPlanMode does, and tells the composer (D-074)', { timeout: 30_000 }, async () => {

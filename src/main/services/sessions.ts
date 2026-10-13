@@ -196,8 +196,8 @@ export interface SessionDeps {
  */
 export interface UsageRead { provider: Provider; accountId?: string; read?: (merge: (p: LimitPatch[]) => void) => Promise<void> }
 
-/** Who sent a message the user didn't type, and the Team update card it carries (KERNEL-116). */
-export interface Sender { from?: MessageFrom; update?: TeamUpdate }
+/** Who sent a message the user didn't type, the Team update card it carries (KERNEL-116), and the plan approval it answers. */
+export interface Sender { from?: MessageFrom; update?: TeamUpdate; approvalId?: string }
 
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
@@ -216,7 +216,7 @@ export type CutOffReason = 'limit' | 'quit'
 export type { QueueReason }
 
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
-const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
+const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}), ...(o.approvalId ? { approvalId: o.approvalId } : {}) })
 
 /** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
 const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
@@ -1096,9 +1096,10 @@ export class Sessions {
 
   /**
    * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
-   * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67).
+   * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67). The settled card says the plan was
+   * approved, so the chat gets no note. A message Kernel sends carries `approvalId`, so the chat can show the user's answer.
    */
-  async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean } = {}): Promise<string> {
+  async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean; approvalId?: string } = {}): Promise<string> {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
     const lead = this.isLeadChat(chatId)
     if (lead) this.handoffs.approved(chatId)
@@ -1111,8 +1112,7 @@ export class Sessions {
     const note = planApproval({ lead, planFile, plan: plan?.detail, restarted: o.restarted, queued: o.queue })
     const text = forProvider(note.text, chatProvider(chat))
     // A message is a turn of its own, so it goes only where no turn is waiting on the answer: Codex, and after a restart.
-    if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel' })
-    else this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: note.line })
+    if (o.queue) await this.send(chatId, [{ type: 'text', text }], { from: 'kernel', approvalId: o.approvalId })
     return text
   }
 
@@ -1541,19 +1541,20 @@ export class Sessions {
    * Put a runner's request in front of the user and wait: a tool to allow, a question, or a plan. The agent shows as
    * needing the user meanwhile. Order: Never allow, the room's rules, Always ask and Bypass were the runner's to apply first.
    */
-  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number; afterTurn?: boolean }, plan?: string): Promise<Decision | undefined> {
+  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number; afterTurn?: boolean; placed?: (id: string) => void }, plan?: string): Promise<Decision | undefined> {
     // A turn that stopped before its card went up shows none: an abort that has already fired never fires again (KERNEL-563).
     if (o.signal?.aborted) return undefined
     this.setStatus(ws, agent, 'needs')
     const asker = this.live.get(chatId)
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
     // A new plan replaces one still waiting, as one a restart left up.
-    if (plan !== undefined) this.d.approvals.expireIds(this.d.approvals.waitingPlans(chatId, ws.roomId).map((p) => p.id))
+    if (plan !== undefined) this.d.approvals.expireIds(this.d.approvals.waitingPlans(chatId, ws.roomId).map((p) => p.id), 'replaced')
     const { approval, decision } = this.d.approvals.request({
       kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
       toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions, ...(a.reason ? { reason: a.reason } : {})
     } as Parameters<Approvals['request']>[0], { signal: o.signal, timeoutMs: o.timeoutMs })
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
+    o.placed?.(approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
       void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
@@ -1573,10 +1574,11 @@ export class Sessions {
   private async requestPlan(chatId: string, ws: Workspace, agent: AgentDef | undefined, plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown }): Promise<Decision | undefined> {
     // A Codex plan comes after its turn ended (`CodexRunner.planned`), so it stays with the chat rather than a turn (KERNEL-563).
     const afterTurn = chatProvider(this.mustChat(chatId)) === 'codex'
-    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan }, { signal: o.signal, afterTurn }, plan)
+    let approvalId: string | undefined
+    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan }, { signal: o.signal, afterTurn, placed: (id) => { approvalId = id } }, plan)
     // Claude reads the note with ExitPlanMode's answer (`afterPlan`). A Codex turn has already ended, so it gets a message.
     if (result?.behavior === 'allow') {
-      const note = await this.planApproved(chatId, { queue: afterTurn })
+      const note = await this.planApproved(chatId, { queue: afterTurn, approvalId })
       if (!afterTurn) this.approvedPlans.set(chatId, note)
     }
     return result

@@ -507,8 +507,9 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(t.store.chat('chat')?.plan).toBe(false)
     const [, next] = await t.sent('turn/start')
     expect(next.params).toMatchObject({ input: [{ type: 'text', text: APPROVED }], collaborationMode: { mode: 'default' }, sandboxPolicy: { type: 'workspaceWrite' } })
-    expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: APPROVED }] })
-    // The note replaces PLAN_APPROVED, and it is the one note the chat shows: the message itself.
+    // Kernel's message names the approval, so the chat can show the user's answer in its place.
+    expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: APPROVED }], approvalId: card.id })
+    // The settled card says the plan was approved, so the chat adds no note.
     expect(t.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
   })
 
@@ -532,6 +533,7 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     const [, next] = await t.sent('turn/start')
     expect(next.params).toMatchObject({ input: [{ type: 'text', text: planChanges('Backfill in batches') }], collaborationMode: { mode: 'plan' } })
     expect(t.store.chat('chat')?.plan).toBe(true)
+    expect(t.store.approval(card.id)).toMatchObject({ status: 'denied', answer: 'Backfill in batches' })
   })
 
   it("has the Lead hand off after Approve, and reminds it once when a turn ends with nothing handed off", async () => {

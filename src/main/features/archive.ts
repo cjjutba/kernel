@@ -95,6 +95,8 @@ export class Archive extends Feature {
     const ws = await this.k.prs.syncBranch(id)
     const unmade = !!ws.worktreePending
     const room = this.mustRoom(ws.roomId)
+    // A plan card ends as archived before its session stops, which would end it without a reason.
+    this.approvals.expireIds(this.store.approvals({ workspaceId: id, pendingOnly: true }).filter((a) => a.kind === 'plan').map((a) => a.id), 'archived')
     this.sessions.stopWorkspace(id)
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopRuns(id)
