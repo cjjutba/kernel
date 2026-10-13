@@ -31,15 +31,27 @@ const SHARED_KEYS = ['mcpServers', 'projects']
 const lstatOf = (path: string) => { try { return lstatSync(path) } catch { return undefined } }
 
 /**
+ * A lock of Claude Code's: a folder `<name>.lock` that is there only while a process holds it. Each login takes its own in
+ * its own folder, `.storage-write.lock` to save its login and `.oauth_refresh.lock` to renew it. A link to one in `~/.claude`
+ * points at nothing once that lock is released, and Claude Code then finds the name taken on every try: the account could
+ * never save or renew its login again (feat-make-claude-account-credentials-and).
+ */
+const isLock = (name: string) => name.endsWith('.lock')
+
+/**
  * Links every entry of `root` (`~/.claude`) into the account's folder `home` that the folder doesn't have yet, so what
  * `~/.claude` gained since is linked too. Run right after the login and before each use. An empty folder the CLI made
- * where a link goes gives way to the link. One with something in it stays.
+ * where a link goes gives way to the link. One with something in it stays. A lock is never linked, and a link to one that
+ * an older Kernel left goes (`isLock`).
  */
 export function linkClaudeHome(home: string, root: string) {
   mkdirSync(home, { recursive: true })
   mkdirSync(root, { recursive: true })
+  for (const name of readdirSync(home)) {
+    if (isLock(name) && lstatOf(join(home, name))?.isSymbolicLink()) { try { unlinkSync(join(home, name)) } catch { /* the next pass tries again */ } }
+  }
   for (const name of readdirSync(root)) {
-    if (CLAUDE_OWN.has(name)) continue
+    if (CLAUDE_OWN.has(name) || isLock(name)) continue
     if (!CLAUDE_MERGED.has(name)) { link(join(root, name), join(home, name)); continue }
     const into = join(home, name)
     // A link here would put the entries' links inside `~/.claude` itself.
@@ -60,6 +72,12 @@ const MCP_BASE = 'kernel-mcp-base.json'
 
 /** How old a `.claude.json.lock` is before it counts as left behind: Claude Code's lock library renews its own every 5 seconds and calls 10 stale. */
 const LOCK_STALE_MS = 10_000
+
+/**
+ * How old a login's `.storage-write.lock` is before it counts as left behind. Claude Code 2.1.292 renews its own every 7.5
+ * seconds and calls 15 stale, and Kernel waits twice that before it takes one over.
+ */
+const STORE_STALE_MS = 30_000
 
 type Servers = Record<string, unknown>
 /** The MCP servers of a `.claude.json`: the user ones, and the local ones of each project that has any. */
@@ -117,9 +135,9 @@ function serversOf(config: Record<string, unknown>): McpServers {
 
 /**
  * Takes Claude Code's own lock on a config file, the folder `<file>.lock` its lock library makes, so neither writes over the
- * other's change. One older than LOCK_STALE_MS was left behind and goes. Returns the release, or undefined while a CLI holds it.
+ * other's change. One older than `staleMs` was left behind and goes. Returns the release, or undefined while a CLI holds it.
  */
-function lockConfig(file: string): (() => void) | undefined {
+function lockConfig(file: string, staleMs = LOCK_STALE_MS): (() => void) | undefined {
   const dir = `${file}.lock`
   for (let tries = 0; tries < 2; tries++) {
     try {
@@ -127,7 +145,7 @@ function lockConfig(file: string): (() => void) | undefined {
       return () => { try { rmdirSync(dir) } catch { /* gone already */ } }
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return undefined
-      if (Date.now() - (lstatOf(dir)?.mtimeMs ?? Date.now()) <= LOCK_STALE_MS) return undefined
+      if (Date.now() - (lstatOf(dir)?.mtimeMs ?? Date.now()) <= staleMs) return undefined
       try { rmdirSync(dir) } catch { return undefined }
     }
   }
@@ -265,7 +283,17 @@ export async function removeClaudeHome(home: string): Promise<void> {
  * when it has one, and never a token or key from the Mac, which would answer for another account (D-018).
  */
 export function loginEnv(home: string | undefined): NodeJS.ProcessEnv {
-  return { CLAUDE_CODE_OAUTH_TOKEN: undefined, ANTHROPIC_API_KEY: undefined, ANTHROPIC_AUTH_TOKEN: undefined, ...(home ? { CLAUDE_CONFIG_DIR: home } : {}) }
+  return { CLAUDE_CODE_OAUTH_TOKEN: undefined, ANTHROPIC_API_KEY: undefined, ANTHROPIC_AUTH_TOKEN: undefined, ...(home ? accountEnv(home) : {}) }
+}
+
+/**
+ * What points a Claude process at an added account: its folder as CLAUDE_CONFIG_DIR, and as CLAUDE_SECURESTORAGE_CONFIG_DIR
+ * too. Claude Code reads its login from the second when it is set, so one the Mac or a workspace exports would otherwise put
+ * every account on a single Keychain item. Naming the folder twice gives the item the folder alone would
+ * (feat-make-claude-account-credentials-and).
+ */
+export function accountEnv(home: string): { CLAUDE_CONFIG_DIR: string; CLAUDE_SECURESTORAGE_CONFIG_DIR: string } {
+  return { CLAUDE_CONFIG_DIR: home, CLAUDE_SECURESTORAGE_CONFIG_DIR: home }
 }
 
 /** Who a Claude login is, from `claude auth status`. */
@@ -382,6 +410,15 @@ export function credentialsItem(env: { CLAUDE_CONFIG_DIR?: string; CLAUDE_SECURE
   return dir ? `Claude Code-credentials-${createHash('sha256').update(dir.normalize('NFC')).digest('hex').slice(0, 8)}` : 'Claude Code-credentials'
 }
 
+/**
+ * The folder a login's Keychain item belongs to, where Claude Code 2.1.292 takes its `.storage-write.lock` before it writes
+ * the item: CLAUDE_SECURESTORAGE_CONFIG_DIR, `~/.claude` under `userHome` when that is empty, or else the login's own folder.
+ */
+export function credentialsDir(env: { CLAUDE_CONFIG_DIR?: string; CLAUDE_SECURESTORAGE_CONFIG_DIR?: string }, userHome: string): string {
+  const store = env.CLAUDE_SECURESTORAGE_CONFIG_DIR
+  return (store !== undefined ? store || join(userHome, '.claude') : env.CLAUDE_CONFIG_DIR ?? join(userHome, '.claude')).normalize('NFC')
+}
+
 /** A claude.ai connector, by its name: it signs in through the claude.ai account, so each account has its own. */
 export const isConnector = (server: string) => server.startsWith('claude.ai ')
 
@@ -413,12 +450,15 @@ const freshness = (t: McpToken | undefined) => (!t || !(t.accessToken || t.refre
  * Keychain item with its folder, the CLI's own first, which wins a tie. A sign-in with a token beats one without, and a
  * later expiry beats an earlier one, so a token one login refreshes reaches the others, both ways, before the old one stops
  * working where the server swaps refresh tokens. A server's own client secret goes where it is missing. claude.ai
- * connectors stay with their account. An item Kernel can't read whole is left alone, and none is made. Each item is read
- * again right before it is written, and only the sign-ins still behind change, so the login and anything the CLI wrote
- * meanwhile stay. A server that got a sign-in leaves the login's `mcp-needs-auth-cache.json`, or Claude Code would skip it
- * for up to 15 minutes. Returns the servers each login got, by folder. Nothing it reads is logged.
+ * connectors stay with their account. An item Kernel can't read whole is left alone, and none is made. An item is written
+ * under the lock Claude Code itself takes to write it, `.storage-write.lock` in `store`, the item's folder (`credentialsDir`),
+ * `dir` when left out. Inside it the item is read again and only the sign-ins still behind change, so a login Claude Code
+ * renews meanwhile is saved after Kernel's write and never under it. A login whose lock a CLI holds is left for the next
+ * share (feat-make-claude-account-credentials-and). A server that got a sign-in leaves the login's
+ * `mcp-needs-auth-cache.json`, or Claude Code would skip it for up to 15 minutes. Returns the servers each login got, by
+ * folder. Nothing it reads is logged.
  */
-export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir: string }[]): Map<string, string[]> {
+export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir: string; store?: string }[]): Map<string, string[]> {
   const got = new Map<string, string[]>()
   const items = new Set<string>()
   const read = logins.filter((l) => !items.has(l.item) && !!items.add(l.item)).flatMap((l) => {
@@ -436,14 +476,19 @@ export function shareMcpSignIns(keychain: Keychain, logins: { item: string; dir:
   const missing = (s: Secrets) => [...clients].filter(([key]) => !(key in clientsOf(s)))
   for (const login of read) {
     if (!behind(login.secrets).length && !missing(login.secrets).length) continue
-    const now = secretsOf(keychain.read(login.item))
-    if (!now) continue
-    const tokens = behind(now)
-    const secrets = missing(now)
-    if (!tokens.length && !secrets.length) continue
-    const next: Secrets = { ...now, mcpOAuth: { ...tokensOf(now), ...Object.fromEntries(tokens) } }
-    if (secrets.length) next.mcpOAuthClientConfig = { ...clientsOf(now), ...Object.fromEntries(secrets) }
-    if (!keychain.write(login.item, JSON.stringify(next))) continue
+    const unlock = lockConfig(join(login.store ?? login.dir, '.storage-write'), STORE_STALE_MS)
+    if (!unlock) continue
+    let tokens: [string, McpToken][]
+    try {
+      const now = secretsOf(keychain.read(login.item))
+      if (!now) continue
+      tokens = behind(now)
+      const secrets = missing(now)
+      if (!tokens.length && !secrets.length) continue
+      const next: Secrets = { ...now, mcpOAuth: { ...tokensOf(now), ...Object.fromEntries(tokens) } }
+      if (secrets.length) next.mcpOAuthClientConfig = { ...clientsOf(now), ...Object.fromEntries(secrets) }
+      if (!keychain.write(login.item, JSON.stringify(next))) continue
+    } finally { unlock() }
     const servers = [...new Set(tokens.map(([key, t]) => serverOf(key, t)))].sort()
     if (!servers.length) continue
     forgetNeedsAuth(login.dir, servers)

@@ -1,0 +1,22 @@
+**Kernel writes a Claude login's Keychain item only while it holds Claude Code's own `.storage-write.lock` for that login.** Amends KERNEL-616.
+
+KERNEL-616 copies MCP sign-ins between logins by reading a login's whole Keychain item and writing it back. It read the item again right before the write, but the Keychain has no compare-and-set, so a login Claude Code renewed between that read and the write was put back to the old one. The server had already swapped the refresh token, so the login then failed at its next refresh and asked to sign in again. `test/claudeHome.test.ts` ("never rolls back a login Claude Code renews") reproduces it: without the lock the renewed login ends as the old one.
+
+What Claude Code 2.1.292, the CLI the SDK pins, does, read from its bundled source:
+
+- Every write of a login's item goes through one function. It takes a lock folder, `<dir>/.storage-write.lock` (proper-lockfile, renewed every 7.5 seconds, stale after 15), reads the item fresh inside it, changes it and writes it. That covers the login refresh, MCP token saves, client secrets, login and logout. `<dir>` is CLAUDE_SECURESTORAGE_CONFIG_DIR when set (`~/.claude` when empty), else the login's config folder.
+- A login refresh saves only when the stored refresh token is still the one it sent. If it can't take the lock it doesn't save at all, and the renewed token is lost while the server has already rotated it.
+- A Keychain read is cached for 30 seconds per process.
+
+So Kernel takes the same lock (`credentialsDir` names its folder) before its second read and holds it until its write is done. A CLI that renews meanwhile waits and saves after Kernel's write, on top of it. A login whose lock a CLI holds is skipped until the next share, 2 seconds later at the soonest. Kernel takes over a lock nobody renewed for 30 seconds, twice Claude Code's own stale time. Only `mcpOAuth` entries that are behind and missing `mcpOAuthClientConfig` entries change. `claudeAiOauth` is never copied between logins.
+
+Limits:
+
+- This is safe only against writers that take the lock. Claude Code 2.1.292 does for every credential write. A `claude` the user picks in Settings, Providers from another version that writes without it could still race Kernel. The second read keeps that window to one `security` call, as before.
+- A CLI process reads its item from a 30-second cache, so an MCP token Kernel shares can reach a running session up to 30 seconds late. That delay is harmless, and the cache never writes back.
+
+**Kernel never links a Claude Code lock from `~/.claude` into an account folder, and removes such links it made before.** `linkClaudeHome` linked every entry of `~/.claude` it didn't know as the account's own. A pass that ran while the CLI login held `.storage-write.lock` or `.oauth_refresh.lock` left a link that pointed at nothing once the lock was released. Claude Code then found the name taken on every try in that account's folder, so the account could never save or renew its login. Every name ending in `.lock` is now skipped, and a link with such a name in the account folder goes.
+
+**An added account's processes get its folder as CLAUDE_SECURESTORAGE_CONFIG_DIR as well as CLAUDE_CONFIG_DIR.** Claude Code picks the login's item and lock from the first when it is set. If the Mac or a workspace exported it, every added account would run on that one item, the CLI login's when it is empty. With both set to the folder the item name is the same as before, so nobody signs in again.
+
+**A sign-in failure belongs to the account its session started on.** A process keeps the account it started with until its turn ends (KERNEL-406), so a refusal can arrive after a switch. Before, Kernel marked the account in use signed out and held all of Claude's chats, which signed out a healthy account and stopped its work. Now Sessions passes the session's own account. When that is the account in use, nothing changes: Kernel checks for a Keychain prompt, holds Claude's chats and reads the login every 10 seconds. When it isn't, only that account reads as signed out, with its one Inbox notice a day. Nothing is held and nothing is retried. Its next read through Claude Code lifts it again, the same way it lifts the account in use. A login that really was revoked stays signed out until the user signs it in again in Settings, Providers. The rotation picks among signed-in accounts as before.

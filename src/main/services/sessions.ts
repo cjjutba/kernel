@@ -179,8 +179,12 @@ export interface SessionDeps {
    * with `resumed` true, since it carries on by itself (KERNEL-215).
    */
   onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean, resumed: boolean) => void
-  /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
-  onFailure?: (failure: Failure, ws: Workspace, provider: Provider) => void
+  /**
+   * A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer.
+   * `account` is the one the session's process started on, undefined for the CLI's own login, which a switch since may have
+   * left (feat-make-claude-account-credentials-and).
+   */
+  onFailure?: (failure: Failure, ws: Workspace, provider: Provider, account: string | undefined) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
@@ -1401,7 +1405,7 @@ export class Sessions {
       clearRetry: () => this.clearRetry(chatId, live),
       reached: () => this.d.onReached?.(),
       replied: () => this.d.onReply?.(ws, this.mustChat(chatId)),
-      failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId))) },
+      failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId)), live.account) },
       limited: (o = {}) => { if (o.always || live.running) live.limited = true },
       // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
       // An API key account has none, so nothing it reports holds a chat or pauses a room (KERNEL-523).

@@ -237,7 +237,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     // What ~/.claude gained since is linked, and the MCP servers are copied again.
     await writeFile(join(home, '.claude', 'CLAUDE.md'), '# me')
     await writeFile(join(home, '.claude.json'), JSON.stringify({ mcpServers: { fal: { command: 'fal' } } }))
-    expect(deps.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: folder })
+    expect(deps.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: folder, CLAUDE_SECURESTORAGE_CONFIG_DIR: folder })
     expect(await readlink(join(folder, 'CLAUDE.md'))).toBe(join(home, '.claude', 'CLAUDE.md'))
     expect(JSON.parse(await readFile(join(folder, '.claude.json'), 'utf8'))).toEqual({ oauthAccount: { emailAddress: 'side@example.com' }, userID: 'u1', mcpServers: { fal: { command: 'fal' } } })
     const env = sessionEnv({ PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-mac', ANTHROPIC_API_KEY: 'sk-ant-api03-mac' }, deps.claudeEnv())
@@ -507,7 +507,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await h['providers.signIn']({ provider: 'claude', accountId: 'old' })
     const row = (await claudeRows(h)).find((a) => a.id === 'old')
     expect(row).toEqual({ id: 'old', provider: 'claude', label: 'Personal', email: 'personal@example.com', plan: 'Claude Max', cli: false, auth: 'subscription', active: true, signedIn: true })
-    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: k.providers.claudeHome('old') })
+    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: k.providers.claudeHome('old'), CLAUDE_SECURESTORAGE_CONFIG_DIR: k.providers.claudeHome('old') })
     expect(JSON.parse(await readFile(p.tokensFile, 'utf8'))).toEqual({})
     expect(k.settings.plan).toBe('max')
     expect(k.providers.usageReads({ provider: 'claude' }).map((r) => r.accountId)).toEqual([undefined, 'old'])
@@ -679,6 +679,40 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop()
   })
 
+  it('runs each of three logins on its own folder and item through A to B to C to A, and a late refusal signs out only the login it came from', async () => {
+    const { k, h, ids, folder, home } = await setUp(['Side', 'Personal'])
+    const env = () => sessionEnv({ CLAUDE_SECURESTORAGE_CONFIG_DIR: '' }, k.providers.claudeEnv())
+    const items = new Set<string>()
+    for (const [to, dir] of [[ids.Side, folder('Side')], [ids.Personal, folder('Personal')], ['cli', undefined], [ids.Side, folder('Side')]] as const) {
+      await h['accounts.switch']({ provider: 'claude', accountId: to })
+      expect(env().CLAUDE_CONFIG_DIR).toBe(dir)
+      items.add(credentialsItem(env()))
+    }
+    // The Mac's empty CLAUDE_SECURESTORAGE_CONFIG_DIR never puts an added login on the CLI login's item.
+    expect(items).toEqual(new Set([credentialsItem({ CLAUDE_CONFIG_DIR: folder('Side') }), credentialsItem({ CLAUDE_CONFIG_DIR: folder('Personal') }), 'Claude Code-credentials']))
+    const row = async (id: string) => (await h['accounts.list'](undefined)).find((a) => a.provider === 'claude' && a.id === id)
+    // A session that started on Personal is refused after Claude moved to Side.
+    k.account.signedOut('claude', { account: ids.Personal })
+    await until(async () => (await row(ids.Personal))?.signedIn === false)
+    expect(await row(ids.Side)).toMatchObject({ active: true, signedIn: true })
+    expect(await row('cli')).toMatchObject({ signedIn: true })
+    expect(k.sessions.heldFor('claude')).toEqual([])
+    expect(k.notifications.list().map((n) => n.title).filter((t) => t.endsWith('is signed out'))).toEqual(['Personal is signed out'])
+    // So is one that started on the CLI login, which Settings reads again from Claude Code.
+    k.account.signedOut('claude', { account: undefined })
+    await until(() => k.notifications.list().some((n) => n.title === 'Work is signed out'))
+    expect(await row(ids.Side)).toMatchObject({ active: true, signedIn: true })
+    expect(k.sessions.heldFor('claude')).toEqual([])
+    expect(k.providers.active('claude')).toBe(ids.Side)
+    await k.stop()
+    // After a restart Kernel is still on Side, in its own folder.
+    const again = new Kernel({ dataDir: k.o.dataDir, home, cipher })
+    await again.start()
+    expect(again.providers.active('claude')).toBe(ids.Side)
+    expect(again.providers.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: folder('Side'), CLAUDE_SECURESTORAGE_CONFIG_DIR: folder('Side') })
+    await again.stop()
+  })
+
   it('changes nothing with the switch off: the limit pauses the room and Kernel stays on the account', async () => {
     const { k, room, folder } = await setUp(['Personal'])
     sdk.usage = { '': 100, [folder('Personal')]: 10 }
@@ -831,7 +865,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     kc.set(SIDE, { claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'linear|aaa': stub('linear') } })
     await writeFile(join(folder, 'mcp-needs-auth-cache.json'), JSON.stringify({ linear: { timestamp: now } }))
     await h['accounts.switch']({ provider: 'claude', accountId: side.id })
-    expect(share()).toEqual({ CLAUDE_CONFIG_DIR: folder })
+    expect(share()).toEqual({ CLAUDE_CONFIG_DIR: folder, CLAUDE_SECURESTORAGE_CONFIG_DIR: folder })
     expect(kc.json(SIDE)).toEqual({ claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } })
     expect(JSON.parse(await readFile(join(folder, 'mcp-needs-auth-cache.json'), 'utf8'))).toEqual({})
     // A session on the account refreshes linear. The CLI's own login gets the new token before its next process.
@@ -990,7 +1024,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     const cliFile = join(home, '.claude.json')
     const acctFile = join(folder, '.claude.json')
     await h['accounts.switch']({ provider: 'claude', accountId: side.id })
-    expect(start()).toEqual({ CLAUDE_CONFIG_DIR: folder })
+    expect(start()).toEqual({ CLAUDE_CONFIG_DIR: folder, CLAUDE_SECURESTORAGE_CONFIG_DIR: folder })
     // `claude mcp add --scope user fal` in a terminal on the account, and a local server in /repo.
     await edit(acctFile, (c) => { c.mcpServers.fal = { command: 'fal' }; c.projects['/repo'] = { mcpServers: { db: { command: 'db' } } } })
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })

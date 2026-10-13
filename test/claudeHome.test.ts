@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, stat, symlink, utimes, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins } from '../src/main/services/providers/claudeHome'
+import { accountEnv, credentialsDir, credentialsItem, linkClaudeHome, loginMcp, mcpLoginLink, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins } from '../src/main/services/providers/claudeHome'
+import { sessionEnv } from '../src/main/services/providers/claude'
 import { fakeClaude, MCP_LINK } from './helpers/fakeClaude'
 import { fakeKeychain } from './helpers/fakeKeychain'
 
@@ -62,6 +63,20 @@ describe('linkClaudeHome', () => {
     expect(await readlink(join(home, 'history.jsonl'))).toBe(join(root, 'history.jsonl'))
     expect(await readlink(join(home, 'skills', 'unslop'))).toBe(join(root, 'skills', 'unslop'))
     expect(await isLink(join(home, 'skills', 'synced'))).toBe(false)
+  })
+  it("never links Claude Code's locks, and drops a link to one an older Kernel left, which would block the account's saves", async () => {
+    const { root, home } = await setUp()
+    // The CLI login is saving and renewing its login right now.
+    for (const lock of ['.storage-write.lock', '.oauth_refresh.lock', '.design_oauth_refresh.lock']) await mkdir(join(root, lock))
+    await mkdir(home, { recursive: true })
+    await symlink(join(root, '.storage-write.lock'), join(home, '.storage-write.lock'))
+    linkClaudeHome(home, root)
+    for (const lock of ['.storage-write.lock', '.oauth_refresh.lock', '.design_oauth_refresh.lock']) expect(existsSync(join(home, lock))).toBe(false)
+    // The account's own lock, a real folder its CLI holds, stays.
+    await mkdir(join(home, '.oauth_refresh.lock'))
+    linkClaudeHome(home, root)
+    expect((await stat(join(home, '.oauth_refresh.lock'))).isDirectory()).toBe(true)
+    expect(await isLink(join(home, 'settings.json'))).toBe(true)
   })
 })
 
@@ -310,6 +325,20 @@ describe("naming a login's Keychain item", () => {
     expect(credentialsItem({ CLAUDE_CONFIG_DIR: '/elsewhere', CLAUDE_SECURESTORAGE_CONFIG_DIR: dir })).toBe(`Claude Code-credentials-${hash}`)
     expect(credentialsItem({ CLAUDE_CONFIG_DIR: dir, CLAUDE_SECURESTORAGE_CONFIG_DIR: '' })).toBe('Claude Code-credentials')
   })
+  it("names an added account's own item whatever CLAUDE_SECURESTORAGE_CONFIG_DIR the Mac or a workspace exports", () => {
+    const dir = '/Users/me/Library/Application Support/Kernel/claude-homes/acct'
+    const own = credentialsItem({ CLAUDE_CONFIG_DIR: dir })
+    for (const base of [{}, { CLAUDE_SECURESTORAGE_CONFIG_DIR: '' }, { CLAUDE_SECURESTORAGE_CONFIG_DIR: '/Users/me/.claude' }]) {
+      const env = sessionEnv(base, accountEnv(dir))
+      expect(credentialsItem(env)).toBe(own)
+      expect(credentialsDir(env, '/Users/me')).toBe(dir)
+    }
+    // The CLI login's item, and the folder Claude Code locks to write it.
+    expect(credentialsDir({}, '/Users/me')).toBe('/Users/me/.claude')
+    expect(credentialsDir({ CLAUDE_CONFIG_DIR: '/c' }, '/Users/me')).toBe('/c')
+    expect(credentialsDir({ CLAUDE_CONFIG_DIR: '/c', CLAUDE_SECURESTORAGE_CONFIG_DIR: '' }, '/Users/me')).toBe('/Users/me/.claude')
+    expect(credentialsDir({ CLAUDE_CONFIG_DIR: '/c', CLAUDE_SECURESTORAGE_CONFIG_DIR: '/s' }, '/Users/me')).toBe('/s')
+  })
 })
 
 describe('sharing MCP sign-ins between Claude logins', () => {
@@ -394,6 +423,78 @@ describe('sharing MCP sign-ins between Claude logins', () => {
     kc.between.set(SIDE, () => kc.set(SIDE, { claudeAiOauth: { accessToken: 'pro-login-refreshed' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'side', now + 2 * HOUR) } }))
     shareMcpSignIns(kc.keychain, logins)
     expect(kc.json(SIDE)).toEqual({ claudeAiOauth: { accessToken: 'pro-login-refreshed' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'side', now + 2 * HOUR), 'posthog|bbb': signIn('posthog', 'cli', now + HOUR) } })
+  })
+
+  /**
+   * Claude Code 2.1.292 renewing a login as it does: it takes `.storage-write.lock` in the login's folder, reads the item
+   * fresh, saves the new login only if the refresh token it sent is still the stored one, and keeps every other key. While
+   * another process holds the lock it can't save yet and tries again later. Returns whether it saved.
+   */
+  const renew = (kc: ReturnType<typeof fakeKeychain>, item: string, dir: string, to: string) => {
+    const lock = join(dir, '.storage-write.lock')
+    try { mkdirSync(lock) } catch { return false }
+    try {
+      const now = kc.json(item)
+      kc.set(item, { ...now, claudeAiOauth: { accessToken: `${to}-access`, refreshToken: `${to}-refresh` } })
+      return true
+    } finally { rmdirSync(lock) }
+  }
+
+  it("never rolls back a login Claude Code renews between Kernel's last read and its write", async () => {
+    const { side, logins } = await folders()
+    const kc = fakeKeychain({
+      [CLI]: { claudeAiOauth: { accessToken: 'max-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } },
+      [SIDE]: { claudeAiOauth: { accessToken: 'pro-access', refreshToken: 'pro-refresh' }, mcpOAuth: {} }
+    })
+    // The account's session renews its login right as Kernel writes the item. The server has already swapped the refresh
+    // token, so a write that put the old one back would sign the account out at its next refresh.
+    const write = kc.keychain.write
+    let tried = false
+    let saved = false
+    kc.keychain.write = (item, secret) => {
+      if (item === SIDE && !tried) { tried = true; saved = renew(kc, SIDE, side, 'pro-renewed') }
+      return write(item, secret)
+    }
+    shareMcpSignIns(kc.keychain, logins)
+    expect(tried).toBe(true)
+    // Kernel holds the lock while it writes, so the CLI saves once Kernel is done. Written without the lock, the CLI's save
+    // landed first and Kernel's write then put the old login back.
+    if (!saved) saved = renew(kc, SIDE, side, 'pro-renewed')
+    expect(saved).toBe(true)
+    expect(kc.json(SIDE)).toEqual({ claudeAiOauth: { accessToken: 'pro-renewed-access', refreshToken: 'pro-renewed-refresh' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } })
+    expect(existsSync(join(side, '.storage-write.lock'))).toBe(false)
+  })
+
+  it("leaves a login alone while Claude Code holds its lock, shares the others, and takes over a lock left behind", async () => {
+    const { cli, side, logins } = await folders()
+    const kc = fakeKeychain({
+      [CLI]: { claudeAiOauth: { accessToken: 'max-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } },
+      [SIDE]: { claudeAiOauth: { accessToken: 'pro-login' }, mcpOAuth: { 'posthog|bbb': signIn('posthog', 'side', now + HOUR) } }
+    })
+    await mkdir(join(side, '.storage-write.lock'))
+    expect(shareMcpSignIns(kc.keychain, logins)).toEqual(new Map([[cli, ['posthog']]]))
+    expect(kc.writes).toEqual([CLI])
+    expect(kc.json(SIDE).mcpOAuth).toEqual({ 'posthog|bbb': signIn('posthog', 'side', now + HOUR) })
+    // A lock nobody renewed for a minute was left by a process that quit.
+    const old = new Date(Date.now() - 60_000)
+    await utimes(join(side, '.storage-write.lock'), old, old)
+    expect(shareMcpSignIns(kc.keychain, logins)).toEqual(new Map([[side, ['linear']]]))
+    expect(existsSync(join(side, '.storage-write.lock'))).toBe(false)
+  })
+
+  it("locks the folder the item belongs to, which CLAUDE_SECURESTORAGE_CONFIG_DIR can move from the login's own", async () => {
+    const { cli, side } = await folders()
+    const store = join(side, '..', 'store')
+    await mkdir(store)
+    const kc = fakeKeychain({
+      [CLI]: { mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR) } },
+      [SIDE]: { mcpOAuth: {} }
+    })
+    await mkdir(join(store, '.storage-write.lock'))
+    const logins = [{ item: CLI, dir: cli }, { item: SIDE, dir: side, store }]
+    expect(shareMcpSignIns(kc.keychain, logins).size).toBe(0)
+    rmdirSync(join(store, '.storage-write.lock'))
+    expect(shareMcpSignIns(kc.keychain, logins)).toEqual(new Map([[side, ['linear']]]))
   })
 
   it('logs nothing it read', async () => {
