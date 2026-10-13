@@ -31,7 +31,7 @@ export interface KernelToolDeps {
    * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
    * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[]; images?: ChatPart[]; goAhead?: string }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * How many teammate workspaces may be open in the room at once, read on each call: the room's own limit when it sets one,
    * else Settings, Models' agent limit. 0 is no cap, and so is leaving it out (KERNEL-220, KERNEL-492).
@@ -78,6 +78,11 @@ export interface KernelToolDeps {
   leadMerge?: () => boolean
   /** Whether the user started the Lead's current turn, rather than Kernel. Left out, Kernel did. */
   userTurn?: () => boolean
+  /**
+   * The text of the user's latest message in this chat and when they sent it, not Kernel's. With plan mode off, create_workspace
+   * checks the Lead's go_ahead quote against it. Left out, create_workspace doesn't check (KERNEL-678).
+   */
+  userSaid?: () => { text: string; at: number } | undefined
   /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
   setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
   /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
@@ -180,8 +185,18 @@ export function takenWarning(issue: string, t: IssueTaken): string {
   return `Not created: someone else may already be on ${issue}. Kernel found ${joinLabels(found)}.${notes} Tell the user what Kernel found and ask whether to start anyway. If they say yes, call create_workspace again with confirm: true.`
 }
 
-/** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176). */
-export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace. If their message already says to go ahead, hand it off now.'
+/** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176, KERNEL-678). */
+export const PLAN_MODE_OFF = "Not asked: plan mode is off, so there is no plan to approve. Propose who gets what in one yes-or-no question, and hand off only on a go-ahead that raises nothing new, quoted in go_ahead. If the reply also asks questions, changes scope or only agrees with the idea, answer it and ask once."
+
+/** create_workspace's refusal with plan mode off when go_ahead is missing or isn't in the user's latest message (KERNEL-678). */
+export const NO_GO_AHEAD = "Not handed off: quote the user's go-ahead from their latest message, or ask them first."
+
+/** Whether `quote` appears in what the user said, ignoring case and whitespace (KERNEL-678). An empty quote never does. */
+export function quotesUser(quote: string | undefined, said: string | undefined): boolean {
+  const flat = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+  const q = flat(quote ?? '')
+  return !!q && flat(said ?? '').includes(q)
+}
 
 /** request_plan_approval's refusal when it gets task lines without the write-up (KERNEL-373). */
 export const NO_PLAN = 'Not asked: plan is missing. Pass the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps, then call request_plan_approval again.'
@@ -270,7 +285,7 @@ function reachNote(name: string, r: AgentReach): string {
 }
 
 /** What the Lead's server tells the model, next to the tools. */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -387,8 +402,9 @@ export function kernelTools(d: KernelToolDeps) {
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
+      go_ahead: z.string().optional().describe("With plan mode off: the user's words that approved this hand-off, quoted from their latest message, for example \"hand it to Noor\". Kernel refuses the hand-off when they aren't in it. Not needed after an approved plan, for a review, or for a follow-up on approved work"),
       images: imagesArg.describe(IMAGES_DESCRIBE)
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, images }) => {
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, go_ahead, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
@@ -417,6 +433,18 @@ export function kernelTools(d: KernelToolDeps) {
           if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
           return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
         }
+      }
+      // With plan mode off, a hand-off needs the user's go-ahead, quoted from their latest message (KERNEL-678). A review needs
+      // none, and neither does plan mode, a plan approved since the user last wrote, or a turn Kernel started in a chat that
+      // already had an approved plan or a hand-off, which is a follow-up on approved work.
+      const guarded = !!d.userSaid && !review_of && !d.planMode?.()
+      const plans = guarded ? d.plans?.() ?? [] : []
+      const followUp = guarded && !d.userTurn?.() && (plans.length > 0 || d.workspaces().some((w) => mine(w) && !w.reviewOf))
+      const said = guarded && !followUp ? d.userSaid!() : undefined
+      const goAhead = guarded && !followUp && !plans.some((p) => p.at > (said?.at ?? 0)) ? go_ahead?.trim() ?? '' : undefined
+      if (goAhead !== undefined && !quotesUser(goAhead, said?.text)) {
+        bus.track({ name: 'handoff.refused', reason: 'go-ahead' })
+        return { ...text(NO_GO_AHEAD), isError: true }
       }
       // A room keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
       // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220). A cap of 0 is none (KERNEL-492).
@@ -454,7 +482,7 @@ export function kernelTools(d: KernelToolDeps) {
       const key = issue?.trim()
       const taken = key && !review_of && !confirm ? await d.issueTaken?.(key).catch(() => undefined) : undefined
       if (key && taken?.findings.length) return { ...text(takenWarning(key, taken)), isError: true }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
