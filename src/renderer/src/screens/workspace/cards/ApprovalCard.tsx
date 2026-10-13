@@ -9,7 +9,8 @@ import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
-import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
+import { AnswerBubble } from './AnswerBubble'
+import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, questionAnswer, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -86,29 +87,29 @@ function AnswerRow({ mark, value, disabled, onChange, onEnter, onEscape }: { mar
   )
 }
 
-/** One question that is no longer waiting: what was asked, and what you said or how it ended. */
-function AnsweredQuestion({ a, who }: { a: Approval; who: string }) {
+/** One question that is no longer waiting: what was asked. Your answer is the bubble under it; a question that ended unanswered says how. */
+function AnsweredQuestion({ a, who, answered }: { a: Approval; who: string; answered: boolean }) {
   const title = `${who} has a question`
   return (
     <section aria-label={title} className="card tcard">
       <h3>{title}</h3>
       <span className="sub">{a.title}</span>
-      <Result a={a} />
+      {!answered && <Result a={a} />}
     </section>
   )
 }
 
-/** Several questions answered, each with what you said (WorkspaceQuestionAnswers.png). */
-function AnsweredQuestions({ who, list }: { who: string; list: { question: string; answer: string }[] }) {
-  const title = `You answered ${who}\u2019s ${list.length} questions`
+/** Several questions that are no longer waiting, as asked. Your answers are the bubble under the card, one line each. */
+function AnsweredQuestions({ who, questions }: { who: string; questions: AskedQuestion[] }) {
+  const title = `${who} asked ${questions.length} questions`
   return (
     <section aria-label={title} className="card tcard">
       <h3>{title}</h3>
       <ol className="qans">
-        {list.map((r, i) => (
+        {questions.map((q, i) => (
           <li key={i}>
             <span className="n mono">{i + 1}</span>
-            <span className="qans-text"><span className="qans-q">{r.question}</span><span>{r.answer}</span></span>
+            <span className="qans-text">{q.question}</span>
           </li>
         ))}
       </ol>
@@ -263,10 +264,12 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   )
 }
 
-function QuestionCard({ a, who }: { a: Approval; who: string }) {
-  const list = answeredList(a)
-  if (a.status !== 'pending' && list) return <AnsweredQuestions who={who} list={list} />
-  return a.status === 'pending' ? <QuestionSteps a={a} who={who} /> : <AnsweredQuestion a={a} who={who} />
+function QuestionCard({ a, who, inChat }: { a: Approval; who: string; inChat?: boolean }) {
+  if (a.status === 'pending') return <QuestionSteps a={a} who={who} />
+  // The answer is the user's bubble below the card, one line per answer. Outside a chat there is no bubble, so the card says it.
+  const text = questionAnswer(a)
+  const card = (a.questions?.length ?? 0) > 1 ? <AnsweredQuestions who={who} questions={a.questions ?? []} /> : <AnsweredQuestion a={a} who={who} answered={!!text} />
+  return <>{card}{text && (inChat ? <AnswerBubble text={text} /> : <span className="done-line">{text.split('\n').join(' · ')}</span>)}</>
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */
@@ -410,6 +413,6 @@ export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inCh
   const who = agent?.name ?? 'An agent'
   if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} />
   if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
-  if (a.kind === 'question') return <QuestionCard a={a} who={who} />
+  if (a.kind === 'question') return <QuestionCard a={a} who={who} inChat={inChat} />
   return <PermCard a={a} who={who} />
 }

@@ -349,6 +349,7 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && sameList(a.files ?? [], b.files ?? [])
+    case 'relaunch': return b.kind === 'relaunch' && a.note === b.note && a.message === b.message
     case 'error': return b.kind === 'error' && a.id === b.id && a.message === b.message && a.output === b.output
   }
 }
@@ -369,6 +370,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
     )
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
+  if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard files={block.files} onOpenDiff={onOpenDiff} />
   if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} meta={block.meta} onOpenDiff={onOpenDiff} />
@@ -378,7 +380,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
       const view = userView(item)
-      return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
+      return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} onEdit={onEdit} />
     }
     case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
     case 'thinking': return <ThinkingRow item={item} />

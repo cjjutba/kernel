@@ -103,7 +103,13 @@ const noCanvas = [
   'WorkspacePlanMode',
   'WorkspacePlanModeTyping',
   'WorkspacePlanTyping',
-  'WorkspacePlanApproved', // a plan once approved, with its Plan approved line in the chat
+  'WorkspacePlanApproved', // a plan once approved, with your Approved bubble under it
+  'WorkspacePlanChanges', // a plan you asked changes for: your notes are the bubble, and the Kernel message that carried them stays hidden
+  'WorkspacePlanReplaced', // a plan a newer plan replaced, which says Replaced by a newer plan
+  'WorkspaceQuestionAnswered', // one question answered: the card keeps the question and your answer is the bubble below
+  'WorkspaceKernelNote', // Kernel's own message as one note line
+  'WorkspaceKernelNoteOpen', // the same note opened to its full text with Copy
+  'WorkspaceRelaunch', // a quit note and Kernel's message after it, folded into one line
   'WorkspacePlanExit', // Kai's ExitPlanMode plan, which looks as it did before the Lead's write-up and rows (KERNEL-374)
   // The hire card's servers row in the states WorkspaceHireServers.png doesn't draw: needs sign-in is the PNG's (KERNEL-484).
   'WorkspaceHireServersReached',

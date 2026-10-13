@@ -88,6 +88,13 @@ async function stepToSecondQuestion(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceKernelNoteOpen is the Kernel note opened to its full text, which is local to the note.
+async function openKernelNote(page: Page) {
+  await page.locator('.knote').click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceQuestion is drawn with option 1 picked, which is local to the card, so Send is ready.
 async function pickFirstOption(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
@@ -339,6 +346,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedImageZoom: zoomImage,
   WorkspaceSharedVersions: openVersions,
+  WorkspaceKernelNoteOpen: openKernelNote,
   WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
