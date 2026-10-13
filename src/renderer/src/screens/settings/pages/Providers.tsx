@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
-import { actions, getState, go, mcpRoute, useStore } from '../../../store'
+import { actions, getState, go, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountDetail, useFreshUsage } from '../../../accountRows'
 import { Button, Icon, SegmentedControl, Tabs, Toggle, useBusy } from '../../../ui'
 import { noteCodexStatus } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
-import { SignInLine, joinNames, useSignInAll } from './mcpAccounts'
+import { SignInLine, joinNames, useMcpAccounts, useSignInAll } from './mcpAccounts'
 
 // Settings, Providers (SettingsProviders.png, SettingsProvidersCodex.png, KERNEL-406, and the API key accounts of
 // KERNEL-524). Kernel already calls teammates agents, so the page is Providers. Status is words only, never a dot (DESIGN.md).
@@ -53,6 +53,8 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const sheetOpen = adding || !!renewing || !!replacing
   const [busy, run] = useBusy<string>()
   const all = useSignInAll()
+  const mcp = useMcpAccounts()
+  const needs = (a: AccountProfile) => mcp.accounts?.find((m) => m.provider === a.provider && m.accountId === a.id)?.needsYou ?? 0
   useFreshUsage(true)
   // Claude Code lists each login's MCP servers that need a sign-in when the tab opens, once per login. Main keeps the answer on the account's row.
   useEffect(() => {
@@ -131,11 +133,10 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
                   )
                   : <span className="set-label">{a.label}</span>}
                 {accountDetail(a, usage).map((line, i) => <span key={i} className="set-desc">{line}</span>)}
-                {a.signedIn && !a.keychainWait && (!!a.mcpSignIns?.length || !!all.of(a.provider, a.id).run) && (
+                {a.signedIn && !a.keychainWait && (!!needs(a) || !!all.of(a.provider, a.id).run) && (
                   <SignInLine
-                    label={a.label} servers={(a.mcpSignIns ?? []).map((m) => m.server)} {...all.of(a.provider, a.id)} canceling={all.canceling}
-                    disabled={busy !== null || sheetOpen || all.active !== null} onStart={() => void all.start(a.provider, a.id, a.label)}
-                    onOpen={mcpRoute(a.provider, a.id) ? () => go(mcpRoute(a.provider, a.id)!) : undefined} onCancel={() => void all.cancel(a.provider)}
+                    label={a.label} needs={needs(a)} {...all.of(a.provider, a.id)} canceling={all.canceling}
+                    disabled={busy !== null || sheetOpen || all.active !== null} onSetUp={() => actions.ui.openModal({ name: 'mcpSetUp', provider: a.provider, accountId: a.id })} onCancel={() => void all.cancel(a.provider)}
                   />
                 )}
                 {a.keychainWait && (

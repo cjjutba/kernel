@@ -232,7 +232,22 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-mcp-ignored-row .btn { margin-right: -10px; height: 28px; }
 .set-mcp-ready { margin-left: auto; }
 .set-mcp-ready + .set-entry-actions:empty { display: none; }
-.set-mcp-summary .pill { height: 28px; font-size: 13px; }
+/* Set up this account (KERNEL-661) */
+.set-mcp-manage { margin: 0 0 8px; }
+.set-mcp-manage .set-link { color: var(--ink-2); text-decoration: underline; text-underline-offset: 2px; }
+.set-mcp-status { margin-left: auto; margin-right: 12px; }
+.mcp-su { display: flex; flex-direction: column; gap: 14px; padding: 4px 22px 18px; max-height: min(520px, 62vh); overflow-y: auto; }
+.mcp-su-lead { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-3); }
+.mcp-su-group { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; border: 0; }
+.mcp-su-group .set-group { padding: 0 0 4px; }
+.mcp-su-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; cursor: pointer; }
+.mcp-su-item input { margin: 3px 0 0; accent-color: var(--ink); }
+.mcp-su-item > span { display: flex; flex-direction: column; gap: 1px; }
+.mcp-su-progress { display: flex; flex-direction: column; gap: 10px; }
+.mcp-su-progress p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.mcp-su-connect { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.mcp-su-list { margin: 0; padding: 0 0 0 18px; font-size: 13px; color: var(--ink-2); }
+.mcp-su-list .set-desc { display: block; }
 
 /* Add a starter agent (KERNEL-642): the menu hangs from its button, at the right of the section heading. */
 .set-starters { position: relative; display: inline-flex; }

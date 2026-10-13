@@ -31,7 +31,7 @@ export interface PaletteItem {
 /** Settings pages the palette can jump to, with the names the Settings sidebar uses. */
 export const settingsPages: [SettingsPage, string][] = [
   ['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Keyboard shortcuts'],
-  ['models', 'Models'], ['permissions', 'Permissions'],
+  ['models', 'Models'], ['mcp', 'MCP servers'], ['permissions', 'Permissions'],
   ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'],
   ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']
 ]

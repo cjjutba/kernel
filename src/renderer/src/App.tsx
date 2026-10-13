@@ -6,6 +6,7 @@ import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
+import { McpSetUp } from './screens/settings/pages/McpSetUp'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead } from './lead'
@@ -110,6 +111,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'whatsNew': return <WhatsNew update={modal.update} />
     case 'envVar': return <EnvVarForm roomId={modal.roomId} editName={modal.editName} />
     case 'telemetryAsk': return <TelemetryAsk />
+    case 'mcpSetUp': return <McpSetUp provider={modal.provider} accountId={modal.accountId} />
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />

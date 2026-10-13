@@ -10,6 +10,7 @@ import { Appearance } from './pages/Appearance'
 import { BigTerminal } from './pages/BigTerminal'
 import { Environment } from './pages/Environment'
 import { General } from './pages/General'
+import { McpServers } from './pages/McpServers'
 import { Models } from './pages/Models'
 import { Providers } from './pages/Providers'
 import { Notifications } from './pages/Notifications'
@@ -47,6 +48,7 @@ export function Settings({ page, roomId, section, agentId }: { page: SettingsPag
   else if (page === 'models') body = <Models s={settings} />
   else if (page === 'agents') body = agentId ? <AgentEdit key={agentId} agentId={agentId} /> : <Agents />
   else if (page === 'providers') body = <Providers s={settings} />
+  else if (page === 'mcp') body = <McpServers />
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'env') body = <Environment />
   else if (page === 'privacy') body = <Privacy s={settings} />
