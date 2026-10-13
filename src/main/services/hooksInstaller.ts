@@ -25,8 +25,13 @@ const KERNEL_URL = /^http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks$/
 /** Each build's command ends at its own path, so the installed app's pattern never matches Kernel Dev's entries (KERNEL-675). */
 const KERNEL_COMMAND: Record<HookBuild, RegExp> = {
   app: /^\/usr\/bin\/curl .* http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks \|\| true$/,
-  dev: /^\/usr\/bin\/curl .* http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks\/dev \|\| true$/
+  dev: /^\/usr\/bin\/curl .* http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks\/dev \|\| true$/,
+  // A workspace run has no entries, so nothing in the file is ever its own (KERNEL-679).
+  run: /(?!)/
 }
+/** What a write for a workspace run says. It keeps no entries in the file, and a write would be over Kernel Dev's (KERNEL-679). */
+export const RUN_HOOKS_OFF = 'Hooks are off for a workspace run. It never changes ~/.claude/settings.json.'
+const assertHasEntries = (build: HookBuild) => { if (build === 'run') throw new Error(RUN_HOOKS_OFF) }
 /**
  * The http entries installs before KERNEL-56 wrote. Every install removes them, and they never count as installed. They
  * predate Kernel Dev, so they are the installed app's.
@@ -195,6 +200,7 @@ async function writeAtomic(file: string, settings: Settings) {
 
 /** Writes ~/.claude/settings.json, keeping the first backup next to it. */
 export async function installHooks(file: string, port: number, approvalTimeoutSec: number, token: string, build: HookBuild = 'app'): Promise<string[]> {
+  assertHasEntries(build)
   assertWritable(file)
   const next = withKernelHooks(await readSettings(file), port, approvalTimeoutSec, token, build)
   await writeAtomic(file, next)
@@ -216,6 +222,7 @@ export async function turnHooksOn(file: string): Promise<boolean> {
  * written, so Kernel can ask the user to install instead.
  */
 export async function refreshHooks(file: string, port: number, approvalTimeoutSec: number, token: string, build: HookBuild = 'app'): Promise<boolean> {
+  if (build === 'run') return false
   const next = withCurrentKernelHooks(await readSettings(file), port, approvalTimeoutSec, token, build)
   if (!next) return false
   assertWritable(file)
@@ -224,6 +231,7 @@ export async function refreshHooks(file: string, port: number, approvalTimeoutSe
 }
 
 export async function uninstallHooks(file: string, build: HookBuild = 'app') {
+  assertHasEntries(build)
   assertWritable(file)
   await writeAtomic(file, withoutKernelHooks(await readSettings(file), build))
 }

@@ -5,11 +5,13 @@ import { join } from 'node:path'
 import { copyDatabase } from './migrations'
 
 // Where Kernel keeps its data (KERNEL-408). The installed app uses `Kernel` and a dev run uses `Kernel Dev`, so `pnpm dev`
-// from main never writes data an older installed build can't read. Electron stays out of this file, so tests drive it on
-// temp folders.
+// from main never writes data an older installed build can't read. A dev run started inside a Kernel workspace uses a
+// folder of its own in `Kernel Dev Runs`, so it opens next to the Kernel that started it (KERNEL-679). Electron stays out
+// of this file, so tests drive it on temp folders.
 
 export const APP_FOLDER = 'Kernel'
 export const DEV_FOLDER = 'Kernel Dev'
+export const RUNS_FOLDER = 'Kernel Dev Runs'
 
 /**
  * What a dev run copies from `Kernel` besides the database. Caches, logs, telemetry and update.json stay behind, and so does
@@ -17,10 +19,21 @@ export const DEV_FOLDER = 'Kernel Dev'
  */
 export const MOVED = ['settings.json', 'trust.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
 
-export interface DataDirs { own: string; other: string; name: string; otherName: string }
+export interface DataDirs { own: string; other: string; name: string; otherName: string; run?: true }
 
-/** This build's folder in `appData` and the other build's, with the names a person knows them by. */
-export function dataDirs(appData: string, packaged: boolean): DataDirs {
+/** A workspace id as Kernel makes them. Anything else is no folder name, so the launch is a plain dev run. */
+const WORKSPACE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
+
+/**
+ * This build's folder in `appData` and the other build's, with the names a person knows them by. `workspaceId` is
+ * `KERNEL_WORKSPACE_ID` from the environment, which Kernel sets in every script and terminal of a workspace. An unpackaged
+ * launch that has it is a workspace run: `own` is `Kernel Dev Runs/<workspace id>`, it starts empty and stays between runs,
+ * and `other` is Kernel Dev, which it never reads (KERNEL-679).
+ */
+export function dataDirs(appData: string, packaged: boolean, workspaceId?: string): DataDirs {
+  if (!packaged && workspaceId && WORKSPACE_ID.test(workspaceId)) {
+    return { own: join(appData, RUNS_FOLDER, workspaceId), other: join(appData, DEV_FOLDER), name: RUNS_FOLDER, otherName: DEV_FOLDER, run: true }
+  }
   const [name, otherName] = packaged ? [APP_FOLDER, DEV_FOLDER] : [DEV_FOLDER, APP_FOLDER]
   return { own: join(appData, name), other: join(appData, otherName), name, otherName }
 }

@@ -448,6 +448,51 @@ describe('scripts run in a terminal (KERNEL-655)', () => {
     expect(linesOf(ws.id).at(-1)).toBe('Setup failed with exit code 1')
   })
 
+  it('ends a run script\'s log with how it ended, before the exit (KERNEL-679)', async () => {
+    const closing = (workspaceId: string) => {
+      const mine = events.filter((e) => 'workspaceId' in e && e.workspaceId === workspaceId && e.type !== 'script.url')
+      return mine.slice(-3)
+    }
+    const ended = await start('echo up', { kind: 'run', name: 'web' })
+    expect(await ended.done).toBe(0)
+    expect(closing(ended.workspaceId)).toEqual([
+      { type: 'script.data', workspaceId: ended.workspaceId, kind: 'run', name: 'web', data: 'Run script ended\r\n' },
+      { type: 'script.output', workspaceId: ended.workspaceId, kind: 'run', name: 'web', lines: [{ line: 'Run script ended', stream: 'stdout' }] },
+      expect.objectContaining({ type: 'script.exit', code: 0 })
+    ])
+    const failed = await start('echo up; exit 1', { kind: 'run' })
+    expect(await failed.done).toBe(1)
+    expect(closing(failed.workspaceId)).toEqual([
+      { type: 'script.data', workspaceId: failed.workspaceId, kind: 'run', name: 'run', data: 'Run script exited with code 1\r\n' },
+      { type: 'script.output', workspaceId: failed.workspaceId, kind: 'run', name: 'run', lines: [{ line: 'Run script exited with code 1', stream: 'stderr' }] },
+      expect.objectContaining({ type: 'script.exit', code: 1 })
+    ])
+    const stopped = await start('echo up; sleep 30', { kind: 'run', name: 'web' })
+    await until(() => linesOf(stopped.workspaceId).includes('up'), 'the script to start')
+    stopScript(stopped.workspaceId, 'run', 'web')
+    expect(await stopped.done).toBeNull()
+    expect(linesOf(stopped.workspaceId).at(-1)).toBe('Run script was stopped')
+    expect(dataOf(stopped.workspaceId)).toMatch(/Run script was stopped\r\n$/)
+    expect(closing(stopped.workspaceId).at(-1)).toMatchObject({ type: 'script.exit', code: null })
+    // Setup and archive scripts say how they ended in their own words.
+    const setup = await start('echo up; exit 1')
+    expect(await setup.done).toBe(1)
+    expect(linesOf(setup.workspaceId).join('\n')).not.toMatch(/Run script/)
+  })
+
+  it('gives a run script a restart replaced no closing line, and the new run its own', async () => {
+    const first = await start('echo first; sleep 30', { kind: 'run', name: 'web' })
+    await until(() => linesOf(first.workspaceId).includes('first'), 'the first run')
+    const second = runScript({ workspaceId: first.workspaceId, kind: 'run', name: 'web', script: 'echo second; sleep 30', cwd: tmpdir(), env: { ...process.env } as Record<string, string> })
+    expect(await first.done).toBeNull()
+    await until(() => linesOf(first.workspaceId).includes('second'), 'the second run')
+    expect(linesOf(first.workspaceId).filter((l) => l.startsWith('Run script'))).toEqual([])
+    expect(dataOf(first.workspaceId)).not.toContain('Run script')
+    stopScript(first.workspaceId, 'run', 'web')
+    expect(await second).toBeNull()
+    expect(linesOf(first.workspaceId).filter((l) => l.startsWith('Run script'))).toEqual(['Run script was stopped'])
+  })
+
   it('plainLine drops escape sequences and keeps what the last redraw left', () => {
     expect(plainLine('\x1b[32m✓\x1b[39m done\r')).toBe('✓ done')
     expect(plainLine('Progress: 1\rProgress: 2\x1b[K')).toBe('Progress: 2')

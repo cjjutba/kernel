@@ -76,8 +76,9 @@ if (headless) app.setActivationPolicy('accessory')
 
 // The installed app keeps its data in Kernel and a dev run in Kernel Dev, so dev from main never writes data an older
 // release can't read (KERNEL-408). Each has its own hook token, port and entries in ~/.claude/settings.json, so both run
-// at once (KERNEL-675). Fixture runs and the smoke test keep their own folder.
-const dirs = smokeTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged)
+// at once (KERNEL-675). Fixture runs and the smoke test keep their own folder. A dev run started inside a Kernel workspace
+// gets a folder of its own, so it holds its own lock and opens next to the Kernel that started it (KERNEL-679).
+const dirs = smokeTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged, process.env.KERNEL_WORKSPACE_ID)
 /** Said in a dialog once the app is ready, before Kernel quits without opening its data. */
 let refusal: { message: string; detail?: string } | undefined
 if (dirs) app.setPath('userData', dirs.own)
@@ -90,11 +91,12 @@ if (!primary) app.quit()
 app.on('second-instance', () => focusWindow())
 
 // A dev run's first launch moves the data over from Kernel, once it holds its own lock. The move never copies a database
-// the installed app has open, so a first launch while Kernel runs waits for it to quit.
+// the installed app has open, so a first launch while Kernel runs waits for it to quit. A workspace run moves nothing and
+// starts empty.
 let moved: string | undefined
 /** The installed app's hook entries were Kernel Dev's too until this launch: it just moved, or it had Kernel's token (KERNEL-675). */
 let hooksWereShared = false
-if (dirs && primary && !app.isPackaged) {
+if (dirs && primary && !app.isPackaged && !dirs.run) {
   try {
     const r = moveToDev({ from: dirs.other, to: dirs.own })
     if (r === 'moved') moved = `[kernel] moved the data from ${dirs.other} to ${dirs.own}`
@@ -328,7 +330,7 @@ app.whenReady().then(async () => {
     const appIcons = new Map<string, Promise<string | undefined>>()
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
-      build: app.isPackaged ? 'app' : 'dev',
+      build: app.isPackaged ? 'app' : dirs?.run ? 'run' : 'dev',
       hooksWereShared,
       telemetry: sends ? { ...__KERNEL_TELEMETRY__, os: process.getSystemVersion(), arch: process.arch } : undefined,
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),

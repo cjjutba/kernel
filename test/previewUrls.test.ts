@@ -146,7 +146,8 @@ describe('whole lines of run output (KERNEL-246)', () => {
   it('shows a last line with no newline once the script exits', async () => {
     const { workspaceId, done } = await run({}, "printf 'one\\ntwo'")
     await done
-    expect(lines(workspaceId).slice(1)).toEqual(['one', 'two'])
+    // Then the line that says how it ended (KERNEL-679).
+    expect(lines(workspaceId).slice(1)).toEqual(['one', 'two', 'Run script ended'])
   })
 })
 

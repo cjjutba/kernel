@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, PORT_BLOCK, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from './conventions'
@@ -22,10 +22,19 @@ export const DEFAULT_BASE_REF = 'origin/main'
  * Each build's hook port, so the installed app and Kernel Dev can listen at once (KERNEL-675). Far enough apart that the
  * installed app moving to the next free port never lands on Kernel Dev's.
  */
-export const HOOK_PORTS: Record<HookBuild, number> = { app: 7420, dev: 7430 }
+export const HOOK_PORTS: Record<Exclude<HookBuild, 'run'>, number> = { app: 7420, dev: 7430 }
+
+/**
+ * A workspace run's hook port: the last of its workspace's block, `$KERNEL_PORT + 9`, so it never asks for Kernel Dev's
+ * (KERNEL-679). `env` is the environment the run was started in.
+ */
+export function runHookPort(env: NodeJS.ProcessEnv = process.env): number {
+  const first = Number(env.KERNEL_PORT)
+  return Number.isInteger(first) && first > 0 && first + PORT_BLOCK <= 65536 ? first + PORT_BLOCK - 1 : HOOK_PORTS.dev + PORT_BLOCK
+}
 
 export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSettings => ({
-  hookPort: HOOK_PORTS[build],
+  hookPort: build === 'run' ? runHookPort() : HOOK_PORTS[build],
   worktreeRoot: join(home, 'kernel', 'worktrees'),
   general: { openTo: 'lastPlace', openAtLogin: false, sendWith: 'enter' },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },

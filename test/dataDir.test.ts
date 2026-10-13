@@ -51,6 +51,15 @@ describe('dataDirs', () => {
     expect(dataDirs('/AS', true)).toEqual({ own: '/AS/Kernel', other: '/AS/Kernel Dev', name: 'Kernel', otherName: 'Kernel Dev' })
     expect(dataDirs('/AS', false)).toEqual({ own: '/AS/Kernel Dev', other: '/AS/Kernel', name: 'Kernel Dev', otherName: 'Kernel' })
   })
+
+  it('gives a dev run started inside a workspace a folder of its own, and never the installed app (KERNEL-679)', () => {
+    const id = 'b9e166a7-cd54-4995-87af-0340e54eec38'
+    expect(dataDirs('/AS', false, id)).toEqual({ own: `/AS/Kernel Dev Runs/${id}`, other: '/AS/Kernel Dev', name: 'Kernel Dev Runs', otherName: 'Kernel Dev', run: true })
+    // The installed app opened from a workspace's terminal is still the installed app.
+    expect(dataDirs('/AS', true, id)).toEqual(dataDirs('/AS', true))
+    // No id, or one that is no folder name, is a plain dev run.
+    for (const bad of [undefined, '', '../Kernel', 'a/b', '.', '-x']) expect(dataDirs('/AS', false, bad)).toEqual(dataDirs('/AS', false))
+  })
 })
 
 describe('openBy', () => {

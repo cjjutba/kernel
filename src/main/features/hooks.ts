@@ -6,7 +6,7 @@ import type { Handlers } from '../kernel'
 import { hooksPolicy, type HooksPolicy } from '../services/claudeSettings'
 import { startHookServer } from '../services/hookServer'
 import { hookToken } from '../services/hookToken'
-import { HooksFileError, hookStatus, installedEvents, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, turnHooksOn, uninstallHooks, withKernelHooks, type HookWriteProblem } from '../services/hooksInstaller'
+import { HooksFileError, hookStatus, installedEvents, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, RUN_HOOKS_OFF, turnHooksOn, uninstallHooks, withKernelHooks, type HookWriteProblem } from '../services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
 import { tildify } from '../services/rooms'
 import { Feature } from './feature'
@@ -28,7 +28,8 @@ export class Hooks extends Feature {
 
   async start() {
     // Hooks from before KERNEL-206, or from another port or timeout, get a 401. Rewrite Kernel's own entries, never add any.
-    this.hooksNeedInstall = await this.write(() => this.adoptShared().then((adopted) => adopted || refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build))).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
+    // A workspace run has none and leaves the file alone: a rewrite would point Kernel Dev's entries at this copy (KERNEL-679).
+    if (!this.off) this.hooksNeedInstall = await this.write(() => this.adoptShared().then((adopted) => adopted || refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build))).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
     await this.listenHooks(this.settings.hookPort)
   }
 
@@ -45,7 +46,7 @@ export class Hooks extends Feature {
   }
 
   /** Whether this build's entries are in Claude's settings, current or not. A port or timeout change rewrites them only then. */
-  present(): Promise<boolean> { return kernelHooksPresent(this.claudeSettings, this.build).catch(() => false) }
+  present(): Promise<boolean> { return this.off ? Promise.resolve(false) : kernelHooksPresent(this.claudeSettings, this.build).catch(() => false) }
 
   /** A write of the hooks file. One that works clears the last failure, and one Check hooks can explain is kept for it. */
   private async write<T>(fn: () => Promise<T>): Promise<T> {
@@ -113,6 +114,7 @@ export class Hooks extends Feature {
 
   /** Install, and every rewrite after a port or timeout change. A write that works clears the start-up failure. */
   async writeHooks(port: number): Promise<string[]> {
+    this.refuseRun()
     const events = await this.write(() => installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken, this.build))
     this.hooksNeedInstall = false
     return events
@@ -125,6 +127,10 @@ export class Hooks extends Feature {
   }
 
   async hooksStatus(): Promise<HookStatus> {
+    // A workspace run has nothing installed and nothing to fix, whatever Claude's settings say (KERNEL-679).
+    if (this.off) {
+      return { port: this.settings.hookPort, listening: !!this.hookServer?.listening, installed: false, events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: false, lastSeen: this.hookSeen.get(name) })), token: this.hookToken, needsInstall: false, build: this.build }
+    }
     const policy = await this.readPolicy().catch((e) => { console.warn('[hooks] could not read Claude Code settings', e); return undefined })
     // Kernel's entries an admin put in managed settings count too, and run when only managed hooks do.
     const managed = new Set(policy ? installedEvents({ hooks: policy.managedHooks } as Parameters<typeof installedEvents>[0], this.hookToken, this.build) : [])
@@ -175,6 +181,12 @@ export class Hooks extends Feature {
 
   private get hookToken() { return hookToken(this.o.dataDir) }
   private get build() { return this.o.build ?? 'app' }
+  /**
+   * A dev run started inside a Kernel workspace (KERNEL-679). Its hook server listens, but it keeps no entries in Claude's
+   * settings and never writes the file, so it sees no session started outside it.
+   */
+  private get off() { return this.build === 'run' }
+  private refuseRun() { if (this.off) throw new Error(RUN_HOOKS_OFF) }
   get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }
 
   handlers() {
@@ -192,8 +204,8 @@ export class Hooks extends Feature {
         if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
         return this.hooksStatus()
       },
-      'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings, this.build); return this.pushHooks() },
-      'hooks.turnOn': async () => { await this.write(() => turnHooksOn(this.claudeSettings)); return this.pushHooks() },
+      'hooks.uninstall': async () => { this.refuseRun(); await uninstallHooks(this.claudeSettings, this.build); return this.pushHooks() },
+      'hooks.turnOn': async () => { this.refuseRun(); await this.write(() => turnHooksOn(this.claudeSettings)); return this.pushHooks() },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await this.writeHooks(port) })
     } satisfies Partial<Handlers>
   }
