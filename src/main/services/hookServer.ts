@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { TOKEN_HEADER } from '@shared/hookEntry'
+import { BUILD_HEADER, TOKEN_HEADER } from '@shared/hookEntry'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
-import type { ActivityEvent } from '@shared/types'
+import type { ActivityEvent, HookBuild } from '@shared/types'
 import { bus } from '../bus'
 import { describeTool, needsUser, type Approvals } from './approvals'
 import { firstLine } from './text'
@@ -18,6 +18,8 @@ export interface HookServerOptions {
   resolve: (cwd: string, sessionId: string) => HookContext
   /** Sessions Kernel started itself report through in-process hooks, so their posts here are ignored. */
   isManaged: (sessionId: string) => boolean
+  /** This server's build. A post from a session, terminal or script the other build started is ignored (KERNEL-675). */
+  build?: HookBuild
   /** A function so a change in Settings applies to the next request without restarting the server. */
   approvalTimeoutMs: number | (() => number)
 }
@@ -41,7 +43,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     const parsed = parseHook(body)
     if (!parsed.ok) { bus.emit('hook.invalid', parsed.error); return json(res, 200, {}) }
     const e = parsed.event
-    if (o.isManaged(e.session_id)) return json(res, 200, {})
+    if (o.isManaged(e.session_id) || fromOtherBuild(req.headers[BUILD_HEADER.toLowerCase()], o.build ?? 'app')) return json(res, 200, {})
     const ctx = o.resolve(e.cwd, e.session_id)
     bus.emit('hook', e, ctx)
     // Kernel installs no SessionStart hook (D-047), so the first event from a new session stands in for it.
@@ -138,6 +140,9 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('error', reject)
   })
 }
+
+/** Sent by the hook command of a process a Kernel started. None means a session started outside every Kernel. */
+const fromOtherBuild = (sent: string | string[] | undefined, build: HookBuild) => typeof sent === 'string' && sent !== '' && sent !== build
 
 const hostOk = (host: string | undefined, port: number) => host === `127.0.0.1:${port}` || host === `localhost:${port}`
 

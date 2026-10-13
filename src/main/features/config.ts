@@ -1,7 +1,6 @@
 import { basename, dirname, join } from 'node:path'
 import type { ClaudePlan, DeepPartial, ProductionHint, Room, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
-import { kernelHooksPresent } from '../services/hooksInstaller'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
 import { discoverSkills } from '../services/files'
@@ -54,7 +53,7 @@ export class Config extends Feature {
     this.o.onSettings?.(this.settings)
     if (before.privacy?.telemetry !== this.settings.privacy.telemetry) await this.k.telemetry.settingsChanged()
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.k.hooks.claudeSettings).catch(() => false))) await this.k.hooks.writeHooks(this.settings.hookPort)
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await this.k.hooks.present())) await this.k.hooks.writeHooks(this.settings.hookPort)
     return this.settings
   }
 
@@ -67,7 +66,7 @@ export class Config extends Feature {
     this.plan = plan
     this.store.saveMeta('plan', plan)
     const before = this.settings
-    this.k.settings = withPlan(before, DEFAULT_SETTINGS(this.home), this.saved, plan)
+    this.k.settings = withPlan(before, DEFAULT_SETTINGS(this.home, this.o.build), this.saved, plan)
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
   }

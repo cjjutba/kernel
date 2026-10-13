@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
+import { COMPACT_WINDOWS, EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type AutoMerge, type ClaudePlan, type CompactWindow, type DeepPartial, type Effort, type HookBuild, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type ReviewConfig, type ReviewKind, type ReviewKindConfig, type ReviewPatch, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools, REVIEW_KINDS } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from './conventions'
@@ -18,8 +18,14 @@ export type RepoSettings = RoomSettings
 /** The app's shipped base. The settings file is saved on every launch (D-094), so this value counts as unset (KERNEL-400). */
 export const DEFAULT_BASE_REF = 'origin/main'
 
-export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
-  hookPort: 7420,
+/**
+ * Each build's hook port, so the installed app and Kernel Dev can listen at once (KERNEL-675). Far enough apart that the
+ * installed app moving to the next free port never lands on Kernel Dev's.
+ */
+export const HOOK_PORTS: Record<HookBuild, number> = { app: 7420, dev: 7430 }
+
+export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSettings => ({
+  hookPort: HOOK_PORTS[build],
   worktreeRoot: join(home, 'kernel', 'worktrees'),
   general: { openTo: 'lastPlace', openAtLogin: false, sendWith: 'enter' },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
@@ -190,8 +196,8 @@ function sparse(value: any, defaults: any, path = ''): any {
  * and the Address review text equal to what they used to default to, counts as unset; a file written since keeps what it has. `plan` is the account's, as
  * Kernel last read it.
  */
-export async function loadAppSettings(file: string, home: string, plan: ClaudePlan = 'unknown'): Promise<{ saved: DeepPartial<AppSettings>; resolved: AppSettings }> {
-  const defaults = DEFAULT_SETTINGS(home)
+export async function loadAppSettings(file: string, home: string, plan: ClaudePlan = 'unknown', build: HookBuild = 'app'): Promise<{ saved: DeepPartial<AppSettings>; resolved: AppSettings }> {
+  const defaults = DEFAULT_SETTINGS(home, build)
   let raw: any
   try { raw = JSON.parse(await readFile(file, 'utf8')) } catch { raw = undefined }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { saved: {}, resolved: resolveSettings(defaults, {}, plan) }
@@ -233,6 +239,9 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   }
   // Nothing reads these since KERNEL-606 removed the screen, so they went (KERNEL-620). A file that still has them loads without them.
   delete s.floor
+  // Kernel Dev's first launch copied the installed app's settings, port included. That port is the installed app's, so
+  // Kernel Dev goes back to its own (KERNEL-675).
+  if (build === 'dev' && s.hookPort === HOOK_PORTS.app) delete s.hookPort
   // Checked as a whole, but only the keys the file has stay in `saved`, so a saved preset doesn't pin every other terminal default.
   const own = group('terminal')
   if (own) {

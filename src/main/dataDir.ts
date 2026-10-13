@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { cpSync, existsSync, mkdirSync, readdirSync, readlinkSync, renameSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { copyDatabase } from './migrations'
@@ -11,8 +11,11 @@ import { copyDatabase } from './migrations'
 export const APP_FOLDER = 'Kernel'
 export const DEV_FOLDER = 'Kernel Dev'
 
-/** What a dev run copies from `Kernel` besides the database. Caches, logs, telemetry and update.json stay behind. */
-export const MOVED = ['settings.json', 'hook-token', 'trust.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
+/**
+ * What a dev run copies from `Kernel` besides the database. Caches, logs, telemetry and update.json stay behind, and so does
+ * `hook-token`: each build has its own, so both can run at once (KERNEL-675).
+ */
+export const MOVED = ['settings.json', 'trust.json', 'integrations.json', 'env.json', 'room-icons', 'shared', 'Local Storage']
 
 export interface DataDirs { own: string; other: string; name: string; otherName: string }
 
@@ -74,4 +77,16 @@ export function moveToDev(o: { from: string; to: string; host?: string }): MoveR
     console.warn(`[kernel] moved the data to ${o.to}, but could not set ${db} aside`, err)
   }
   return 'moved'
+}
+
+/**
+ * Kernel Dev's move before KERNEL-675 copied `hook-token`, so both builds sent the same token. Removes `own`'s copy when it
+ * matches `other`'s, so the next read makes a new one. Returns whether it did. A missing or unreadable file shares nothing.
+ */
+export function unshareHookToken(o: { own: string; other: string }): boolean {
+  const read = (dir: string) => { try { return readFileSync(join(dir, 'hook-token'), 'utf8').trim() } catch { return undefined } }
+  const mine = read(o.own)
+  if (!mine || mine !== read(o.other)) return false
+  rmSync(join(o.own, 'hook-token'), { force: true })
+  return true
 }

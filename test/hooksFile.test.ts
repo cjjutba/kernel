@@ -5,7 +5,8 @@ import { basename, dirname, join } from 'node:path'
 import type { Settings } from '@anthropic-ai/claude-agent-sdk'
 import { Kernel } from '../src/main/kernel'
 import { hooksPolicy, hooksPolicyOf, type HooksPolicy } from '../src/main/services/claudeSettings'
-import { HooksFileError, installHooks, KERNEL_HOOK_EVENTS, mountPoint, refreshHooks, turnHooksOn, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
+import { hasKernelHooks, HooksFileError, installedEvents, installHooks, KERNEL_HOOK_EVENTS, mountPoint, refreshHooks, turnHooksOn, uninstallHooks, withCurrentKernelHooks, withKernelHooks, withoutKernelHooks } from '../src/main/services/hooksInstaller'
+import { hookCommand } from '@shared/hookEntry'
 import { run } from '../src/main/services/exec'
 
 // One fs call can be made to fail with a given code, the way a full or read-only disk would. Every other call is real.
@@ -268,5 +269,84 @@ describe('Check hooks says why the hooks cannot run (KERNEL-461)', () => {
     const status = await h['hooks.status']()
     expect(status.problem).toBeUndefined()
     expect(status.events).toHaveLength(KERNEL_HOOK_EVENTS.length)
+  })
+})
+
+describe('the installed app and Kernel Dev side by side (KERNEL-675)', () => {
+  const devToken = 'cd'.repeat(32)
+  const commands = (s: any, event = 'Stop') => (s.hooks?.[event] ?? []).flatMap((m: any) => m.hooks.map((h: any) => h.command))
+  const both = () => withKernelHooks(withKernelHooks({ hooks: { Stop: [{ hooks: [{ type: 'command', command: './notify.sh' }] }] } }, 7420, 300, token), 7430, 300, devToken, 'dev')
+
+  it('keeps one set of entries per build, and each counts only its own', () => {
+    const s = both()
+    expect(commands(s)).toEqual(['./notify.sh', hookCommand(7420, 8, token), hookCommand(7430, 8, devToken, 'dev')])
+    expect(hookCommand(7430, 8, devToken, 'dev')).toContain(' http://127.0.0.1:7430/hooks/dev || true')
+    expect(installedEvents(s, token).sort()).toEqual([...KERNEL_HOOK_EVENTS].sort())
+    expect(installedEvents(s, devToken, 'dev').sort()).toEqual([...KERNEL_HOOK_EVENTS].sort())
+    // Another build's token is not this build's entry, whichever token it carries.
+    expect(installedEvents(s, devToken)).toEqual([])
+    // Installing again replaces only this build's entries.
+    expect(commands(withKernelHooks(s, 7421, 300, token))).toEqual(['./notify.sh', hookCommand(7430, 8, devToken, 'dev'), hookCommand(7421, 8, token)])
+  })
+
+  it('brings only its own entries up to date at start', () => {
+    const s = both()
+    const app = withCurrentKernelHooks(s, 7421, 300, token)!
+    expect(commands(app)).toEqual(['./notify.sh', hookCommand(7421, 8, token), hookCommand(7430, 8, devToken, 'dev')])
+    const dev = withCurrentKernelHooks(s, 7431, 300, devToken, 'dev')!
+    expect(commands(dev)).toEqual(['./notify.sh', hookCommand(7420, 8, token), hookCommand(7431, 8, devToken, 'dev')])
+    expect(withCurrentKernelHooks(s, 7430, 300, devToken, 'dev')).toBeNull()
+  })
+
+  it('counts the entries from before KERNEL-675 as the installed app\'s, and Kernel Dev adds none at start', () => {
+    const old = (port: number) => `/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: ${token}' --data-binary @- http://127.0.0.1:${port}/hooks || true`
+    const s = { hooks: { Stop: [{ hooks: [{ type: 'command', command: old(7420), timeout: 10 }] }], SessionStart: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks' }] }] } }
+    expect(hasKernelHooks(s)).toBe(true)
+    expect(hasKernelHooks(s, 'dev')).toBe(false)
+    expect(withCurrentKernelHooks(s, 7430, 300, devToken, 'dev')).toBeNull()
+    expect(withoutKernelHooks(s, 'dev')).toEqual(s)
+    // The installed app moves its own to the command with the build header.
+    expect(commands(withCurrentKernelHooks(s, 7420, 300, token))).toEqual([hookCommand(7420, 8, token)])
+  })
+
+  it('uninstalls only its own entries', async () => {
+    const { file } = await temp(both())
+    await uninstallHooks(file, 'dev')
+    const after = JSON.parse(await readFile(file, 'utf8'))
+    expect(commands(after)).toEqual(['./notify.sh', hookCommand(7420, 8, token)])
+    expect(installedEvents(after, token).sort()).toEqual([...KERNEL_HOOK_EVENTS].sort())
+    await uninstallHooks(file)
+    expect(commands(JSON.parse(await readFile(file, 'utf8')))).toEqual(['./notify.sh'])
+  })
+
+  async function startDev(settings: object, hooksWereShared: boolean) {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const port = 18000 + Math.floor(Math.random() * 800)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
+    const { file } = await temp(settings)
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile: file, build: 'dev', hooksWereShared })
+    k.hooks.readPolicy = async () => ({ managedHooks: {} })
+    await k.start()
+    onTestFinished(() => k.stop())
+    return { k, file, port }
+  }
+
+  it('adds Kernel Dev\'s own entries next to the shared ones on the launch that stops sharing, and leaves the installed app\'s', async () => {
+    const shared = withKernelHooks({}, 7420, 300, token)
+    const { k, file, port } = await startDev(shared, true)
+    const after = JSON.parse(await readFile(file, 'utf8'))
+    const status = await k.handlers()['hooks.status']()
+    expect(status).toMatchObject({ installed: true, build: 'dev', port })
+    expect(status.token).not.toBe(token)
+    expect(commands(after)).toEqual([hookCommand(7420, 8, token), hookCommand(port, 8, status.token!, 'dev')])
+  })
+
+  it('adds nothing at start when the hooks were not shared, or there were none', async () => {
+    const shared = withKernelHooks({}, 7420, 300, token)
+    const { k, file } = await startDev(shared, false)
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(shared)
+    expect((await k.handlers()['hooks.status']()).installed).toBe(false)
+    const none = await startDev({ theme: 'dark' }, true)
+    expect(JSON.parse(await readFile(none.file, 'utf8'))).toEqual({ theme: 'dark' })
   })
 })

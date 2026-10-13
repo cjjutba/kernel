@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { APP_FOLDER, DEV_FOLDER, dataDirs, moveToDev, openBy } from '../src/main/dataDir'
+import { APP_FOLDER, DEV_FOLDER, dataDirs, moveToDev, openBy, unshareHookToken } from '../src/main/dataDir'
 
 // KERNEL-408: a dev run moves the data from Kernel to Kernel Dev on its first launch. Every test works in a temp folder
 // standing in for ~/Library/Application Support.
@@ -81,16 +81,18 @@ describe('openBy', () => {
 })
 
 describe('moveToDev', () => {
-  it('moves the database and the listed files, and leaves caches, logs and telemetry behind', () => {
+  it('moves the database and the listed files, and leaves caches, logs, telemetry and the hook token behind', () => {
     const { from, to } = appData()
     expect(moveToDev({ from, to })).toBe('moved')
     expect(rooms(join(to, 'kernel.db'))).toEqual(['room-0', 'room-1', 'room-2'])
-    expect(readFileSync(join(to, 'hook-token'), 'utf8')).toBe('a'.repeat(64))
+    // Each build has its own token, so both can run at once (KERNEL-675).
+    expect(existsSync(join(to, 'hook-token'))).toBe(false)
+    expect(readFileSync(join(from, 'hook-token'), 'utf8')).toBe('a'.repeat(64))
     expect(readFileSync(join(to, 'settings.json'), 'utf8')).toBe('{"hookPort":51234}')
     expect(readFileSync(join(to, 'room-icons', 'r1.png'), 'utf8')).toBe('png')
     expect(readFileSync(join(to, 'shared', 'w1', 'plan.html'), 'utf8')).toBe('<p>plan</p>')
     expect(readFileSync(join(to, 'Local Storage', 'leveldb', '000003.log'), 'utf8')).toBe('drafts')
-    expect(readdirSync(to).sort()).toEqual(['Local Storage', 'env.json', 'hook-token', 'integrations.json', 'kernel.db', 'room-icons', 'settings.json', 'shared', 'trust.json'])
+    expect(readdirSync(to).sort()).toEqual(['Local Storage', 'env.json', 'integrations.json', 'kernel.db', 'room-icons', 'settings.json', 'shared', 'trust.json'])
     expect(existsSync(`${to}.partial`)).toBe(false)
   })
 
@@ -178,5 +180,28 @@ describe('moveToDev', () => {
     lock(from, `${hostname()}-99999999`)
     expect(moveToDev({ from, to })).toBe('moved')
     expect(rooms(join(to, 'kernel.db'))).toHaveLength(3)
+  })
+})
+
+describe('unshareHookToken (KERNEL-675)', () => {
+  it('removes the token Kernel Dev copied from Kernel before KERNEL-675, and leaves Kernel\'s', () => {
+    const { from, to } = appData()
+    mkdirSync(to)
+    writeFileSync(join(to, 'hook-token'), 'a'.repeat(64) + '\n')
+    expect(unshareHookToken({ own: to, other: from })).toBe(true)
+    expect(existsSync(join(to, 'hook-token'))).toBe(false)
+    expect(readFileSync(join(from, 'hook-token'), 'utf8')).toBe('a'.repeat(64))
+    // Once is enough: nothing is shared after.
+    expect(unshareHookToken({ own: to, other: from })).toBe(false)
+  })
+
+  it('keeps a token of its own, and does nothing when either build has none', () => {
+    const { from, to } = appData()
+    mkdirSync(to)
+    expect(unshareHookToken({ own: to, other: from })).toBe(false)
+    writeFileSync(join(to, 'hook-token'), 'b'.repeat(64))
+    expect(unshareHookToken({ own: to, other: from })).toBe(false)
+    expect(readFileSync(join(to, 'hook-token'), 'utf8')).toBe('b'.repeat(64))
+    expect(unshareHookToken({ own: to, other: join(from, 'missing') })).toBe(false)
   })
 })

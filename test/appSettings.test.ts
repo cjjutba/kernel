@@ -68,6 +68,17 @@ describe('applySettingsPatch', () => {
 })
 
 describe('loadAppSettings', () => {
+  it('gives Kernel Dev its own hook port, and drops the installed app\'s port its first launch copied (KERNEL-675)', async () => {
+    expect(DEFAULT_SETTINGS('/home/cj').hookPort).toBe(7420)
+    expect(DEFAULT_SETTINGS('/home/cj', 'dev').hookPort).toBe(7430)
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ version: 2, hookPort: 7420 }))
+    expect(await loadAppSettings(file, '/home/cj', 'unknown', 'dev')).toMatchObject({ saved: {}, resolved: { hookPort: 7430 } })
+    expect((await loadAppSettings(file, '/home/cj')).resolved.hookPort).toBe(7420)
+    await writeFile(file, JSON.stringify({ version: 2, hookPort: 7444 }))
+    expect((await loadAppSettings(file, '/home/cj', 'unknown', 'dev')).resolved.hookPort).toBe(7444)
+  })
+
   it('moves the old default branch pattern to the new one, and keeps a custom pattern (KERNEL-275)', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ workspace: { branchPattern: 'feat/{slug}' } }))

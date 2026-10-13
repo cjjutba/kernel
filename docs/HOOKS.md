@@ -1,18 +1,28 @@
 # Hooks contract
 
-Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button adds them (CheckHooks, Settings > Hooks). Each start, a port change and an approval timeout change rewrite Kernel's out-of-date entries that are already there, and never add any. Code: `src/main/services/hooksInstaller.ts`.
+Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). Kernel Dev (`pnpm dev`) listens on port 7430 and its entries post to `/hooks/dev` (see Two builds below). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button adds them (CheckHooks, Settings > Hooks). Each start, a port change and an approval timeout change rewrite Kernel's out-of-date entries that are already there, and never add any. Code: `src/main/services/hooksInstaller.ts`.
 
 When the write fails because the folder isn't writable (EACCES), the disk is read-only (EROFS), or `settings.json` links into a folder Kernel can't write (the Nix store), Check hooks names the cause and gives one command to fix it. Kernel never writes through such a link. Check hooks also says when hooks can't run: managed settings set `allowManagedHooksOnly` or `disableAllHooks`, which Kernel never edits, or the user's own file sets `disableAllHooks`, which Turn hooks on removes after the first backup. See KERNEL-461.
 
 Each entry is a command hook that pipes the payload to the server with curl (D-050):
 
 ```
-/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true
+/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' -H "X-Kernel-Build: ${KERNEL_BUILD:-}" --data-binary @- http://127.0.0.1:7420/hooks || true
 ```
+
+## Two builds
+
+The installed app and Kernel Dev run at the same time, so each keeps its own set of entries in `~/.claude/settings.json` (KERNEL-675).
+
+- Each has its own `hook-token` in its data folder and its own port: 7420 for the installed app, 7430 for Kernel Dev. A Kernel Dev `settings.json` that says 7420, copied from the installed app by the first launch, loads as 7430.
+- The installed app's entries post to `/hooks`, as before. Kernel Dev's post to `/hooks/dev`. Install, the rewrite at start, Uninstall and Check hooks match only their own build's path, so neither build replaces or removes the other's entries. Releases from before KERNEL-675 match only `/hooks` too, so they leave Kernel Dev's entries alone.
+- Entries written before KERNEL-675 post to `/hooks`, so they belong to the installed app. Kernel Dev used to copy the installed app's token. On the first launch after this change it makes its own and, when the installed app's entries are there, installs its own set next to them. It does the same right after it moves the data over.
+- Every session, terminal and script a Kernel starts gets `KERNEL_BUILD` (`app` or `dev`), and the command sends it as `X-Kernel-Build`. Kernel's own sessions load the user's settings, so they run both builds' entries. A server answers `{}` to a post that names the other build and records nothing, so an agent in one build never shows up, or asks for approval, in the other. A post with no build came from outside every Kernel and goes through as before.
+- Worktrees need nothing extra. Both builds default to `~/kernel/worktrees`, but each archives, deletes and cleans up only the workspaces in its own database, and a new worktree never takes a folder that exists.
 
 ## Who can post
 
-`<token>` is 64 hex characters from `randomBytes(32)`, made once and kept in `hook-token` in the app data folder (mode 0600). A dev run copies it into `Kernel Dev` when it moves the data, so the hook entries keep working (KERNEL-408). The server checks every `POST /hooks` before it reads the body:
+`<token>` is 64 hex characters from `randomBytes(32)`, made once and kept in `hook-token` in the app data folder (mode 0600). Kernel Dev has its own (KERNEL-675). The server checks every `POST /hooks` before it reads the body:
 
 - The Host must be `127.0.0.1:<port>` or `localhost:<port>`, and the `X-Kernel-Token` header must match the token. Either failing gets a 401. The token is compared in constant time.
 - The content type must be `application/json`, or the server answers 415. A web page's `no-cors` fetch can only send `text/plain`.
@@ -42,9 +52,9 @@ Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, s
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }],
-    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 320 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 330 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }]
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' -H \"X-Kernel-Build: ${KERNEL_BUILD:-}\" --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }],
+    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 320 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' -H \"X-Kernel-Build: ${KERNEL_BUILD:-}\" --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 330 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' -H \"X-Kernel-Build: ${KERNEL_BUILD:-}\" --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }]
   }
 }
 ```

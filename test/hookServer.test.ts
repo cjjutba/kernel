@@ -182,9 +182,10 @@ describe('a post that is not from the installed hook', () => {
 })
 
 /** Runs the installed hook command the way Claude Code does: through a shell, with the payload on stdin. */
-function runHook(command: string, payload: unknown): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function runHook(command: string, payload: unknown, env: Record<string, string> = {}): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const p = spawn('/bin/sh', ['-c', command])
+    // An agent running this suite inside Kernel has KERNEL_BUILD set, so each test says which build it is.
+    const p = spawn('/bin/sh', ['-c', command], { env: { ...process.env, KERNEL_BUILD: '', ...env } })
     let stdout = '', stderr = ''
     p.stdout.on('data', (c) => (stdout += c))
     p.stderr.on('data', (c) => (stderr += c))
@@ -195,6 +196,39 @@ function runHook(command: string, payload: unknown): Promise<{ code: number | nu
 
 const closedPort = () => new Promise<number>((resolve) => {
   const s = createServer().listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)) })
+})
+
+describe('a session the other build started (KERNEL-675)', () => {
+  const postAs = (build: string, body: unknown) => fetch(`http://127.0.0.1:${port}/hooks`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', 'x-kernel-token': token, 'x-kernel-build': build } }).then((r) => r.json())
+
+  it('shows nothing and asks nothing for a session Kernel Dev started, and passes one this build started', async () => {
+    const seen: any[] = []
+    const pushed: any[] = []
+    const onActivity = (e: any) => seen.push(e)
+    const onPush = (e: any) => { if (e.type === 'approval') pushed.push(e) }
+    bus.on('activity', onActivity)
+    bus.on('push', onPush)
+    expect(await postAs('dev', { ...base, session_id: 'dev-agent', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } })).toEqual({})
+    expect(await postAs('dev', { ...base, session_id: 'dev-agent', hook_event_name: 'Stop' })).toEqual({})
+    expect(seen).toEqual([])
+    expect(pushed).toEqual([])
+    // A terminal tab this build opened reports as before.
+    await postAs('app', { ...base, session_id: 'app-terminal', hook_event_name: 'Stop' })
+    bus.off('activity', onActivity)
+    bus.off('push', onPush)
+    expect(seen.map((e) => e.kind)).toEqual(['session.start', 'turn.done'])
+  })
+
+  it('sends the build from the environment the session runs in, and no build outside every Kernel', async () => {
+    const seen: any[] = []
+    const off = (e: any) => seen.push(e)
+    bus.on('activity', off)
+    expect(await runHook(hookCommand(port, 8, token), { ...base, session_id: 'dev-cmd', hook_event_name: 'Stop' }, { KERNEL_BUILD: 'dev' })).toEqual({ code: 0, stdout: '{}', stderr: '' })
+    expect(seen).toEqual([])
+    await runHook(hookCommand(port, 8, token), { ...base, session_id: 'plain-cmd', hook_event_name: 'Stop' }, { KERNEL_BUILD: '' })
+    bus.off('activity', off)
+    expect(seen.map((e) => e.sessionId)).toEqual(['plain-cmd', 'plain-cmd'])
+  })
 })
 
 describe('the installed hook command', () => {

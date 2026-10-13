@@ -1,4 +1,5 @@
 import type { Room, Workspace } from '@shared/types'
+import { BUILD_ENV } from '@shared/hookEntry'
 import { loadRepoSettings, loadRepoSettingsSync, type RepoSettings } from '../services/settings'
 import { buildEnv, ENV_KERNEL, envFileReadable, fileStamp, kernelVars, readEnvFiles, readSetupEnv, setupEnvPath, trackedSync, withoutClaudeNames } from '../services/env'
 import type { Handlers } from '../kernel'
@@ -27,7 +28,8 @@ export class Env extends Feature {
     const files = room && settings ? this.envFiles(room, ws, settings).map(keep) : []
     // Setup's variables count once it passed, in a room whose scripts are trusted, the way setup itself only ran then.
     const setup = room && ws.status === 'ready' && this.k.trust.roomTrusted.get(room.id) ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}
-    const kernel: Record<string, string> = { ...kernelVars(ws, room), ...(o.script ? { PORT: String(ws.port) } : {}) }
+    // The build that started it, which the hook command sends, so the other build's hook server leaves it alone (KERNEL-675).
+    const kernel: Record<string, string> = { ...kernelVars(ws, room), [BUILD_ENV]: this.o.build ?? 'app', ...(o.script ? { PORT: String(ws.port) } : {}) }
     // Each worktree is its own Compose project, so two workspaces' containers and volumes never meet. A current-branch
     // workspace is the room's own checkout and keeps the project the user's terminal gets there (KERNEL-449).
     const defaults: Record<string, string> = ws.mode === 'worktree' ? { COMPOSE_PROJECT_NAME: kernel.KERNEL_WORKSPACE_SLUG } : {}

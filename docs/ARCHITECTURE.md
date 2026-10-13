@@ -12,7 +12,7 @@
 Claude Code (SDK session)   Codex (app-server)          Claude Code outside Kernel
    | messages, hooks            | JSON-RPC                  | http hooks
    v                            v                           v
-providers/claude.ts   providers/codex/runner.ts   hookServer.ts (localhost:7420)
+providers/claude.ts   providers/codex/runner.ts   hookServer.ts (localhost:7420, dev 7430)
           \________ sessions.ts ______/                      |
    \__________________  ____________________/
                       \/
@@ -60,7 +60,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 
 ## Hooks
 
-Sessions started outside Kernel (a normal terminal, the big terminal) report through http hooks installed in `~/.claude/settings.json`. See `docs/HOOKS.md`. Sessions Kernel started itself are ignored by the hook server, since in-process hooks already report them. Claude Code doesn't send http SessionStart hooks, so the hook server treats a session's first event as its start (D-020).
+Sessions started outside Kernel (a normal terminal, the big terminal) report through http hooks installed in `~/.claude/settings.json`. See `docs/HOOKS.md`. Sessions Kernel started itself are ignored by the hook server, since in-process hooks already report them. The installed app and Kernel Dev each have their own token, port and entries, so both run at once, and neither shows a session the other started (KERNEL-675). Claude Code doesn't send http SessionStart hooks, so the hook server treats a session's first event as its start (D-020).
 
 ## Workspaces
 
@@ -74,7 +74,7 @@ Kernel hands creating, fixing and resolving PRs to the agent with instruction fi
 
 ## Storage
 
-`kernel.db` in the app data folder: `~/Library/Application Support/Kernel` for the installed app, and `Kernel Dev` next to it for `pnpm dev`, which moves the data over on its first launch (KERNEL-408). Plain SQL with JSON columns for now (see DECISIONS.md). App settings in `settings.json`; per-repo settings in `.kernel/settings.toml` and `.kernel/settings.local.toml`.
+`kernel.db` in the app data folder: `~/Library/Application Support/Kernel` for the installed app, and `Kernel Dev` next to it for `pnpm dev`, which moves the data over on its first launch (KERNEL-408). The two can run at the same time (KERNEL-675). Logs go to `~/Library/Logs/Kernel` and `~/Library/Logs/Kernel Dev`. Plain SQL with JSON columns for now (see DECISIONS.md). App settings in `settings.json`; per-repo settings in `.kernel/settings.toml` and `.kernel/settings.local.toml`.
 
 ## Testing
 

@@ -243,6 +243,8 @@ describe('Kernel env', () => {
     expect(session.ANTHROPIC_API_KEY).toBeUndefined()
     expect(session.FORCE_COLOR).toBe(process.env.FORCE_COLOR)
     expect(k.envFor(ws, { script: true }).ANTHROPIC_API_KEY).toBe('sk-user-key')
+    // The build that started them, which the hook command sends, whatever the Mac exports (KERNEL-675).
+    expect([k.env.envFor(ws).KERNEL_BUILD, k.env.envFor(ws, { script: true }).KERNEL_BUILD]).toEqual(['app', 'app'])
 
     // Sessions and terminals take Claude Code's endpoint, account and billing names from the Mac only. Scripts get them all.
     const mac = { base: process.env.ANTHROPIC_BASE_URL, bedrock: process.env.CLAUDE_CODE_USE_BEDROCK, teams: process.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS }

@@ -31,7 +31,7 @@ describe('hooks installer', () => {
     expect(installedEvents(next, token).sort()).toEqual([...KERNEL_HOOK_EVENTS].sort())
     expect(next.hooks!.PermissionRequest[0].hooks[0]).toEqual({ type: 'command', command: hookCommand(7420, 320, token), timeout: 330 })
     expect(next.hooks!.Stop[0].hooks[0]).toEqual({ type: 'command', command: hookCommand(7420, 8, token), timeout: 10 })
-    expect(hookCommand(7420, 8, token)).toBe(`/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: ${token}' --data-binary @- http://127.0.0.1:7420/hooks || true`)
+    expect(hookCommand(7420, 8, token)).toBe(`/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: ${token}' -H "X-Kernel-Build: \${KERNEL_BUILD:-}" --data-binary @- http://127.0.0.1:7420/hooks || true`)
   })
   it('replaces the old http entries, which no longer count as installed', () => {
     const old = { ...mine, Stop: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks', timeout: 10 }] }], PermissionRequest: [{ matcher: '*', hooks: [{ type: 'http', url: 'http://127.0.0.1:7420/hooks', timeout: 330 }] }] }
