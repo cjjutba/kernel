@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { resolvePreviewUrl } from '@shared/previewUrl'
 import { PORT_BLOCK, type RoomSettings } from '@shared/types'
 import { Button, Modal, useBusy } from '../../../ui'
-import { Row, Section, sourceLine } from '../kit'
+import { DataTable, Section } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 type Urls = RoomSettings['preview']['urls']
@@ -18,7 +18,7 @@ export function addressProblem(address: string): string | undefined {
   return undefined
 }
 
-/** The Preview URLs section of Settings > a room > Scripts (SettingsRoomScripts.png). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
+/** Preview URLs, a table on Settings > a room > Setup and scripts (MorePage roomSetup, KERNEL-680). The list is saved whole in the personal file, so Remove works on rows settings.toml set too. */
 export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
   // `index` is the row being edited, or the list's length for a new one.
   const [editing, setEditing] = useState<number | null>(null)
@@ -27,25 +27,25 @@ export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings |
   const save = (next: Urls) => patchRoomSettings(roomId, { preview: { urls: savedUrls(next) } })
   return (
     <>
-      <Section
-        title="Preview URLs"
-        action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}
-        note="$KERNEL_PORT and $((KERNEL_PORT + 1)) work in addresses."
-      >
-        {urls.length === 0 && <div className="set-empty">No preview URLs. Add one and Open in a workspace goes to it.</div>}
-        {urls.map((u, i) => {
-          const label = u.name || 'Unnamed'
-          return (
-            // The list is one value, so its source shows on the first row.
-            <Row key={i} label={label} source={i === 0 ? sourceLine(rs, path) : undefined} desc={<span className="set-cmd">{u.url}</span>}>
-              <div className="set-entry-actions">
-                {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchRoomSettings(roomId, { preview: { urls: null } })}>Reset</Button>}
-                <Button variant="ghost" aria-label={`Edit ${label}`} onClick={() => setEditing(i)}>Edit</Button>
-                <Button variant="ghost" aria-label={`Remove ${label}`} onClick={() => void save(urls.filter((_, j) => j !== i))}>Remove</Button>
-              </div>
-            </Row>
-          )
-        })}
+      <Section title="Preview URLs" scope="mac" plain action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}>
+        <DataTable
+          label="Preview URLs" columns={['Name', 'Address']} grid="140px minmax(0, 1fr)" empty="No preview URLs. Add one and Open in a workspace goes to it."
+          rows={urls.map((u, i) => {
+            const label = u.name || 'Unnamed'
+            return {
+              key: `${i}`,
+              cells: [label, <span key="a" className="mono">{u.url}</span>],
+              // The list is one value, so Reset sits on the first row.
+              actions: (
+                <>
+                  {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset preview URLs" onClick={() => void patchRoomSettings(roomId, { preview: { urls: null } })}>Reset</Button>}
+                  <Button variant="ghost" aria-label={`Edit ${label}`} onClick={() => setEditing(i)}>Edit</Button>
+                  <Button variant="ghost" aria-label={`Remove ${label}`} onClick={() => void save(urls.filter((_, j) => j !== i))}>Remove</Button>
+                </>
+              )
+            }
+          })}
+        />
       </Section>
       {editing !== null && <PreviewUrlForm urls={urls} index={editing} onSave={save} onClose={() => setEditing(null)} />}
     </>

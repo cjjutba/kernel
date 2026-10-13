@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AgentDef, AppSettings, TeamPatch } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
+import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
+import { ReviewerPicker } from '../../rooms/ReviewerPicker'
+import './rooms.css'
 import { shortFile, warningText } from '../../agent/model'
 import { STARTER_TEAMMATES } from '../../rooms/draft'
-import { NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { NoRoom, Row, RoomPage, Section, SettingsLink, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-import { AGENT_GROUPS, agentGroup, agentLabel, agentSource, cleanDescription } from './agentRows'
+import { agentGroup, cleanDescription } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
 const SAME_AS_APP = ''
@@ -17,7 +19,7 @@ const SAME_AS_APP = ''
 function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
   const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : [])])].sort((a, b) => a - b)
   return [
-    { value: SAME_AS_APP, label: `Same as agents working at once (${appLimit > 0 ? appLimit : 'No limit'})` },
+    { value: SAME_AS_APP, label: `Default (${appLimit > 0 ? appLimit : 'No limit'})` },
     ...counts.map((n) => ({ value: String(n), label: String(n) })),
     { value: '0', label: 'No limit' }
   ]
@@ -35,10 +37,10 @@ function rowDesc(a: AgentDef) {
 }
 
 /**
- * Settings > a room > Agents (SettingsTeam.png): who leads and who reviews, who takes tasks, and the room's agent files,
- * with Edit opening the agent's editor in Settings (KERNEL-397, KERNEL-641). It is the one place for agents (KERNEL-642): New agent, Add a
- * starter agent, warnings on a file Kernel can't read, and Retired with Restore are here too. A change goes to `[team]` in the shared settings.toml. The team a new room
- * starts with is on General. The Open workspaces row, under the switches, saves the room's own cap to its personal file (KERNEL-493).
+ * Settings > a room > Agents (MorePage roomAgents, KERNEL-680): who leads and reviews, the room's agent files with a takes-tasks switch on each,
+ * how many workspaces the Lead keeps open, and Retired. Edit opens the agent's editor (KERNEL-397, KERNEL-641). A change to roles or switches
+ * goes to `[team]` in the shared settings.toml, and the open-workspaces cap to the personal file (KERNEL-493). Your own and plugin agents are
+ * listed on Settings, Agents, not here.
  */
 export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const { room, rs } = useRoomPage(roomId)
@@ -97,36 +99,50 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     const members = [...others.filter((x) => x.member).map((x) => x.id), ...(on ? [a.id] : [])]
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
-  const leadOptions = [...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Kernel’s Rowan' }]
+  const leadOptions = [...files.map((a) => ({ value: a.id, label: a.name, description: a.role || undefined })), { value: KERNEL_LEAD, label: 'Kernel’s Rowan' }]
   const reviewerPick = reviewerChoice(team, rs?.team)
-  const reviewerOptions = [...files.filter((a) => !a.lead).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]
-  return (
-    <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or have Rowan write one in a chat, and it joins the team.">
-      {!!files.length && (
-        <Section title="Who leads and reviews" note="A change is saved in settings.toml, so everyone on the repo gets it.">
-          <Row label="Lead" source={sourceLine(rs, 'team.lead')} desc="Plans with you and hands out every task">
-            <Select label="Lead" value={lead?.id ?? KERNEL_LEAD} disabled={busy !== null} options={leadOptions} onChange={(e) => void setTeam('lead', { lead: e.target.value })} />
-          </Row>
-          <Row label="Reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request before it merges">
-            <Select label="Reviewer" value={reviewerPick} disabled={busy !== null} options={reviewerOptions} onChange={(e) => void setTeam('reviewer', { reviewer: e.target.value })} />
-          </Row>
-        </Section>
+  const repoAgents = team.filter((a) => agentGroup(a) === 'repo')
+  const outside = team.length - repoAgents.length
+  const repoActions = (
+    <span className="set-actions">
+      {!!files.length && !!starters.length && (
+        <span className="set-starters" ref={starterAnchor}>
+          <Button aria-haspopup="menu" aria-expanded={adding} busy={busy === 'starter'} busyLabel="Adding" disabled={busy !== null} onClick={() => setAdding((o) => !o)}>Add a starter agent<Icon name="chevron" size={12} /></Button>
+          {adding && <Menu label="Starter agents" anchorRef={starterAnchor} onClose={() => setAdding(false)} style={{ right: 0, top: 34, width: 220 }} items={starters.map((m) => ({ id: m.id, label: `${m.name} · ${m.role}`, onSelect: () => { setAdding(false); void addStarter(m.id) } }))} />}
+        </span>
       )}
-      {files.some((a) => !a.lead) && (
-        <Section title="Who takes tasks" note={`${lead?.name ?? 'The Lead'} hands tasks only to these agents. One whose tools can’t edit files and run git starts off. These switches don’t change who reviews pull requests.`}>
-          {files.filter((a) => !a.lead).map((a) => (
-            <Row key={a.id} label={agentLabel(a)} desc={a.id === reviewerPick ? 'Reviews pull requests either way. Change that under Reviewer.' : undefined}>
-              <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />
-            </Row>
-          ))}
-          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`How many workspaces ${lead?.name ?? 'the Lead'} keeps open in this room at once. Reviews don’t count, workspaces you open yourself do.`}>
-            <Select label="Open workspaces" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(e) => void patchRoomSettings(roomId, { agents: { openWorkspaces: e.target.value === SAME_AS_APP ? null : Number(e.target.value) } })} />
+      <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
+    </span>
+  )
+  const edit = (a: AgentDef) => <Button aria-label={`Edit ${a.name}`} onClick={() => go({ name: 'settings', page: 'room', roomId, section: 'agents', agentId: a.id })}>Edit</Button>
+  const agentRow = (a: AgentDef) => {
+    const reviewsOnly = a.id === reviewerPick && !a.member && !a.lead
+    return (
+      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && a.role.trim().toLowerCase() !== a.name.trim().toLowerCase() && <span className="rm-role">{a.role}</span>}</>} desc={rowDesc(a)}>
+        {a.lead
+          ? <span className="set-desc">Hands out tasks</span>
+          : reviewsOnly
+            ? <span className="set-desc">Reviews only</span>
+            : <Toggle label={`${a.name} takes tasks`} checked={!!a.member} disabled={busy !== null} onChange={(on) => void takesTasks(a, on)} />}
+        {edit(a)}
+      </Row>
+    )
+  }
+  return (
+    <RoomPage room={room} rs={rs} title="Agents" shared>
+      {!!files.length && (
+        <Section title="Roles" scope="repo">
+          <Row label="Lead" labelId="rm-lead" source={sourceLine(rs, 'team.lead')} desc="Plans with you and hands out tasks.">
+            <Select label="Lead" labelledBy="rm-lead" align="right" value={lead?.id ?? KERNEL_LEAD} disabled={busy !== null} options={leadOptions} onChange={(v) => void setTeam('lead', { lead: v })} />
+          </Row>
+          <Row label="Reviewer" labelId="rm-reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request.">
+            <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
           </Row>
         </Section>
       )}
       {files.length === 0 && (
-        <Section title="In this room">
-          <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents`}>
+        <Section title="In this repo">
+          <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents.`}>
             <span className="set-actions">
               <Button busy={busy === 'seed'} busyLabel="Adding" disabled={busy !== null} onClick={() => void seed()}>Add the team</Button>
               {!!sources.length && (
@@ -140,42 +156,30 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
           </Row>
         </Section>
       )}
-      {AGENT_GROUPS.map(({ key, title }) => {
-        const group = team.filter((a) => agentGroup(a) === key)
-        if (!group.length) return null
-        const repoActions = key === 'repo' && (
-          <span className="set-actions">
-            {!!files.length && !!starters.length && (
-              <span className="set-starters" ref={starterAnchor}>
-                <Button aria-haspopup="menu" aria-expanded={adding} busy={busy === 'starter'} busyLabel="Adding" disabled={busy !== null} onClick={() => setAdding((o) => !o)}>Add a starter agent<Icon name="chevron" size={12} /></Button>
-                {adding && <Menu label="Starter agents" anchorRef={starterAnchor} onClose={() => setAdding(false)} style={{ right: 0, top: 34, width: 220 }} items={starters.map((m) => ({ id: m.id, label: `${m.name} · ${m.role}`, onSelect: () => { setAdding(false); void addStarter(m.id) } }))} />}
-              </span>
-            )}
-            <Button variant="primary" icon="plus" disabled={busy !== null} onClick={hire}>New agent</Button>
-          </span>
-        )
-        return (
-          <Section key={key} title={title} action={repoActions || undefined}>
-            {group.map((a) => (
-              <Row key={a.id} label={agentLabel(a)} source={agentSource(a)} desc={rowDesc(a)}>
-                <Button aria-label={`${key === 'plugin' ? 'View' : 'Edit'} ${a.name}`} onClick={() => go({ name: 'settings', page: 'room', roomId, section: 'agents', agentId: a.id })}>{key === 'plugin' ? 'View' : 'Edit'}</Button>
-              </Row>
-            ))}
-          </Section>
-        )
-      })}
+      {repoAgents.length > 0 && (
+        <Section
+          title="In this repo" count={repoAgents.length} scope="repo" note="Switches pick who takes tasks." action={repoActions}
+          footnote={outside > 0 ? <>Your own and plugin agents are on <SettingsLink to={{ page: 'agents' }}>Settings, Agents</SettingsLink>.</> : undefined}
+        >
+          {repoAgents.map(agentRow)}
+        </Section>
+      )}
+      {!!files.length && (
+        <Section label="Limits">
+          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`Workspaces ${lead?.name ?? 'the Lead'} keeps open here. Reviews don’t count.`}>
+            <Select label="Open workspaces" align="right" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: v === SAME_AS_APP ? null : Number(v) } })} />
+          </Row>
+        </Section>
+      )}
       {!!retired.length && (
-        <Section title="Retired" note="A retired agent’s file sits in .claude/retired-agents. Restore brings it back.">
+        <Section title="Retired" count={retired.length} collapsible>
           {retired.map((a) => (
-            <Row key={a.id} label={agentLabel(a)} source={shortFile(a.file)}>
+            <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && <span className="rm-role">{a.role}</span>}</>} desc={`Kept in ${shortFile(a.file)}.`}>
               <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
             </Row>
           ))}
         </Section>
       )}
-      <Section title="Sync">
-        <Row label="Agents folder"><span className="set-value">.claude/agents</span></Row>
-      </Section>
     </RoomPage>
   )
 }

@@ -80,9 +80,9 @@ export interface AppSettings {
      * Claude's ids start with `claude-` and Codex's never do, so one map holds both (KERNEL-406).
      */
     effortByModel: Partial<Record<string, Effort>> }
-  /** Settings, Providers (KERNEL-406). Accounts and their credentials live apart from this file. */
+  /** Settings, Accounts, Advanced (KERNEL-406, KERNEL-680). Accounts and their credentials live apart from this file. */
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
-  /** `defaultTemplate` seeds an empty room (Settings > Agents). */
+  /** `defaultTemplate` seeds an empty room (Settings, Agents, New rooms start with). */
   team: { defaultTemplate: 'starter' | 'pair' }
   /**
    * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
