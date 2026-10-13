@@ -1,5 +1,6 @@
 import type { Chat, SharedAnchor, SharedFile } from '@shared/types'
 import { bus } from '../bus'
+import { imagePart, type Downscale } from '../services/plans'
 import type { ShareRequest } from '../services/sharedFiles'
 import { sendComment, type CommentImage } from '../services/sharedComments'
 import type { Handlers } from '../kernel'
@@ -32,6 +33,22 @@ export class Sharing extends Feature {
 
   /** A shared file's version and the path of Kernel's copy, for the preview host. Undefined when Kernel doesn't have it. */
   sharedFile(id: string, version: number) { return this.shared.get(id, version) }
+
+  /**
+   * One stored version of a shared image as a chat part the Lead passes on to a teammate, scaled down for the model
+   * (KERNEL-659). It reads Kernel's copy of that version, so a later version never changes what was passed on. Throws the
+   * reason for a file outside `roomId`, a version Kernel doesn't have, or a file that isn't a PNG, JPEG, GIF or WebP.
+   */
+  async sharedImage(roomId: string, id: string, version: number, downscale?: Downscale) {
+    const file = this.store.sharedFile(id)
+    if (!file || file.roomId !== roomId) throw new Error(`there is no shared file ${id} in this room. Use the id a Team update names.`)
+    const got = this.shared.get(id, version)
+    if (!got) throw new Error(`"${file.title}" has no v${version}. It has ${file.versions.map((v) => `v${v.n}`).join(', ')}.`)
+    if (file.kind !== 'image') throw new Error(`"${file.title}" is ${file.kind === 'html' ? 'HTML' : file.kind === 'pdf' ? 'a PDF' : 'Markdown'}. Only shared images can be passed on.`)
+    return imagePart(got.path, downscale).catch((e: Error) => {
+      throw new Error(e.message.startsWith('there is no file') ? `Kernel's copy of "${file.title}" v${version} is gone.` : `"${file.title}" v${version} isn't a PNG, JPEG, GIF or WebP image.`)
+    })
+  }
 
   /**
    * A comment on a shared file, sent to the agent that shared it (KERNEL-310). It goes to the chat that shared the version

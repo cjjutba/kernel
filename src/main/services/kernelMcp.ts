@@ -53,6 +53,11 @@ export interface KernelToolDeps {
    */
   attachedImages?: (paths: string[]) => Promise<ChatPart[]>
   /**
+   * One version of an image a teammate shared with share_file, by its id and version, as a chat part scaled down for the
+   * model. Rejects with the reason it can't go. Left out, create_workspace and message_agent refuse shared images (KERNEL-659).
+   */
+  sharedImage?: (id: string, version: number) => Promise<ChatPart>
+  /**
    * `steps` and `agentFile` shape plan and new agent cards; the hand-off links come from `onWorkspace`. `questions` carries a
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407). `signal` is the tool call's: when the
    * turn stops, as when the user writes in the message box instead, the card ends as expired and the answer is null (KERNEL-496).
@@ -101,18 +106,33 @@ const signalOf = (extra: unknown) => {
 export const IMAGES_MAX = 3
 
 /** The `images` argument of create_workspace and message_agent (KERNEL-658). */
-const imagesArg = z.array(z.object({ path: z.string().describe('The image\'s path in .kernel/attachments/, as the user\'s message names it') })).optional()
+const imagesArg = z.array(z.union([
+  z.object({ path: z.string().describe('The image\'s path in .kernel/attachments/, as the user\'s message names it') }),
+  // An image a teammate shared, at the version the Team update names (KERNEL-659).
+  z.object({ shared: z.string().describe('The id of an image a teammate shared, as the Team update names it'), version: z.number().int().describe('Which version of it to pass on') })
+])).optional()
+type ImageArg = { path: string } | { shared: string; version: number }
+
+/** What the `images` argument says, for both tools. */
+const IMAGES_DESCRIBE = 'Images the teammate needs to act on, at most 3 in all: a screenshot the user attached in this chat by its path in .kernel/attachments/, or an image a teammate shared by its id and version from the Team update. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does'
 
 /**
- * The images a create_workspace or message_agent call passes on, or why they can't go (KERNEL-658). The cap is checked
- * here, so it holds whatever the deps do.
+ * The images a create_workspace or message_agent call passes on, in the order given, or why one can't go (KERNEL-658,
+ * KERNEL-659). The cap is checked here, across both kinds, so it holds whatever the deps do. Every image is read before
+ * any is returned, so a refused one sends nothing.
  */
-async function loadImages(d: KernelToolDeps, images: { path: string }[] | undefined): Promise<{ parts: ChatPart[] } | { refusal: string }> {
+async function loadImages(d: KernelToolDeps, images: ImageArg[] | undefined): Promise<{ parts: ChatPart[] } | { refusal: string }> {
   if (!images?.length) return { parts: [] }
   if (images.length > IMAGES_MAX) return { refusal: `${images.length} images is over the limit of ${IMAGES_MAX}. Send only the ones the teammate needs to act on.` }
-  if (!d.attachedImages) return { refusal: 'images can\'t be passed on here.' }
-  try { return { parts: await d.attachedImages(images.map((i) => i.path)) } }
-  catch (e) { return { refusal: e instanceof Error ? e.message : String(e) } }
+  const paths = images.flatMap((i) => ('path' in i ? [i.path] : []))
+  if (paths.length && !d.attachedImages) return { refusal: 'images can\'t be passed on here.' }
+  if (paths.length < images.length && !d.sharedImage) return { refusal: 'shared images can\'t be passed on here.' }
+  try {
+    const attached = paths.length ? await d.attachedImages!(paths) : []
+    const parts: ChatPart[] = []
+    for (const i of images) parts.push('path' in i ? attached.shift()! : await d.sharedImage!(i.shared, i.version))
+    return { parts }
+  } catch (e) { return { refusal: e instanceof Error ? e.message : String(e) } }
 }
 
 /**
@@ -364,7 +384,7 @@ export function kernelTools(d: KernelToolDeps) {
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached"),
       confirm: z.boolean().optional().describe('Set to true only after the user said to start anyway, when create_workspace warned that someone else may already be on the issue. Left out, Kernel checks for a branch on the remote, an open PR or another assignee first'),
-      images: imagesArg.describe('Screenshots the user attached in this chat that the teammate needs to act on, at most 3, by their paths in .kernel/attachments/. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does')
+      images: imagesArg.describe(IMAGES_DESCRIBE)
     }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked, confirm, images }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
@@ -477,7 +497,7 @@ export function kernelTools(d: KernelToolDeps) {
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
       workspace_id: z.string(), text: z.string(),
-      images: imagesArg.describe('Screenshots the user attached in this chat that the teammate needs to act on, at most 3, by their paths in .kernel/attachments/. Kernel copies each into the teammate\'s workspace and shows it in their chat. Leave out images that don\'t change what the teammate does')
+      images: imagesArg.describe(IMAGES_DESCRIBE)
     }, async ({ workspace_id, text: t, images }) => {
       const attached = await loadImages(d, images)
       if ('refusal' in attached) return { ...text(`Not sent: ${attached.refusal}`), isError: true }

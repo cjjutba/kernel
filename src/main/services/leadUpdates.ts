@@ -195,7 +195,7 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
     case 'shared': {
       const f = e.shared
-      return f ? `Shared "${f.title}" v${f.version} (${KIND_LABEL[f.kind]}, ${f.source}). The user can open it from this update.` : 'Shared a file.'
+      return f ? `Shared "${f.title}" v${f.version} (${KIND_LABEL[f.kind]}, ${f.source}, id ${f.sharedId}). The user can open it from this update.` : 'Shared a file.'
     }
     case 'review': {
       const r = e.review
