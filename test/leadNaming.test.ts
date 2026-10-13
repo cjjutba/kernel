@@ -200,6 +200,11 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     const onPush = (e: PushEvent) => { if (e.type === 'terminal.data' && e.chatId === shell) out += e.data }
     bus.on('push', onPush)
     onTestFinished(() => { bus.off('push', onPush) })
+    // The login shell answers first, so the command typed next is the one that runs, and ^C stops it, not the shell's own
+    // startup (KERNEL-667).
+    await k.handlers()['terminal.write']({ chatId: shell, data: 'echo up-$((40+2))\r' })
+    await vi.waitFor(() => expect(out).toContain('up-42'), { timeout: 10_000 })
+    await vi.waitFor(() => expect(k.ptys.busy(shell)).toBe(false), { timeout: 10_000 })
     await k.handlers()['terminal.write']({ chatId: shell, data: 'sleep 30\r' })
     await vi.waitFor(() => expect(k.ptys.busy(shell)).toBe(true), { timeout: 10_000 })
     await k.lead.syncLead(r.id, { workspaceId: ws.id })

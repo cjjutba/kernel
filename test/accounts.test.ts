@@ -579,7 +579,11 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'kernel-lead', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
     t.k.store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'c', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1 })
     const folder = (name: string) => t.k.providers.claudeHome(ids[name])
-    return { ...t, h, ids, room, repo, folder }
+    // `switchTo` makes the account the one in use before it saves and resumes the rooms, so a test that checks what the
+    // switch did waits for the switch itself, not for `active` (KERNEL-667).
+    const switching = vi.spyOn(t.k.providers, 'switchTo')
+    const switched = async () => { await until(() => switching.mock.results.length); await Promise.all(switching.mock.results.map((r) => r.value)) }
+    return { ...t, h, ids, room, repo, folder, switched }
   }
 
   /** A rejection of the 5-hour window, as a session reports it: on Claude's CLI login unless `l` says otherwise. */
@@ -588,12 +592,13 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   const notes = (k: Kernel, chatId = 'chat') => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
 
   it('moves Claude to the signed-in account with the lowest 5-hour use, notes it in the chat, and stays there when the old account resets', async () => {
-    const { k, ids, room, folder } = await setUp(['Side', 'Personal'])
+    const { k, ids, room, folder, switched } = await setUp(['Side', 'Personal'])
     sdk.usage = { '': 100, [folder('Side')]: 60, [folder('Personal')]: 20 }
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
     sdk.probes = []
     reject(k)
-    await until(() => k.providers.active('claude') === ids.Personal)
+    await switched()
+    expect(k.providers.active('claude')).toBe(ids.Personal)
     // Every account was read before Kernel picked, so it went by fresh numbers.
     expect(new Set(sdk.probes.map((p) => p.dir))).toEqual(new Set(['', folder('Side'), folder('Personal')]))
     expect(k.store.room(room.id)?.paused).toBeFalsy()
@@ -1154,7 +1159,9 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
   })
 
   it('stops Sign in to all on Cancel, so no server after the current one starts', async () => {
-    const { k, h, runs, logins } = await setUp()
+    const { k, h, runs, logins, claude } = await setUp()
+    const diag: unknown[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.mcpSignIn' || e.type === 'account.mcpSignInAll') diag.push([Date.now() % 100000, e]) })
     const side = await h['accounts.add']({ provider: 'claude' })
     const folder = k.providers.claudeHome(side.id)
     sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
@@ -1162,10 +1169,12 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     process.env.FAKE_LOGIN_WAIT = '1'
     const running = h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
     await until(async () => (await logins()).includes('figma'))
+    diag.push(['SEEN', Date.now() % 100000, await claude.calls()])
     await expect(h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).rejects.toThrow('Sign in to all is already running.')
     await h['accounts.cancelAdd']({ provider: 'claude' })
     expect(await running).toEqual({ accountId: side.id, servers: ['figma', 'linear'], done: [], failed: [], finished: true, canceled: true })
-    expect(await logins()).toEqual(['figma'])
+    diag.push(['AFTER', Date.now() % 100000, await claude.calls()])
+    expect(await logins(), JSON.stringify(diag)).toEqual(['figma'])
     // It can run again once it ended.
     delete process.env.FAKE_LOGIN_WAIT
     expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
