@@ -28,7 +28,15 @@ export interface HookStatus {
   needsInstall?: boolean
   /** Why the hooks can't be written or can't run, with its fix. Check hooks shows it in place of the event list (KERNEL-461). */
   problem?: HookProblem
+  /** Which build's entries these are. Kernel Dev's go to their own path, so the snippet in Settings > Hooks carries it (KERNEL-675). */
+  build?: HookBuild
 }
+
+/**
+ * The installed app or Kernel Dev (`pnpm dev`). Each keeps its own token, port and hook entries, so both can run at once
+ * (KERNEL-675).
+ */
+export type HookBuild = 'app' | 'dev'
 
 /**
  * Why Kernel's hooks aren't installed or can't run, and the one step that fixes it (CheckHooksNotWritable.png and the four
