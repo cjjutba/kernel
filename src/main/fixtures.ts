@@ -153,6 +153,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
     'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'issues.next': async ({ roomId }) => f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title })),
     'issues.taken': async () => f.issueTaken ?? { findings: [], notes: [] },
     'issues.tracker': async ({ roomId }) => f.trackers?.[roomId] ?? { kind: 'linear' },
     'github.issueList': async ({ roomId, query }) => (f.githubIssues?.[roomId] ?? [])

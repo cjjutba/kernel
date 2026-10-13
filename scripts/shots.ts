@@ -228,6 +228,15 @@ async function openCompare(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// LeadNoChatsBranch is New chat with Rowan with New branch from main open. The menu is the composer's own, so press the button and wait for the
+// remote's branches, which the menu reads when it opens.
+async function openBaseBranch(page: Page) {
+  await page.getByRole('button', { name: 'New branch from main' }).click()
+  await page.getByRole('menuitemradio', { name: /origin\/invoice-table/ }).waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
 async function typeApiKey(page: Page) {
   await page.getByRole('button', { name: 'Add account' }).click()
@@ -299,6 +308,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
+  LeadNoChatsBranch: openBaseBranch,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
   SettingsAddAccount: (page) => openAddAccount(page),

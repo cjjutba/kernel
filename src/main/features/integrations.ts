@@ -165,6 +165,10 @@ export class Integrations extends Feature {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ roomId, query }) => (await this.trackerFor(roomId)).search(query),
+      'issues.next': async ({ roomId }) => {
+        const tracker = await this.trackerFor(roomId)
+        return tracker.next ? tracker.next() : tracker.search()
+      },
       'issues.taken': async ({ roomId, issue }) => this.issueTaken(roomId, issue),
       'issues.tracker': async ({ roomId }) => this.trackerInfo(roomId),
       'github.issueList': async ({ roomId, query }) => listGithubIssues(this.mustRoom(roomId).path, query, await ghUserName().catch(() => null)),

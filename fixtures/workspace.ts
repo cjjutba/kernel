@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, IssueSummary, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -460,6 +460,18 @@ const queuedItems = (): ChatItem[] => {
 }
 
 /** The invoice-table workspace (or the Lead's) retitled for one agent request: its name, chat title and transcript. */
+/** New chat with Rowan in a room with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
+function leadNoChats(f: Fixture): Partial<Fixture> {
+  const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
+  const issue = (id: string, title: string, priority: number): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority })
+  // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
+  return {
+    ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', roomId: ids.roomA }, tabs: {} },
+    issues: [issue('T-17', 'Email an invoice to the client from the row actions', 2), issue('T-19', 'Overdue badge on unpaid invoices past their due date', 3), issue('T-22', 'Remember the sort order on the invoices table', 0)],
+    branches: ['origin/main', 'origin/invoice-pdf-renderer', 'origin/invoice-pdf-button', 'origin/invoice-table', 'origin/invoice-schema', 'origin/org-invites', 'origin/release/2.4', 'origin/hotfix/pdf-fonts']
+  }
+}
+
 function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
   const id = ws.id ?? ids.table
   const chatId = id === ids.lead ? ids.leadChat : ids.tableChat
@@ -1863,11 +1875,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // A room with no open chat (KERNEL-365): New chat with Rowan, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
   // The workspaces the archived chats handed off stay as unowned rows when Archive a chat's workspaces is off.
-  LeadNoChats: scene((f) => {
-    const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
-    // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
-    return { ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', roomId: ids.roomA }, tabs: {} } }
-  }),
+  // The line under the title says what the room is doing, and Up next lists the tracker's Todo issues, urgent first.
+  LeadNoChats: scene(leadNoChats),
+  // New branch from main opened: the remote's branches with the default checked. The menu is the composer's own, so the shot opens it (scripts/shots.ts).
+  LeadNoChatsBranch: scene(leadNoChats),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
