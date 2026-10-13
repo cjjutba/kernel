@@ -1,7 +1,8 @@
 import { stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import type { Decision } from '@shared/types'
 import type { Handlers } from '../kernel'
+import type { Typed } from '../services/approvals'
 import { planChanges } from '../services/handoff'
 import { attachmentNote, planExists, saveAttachments, savePlan } from '../services/plans'
 import { Feature } from './feature'
@@ -24,15 +25,20 @@ export class Inbox extends Feature {
   /**
    * A plan's change request with images: saves them in the workspace and names their paths in the message (D-134).
    * A plan is ExitPlanMode or the Lead's `request_plan_approval`, the same test as the composer's `isPlanApproval`.
+   * `typed` is the request as the user wrote it, which the approval keeps for the chat's bubble.
    */
-  private async withAttachments(id: string, decision: Decision): Promise<Decision> {
-    if (decision.behavior !== 'deny' || !decision.images?.length) return decision
+  private async withAttachments(id: string, decision: Decision): Promise<{ decision: Decision; typed?: Typed }> {
+    if (decision.behavior !== 'deny') return { decision }
+    const notes = decision.message ?? ''
+    if (!decision.images?.length) return { decision, typed: { notes } }
     const { images, ...rest } = decision
     const a = this.store.approval(id)
-    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || (!this.approvals.isPending(id) && !this.approvals.waitingPlan(id))) return rest
+    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || (!this.approvals.isPending(id) && !this.approvals.waitingPlan(id))) return { decision: rest, typed: { notes } }
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
     if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("The workspace folder is gone, so the images can't be saved.")
-    return { ...rest, message: attachmentNote(rest.message, await saveAttachments(ws.path, images)) }
+    const paths = await saveAttachments(ws.path, images)
+    const saved = images.map((image, i) => ({ type: 'image' as const, name: image.name, dataUrl: image.dataUrl, path: relative(ws.path, paths[i]) }))
+    return { decision: { ...rest, message: attachmentNote(rest.message, paths) }, typed: { notes, images: saved } }
   }
 
   /**
@@ -46,10 +52,12 @@ export class Inbox extends Feature {
     const chat = a.chatId ? this.store.chat(a.chatId) : undefined
     if (!chat || chat.closed) throw new Error('This request already timed out or was answered.')
     // Kernel's message names the approval, so the chat shows the user's answer in its place.
-    const typed = decision.behavior === 'deny' ? decision.message ?? '' : undefined
+    let typed: Typed | undefined
     if (decision.behavior === 'allow') await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id })
     else {
-      decision = await this.withAttachments(id, decision)
+      const saved = await this.withAttachments(id, decision)
+      decision = saved.decision
+      typed = saved.typed
       const notes = (decision.behavior === 'deny' ? decision.message : decision.behavior === 'answer' ? decision.text : undefined)?.trim() || 'no details'
       await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel', approvalId: id })
     }
@@ -63,8 +71,9 @@ export class Inbox extends Feature {
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => {
         if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)
-        // Request changes keeps what the user typed, without the lines Kernel adds for the images.
-        const a = this.approvals.decide(id, await this.withAttachments(id, decision), decision.behavior === 'deny' ? decision.message ?? '' : undefined)
+        // Request changes keeps what the user typed and attached, without the lines Kernel adds for the images.
+        const saved = await this.withAttachments(id, decision)
+        const a = this.approvals.decide(id, saved.decision, saved.typed)
         if (!a) throw new Error('This request already timed out or was answered.')
         return a
       },

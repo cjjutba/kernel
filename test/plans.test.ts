@@ -192,13 +192,16 @@ describe('a plan change request with images, through approvals.decide', () => {
   })
 
   it('sends an image-only request, and leaves a text-only one as it was', async () => {
-    const { ws, ask, decide } = await kernel()
+    const { k, ws, ask, decide } = await kernel()
     const first = ask()
     await decide({ id: first.approval.id, decision: { behavior: 'deny', message: '', images: [{ name: 'shot.png', dataUrl: png('a') }] } })
     expect(await first.decision).toEqual({ behavior: 'deny', message: `Attached image: ${join(ws.path, '.kernel/attachments/shot.png')}. Read it before revising the plan.` })
     const second = ask()
     await decide({ id: second.approval.id, decision: { behavior: 'deny', message: 'Smaller steps' } })
     expect(await second.decision).toEqual({ behavior: 'deny', message: 'Smaller steps' })
+    // Only the request with an image keeps one on its approval.
+    expect(k.store.approval(first.approval.id)?.images).toEqual([{ type: 'image', name: 'shot.png', dataUrl: png('a'), path: '.kernel/attachments/shot.png' }])
+    expect(k.store.approval(second.approval.id)).not.toHaveProperty('images')
   })
 
   it("saves them for the Lead's task list too, which has no tool name", async () => {

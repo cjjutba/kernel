@@ -5,6 +5,9 @@ import { bus } from '../bus'
 
 type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
 
+/** Request changes on a plan as the user wrote it: the notes before Kernel's lines for the images, and the images. */
+export type Typed = { notes?: string; images?: Approval['images'] }
+
 /** Why a plan card expired, which the card says. */
 export type ExpiredBy = NonNullable<Approval['expiredBy']>
 
@@ -40,10 +43,13 @@ export class Approvals {
     return { approval, decision }
   }
 
-  /** `notes`: on a plan's Request changes, what the user typed, before Kernel added lines for the images. Defaults to the message. */
-  decide(id: string, decision: Decision, notes?: string): Approval | undefined {
+  /**
+   * `typed`: on a plan's Request changes, what the user typed, before Kernel added lines for the images, and the images it
+   * saved. The notes default to the message.
+   */
+  decide(id: string, decision: Decision, typed?: Typed): Approval | undefined {
     const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
-    return this.finish(id, decision, status, { notes })
+    return this.finish(id, decision, status, { typed })
   }
 
   isPending(id: string) { return this.pending.has(id) }
@@ -57,12 +63,12 @@ export class Approvals {
     return a?.kind === 'plan' && a.status === 'pending' && !this.pending.has(id) ? a : undefined
   }
 
-  /** Mark a waiting plan without a waiter as answered (`waitingPlan`). `notes` as in `decide`. */
-  settle(id: string, decision: Decision, notes?: string): Approval | undefined {
+  /** Mark a waiting plan without a waiter as answered (`waitingPlan`). `typed` as in `decide`. */
+  settle(id: string, decision: Decision, typed?: Typed): Approval | undefined {
     const prev = this.waitingPlan(id)
     if (!prev) return undefined
     const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
-    return this.save({ ...prev, status, answer: answerOf(prev, decision, notes) }, `${status} ${prev.title}`)
+    return this.save({ ...prev, status, ...answerOf(prev, decision, typed) }, `${status} ${prev.title}`)
   }
 
   /** The chat's plan cards still waiting, newest first, such as one a restart left up. */
@@ -157,7 +163,7 @@ export class Approvals {
     return next
   }
 
-  private finish(id: string, decision: Decision | null, status: Approval['status'], o: { by?: ExpiredBy; notes?: string } = {}): Approval | undefined {
+  private finish(id: string, decision: Decision | null, status: Approval['status'], o: { by?: ExpiredBy; typed?: Typed } = {}): Approval | undefined {
     const p = this.pending.get(id)
     if (!p) return undefined
     if (p.timer) clearTimeout(p.timer)
@@ -168,18 +174,23 @@ export class Approvals {
     if (!decision && this.keepPlans && prev.kind === 'plan') return undefined
     if (!decision) return this.save({ ...prev, status, ...expiredBy(prev, o.by) }, `${status} ${prev.title}`)
     const answers = decision.behavior === 'answer' ? decision.answers ?? prev.answers : prev.answers
-    return this.save({ ...prev, status, answer: answerOf(prev, decision, o.notes), answers }, `${status} ${prev.title}`)
+    return this.save({ ...prev, status, ...answerOf(prev, decision, o.typed), answers }, `${status} ${prev.title}`)
   }
 }
 
 /** Only a plan card says why it expired. */
 const expiredBy = (a: Approval, by?: ExpiredBy): Pick<Approval, 'expiredBy'> => (by && isPlan(a) ? { expiredBy: by } : {})
 
-/** What the row keeps as the user's answer: an answer's text, or the notes of Request changes on a plan, which the chat shows as the user's. */
-function answerOf(prev: Approval, decision: Decision, notes?: string): string | undefined {
-  if (decision.behavior === 'answer') return decision.text
-  if (decision.behavior === 'deny' && isPlan(prev)) return (notes ?? decision.message)?.trim() || undefined
-  return prev.answer
+/**
+ * What the row keeps as the user's answer: an answer's text, or the notes and images of Request changes on a plan, which
+ * the chat shows as the user's.
+ */
+function answerOf(prev: Approval, decision: Decision, typed?: Typed): Pick<Approval, 'answer' | 'images'> {
+  if (decision.behavior === 'answer') return { answer: decision.text }
+  if (decision.behavior === 'deny' && isPlan(prev)) {
+    return { answer: (typed?.notes ?? decision.message)?.trim() || undefined, ...(typed?.images?.length ? { images: typed.images } : {}) }
+  }
+  return { answer: prev.answer }
 }
 
 /** Tools that are a question to the user, not a permission. No setting may answer them for the user. */

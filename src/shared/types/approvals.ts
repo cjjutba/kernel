@@ -1,4 +1,5 @@
 import type { AgentReach, AgentScope } from './agents'
+import type { ChatPart } from './chats'
 
 export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 
@@ -56,6 +57,11 @@ export interface Approval {
   status: 'pending' | 'allowed' | 'denied' | 'answered' | 'expired'
   /** Request changes on a plan: the user's notes. An answer behavior: the answer's text. */
   answer?: string
+  /**
+   * Request changes on a plan: the images the user attached, as the image parts a user message carries, so the chat draws
+   * the same chips. `path` is where Kernel saved each one, relative to the workspace folder. Unset when there were none.
+   */
+  images?: (ChatPart & { type: 'image' })[]
   /** Expired plans: why. A newer plan replaced it, its chat closed, or its workspace was archived. Unset on other kinds and older rows. */
   expiredBy?: 'replaced' | 'closed' | 'archived'
   createdAt: number
