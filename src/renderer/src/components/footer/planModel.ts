@@ -13,6 +13,8 @@ export interface PlanWindow {
   /** Kernel has a number for it that hasn't reset since. Otherwise `value` is 0 and `note` says no usage was reported. */
   reported: boolean
   note: string
+  /** "resets Monday 3:00 AM", for the popover's one-line rows. Absent with no number or no reset time. */
+  reset?: string
 }
 
 /** Another signed-in account of the provider, offered under Switch. One waiting for Keychain access isn't offered, since a turn on it would wait too (KERNEL-618). `use` is its 5-hour use for Compact, or "Billed per token" for a key. */
@@ -21,8 +23,14 @@ export interface PlanOther {
   label: string
   plan?: string
   use?: string
-  /** Its 5-hour, Weekly and model windows, as the active account's. Empty for a key, which says "Billed per token" in `use`. */
-  windows: PlanWindow[]
+  /** Its reported 5-hour, weekly and Fable numbers for Detailed's one line: `5h 12% · wk 20% · Fable 31%`. Empty for a key, which says "Billed per token" in `use`. */
+  nums: PlanNum[]
+}
+
+export interface PlanNum {
+  short: '5h' | 'wk' | 'Fable'
+  /** 0 to 1. */
+  value: number
 }
 
 export interface PlanSection {
@@ -71,7 +79,13 @@ export function planWindows(usage: RateLimit[], account: AccountProfile, now: nu
     { id: 'seven_day', title: 'Weekly', limit: live(mine.find((l) => l.type === 'seven_day' && !l.model), now) },
     ...perModel.map((l) => ({ id: `${l.type}:${l.model ?? ''}`, title: `Weekly, ${l.model ? modelLabel(l.model) : WINDOW_MODEL[l.type] ?? 'one model'}`, limit: live(l, now) })).filter((r) => r.limit)
   ]
-  return rows.map((r) => ({ id: r.id, title: r.title, value: r.limit?.utilization ?? 0, reported: r.limit !== undefined, note: note(r.limit, now) }))
+  return rows.map((r) => ({ id: r.id, title: r.title, value: r.limit?.utilization ?? 0, reported: r.limit !== undefined, note: note(r.limit, now), ...(r.limit?.resetsAt ? { reset: `resets ${resetPhrase(r.limit.resetsAt, now).replace(/^at /, '').replace(' at ', ' ')}` } : {}) }))
+}
+
+/** What Detailed says of an account under Switch: its 5-hour, weekly and Fable numbers, those that are reported. */
+export function planNums(windows: PlanWindow[]): PlanNum[] {
+  const short = (w: PlanWindow): PlanNum['short'] | undefined => (w.id === 'five_hour' ? '5h' : w.id === 'seven_day' ? 'wk' : /fable/i.test(w.title) ? 'Fable' : undefined)
+  return windows.flatMap((w) => { const s = w.reported ? short(w) : undefined; return s ? [{ short: s, value: w.value }] : [] })
 }
 
 /** "5-hour 8% used" for a subscription account that has a 5-hour number, nothing otherwise. */
@@ -111,7 +125,7 @@ export function planSection(provider: Provider, accounts: AccountProfile[], usag
   const others = mine.filter((a) => a.id !== account.id && a.signedIn && !a.keychainWait).map((a): PlanOther => {
     const key = a.auth === 'apiKey'
     const use = key ? 'Billed per token' : fiveHourUse(usage, a, now)
-    return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}), windows: key ? [] : planWindows(usage, a, now) }
+    return { id: a.id, label: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(use ? { use } : {}), nums: key ? [] : planNums(planWindows(usage, a, now)) }
   })
   const { account: _, ...view } = accountView(account, usage, now)
   return { provider, name, account, ...view, others }

@@ -8,8 +8,8 @@ import { tightestWindow, tone } from './usageModel'
 import type { UsageBusy } from './useUsageActions'
 
 const pct = (v: number) => `${Math.round(v * 100)}%`
-/** The popover says "Fable 5.1 weekly" where Settings, Account and usage says "Weekly, Fable 5.1" (UsagePopover.png). */
-const windowTitle = (title: string) => title.replace(/^Weekly, (.+)$/, '$1 weekly')
+/** A row says "Fable 5.1" where Settings, Account and usage says "Weekly, Fable 5.1". */
+const windowTitle = (title: string) => title.replace(/^Weekly, (.+)$/, '$1')
 /** A key's plan is already its name, so "API Key · API key" would say it twice. */
 const accountLine = (s: PlanSection, compact: boolean) => {
   const label = s.account!.label
@@ -97,10 +97,11 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
             : (
               <div className="plan-rows">
                 {s.windows.map((w) => (
-                  <div key={w.id} className="plan-row">
-                    <span className="plan-title">{windowTitle(w.title)}</span>
+                  <div key={w.id} className="plan-win">
+                    <span className="plan-wl">{windowTitle(w.title)}</span>
                     <Meter label={`${s.name} ${w.title}`} value={w.value} />
-                    <span className="plan-note">{w.note}</span>
+                    {w.reported ? <span className="pm-mp" data-tone={tone(w.value)}>{pct(w.value)}</span> : <span className="plan-wr">Not reported</span>}
+                    {w.reset && <span className="plan-wr ellipsis">{w.reset}</span>}
                   </div>
                 ))}
               </div>
@@ -110,26 +111,16 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
               <span className="plan-switch-title" aria-hidden="true">Switch</span>
               {s.others.map((o) => {
                 const switching = busy === `switch:${s.provider}:${o.id}`
-                const use = compact || !o.windows.length ? o.use : undefined
                 return (
-                  <div key={o.id} className="plan-other-box">
-                    <button type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
-                      <span className="plan-other-name">{o.label}</span>
-                      <span className="plan-other-plan ellipsis">{o.plan}</span>
-                      {switching ? <span className="plan-other-use"><span className="spin" aria-hidden="true" />Switching</span> : use && <span className="plan-other-use">{use}</span>}
-                    </button>
-                    {!compact && o.windows.length > 0 && (
-                      <div className="plan-other-wins">
-                        {o.windows.map((w) => (
-                          <div key={w.id} className="plan-row">
-                            <span className="plan-title">{windowTitle(w.title)}</span>
-                            <Meter label={`${o.label} ${w.title}`} value={w.value} />
-                            <span className="plan-note">{w.note}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <button key={o.id} type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
+                    <span className="plan-other-name">{o.label}</span>
+                    <span className="plan-other-plan ellipsis">{o.plan}</span>
+                    {switching
+                      ? <span className="plan-other-use"><span className="spin" aria-hidden="true" />Switching</span>
+                      : !compact && o.nums.length > 0
+                        ? <span className="plan-other-use">{o.nums.map((n, i) => <span key={n.short} className="plan-num">{i > 0 && <span className="plan-sep" aria-hidden="true">·</span>}{n.short} <span className="pm-mp" data-tone={tone(n.value)}>{pct(n.value)}</span></span>)}</span>
+                        : o.use && <span className="plan-other-use">{o.use}</span>}
+                  </button>
                 )
               })}
             </div>
