@@ -167,6 +167,9 @@ export interface WorkspaceTabs {
 /** Whose bottom pane a flag is for: a chat with Rowan, or a teammate's workspace. */
 export type BottomKind = 'lead' | 'teammate'
 
+/** The footer's Usage popover: every account's windows, or one number per provider (KERNEL-674). */
+export type UsageView = 'detailed' | 'compact'
+
 export interface UiState {
   route: Route
   modal: Modal
@@ -191,6 +194,10 @@ export interface UiState {
   bottomRatio: number
   /** The bottom pane is folded to its tab bar. One flag for Rowan's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */
   bottomCollapsed: Record<BottomKind, boolean>
+  /** The Usage popover's view, kept across launches (KERNEL-674). */
+  usageView: UsageView
+  /** The providers whose rows are expanded in the Usage popover. Detailed starts with Claude Code open, Compact with none, and switching view resets it. */
+  usageOpen: Provider[]
   /** Why the app could not start. Set when `boot` fails, so Loading shows the error and Try again instead of "Starting Kernel" forever (KERNEL-217). */
   startError?: string
 }
