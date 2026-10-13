@@ -93,8 +93,13 @@ export class Account extends Feature {
    * provider's chats go on (KERNEL-406). Claude's chats wait at once while Kernel checks whether the login only waits on a
    * Keychain prompt, which Claude Code reads as signed out. Then it isn't marked signed out: its chats wait for the prompt,
    * until someone allows it or Kernel stops keeping it up, and after one nobody allowed they don't wait (KERNEL-618).
+   *
+   * `on` names the account the failing session started on. When the provider has moved to another account since, only that
+   * account reads as signed out: the one in use is not, so no chat waits and its sign-in is not checked
+   * (feat-make-claude-account-credentials-and).
    */
-  signedOut(provider: Provider = 'claude') {
+  signedOut(provider: Provider = 'claude', on?: { account: string | undefined }) {
+    if (on && !this.k.providers.isActive(provider, on.account)) return this.k.providers.credentialRefused(provider, on)
     if (provider === 'codex') return this.codexSignedOut()
     const check = this.k.providers.keychainWaiting()
     if (!check) return this.claudeSignedOut()

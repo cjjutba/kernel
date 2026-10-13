@@ -606,9 +606,11 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     const approvals = new Approvals(store)
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: ['pnpm build'], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
     let active = 'work'
+    const failures: { failure: string; account: string | undefined }[] = []
     const sessions = new Sessions({
       store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
-      accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), switchNote: (_p, id) => `Now on ${id}`
+      accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), switchNote: (_p, id) => `Now on ${id}`,
+      onFailure: (failure, _ws, _provider, account) => failures.push({ failure, account })
     })
     const start = async (text = 'Add a pdf_url column') => {
       await sessions.send('chat', [{ type: 'text', text }])
@@ -622,7 +624,7 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     const stopped = (call: { options: Options }) => !!call.options.abortController?.signal.aborted
     const pending = () => store.approvals({ pendingOnly: true })
     const notes = () => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
-    return { store, sessions, approvals, start, switchTo, finish, stopped, pending, notes }
+    return { store, sessions, approvals, start, switchTo, finish, stopped, pending, notes, failures }
   }
 
   it('finishes a turn waiting on a permission card on the account it started on, and the next turn runs on the new one', async () => {
@@ -686,6 +688,28 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     expect(next.options.resume).toBe('session-1')
     expect(t.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
     expect(t.notes()).toEqual(['Now on personal'])
+  })
+
+  it('blames a sign-out a turn hits after a switch on the account it started on, and runs nothing again by itself', async () => {
+    const t = await setup()
+    const call = await t.start()
+    t.switchTo('personal')
+    t.switchTo('side')
+    t.switchTo('work')
+    t.switchTo('personal')
+    const calls = sdk.calls.length
+    // The old process on Work is refused, mid-turn, after Claude moved on.
+    call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 'session-1' })
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r1', duration_ms: 5, is_error: true, errors: [] })
+    await flush()
+    expect(t.failures).toEqual([{ failure: 'auth', account: 'work' }])
+    expect(sdk.calls).toHaveLength(calls)
+    expect(t.stopped(call)).toBe(true)
+    // The next turn runs once, on the account in use now.
+    const next = await t.start('Run the tests')
+    expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
+    expect(sdk.calls).toHaveLength(calls + 1)
+    expect(t.store.items('chat').filter((i) => i.kind === 'user')).toHaveLength(2)
   })
 
   it('starts the next turn on the new account when the old process stayed for a background task', async () => {

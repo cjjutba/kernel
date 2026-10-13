@@ -17,7 +17,7 @@ import type { UsageRead } from '../services/sessions'
 import { planOf } from '../services/settings'
 import { checkApiKey } from '../services/providers/apiKeys'
 import { claudeExecutable, resolveBinary } from '../services/providers/binary'
-import { claudeStatus, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins, type ClaudeLogin } from '../services/providers/claudeHome'
+import { accountEnv, claudeStatus, credentialsDir, credentialsItem, isConnector, linkClaudeHome, loginEnv, loginMcp, logoutClaude, removeClaudeHome, shareMcpSignIns, syncClaudeConfig, syncClaudePlugins, type ClaudeLogin } from '../services/providers/claudeHome'
 import { loginClaude } from '../services/providers/claudeToken'
 import { claudeModels, probeClaudeMcp, probeClaudeUsage, sessionEnv } from '../services/providers/claude'
 import { codexPlan, loginCodexMcp, readCodexAccount, readCodexMcp, readCodexModels, withCodex } from '../services/providers/codex/client'
@@ -347,7 +347,7 @@ export class Providers extends Feature {
     }
     if (a.home) {
       if (!this.moved(a)) this.readyClaudeHome(a.home)
-      return { CLAUDE_CONFIG_DIR: a.home }
+      return accountEnv(a.home)
     }
     const token = this.tokens()[a.id]
     if (!token || !this.o.cipher) return {}
@@ -449,15 +449,28 @@ export class Providers extends Feature {
     if (o.push !== false) void this.pushAccounts()
   }
 
+  /** Whether sessions start on this account now. Undefined and `cli` both name the CLI's own login. */
+  isActive(provider: Provider, accountId: string | undefined): boolean {
+    return (accountId ?? CLI_ACCOUNT) === (this.active(provider) ?? CLI_ACCOUNT)
+  }
+
   /**
-   * A session on the provider's active added account was refused. An added login reads as signed out until a read of it
-   * says otherwise (KERNEL-567). A token or API key stays signed out until a new one replaces it, or the 10-second sign-in
-   * check would lift the hold at once.
+   * A session on one of the provider's accounts was refused: the one `on` names, undefined there for the CLI's own login,
+   * or the active one without `on`. An added login reads as signed out
+   * until a read of it says otherwise (KERNEL-567). A token or API key stays signed out until a new one replaces it, or the
+   * 10-second sign-in check would lift the hold at once. The CLI's own login is read by `Account` while it is in use. One
+   * the provider has left since reads as signed out here, as an added login does. A login waiting on a Keychain prompt is
+   * not signed out (KERNEL-618).
    */
-  credentialRefused(provider: Provider) {
-    const id = this.active(provider)
-    const a = id ? this.stored(provider, id) : undefined
-    if (!a) return
+  credentialRefused(provider: Provider, on?: { account: string | undefined }) {
+    const accountId = on ? on.account ?? CLI_ACCOUNT : this.active(provider)
+    const a = accountId && accountId !== CLI_ACCOUNT ? this.stored(provider, accountId) : undefined
+    if (!a) {
+      const cli = !accountId || accountId === CLI_ACCOUNT
+      if (cli && !this.isActive(provider, accountId)) void this.noteLogin(provider, undefined, { signedIn: false })
+      return
+    }
+    if (this.keychain.get(a.id)?.prompt) return
     if (a.home || (provider === 'codex' && a.auth !== 'apiKey')) { void this.noteLogin(provider, a.id, { signedIn: false }); return }
     if (this.refused.has(a.id)) return
     this.refused.add(a.id)
@@ -761,7 +774,7 @@ export class Providers extends Feature {
     const bin = this.mustBinary('claude')
     await mkdir(home, { recursive: true })
     const run = loginClaude(bin, {
-      env: sessionEnv(process.env, { CLAUDE_CONFIG_DIR: home }), cwd: this.home, timeoutMs: SIGN_IN_MS,
+      env: sessionEnv(process.env, accountEnv(home)), cwd: this.home, timeoutMs: SIGN_IN_MS,
       onLink: (url) => this.step({ provider: 'claude', step: 'browser', url }),
       onCode: () => this.step({ provider: 'claude', step: 'code' })
     })
@@ -1062,9 +1075,9 @@ export class Providers extends Feature {
     const keychain = this.o.keychain
     if (!keychain || this.stopped || (!o.force && Date.now() - this.sharedAt < SHARE_EVERY_MS)) return
     this.sharedAt = Date.now()
-    const logins = [{ id: CLI_ACCOUNT, item: credentialsItem(process.env), dir: this.claudeRoot() }]
+    const logins: { id: string; item: string; dir: string; store?: string }[] = [{ id: CLI_ACCOUNT, item: credentialsItem(process.env), dir: this.claudeRoot(), store: credentialsDir(process.env, this.home) }]
     // A login waiting on a Keychain prompt would hold the main process up to its read's timeout (KERNEL-618).
-    for (const a of this.load().claude.accounts) if (a.home && !this.moved(a) && !this.keychain.has(a.id)) logins.push({ id: a.id, item: credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), dir: a.home })
+    for (const a of this.load().claude.accounts) if (a.home && !this.moved(a) && !this.keychain.has(a.id)) logins.push({ id: a.id, item: credentialsItem(accountEnv(a.home)), dir: a.home })
     let got: Map<string, string[]>
     try { got = shareMcpSignIns(keychain, logins) } catch { return }
     let changed = false
@@ -1264,7 +1277,7 @@ export class Providers extends Feature {
     const had = this.keychain.get(a.id)
     if (had?.prompt) return 'prompt'
     if (had?.endedAt && Date.now() - had.endedAt < this.keychainMs.retry) return 'later'
-    const read = keychain.access(credentialsItem({ ...process.env, CLAUDE_CONFIG_DIR: a.home }), this.keychainMs.prompt).catch(() => 'denied' as const)
+    const read = keychain.access(credentialsItem(accountEnv(a.home)), this.keychainMs.prompt).catch(() => 'denied' as const)
     let timer: NodeJS.Timeout | undefined
     const first = await Promise.race([read, new Promise<'waiting'>((resolve) => { timer = setTimeout(() => resolve('waiting'), this.keychainMs.wait) })])
     clearTimeout(timer)
