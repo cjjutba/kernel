@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
-import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort, UnlistedTools } from '@shared/types'
+import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, UnlistedTools } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -55,6 +55,8 @@ export interface ClaudeStart {
   env: Record<string, string>
   /** The active account's folder or credential (`Providers.claudeEnv`), which `sessionEnv` adds after that (KERNEL-523, KERNEL-567). */
   credential?: Record<string, string>
+  /** Where the chat compacts, from its role in Settings, Models (feat-compact-window-per-role-with-plan). Without it the variable stays as the Mac has it. */
+  compact?: CompactWindow
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
@@ -147,7 +149,7 @@ export class ClaudeRunner implements Runner {
       promptSuggestions: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: this.abort,
-      env: sessionEnv(o.env, o.credential ?? {}, { agentTeams: host.settings().models?.agentTeams }),
+      env: sessionEnv(o.env, o.credential ?? {}, { agentTeams: host.settings().models?.agentTeams, compact: o.compact }),
       pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
       // No sandbox, Bypass permissions included, as in Claude Code's own `--dangerously-skip-permissions` (KERNEL-571).
       // Kernel's hooks and canUseTool still decide first.
@@ -859,7 +861,7 @@ const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 
  * the CLI's own login, an added login's folder as CLAUDE_CONFIG_DIR (KERNEL-567), a legacy `setup-token` token, or an API
  * key account's key. A folder or a key also drops any OAuth token from `base`, so the account picked is what pays.
  */
-export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, string>, o: { agentTeams?: boolean; compact?: CompactWindow } = {}): Record<string, string> {
   const env = { ...base } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
@@ -870,9 +872,16 @@ export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, stri
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
   // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
   Object.assign(env, NO_PROMPTS)
-  // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
+  // The chat's role in Settings, Models decides where it compacts, whatever the Mac exports: 200k, or the model's whole
+  // window, 1M on a 1M model. A helper call or a terminal passes no choice and keeps the Mac's (feat-compact-window-per-role-with-plan).
+  if (o.compact === '200k') env[COMPACT_WINDOW] = COMPACT_AT_200K
+  else if (o.compact === 'full') delete env[COMPACT_WINDOW]
   return env
 }
+
+/** Claude Code's variable for the window a session compacts against. It compacts 33k below it (KERNEL-226). */
+export const COMPACT_WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+const COMPACT_AT_200K = '200000'
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'

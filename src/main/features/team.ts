@@ -588,6 +588,17 @@ export class Team extends Feature {
     return 'engineers'
   }
 
+  /**
+   * The role Settings, Models reads for a chat in `ws` run by `agent` (feat-compact-window-per-role-with-plan). A review
+   * workspace is the reviewer's whichever agent runs it, as `Reviews.modelFor` has it. A chat with no agent is the Lead's in
+   * a Lead workspace and an engineer's anywhere else.
+   */
+  roleFor(ws: Workspace, agent: AgentDef | undefined): Role {
+    if (ws.reviewOf) return 'reviewer'
+    if (agent) return this.roleOf(agent)
+    return ws.lead ? 'lead' : 'engineers'
+  }
+
   /** The agent's role default from Settings, Models and effort (KERNEL-406). */
   roleModel(agent: AgentDef): RoleModel { return this.settings.models.roles[this.roleOf(agent)] }
 

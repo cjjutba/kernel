@@ -259,6 +259,9 @@ describe('Kernel env', () => {
       expect(sessionEnv(k.envFor(ws), {}, { agentTeams: false }).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBeUndefined()
       // A project's compact window never reaches a session. Only the Mac's does.
       expect(own.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
+      // Nor does it move the window the chat's role sets (feat-compact-window-per-role-with-plan).
+      expect(sessionEnv(k.envFor(ws), {}, { compact: '200k' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+      expect(sessionEnv(k.envFor(ws), {}, { compact: 'full' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
       expect(k.envFor(ws, { script: true })).toMatchObject({ ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_OAUTH_TOKEN: 'other-account' })
     } finally {
       for (const [k2, v] of [['ANTHROPIC_BASE_URL', mac.base], ['CLAUDE_CODE_USE_BEDROCK', mac.bedrock], ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', mac.teams]] as const) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef } from '@shared/types'
+import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { agentFromFile, updateAgent } from '../src/main/services/agents'
 import { tempRepo } from './helpers'
@@ -30,6 +30,23 @@ describe('which provider, model and effort an agent runs on (KERNEL-406)', () =>
     expect(k.team.pickFor(agent({ effort: 'xhigh' }))).toEqual({ provider: 'codex', model: 'gpt-6-astra', effort: 'xhigh' })
     expect(k.team.pickFor(agent({ role: 'QA' }))).toEqual({ provider: 'claude', model: 'claude-haiku-4-5-20251001', effort: 'low' })
     expect(k.team.pickFor(agent({ lead: true }))).toEqual({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high' })
+    await k.stop()
+  })
+
+  it("reads a review chat as the reviewer's, and a chat with no agent as the Lead's or an engineer's (feat-compact-window-per-role-with-plan)", async () => {
+    const { k, room } = await kernel()
+    const ws = (o: Partial<Workspace>): Workspace => ({ id: 'ws', roomId: room.id, name: 'w', branch: 'feat/w', baseRef: 'main', path: '/tmp/w', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...o })
+    expect(k.team.roleFor(ws({}), agent({}))).toBe('engineers')
+    expect(k.team.roleFor(ws({}), agent({ role: 'QA' }))).toBe('qa')
+    expect(k.team.roleFor(ws({ lead: true }), agent({ lead: true }))).toBe('lead')
+    // A review is the reviewer's whichever agent runs it, an engineer and one that pins a model included.
+    expect(k.team.roleFor(ws({ reviewOf: 'other' }), agent({}))).toBe('reviewer')
+    expect(k.team.roleFor(ws({ reviewOf: 'other' }), agent({ lead: true, model: 'opus' }))).toBe('reviewer')
+    expect(k.team.roleFor(ws({ reviewOf: 'other' }), undefined)).toBe('reviewer')
+    // A pinned model changes the model, not the role.
+    expect(k.team.roleFor(ws({}), agent({ role: 'QA', model: 'opus' }))).toBe('qa')
+    expect(k.team.roleFor(ws({ lead: true }), undefined)).toBe('lead')
+    expect(k.team.roleFor(ws({}), undefined)).toBe('engineers')
     await k.stop()
   })
 

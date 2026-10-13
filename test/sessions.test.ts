@@ -106,6 +106,16 @@ describe('session env', () => {
     expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
     expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
   })
+
+  it("sets a chat's compact window from its role, whatever the shell exports (feat-compact-window-per-role-with-plan)", () => {
+    const mac = { PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }
+    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
+    expect(sessionEnv(mac, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
+    expect(sessionEnv(mac, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
+    // A helper call or a terminal names no choice, and keeps what the Mac has.
+    expect(sessionEnv(mac, {}, { agentTeams: true }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('500000')
+  })
 })
 
 describe('usage', () => {
