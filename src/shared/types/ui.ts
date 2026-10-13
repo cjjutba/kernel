@@ -66,7 +66,7 @@ export type Modal =
   | { name: 'search' }
   | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
-  | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
+  | { name: 'newAgent'; roomId?: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
   /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
