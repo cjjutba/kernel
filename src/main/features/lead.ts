@@ -29,18 +29,6 @@ import { Feature } from './feature'
 /** The room's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 export class Lead extends Feature {
   /**
-   * A quick question to the room's Lead. It always gets a new Lead tab, so it never queues behind whatever another tab is
-   * doing or lands in a tab with a brief being typed (KERNEL-145, D-133). The tab joins the chat `threadId` while it is open,
-   * else the room's newest open chat, and starts a new chat, with setup, only when none is open (KERNEL-337, KERNEL-405).
-   * The answer arrives there like any turn; the popover reads it from there.
-   */
-  async askLead(roomId: string, text: string, threadId?: string): Promise<{ chatId: string }> {
-    const ws = (threadId ? leadChatWorkspaceOf(this.store.workspaces(roomId), threadId) : undefined) ?? this.newestChatWorkspace(roomId)
-    const chat = ws ? await this.tabIn(ws, { prompt: text, plan: false }) : await this.newLeadChat(roomId, { prompt: text, plan: false })
-    return { chatId: chat.id }
-  }
-
-  /**
    * "Let Rowan sort it": the Lead gets both workspaces and the file, and the overlap card is dismissed.
    * The overlap itself clears on its own once the agents stop touching the same file.
    */
@@ -92,7 +80,7 @@ export class Lead extends Feature {
     return this.store.workspaces(roomId).filter((w) => isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => born(a) - born(b) || a.createdAt - b.createdAt)
   }
 
-  /** The workspace of the room's newest open chat with Rowan, the one Ask Rowan and Kernel's own sends join (KERNEL-405). */
+  /** The workspace of the room's newest open chat with Rowan, the one Kernel's own sends join (KERNEL-405). */
   newestChatWorkspace(roomId: string): Workspace | undefined { return this.chatWorkspaces(roomId).at(-1) }
 
   /**
@@ -846,7 +834,6 @@ export class Lead extends Feature {
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
-      'lead.ask': async ({ roomId, text, threadId }) => this.askLead(roomId, text, threadId),
       // Opening the room shows its newest chat with Rowan, and none when no chat is open: it starts none (KERNEL-365, KERNEL-405).
       'lead.open': async ({ roomId }) => { await this.leadOf(roomId); return this.newestChatWorkspace(roomId) ?? null },
       'lead.start': async ({ roomId, ...o }) => this.newLeadChat(roomId, o),
