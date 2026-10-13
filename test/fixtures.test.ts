@@ -74,6 +74,7 @@ const noCanvas = [
   'SidebarTrustHeld', // a workspace held for script trust next to an idle one, and a folded chat hiding another (KERNEL-342)
   'SidebarUnread', // chat, workspace and collapsed room rows with a bold title for a reply not yet seen, and an unread tab (KERNEL-508)
   'LeadNoChats', // a room with no open chat: New chat with Rowan with no workspace yet, no chat row in the sidebar (KERNEL-366, KERNEL-405)
+  'LeadNoChatsBranch', // New chat with Rowan with New branch from main open: the remote's branches, the default checked and marked
   'GroupedChatArchive', // a chat row's hover Archive, like a workspace row's (KERNEL-405)
   'ConfirmArchiveChat', // archiving a chat that would stop an open PR and uncommitted changes, laid out like ConfirmArchive (KERNEL-405)
   'WorkspaceLeadSetup', // a chat with Rowan setting up, its first message in the queue (KERNEL-405)

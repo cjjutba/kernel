@@ -20,6 +20,15 @@
 /* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
 .cmp-model > svg:last-child { position: relative; top: -1px; margin: 0 -3px 0 -1.5px; color: var(--muted); }
 .cmp-model[aria-expanded='true'] { background: var(--card-line); }
+/* New branch from main, in New chat with Rowan: drawn like the mode button, its branch icon muted, and its name gives way first. */
+.cmp-branch-anchor { position: relative; display: inline-flex; min-width: 0; }
+.cmp-branch { min-width: 0; max-width: 280px; }
+.cmp-branch > svg:first-child { color: var(--muted); }
+.cmp-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compare-menu.cmp-branch-menu { top: calc(100% + 8px); right: auto; left: -8px; width: 360px; }
+.cmp-branch-head { padding: 4px 8px 6px; font-size: 12px; }
+.cmp-branch-tag { flex-shrink: 0; font-size: 12px; color: var(--muted); }
+.cmp-branch-hint { margin: 0; padding: 2px 8px 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
 /* The mode is a second button drawn like the model's (ComposerModes.png, KERNEL-573): its icon at 14px in muted before the name, then the same chevron. Plan keeps its blue, as the box does. */
 .cmp-mode > svg:first-child { color: var(--muted); }
 .cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }

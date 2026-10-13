@@ -379,8 +379,30 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
-/* The Lead's New chat state puts its composer between the subtitle and the suggestions (NewChat.png: 640px wide, 34px under the subtitle). */
+/* New chat with Rowan's composer, 640px wide. */
 .chat-empty-box { width: 100%; max-width: 640px; margin-top: 34px; text-align: left; }
+/* New chat with Rowan sits a third of the way down, so Up next has room under the composer: the space above is about half the space below. */
+.chat-empty.lead-new { justify-content: flex-start; gap: 0; padding: 0 24px; }
+.chat-empty.lead-new::before { content: ''; flex: 0.55 1 0; min-height: 32px; }
+.chat-empty.lead-new::after { content: ''; flex: 1 1 0; min-height: 24px; }
+.lead-new .chat-empty-box { margin-top: 24px; }
+/* What the room is doing, under the title. Its height holds when it is empty, so the composer never moves. */
+.lead-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; min-height: 20px; margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+.lead-status-sep { margin: 0 8px; color: var(--faint); }
+.lead-status-link { padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
+.lead-status-link:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
+/* Up next: the tracker's issues nobody has started, one hairline row each, with Plan at the end. */
+.up-next { width: 100%; max-width: 640px; margin-top: 36px; text-align: left; }
+.up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
+.up-next-head h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--muted); }
+.up-next-all { padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
+.up-next-all:hover { color: var(--ink-2); }
+/* The rows share one grid, so the keys line up at the width of the longest. A tracker with no priority drops that column. */
+.up-next ul { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: 10px; margin: 0; padding: 0; list-style: none; }
+.up-next ul.up-next-plain { grid-template-columns: auto minmax(0, 1fr) auto; }
+.up-next-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; height: 40px; padding: 0 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-2); }
+.up-next-key { padding-right: 8px; font-size: 11.5px; color: var(--muted); }
+.btn.up-next-plan { flex-shrink: 0; height: 24px; padding: 0 10px; font-size: 12px; }
 .chat-suggest { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 18px; }
 .chat-suggest button { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--ink-2); font-size: 12.5px; }
 .chat-suggest button svg { color: var(--muted); }
