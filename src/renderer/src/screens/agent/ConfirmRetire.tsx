@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { call, cleanError } from '../../api'
-import { actions, getState, useStore } from '../../store'
+import { cleanError } from '../../api'
+import { actions, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
+import { retireAgent } from './retireAgent'
 import { shortFile } from './model'
 import './agent.css'
 
@@ -22,9 +23,7 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
   const retire = () => run('retire', async () => {
     setError(null)
     try {
-      await call('agents.retire', { roomId, agentId })
-      actions.agents.set(roomId, (getState().agents[roomId] ?? []).filter((a) => a.id !== agentId))
-      actions.ui.closeModal()
+      await retireAgent(roomId, agentId)
     } catch (e) { setError(cleanError(e)) }
   })
   const leadName = lead?.name ?? 'the Lead'

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AgentDef, AgentScope } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
@@ -31,13 +31,6 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
   const [error, setError] = useState<string | null>(null)
   const [asking, setAsking] = useState(false)
   const skillNames = useSkillNames(roomId)
-  // Retiring happens in a dialog this page doesn't own, so the page notices the agent leaving the room's list and returns to it.
-  const wasThere = useRef(false)
-  useEffect(() => {
-    if (agent) wasThere.current = true
-    else if (wasThere.current && roomId && roomAgents) go({ name: 'settings', page: 'room', roomId, section: 'agents' })
-  }, [agent, roomId, roomAgents])
-
   const listRoute = roomId ? { name: 'settings' as const, page: 'room' as const, roomId, section: 'agents' as const } : { name: 'settings' as const, page: 'agents' as const }
   const back = (
     <button type="button" className="set-crumb" onClick={() => go(listRoute)}>
