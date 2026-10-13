@@ -1,5 +1,5 @@
 import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from 'react'
-import { Icon, type IconName } from '../icons'
+import { Icon, type IconName, type IconSize } from '../icons'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
 
@@ -25,7 +25,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
 }
 
 /** `label` is required: it is the accessible name and the tooltip. `busy` swaps the icon for a spinner and the label for `busyLabel`. */
-export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: number; busy?: boolean; busyLabel?: string }) {
+export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; busy?: boolean; busyLabel?: string }) {
   return (
     <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
       {busy ? <span className="spin" aria-hidden="true" /> : <Icon name={icon} size={size} />}
@@ -70,7 +70,7 @@ export function Select({ options, label, className, ...rest }: Omit<SelectHTMLAt
   return (
     <span className={['select', className].filter(Boolean).join(' ')}>
       <select aria-label={label} {...rest}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      <Icon name="chevron" size={11} stroke={1.9} />
+      <Icon name="chevron" size={12} />
     </span>
   )
 }

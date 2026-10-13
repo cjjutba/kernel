@@ -37,7 +37,7 @@ function PushRow({ label, row, words }: { label: string; row?: PushCheckRow; wor
       </div>
     ) : undefined}>
       {row
-        ? <span className="set-result" data-state={row.state}>{row.state === 'ok' && <Icon name="check" size={14} stroke={1.8} />}{row.state === 'fail' && <Icon name="xCircle" size={14} stroke={1.6} />}{words[row.state]}</span>
+        ? <span className="set-result" data-state={row.state}>{row.state === 'ok' && <Icon name="check" size={14} />}{row.state === 'fail' && <Icon name="xCircle" size={14} />}{words[row.state]}</span>
         : <span className="set-result"><Spinner label="Checking" />Checking</span>}
     </Row>
   )

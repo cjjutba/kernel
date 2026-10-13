@@ -17,12 +17,12 @@ export function Footer() {
   const paused = githubPause(github, Date.now())
   return (
     <footer className="footer ft">
-      {down && <button type="button" className="ft-hooks ft-down" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" size={13} />Hooks down<span className="ft-fix">Check hooks</span></button>}
+      {down && <button type="button" className="ft-hooks ft-down" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" size={14} />Hooks down<span className="ft-fix">Check hooks</span></button>}
       {/* Always mounted, so a screen reader hears the pause start. The item does nothing, so it is no button; Tab reaches its tooltip. */}
       <span role="status" className="ft-status">
         {paused && (
           <span className="ft-hooks ft-paused" tabIndex={0} data-tip={paused.why} aria-describedby="ft-github-why">
-            <Icon name="pause" size={13} />{paused.label}<span className="ft-sub">{paused.sub}</span>
+            <Icon name="pause" size={14} />{paused.label}<span className="ft-sub">{paused.sub}</span>
             <span id="ft-github-why" hidden>{paused.why}</span>
           </span>
         )}

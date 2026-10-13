@@ -94,7 +94,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
       )}
       {!locked && !!agent.warnings?.length && (
         <ul className="ap-warns" aria-label="What Kernel noticed in this file">
-          {agent.warnings.map((w) => <li key={w.kind}><Icon name="warning" size={13} />{warningText(w)}</li>)}
+          {agent.warnings.map((w) => <li key={w.kind}><Icon name="warning" size={14} />{warningText(w)}</li>)}
         </ul>
       )}
       <fieldset className="ap-fields" disabled={locked}>

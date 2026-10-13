@@ -243,7 +243,7 @@ function OpenPreview({ ws }: { ws: Workspace }) {
       <button type="button" className="open-main" disabled={!first} onClick={() => open(first)}>Open</button>
       <span ref={anchor} className="open-caret-anchor">
         <button type="button" className="open-caret" aria-label="More preview URLs" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('preview')}>
-          <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 6.5 8 10l3.5-3.5" /></svg>
+          <Icon name="chevron" size={12} />
         </button>
         {/* The menu waits for the room's settings, so it opens with its first row focused and not the one row it had before they loaded. */}
         {menuOpen && rs && <Menu label="Open preview" heading="Preview URLs" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: -10, top: 30, width: 300 }} items={items} />}
@@ -439,7 +439,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     ) : (
       <div className="script-empty">
-        <span className="script-empty-icon"><svg width="40" height="40" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M5 3.2c0-.6.7-1 1.2-.6l6.2 4.4c.4.3.4 1 0 1.3l-6.2 4.4c-.5.4-1.2 0-1.2-.6z" /></svg></span>
+        <span className="script-empty-icon"><Icon name="play" size={20} /></span>
         {!selectedRunning && <Button className="idle-run" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
         <span>Runs on port {ws.port}. Output shows here.</span>
       </div>

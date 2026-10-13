@@ -35,7 +35,7 @@ export function Chip({ kind, children, onRemove }: { kind: ChipKind; children: R
     <span className="chip" data-kind={kind}>
       {chipIcon[kind] ? <Icon name={chipIcon[kind]} size={12} /> : <span aria-hidden="true" className="muted">{chipGlyph[kind]}</span>}
       <span className="ellipsis" style={{ maxWidth: 220 }}>{children}</span>
-      {onRemove && <button type="button" className="chip-x" aria-label={`Remove ${typeof children === 'string' ? children : kind}`} onClick={onRemove}><Icon name="close" size={10} /></button>}
+      {onRemove && <button type="button" className="chip-x" aria-label={`Remove ${typeof children === 'string' ? children : kind}`} onClick={onRemove}><Icon name="close" size={12} /></button>}
     </span>
   )
 }
@@ -90,7 +90,7 @@ export function Skeleton({ width = '100%', height = 12 }: { width?: number | str
 export function EmptyState({ icon, title, children, action }: { icon?: IconName; title: string; children?: ReactNode; action?: ReactNode }) {
   return (
     <div className="empty">
-      {icon && <span className="empty-icon"><Icon name={icon} size={18} /></span>}
+      {icon && <span className="empty-icon"><Icon name={icon} size={20} /></span>}
       <div className="empty-title">{title}</div>
       {children && <div className="muted">{children}</div>}
       {action}

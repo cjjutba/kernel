@@ -38,12 +38,12 @@ function ModeList({ value, availability }: { value: PermissionMode; availability
             <button
               ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-disabled={off || undefined} aria-label={info.label}
               tabIndex={on ? 0 : -1} aria-describedby={`mode-${mode}`} onClick={pick} onKeyDown={(e) => onKey(e, i)}
-            >{on && <Icon name="check" size={10} stroke={2.2} />}</button>
+            >{on && <Icon name="check" size={12} />}</button>
             <div id={`mode-${mode}`} className="set-text" onClick={pick}>
               <span className="set-label">{info.label}</span>
               <span className="set-desc">{info.desc}</span>
               {info.note && <span className="set-desc">{info.note}</span>}
-              {lines.map((line) => <span key={line} className="set-avail"><Icon name="info" size={13} stroke={1.4} />{line}</span>)}
+              {lines.map((line) => <span key={line} className="set-avail"><Icon name="info" size={14} />{line}</span>)}
             </div>
           </div>
         )

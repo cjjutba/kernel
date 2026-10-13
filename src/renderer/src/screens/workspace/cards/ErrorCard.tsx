@@ -8,7 +8,7 @@ export function ErrorCard({ message, output, agentName, onTerminal, onFix, onRet
   const [busy, run] = useBusy<'terminal' | 'retry' | 'fix'>()
   return (
     <section aria-label="Turn failed" className="card tcard" role="alert">
-      <h3><span className="err"><Icon name="x" size={15} /></span>{message}</h3>
+      <h3><span className="err"><Icon name="x" size={16} /></span>{message}</h3>
       {output && <div className="code">{output}</div>}
       <div className="acts">
         <Button busy={busy === 'terminal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void run('terminal', onTerminal)}>Open terminal</Button>

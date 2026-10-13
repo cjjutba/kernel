@@ -19,7 +19,7 @@ function Item({ item }: { item: ListItem }) {
   const task = item.checked !== undefined
   return (
     <li data-task={task ? (item.checked ? 'done' : 'open') : undefined}>
-      {task && <span className="md-box" role="img" aria-label={item.checked ? 'Done' : 'Not done'}>{item.checked && <Icon name="check" size={10} stroke={2} />}</span>}
+      {task && <span className="md-box" role="img" aria-label={item.checked ? 'Done' : 'Not done'}>{item.checked && <Icon name="check" size={12} />}</span>}
       <span className="md-li">{inline(item.text)}</span>
       {item.children.length > 0 && <Blocks blocks={item.children} />}
     </li>

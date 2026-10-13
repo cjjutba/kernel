@@ -99,7 +99,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
           <div className="row cmp-foot">
             <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{lead?.role}</span></span>
             <span ref={modelAnchor} style={{ position: 'relative' }}>
-              <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
+              <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={12} /></Button>
               {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={pickEffort} />}
             </span>
             <BranchPicker roomId={roomId} lead={name} picked={picked} open={menu === 'branch'} disabled={busy} onToggle={() => setMenu(menu === 'branch' ? null : 'branch')} onClose={() => setMenu((m) => (m === 'branch' ? null : m))}

@@ -41,7 +41,7 @@ export function ReviewerPicker({ value, agents, disabled, labelledBy, onChange }
   const option = (c: Choice) => (
     <button key={c.value} type="button" role="option" aria-selected={c.value === value} tabIndex={-1} className="menu-item rs-opt" data-sub={c.sub ? '' : undefined} onClick={() => pick(c.value)}>
       <span className="rs-opt-text"><span>{c.label}</span>{c.sub && <span className="rs-opt-sub">{c.sub}</span>}</span>
-      {c.value === value && <Icon name="check" size={14} stroke={1.5} />}
+      {c.value === value && <Icon name="check" size={14} />}
     </button>
   )
 
@@ -52,7 +52,7 @@ export function ReviewerPicker({ value, agents, disabled, labelledBy, onChange }
         onClick={() => setOpen((o) => !o)} onKeyDown={(e) => { if (e.key === 'ArrowDown' && !open) { e.preventDefault(); setOpen(true) } }}
       >
         <span id={`${id}-value`}>{current.label}</span>
-        <Icon name="chevron" size={11} stroke={1.9} />
+        <Icon name="chevron" size={12} />
       </button>
       {open && (
         <div ref={list} id={id} role="listbox" aria-labelledby={labelledBy} className="menu rs-menu" onKeyDown={move}>

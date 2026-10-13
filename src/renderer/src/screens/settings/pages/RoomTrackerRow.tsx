@@ -50,7 +50,7 @@ export function RoomTrackerRow({ roomId, rs, detected }: { roomId: string; rs: R
     >
       <div className="set-menu" ref={anchor}>
         <Button className="set-menu-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={`Issue tracker: ${LABEL[current]}`} onClick={() => actions.ui.toggleMenu('roomTracker')}>
-          {LABEL[current]}<Icon name="chevron" size={10} stroke={1.9} />
+          {LABEL[current]}<Icon name="chevron" size={12} />
         </Button>
         {open && <Menu label="Issue tracker" anchorRef={anchor} onClose={close} style={{ right: -19, top: 36, width: 259 }} items={entries} />}
       </div>

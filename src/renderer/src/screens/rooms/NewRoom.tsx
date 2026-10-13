@@ -82,7 +82,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
               >
                 <Icon name={s.icon} size={16} />
                 <span className="col" style={{ gap: 2 }}><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
-                {d.source === s.id && <span className="nr-tick" aria-hidden="true"><Icon name="check" size={10} stroke={2} /></span>}
+                {d.source === s.id && <span className="nr-tick" aria-hidden="true"><Icon name="check" size={12} /></span>}
               </button>
             ))}
           </div>

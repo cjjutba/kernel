@@ -70,7 +70,7 @@ export function History() {
               <ul className="hs-list">
                 {list.map((w) => (
                   <li key={w.id} className="hs-row">
-                    <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={13} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
+                    <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-room">{roomName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{prLabel(w)}</span>

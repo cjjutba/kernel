@@ -65,7 +65,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         {room && <span className="qa-room">{room.name}</span>}
         <span className="grow" />
         {/* Not on QuickAsk.png: the chat without asking first (D-072). After a question, the footer has it. */}
-        {!asked && lead && <button type="button" className="qa-open" onClick={() => void openChat()}>Open chat<Icon name="right" size={12} stroke={1.6} /></button>}
+        {!asked && lead && <button type="button" className="qa-open" onClick={() => void openChat()}>Open chat<Icon name="right" size={12} /></button>}
       </div>
       {asked ? (
         <div className="qa-thread" aria-live="polite">

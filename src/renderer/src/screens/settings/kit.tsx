@@ -139,7 +139,7 @@ function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings 
       <div className="set-split">
         <Button variant="ghost" className="set-split-main" icon="doc" busy={busy === 'open'} busyLabel="Opening" onClick={() => void edit(first)}>Open {first}</Button>
         {more.length > 0 && (
-          <button type="button" className="set-split-caret" aria-label="More files" aria-haspopup="menu" aria-expanded={open} disabled={busy !== null} onClick={() => actions.ui.toggleMenu('settingsFiles')}><Icon name="chevron" size={10} stroke={1.9} /></button>
+          <button type="button" className="set-split-caret" aria-label="More files" aria-haspopup="menu" aria-expanded={open} disabled={busy !== null} onClick={() => actions.ui.toggleMenu('settingsFiles')}><Icon name="chevron" size={12} /></button>
         )}
       </div>
       {open && <Menu label="More files" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 36, width: 224 }} items={more.map((f) => ({ id: f, label: `Open ${f}`, icon: 'doc' as const, onSelect: () => void edit(f) }))} />}

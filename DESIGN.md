@@ -104,7 +104,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 - Radii (KERNEL-666), one scale in `tokens.css` and never a hard-coded px value: `--r-2xs` 4px checkboxes and highlights, `--r-xs` 6px 18 to 20px marks (kbd, tags, letter tiles, avatars, inline code), `--r-sm` 8px rows, list items, 22 to 26px controls and chips, `--r` 10px buttons, inputs, tabs and segmented controls (28 to 34px tall), `--r-md` 12px cards, panels, menus and code blocks, `--r-lg` 16px composer, `--r-xl` 18px modals, `--r-pill` 999px pills, toggles and meters. A control's radius is about 0.35 times its height. An inner radius is never larger than its outer one: the outer minus the padding, and `calc(<outer token> - 1px)` inside a 1px border
 - 1px borders, no drop shadows anywhere
-- Icons: Hugeicons free stroke-rounded set (`@hugeicons/core-free-icons`), 16px, stroke 2.1 on its 24px grid (the old 1.4 on a 16px grid), round caps
+- Icons: Hugeicons free stroke-rounded set (`@hugeicons/core-free-icons`), drawn by `Icon` on one stroke, 2.1 on its 24px grid (the old 1.4 on a 16px grid), round caps. `Icon` has no `stroke` prop, so a glyph is never bolder or lighter than its neighbours. Four sizes, typed as `IconSize`, so the compiler enforces the scale: 12 for carets, chips and inline meta, 14 for rows, buttons and menu items, 16 as the default (headers, the sidebar), 20 for empty states. `name` is an `IconName`, never a free string. `LargeMark` is the one escape, for the 34px and 120px marks on Welcome and Home, and nothing else uses it (icon-sizes-and-stroke)
 
 ## Patterns
 

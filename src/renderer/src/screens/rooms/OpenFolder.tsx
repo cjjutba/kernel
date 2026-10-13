@@ -58,7 +58,7 @@ export function OpenFolder() {
           {folders?.map((f) => (
             <div key={f.path} className="of-rowwrap">
               <button type="button" role="radio" aria-checked={picked === f.path} className="cr-repo of-row" onClick={() => setPicked(f.path)}>
-                <Icon name="folder" size={15} />
+                <Icon name="folder" size={16} />
                 <span className="col grow">
                   <span className="mono" style={{ fontSize: 12.5 }}>{tilde(f.path)}</span>
                   <span className="cr-sub" style={{ color: f.dirty ? 'var(--ink-2)' : undefined }}>{sub(f)}</span>

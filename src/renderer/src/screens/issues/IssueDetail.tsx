@@ -163,14 +163,14 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
                 <span className="muted">Room</span>
                 <RoomIcon room={room} className="is-letter" />
                 <span>{room.name}</span>
-                <Icon name="chevron" size={10} stroke={1.9} />
+                <Icon name="chevron" size={12} />
                 <select aria-label={`Room: ${room.name}`} value={room.id} onChange={(e) => setPicked({ issue: id, room: e.target.value })}>
                   {choices.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </span>
             )}
             <span className="grow" />
-            <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={11} stroke={1.8} /></a>
+            <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={12} /></a>
             <Button size="lg" disabled={!room} onClick={newChat}>New chat</Button>
             <Button size="lg" variant="primary" busy={busy === 'plan'} busyLabel="Sending" disabled={!room || busy !== null} onClick={() => void plan()}>Plan with {lead}</Button>
           </div>

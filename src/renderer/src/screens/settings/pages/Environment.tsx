@@ -196,7 +196,7 @@ function KernelVars({ startOpen }: { startOpen: boolean }) {
       <h2>Kernel's variables</h2>
       <div className="set-card">
         <Row label={label} desc="Set by Kernel in every chat, script and big terminal tab. You can't override them.">
-          <button type="button" className="set-disclose" aria-label={label} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}><Icon name="chevron" size={10} stroke={1.9} /></button>
+          <button type="button" className="set-disclose" aria-label={label} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}><Icon name="chevron" size={12} /></button>
         </Row>
         {open && (
           <div id={id}>

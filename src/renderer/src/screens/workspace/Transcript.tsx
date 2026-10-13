@@ -205,7 +205,7 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
       <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
         {(glyph || icon) && (
           <span className={`step-slot${glyph ? ' step-glyph' : ''}`} style={glyph ? undefined : { color: failed ? 'var(--del)' : 'var(--muted)' }}>
-            {glyph || <Icon name={icon!} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} />}
+            {glyph || <Icon name={icon!} size={16} />}
             {can && <span className="chev step-chev" data-open={open} aria-hidden="true"><Icon name="right" size={12} /></span>}
           </span>
         )}

@@ -232,7 +232,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
           )
           return multi ? (
             <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
-              <span className="qbox" aria-hidden="true">{on && <Icon name="check" size={11} />}</span>{body}
+              <span className="qbox" aria-hidden="true">{on && <Icon name="check" size={12} />}</span>{body}
             </button>
           ) : (
             <button key={o.label} type="button" role="radio" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
@@ -242,7 +242,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
         })}
         {p.other ? (
           <AnswerRow
-            mark={multi ? <button type="button" className="qbox" aria-label="Remove Something else" disabled={busy !== null} onClick={closeOther}><Icon name="check" size={11} /></button> : <span className="n mono">{rows + 1}</span>}
+            mark={multi ? <button type="button" className="qbox" aria-label="Remove Something else" disabled={busy !== null} onClick={closeOther}><Icon name="check" size={12} /></button> : <span className="n mono">{rows + 1}</span>}
             value={p.text} disabled={busy !== null} onChange={(text) => setPicks(change({ text }))} onEnter={primary} onEscape={closeOther}
           />
         ) : multi ? (
@@ -357,7 +357,7 @@ function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: b
   return (
     <section aria-label={title} className="card tcard pcard">
       <div className="pcard-head">
-        <span className="pcard-kicker"><Icon name="doc" size={13} />Plan</span>
+        <span className="pcard-kicker"><Icon name="doc" size={14} />Plan</span>
         {a.planFile && <span className="pcard-file mono ellipsis" title={a.planFile}>{a.planFile}</span>}
         <PlanTools a={a} agents={agents} />
       </div>

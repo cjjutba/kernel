@@ -39,7 +39,7 @@ export function BranchPicker({ roomId, lead, picked, open, disabled, onToggle, o
   return (
     <span ref={anchor} className="cmp-branch-anchor">
       <Button variant="ghost" className="cmp-model cmp-branch" disabled={disabled} aria-label={`New branch from ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>
-        <Icon name="branch" size={14} /><span className="cmp-branch-name">New branch from {name}</span><Icon name="chevron" size={11} stroke={1.9} />
+        <Icon name="branch" size={14} /><span className="cmp-branch-name">New branch from {name}</span><Icon name="chevron" size={12} />
       </Button>
       {open && <BranchMenu roomId={roomId} lead={lead} target={target} fallback={fallback} remote={remote} anchorRef={anchor} onClose={close} onPick={(ref) => { onPick(ref === fallback ? '' : ref); close(true) }} />}
     </span>
@@ -95,7 +95,7 @@ function BranchMenu({ roomId, lead, target, fallback, remote, anchorRef, onClose
       <div className="compare-list" role="group" aria-label="Branches">
         {shown.map((b) => (
           <button key={b} type="button" role="menuitemradio" aria-checked={b === target} className="compare-row" onClick={() => onPick(b)}>
-            <span className="compare-ck">{b === target && <Icon name="check" size={16} stroke={1.5} />}</span>
+            <span className="compare-ck">{b === target && <Icon name="check" size={16} />}</span>
             <span className="mono ellipsis grow">{b}</span>
             {b === fallback && <span className="cmp-branch-tag">Default</span>}
           </button>

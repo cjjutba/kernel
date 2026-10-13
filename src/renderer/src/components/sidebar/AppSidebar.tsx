@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import type { Chat, Room, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon, type IconName } from '../../icons'
@@ -76,7 +76,7 @@ const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): 
 /** The spinner at a row's right end, 10px from the counts. It leaves with them when Archive takes the end on hover (`archivable`). */
 const RunningMark = ({ archivable }: { archivable?: boolean }) => <span className={`spin${archivable ? ' ws-right' : ''}`} aria-hidden="true" />
 
-function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
+function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: IconName | ReactElement; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
   const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') })
   const arrive = useArriving(current && !leaving)
@@ -436,7 +436,7 @@ export function AppSidebar() {
     <>
       {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
       <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
-        <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
+        <IconButton className="nodrag" icon="sidebar" size={16} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
         <span className="grow" />
         <HistoryButtons />
       </div>

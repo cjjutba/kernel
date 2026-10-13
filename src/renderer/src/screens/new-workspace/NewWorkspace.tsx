@@ -177,7 +177,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
-              <RoomIcon room={current} className="nw-letter" fallback="?" />{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
+              <RoomIcon room={current} className="nw-letter" fallback="?" />{current?.name ?? 'Pick a room'}<Icon name="chevron" size={12} />
             </Button>
             {roomMenu && (
               <Menu label="Room" anchorRef={roomAnchor} onClose={() => setRoomMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
@@ -191,7 +191,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
           <span className="grow" />
           <span ref={fromAnchor}>
             <button type="button" className="nw-trigger" aria-label="Start from a PR, branch or issue" aria-haspopup="dialog" aria-expanded={menu === 'from'} onClick={() => toggle('from')}>
-              <Icon name="pr" size={14} />{label.button}<Icon name="chevron" size={11} stroke={1.9} />
+              <Icon name="pr" size={14} />{label.button}<Icon name="chevron" size={12} />
             </button>
           </span>
           {menu === 'from' && <FromPopover roomId={room} branches={branches} tab={tab} onTab={setTab} onPick={pick} anchorRef={fromAnchor} />}
@@ -200,7 +200,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
         <div className="nw-body">
           {source && (
             <div className="nw-chips">
-              <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={9} stroke={2} /></button></span>
+              <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={12} /></button></span>
             </div>
           )}
           <DraftInput d={d} id="nw-prompt" aria-label="What do you want to work on?" placeholder="What do you want to work on?" disabled={busy} onKeyDown={onEnter} />
@@ -208,7 +208,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
 
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
-            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
+            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={12} /></Button>
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { pickModel(m, x); actions.ui.closeMenu() }} onEffort={pickEffort} />}
           </span>
           <span className="grow">
@@ -218,7 +218,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
-          <Button variant="primary" className="nw-create" busy={busy} busyLabel={checking ? 'Checking' : 'Sending'} onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
+          <Button variant="primary" className="nw-create" busy={busy} busyLabel={checking ? 'Checking' : 'Sending'} onClick={create}>Create<Icon name="reply" size={12} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
@@ -235,13 +235,13 @@ function BranchMenu({ anchorRef, target, targets, onTarget, mode, onMode, hint }
       <label className="nw-row"><span>Target branch</span>
         <span className="nw-select mono" style={{ fontSize: 12.5 }}>
           <select aria-label="Target branch" value={target} disabled={mode === 'current'} onChange={(e) => onTarget(e.target.value)}>{targets.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <Icon name="chevrons" size={12} stroke={1.5} />
+          <Icon name="chevrons" size={12} />
         </span>
       </label>
       <label className="nw-row"><span>Runs in</span>
         <span className="nw-select">
           <select aria-label="Runs in" value={mode} onChange={(e) => onMode(e.target.value as WorkspaceMode)}>{MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
-          <Icon name="chevrons" size={12} stroke={1.5} />
+          <Icon name="chevrons" size={12} />
         </span>
       </label>
       <p className="nw-hint">{hint}</p>

@@ -26,7 +26,7 @@ function useRead<T>(read: () => Promise<T>, active = true): Read<T> {
 }
 
 /** The check column, 16px wide, so a row with no check lines up with the ones that have it. */
-const Check = ({ on }: { on: boolean }) => <span className="compare-ck">{on && <Icon name="check" size={16} stroke={1.5} />}</span>
+const Check = ({ on }: { on: boolean }) => <span className="compare-ck">{on && <Icon name="check" size={16} />}</span>
 
 function Row({ checked, onSelect, children }: { checked: boolean; onSelect: () => void; children: ReactNode }) {
   return (

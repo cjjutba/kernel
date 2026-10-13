@@ -27,9 +27,6 @@ export async function copyBranch(branch: string) {
   } catch { actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' }) }
 }
 
-/** The caret on Create PR (10px, as on the canvas). */
-const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 4 5 6.5 7.5 4" /></svg>
-
 /**
  * The pull request actions, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed, WorkspaceChangesRequested,
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
@@ -98,8 +95,8 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
 
   // Where the PR number was: its link to GitHub, or for a branch that merges here, a plain pill with nothing to open.
   const link = view.link && ws.prNumber && ws.prUrl
-    ? <a className="pr-link" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}><span className="pr-num">#{ws.prNumber}</span><span className="pr-ext"><Icon name="ext" size={11} stroke={1.8} /></span></a>
-    : view.pill ? <span className="pr-pill" role="img" aria-label={`Merges into ${view.pill}`}><Icon name="arrowRight" size={11} /><span className="mono">{view.pill}</span></span> : null
+    ? <a className="pr-link" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}><span className="pr-num">#{ws.prNumber}</span><span className="pr-ext"><Icon name="ext" size={12} /></span></a>
+    : view.pill ? <span className="pr-pill" role="img" aria-label={`Merges into ${view.pill}`}><Icon name="arrowRight" size={12} /><span className="mono">{view.pill}</span></span> : null
   // The state always shows, busy or not: only the busy button spins (KERNEL-274).
   const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
   const spinner = (label: string) => <Button busy>{label}</Button>
@@ -120,8 +117,8 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
 
   if (view.merged) return out(
     <>
-      <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} /><span className="pr-btn-label">Continue</span></Button>
-      <Button className="pr-solid" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
+      <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} /><span className="pr-btn-label">Continue</span></Button>
+      <Button className="pr-solid" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>
     </>
   )
 
@@ -132,7 +129,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const icon = b && actionIcon(b.label, b.action)
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} stroke={1.5} />}{b.label}</Button>
+      : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
   const buttons = !main && !view.archive ? null : (
     <>
@@ -140,7 +137,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
         <span className="pr-split">
           {main}
           <span ref={caret} className="pr-caret-anchor">
-            <button type="button" className="split-caret" aria-label="More pull request options" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('pr')}><Caret /></button>
+            <button type="button" className="split-caret" aria-label="More pull request options" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('pr')}><Icon name="chevron" size={12} /></button>
             {menuOpen && (
               <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
                 { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
@@ -153,7 +150,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
           </span>
         </span>
       ) : main}
-      {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
+      {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>}
     </>
   )
   return out(buttons, confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body))

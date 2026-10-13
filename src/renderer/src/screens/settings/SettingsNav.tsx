@@ -4,9 +4,10 @@ import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Icon } from '../../ui'
+import type { IconName } from '../../icons'
 import { ROOM_PAGES } from './roomPages'
 
-export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: string }[] }[] = [
+export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: IconName }[] }[] = [
   { title: 'Personal', items: [
     { page: 'general', label: 'General', icon: 'sliders' }, { page: 'appearance', label: 'Appearance', icon: 'half' },
     { page: 'notifications', label: 'Notifications', icon: 'bell' }, { page: 'account', label: 'Account and usage', icon: 'user' },
@@ -87,7 +88,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
             <p className="set-group">{g.title}</p>
             {g.items.map((i) => (
               <button key={i.page} type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
-                <Icon name={i.icon} size={15} />{i.label}
+                <Icon name={i.icon} size={16} />{i.label}
               </button>
             ))}
           </div>
@@ -110,7 +111,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
                     <div className="set-pages" data-room-end={open === r.id ? '' : undefined}>
                       {pages.map((p) => (
                         <button key={p.section} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>
-                          <Icon name={p.icon} size={15} />{p.label}
+                          <Icon name={p.icon} size={16} />{p.label}
                         </button>
                       ))}
                     </div>

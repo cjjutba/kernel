@@ -126,7 +126,7 @@ export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () 
     <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'workspace' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton> : body}
-      <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={10} /></button>
+      <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>
     </span>
   )
 }

@@ -1,4 +1,5 @@
-import { Button, Icon } from '../../ui'
+import { Button } from '../../ui'
+import { LargeMark } from '../../icons'
 import { go, useStore } from '../../store'
 import { short } from '../update/whatsNewView'
 import './onboarding.css'
@@ -9,7 +10,7 @@ export function Welcome() {
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
       <main className="ob-center">
-        <span className="ob-mark" aria-hidden="true"><Icon name="layers" size={34} stroke={1.2} /></span>
+        <span className="ob-mark" aria-hidden="true"><LargeMark size={34} stroke={1.2} /></span>
         <h1 className="ob-title">Welcome to Kernel</h1>
         <p className="ob-lede">Run your Claude Code agents as a team. They do the work, you stay the director.</p>
         <Button variant="primary" className="ob-cta" autoFocus onClick={() => go({ name: 'onboarding', step: 'checks' })}>Get started</Button>
