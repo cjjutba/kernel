@@ -48,11 +48,6 @@
 .set-card .select-trigger[aria-expanded='true'] { background: var(--surface-3); }
 .set-card .segmented button { height: 26px; font-weight: 500; }
 .set-card .btn { height: 30px; font-size: 13px; }
-.set-meter { display: flex; flex-direction: column; gap: 6px; }
-.set-meter-note { font-size: 12px; color: var(--muted); }
-/* Account and usage (KERNEL-665): one card per account under its provider, its windows in rows under the name. */
-.set-cards { display: flex; flex-direction: column; gap: 10px; }
-.set-acct-win .set-label { font-size: 13px; font-weight: 400; color: var(--ink-2); }
 .set-lines { width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--code-bg); color: var(--ink-2); font: 12.5px/1.7 var(--mono); outline: none; white-space: pre; overflow: hidden; user-select: text; }
 .set-lines:focus { border-color: var(--ink-3); }
 .set-inline { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid transparent; background: transparent; color: var(--ink-2); font: 12.5px var(--mono); text-align: right; outline: none; user-select: text; }
@@ -166,39 +161,6 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-radio[aria-checked='true'] { border-color: var(--ink); background: var(--ink); }
 .set-preset-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px/1.6 var(--mono); color: var(--ink-3); }
 
-/* Providers (KERNEL-406, feat-providers-redesign): underline tabs under the title, then Subscriptions and API keys. A row is the name and plan,
-   one line, the meters and their notes on the left; the Active pill or one action, then the menu, on the right. */
-.prov-tabs { margin-top: -14px; }
-.prov-row { position: relative; display: flex; align-items: flex-start; gap: 16px; padding: 14px 14px 14px 18px; border-top: 1px solid var(--panel-line); }
-.prov-row:first-child { border-top: 0; }
-.prov-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.prov-name { display: flex; align-items: baseline; gap: 8px; min-height: 20px; }
-.prov-plan { font-size: 12px; color: var(--muted); }
-.prov-meters { display: flex; flex-wrap: wrap; column-gap: 28px; row-gap: 6px; margin-top: 8px; }
-.prov-win { display: flex; align-items: center; gap: 10px; font-size: 12px; line-height: 16px; }
-.prov-win-name { width: 42px; color: var(--muted); }
-.prov-win .meter { width: 120px; }
-.prov-win-pct { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.prov-note { margin-top: 4px; font-size: 12px; color: var(--muted); }
-.prov-faint { color: var(--faint); }
-.prov-side { position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 6px; margin-top: -4px; }
-.set-card .prov-side .btn { height: 28px; padding: 0 12px; font-size: 12.5px; }
-.prov-more[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
-/* In use: the one green in Settings, on the tint the sidebar's status pills use (D-084). */
-.prov-active { height: 22px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--pr-ready-line); background: var(--tint-add); color: var(--add); font-size: 12px; font-weight: 500; }
-/* The name as its field: the same size and weight, its text where the name was, and a border that brightens on focus with no ring. */
-.prov-rename { width: 240px; height: 28px; margin: -4px 0 -4px -9px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink); font: 500 13.5px var(--font); outline: none; user-select: text; transition: border-color 0.12s; }
-.prov-rename:focus { border-color: var(--line-4); }
-.prov-rename:focus-visible { outline: none; }
-.prov-empty { display: flex; align-items: center; gap: 24px; padding: 16px 18px; }
-.prov-banner { display: flex; align-items: center; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 7px 8px 7px 14px; border-radius: var(--r-md); border: 1px solid var(--pr-fail-line); background: var(--tint-del); color: var(--ink-2); }
-.prov-banner > svg { flex-shrink: 0; color: var(--del-fill); }
-.prov-banner .btn { height: 28px; padding: 0 12px; font-size: 12.5px; }
-.prov-problem { flex-wrap: nowrap; align-items: flex-start; column-gap: 10px; }
-.prov-problem > svg { flex-shrink: 0; margin-top: 3px; color: var(--del-fill); }
-.prov-problem .set-label { color: var(--ink); }
-.prov-mono { font-family: var(--mono); color: var(--ink-3); }
-.prov-path { display: block; font: 12px var(--mono); color: var(--ink-3); overflow-wrap: anywhere; user-select: text; }
 /* Models and effort (KERNEL-406): a role's provider, model and effort stay on its line */
 .set-role { flex-wrap: nowrap; }
 .set-role .set-text { flex-basis: 120px; }
@@ -302,7 +264,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-fold > svg { color: var(--muted); transition: transform 0.15s; }
 .set-fold[aria-expanded='true'] > svg { transform: rotate(90deg); }
 .set-fold:focus-visible { outline-offset: 3px; border-radius: var(--r-xs); }
-.set-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: 6px; border: 1px solid var(--line-3); color: var(--muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+.set-badge { display: inline-flex; align-items: center; gap: 5px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: var(--r-xs); border: 1px solid var(--line-3); color: var(--muted); font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .set-section-note { font-size: 12.5px; color: var(--muted); }
 .set-section-act { margin-left: auto; display: inline-flex; gap: 6px; }
 .set-child { padding-left: 44px; border-top-color: transparent; }
@@ -330,13 +292,13 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-cell .mono, .set-cell.mono { font: 12.5px var(--mono); }
 .set-table-empty { padding: 14px 16px; border-top: 1px solid var(--panel-line); font-size: 13px; color: var(--muted); }
 .set-tags { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.set-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 3px 0 9px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); font-size: 12px; }
+.set-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 3px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); font-size: 12px; }
 .set-tag .mono { font-family: var(--mono); }
 .set-tag[data-locked] { padding-right: 9px; background: transparent; color: var(--ink-3); }
-.set-tag-x { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--faint); }
+.set-tag-x { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--r-2xs); background: transparent; color: var(--faint); }
 .set-tag-x:hover { color: var(--ink); background: var(--surface-3); }
-.set-tag-add { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: 7px; border: 1px dashed var(--line-4); background: transparent; color: var(--muted); font-size: 12.5px; }
+.set-tag-add { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--r-sm); border: 1px dashed var(--line-4); background: transparent; color: var(--muted); font-size: 12.5px; }
 .set-tag-add:hover:not(:disabled) { color: var(--ink-2); border-color: var(--ink-3); }
-.set-tag-input { height: 26px; width: 220px; max-width: 100%; box-sizing: border-box; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line-4); background: var(--input-bg); color: var(--ink); font-size: 12px; outline: none; user-select: text; }
+.set-tag-input { height: 26px; width: 220px; max-width: 100%; box-sizing: border-box; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-4); background: var(--input-bg); color: var(--ink); font-size: 12px; outline: none; user-select: text; }
 .set-tag-input.mono { font-family: var(--mono); }
 .set-sheet-text { min-height: 320px; max-height: 60vh; overflow: auto; white-space: pre-wrap; }
