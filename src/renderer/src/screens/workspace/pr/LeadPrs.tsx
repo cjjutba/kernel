@@ -29,7 +29,7 @@ export function LeadPrs({ roomId }: { roomId: string }) {
         {rows.length > 0 && <RefreshButton ids={rows.map((r) => r.ws.id)} label="Refresh pull requests" failTitle="Could not refresh pull requests" />}
       </PanelTools>
       {!rows.length && !stopped
-        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
+        ? <div className="panel-empty"><span className="ink2 fw-medium">Nothing to merge</span><span>PRs your agents open appear here.</span></div>
         : (
           <div className="panel-scroll" aria-label="Pull requests">
             {stopped && <p className="lp-notice" role="status">{stopped}</p>}

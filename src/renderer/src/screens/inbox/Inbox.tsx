@@ -78,8 +78,8 @@ function Detail({ item }: { item: InboxItem }) {
       <header className="ib-who">
         <Letter item={item} agents={agent} />
         <div className="col">
-          <span style={{ fontWeight: 500 }}>{agent?.name ?? 'Kernel'}</span>
-          <span className="muted" style={{ fontSize: 12 }}>{n.sub} · {age(n.createdAt)} ago</span>
+          <span className="fw-medium">{agent?.name ?? 'Kernel'}</span>
+          <span className="muted t-meta">{n.sub} · {age(n.createdAt)} ago</span>
         </div>
       </header>
       <h2>{heading}</h2>
@@ -174,7 +174,7 @@ export function Inbox() {
 
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header pr-12">
         <SidebarToggle />
         <Icon name="inbox" />
         <h1>Inbox</h1>
@@ -189,7 +189,7 @@ export function Inbox() {
           {list.map((i) => (
             <button key={i.n.id} id={`ib-${i.n.id}`} type="button" className="ib-row" aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
               <Letter item={i} agents={agentOf(i.n, agents)} />
-              <span className="col grow" style={{ minWidth: 0 }}>
+              <span className="col grow min-w-0">
                 <span className="ib-title ellipsis">{i.n.title}</span>
                 <span className="ib-sub ellipsis">{i.n.sub}</span>
               </span>

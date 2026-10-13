@@ -87,11 +87,11 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
         ))}
         {end ? (
           <div className="setup-card" role="status">
-            <div className="row" style={{ gap: 10 }}>
+            <div className="row gap-10">
               <span>{end.title}</span>
-              {end.sub && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{end.sub}</span>}
+              {end.sub && <span className="mono muted ellipsis t-chip">{end.sub}</span>}
             </div>
-            <div className="row" style={{ gap: 4 }}>
+            <div className="row gap-4">
               {ws.worktreePending ? (
                 <Button variant="primary" busy={busy === 'again'} busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button>
               ) : (
@@ -107,13 +107,13 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
           <div className="setup-line" role="status">
             <Spinner label="Creating worktree" />
             <span className="ink2">Creating worktree</span>
-            {ws.baseRef && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{ws.baseRef}</span>}
+            {ws.baseRef && <span className="mono muted ellipsis t-chip">{ws.baseRef}</span>}
           </div>
         ) : (
           <div className="setup-line" role="status">
             <Spinner label="Setting up" />
             <span className="ink2">Running setup</span>
-            {cmd && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{cmd}</span>}
+            {cmd && <span className="mono muted ellipsis t-chip">{cmd}</span>}
             <span className="grow" />
             {since && <span style={{ fontVariantNumeric: 'tabular-nums' }}>{since}</span>}
             {!panel && <button type="button" className="link-btn" onClick={showLog}>Show log</button>}

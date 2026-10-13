@@ -3,13 +3,13 @@
 /* One review: its switch and Required or Optional at the right, and a line under the text for where it runs, who runs it and on what. */
 .rv-ctl { flex-shrink: 0; display: flex; align-items: center; gap: 16px; }
 .rv-line { display: flex; align-items: center; gap: 8px; }
-.rv-line-label { flex-shrink: 0; width: 58px; font-size: 12.5px; color: var(--muted); }
-.rv-paths { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: 12.5px var(--mono); outline: none; text-overflow: ellipsis; user-select: text; }
-.rv-paths::placeholder { color: var(--ink-3); font: 13px var(--font); opacity: 1; }
+.rv-line-label { flex-shrink: 0; width: 58px; font-size: var(--fs-code); color: var(--muted); }
+.rv-paths { flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); outline: none; text-overflow: ellipsis; user-select: text; }
+.rv-paths::placeholder { color: var(--ink-3); font: var(--fs-ui) var(--font); opacity: 1; }
 .rv-paths:focus { border-color: var(--ink-3); }
 /* "Run by" sits inside the closed select, in the muted tone, as the canvas draws it. The label is in aria-label. */
 .set-card .select.rv-by { flex-shrink: 0; width: 128px; }
-.select.rv-by::before { content: 'Run by'; position: absolute; left: 10px; font-size: 13px; color: var(--muted); pointer-events: none; }
+.select.rv-by::before { content: 'Run by'; position: absolute; left: 10px; font-size: var(--fs-ui); color: var(--muted); pointer-events: none; }
 .set-card .select.rv-by select { width: 100%; padding-left: 56px; text-overflow: ellipsis; }
 .set-card .select.rv-model { flex-shrink: 0; min-width: 110px; }
 .set-card .select.rv-model select { width: 100%; }
@@ -18,10 +18,10 @@
 
 /* A whole number beside its unit */
 .rv-number { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
-.rv-number input { width: 64px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: 12.5px var(--mono); text-align: right; outline: none; user-select: text; }
+.rv-number input { width: 64px; height: 30px; box-sizing: border-box; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--panel); color: var(--ink-2); font: var(--fs-code) var(--mono); text-align: right; outline: none; user-select: text; }
 .rv-number input:focus { border-color: var(--ink-3); }
 .rv-number input:disabled { color: var(--muted); }
-.rv-unit { font-size: 12.5px; color: var(--muted); }
+.rv-unit { font-size: var(--fs-code); color: var(--muted); }
 
 /* Merge automatically: the rows under the switch are muted while it is off, and take full ink when it is on. */
 .rv-dim .set-label { color: var(--muted); }
@@ -29,5 +29,5 @@
 
 /* Fixed paths that can't be edited */
 .rv-pills { flex-basis: 100%; margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
-.rv-pills li { height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); font-size: 12.5px; color: var(--ink-2); }
-.rv-pills li[data-mono] { font: 11.5px var(--mono); }
+.rv-pills li { height: 26px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); font-size: var(--fs-code); color: var(--ink-2); }
+.rv-pills li[data-mono] { font: var(--fs-chip) var(--mono); }

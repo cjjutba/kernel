@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useState } from 'react'
 import type { NewRoomPrefill, RoomKind } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go } from '../../store'
-import { Button, Icon, Modal, Toggle, useBusy, type IconName } from '../../ui'
+import { Button, Icon, IconButton, Modal, Toggle, useBusy, type IconName } from '../../ui'
 import { patchDraft, resetDraft, STARTER_TEAM, tilde, useDraft } from './draft'
 import './rooms.css'
 
@@ -49,7 +49,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
       footer={
         <>
           <Toggle checked={d.autostart} onChange={(v) => patchDraft({ autostart: v })} label="Brief Rowan right away" />
-          <span className="grow" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+          <span className="grow t-ui ink2">
             {error ? <span role="alert" className="del">{error}</span> : 'Brief Rowan right away'}
           </span>
           <Button variant="ghost" size="lg" onClick={close}>Cancel</Button>
@@ -62,17 +62,17 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
         <Icon name="right" size={12} />
         <span>New room</span>
         <span className="grow" />
-        <button type="button" data-close className="icon-btn" aria-label="Close" onClick={close}><Icon name="close" /></button>
+        <IconButton data-close icon="close" label="Close" onClick={close} />
       </div>
       <div className="nr-body">
-        <div className="col" style={{ gap: 6 }}>
+        <div className="col gap-6">
           <label htmlFor={`${id}n`} className="sr-only">Room name</label>
           <input id={`${id}n`} className="nr-name" autoComplete="off" placeholder="Room name" value={d.name} onChange={(e) => patchDraft({ name: e.target.value, named: true })} />
           <label htmlFor={`${id}d`} className="sr-only">What this room builds</label>
           <input id={`${id}d`} className="nr-desc" autoComplete="off" placeholder="What should this room build?" value={d.desc} onChange={(e) => patchDraft({ desc: e.target.value })} />
         </div>
 
-        <div className="col" style={{ gap: 8 }}>
+        <div className="col gap-8">
           <p className="nr-label">Start from</p>
           <div role="radiogroup" aria-label="Start from" className="nr-sources">
             {SOURCES.map((s) => (
@@ -81,7 +81,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
                 onClick={() => patchDraft({ source: s.id, from: s.id === d.source ? d.from : '', baseBranch: '', initGit: false, cloneTo: undefined })}
               >
                 <Icon name={s.icon} size={16} />
-                <span className="col" style={{ gap: 2 }}><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
+                <span className="col gap-2"><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
                 {d.source === s.id && <span className="nr-tick" aria-hidden="true"><Icon name="check" size={12} /></span>}
               </button>
             ))}
@@ -89,7 +89,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
         </div>
 
         <div className="nr-fields">
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col gap-6">
             <span className="nr-label">{field.label}</span>
             <div className="nr-field">
               {d.source === 'scratch'
@@ -98,15 +98,15 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
               {field.action && <button type="button" className="nr-change" onClick={change}>{field.action}</button>}
             </div>
           </div>
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col gap-6">
             <label htmlFor={`${id}b`} className="nr-label">Base branch</label>
             <input id={`${id}b`} className="nr-field mono nr-branch" autoComplete="off" value={d.baseBranch} placeholder={d.source === 'folder' ? 'Current branch' : 'Detected after clone'} onChange={(e) => patchDraft({ baseBranch: e.target.value })} />
           </div>
         </div>
 
-        <div className="col" style={{ gap: 8 }}>
-          <p className="nr-label">Team <span style={{ fontWeight: 400 }}>from .claude/agents</span></p>
-          <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+        <div className="col gap-8">
+          <p className="nr-label">Team <span className="fw-regular">from .claude/agents</span></p>
+          <div className="row wrap gap-6">
             {STARTER_TEAM.map((m) => {
               const on = m.builtIn || d.team.includes(m.id)
               return (

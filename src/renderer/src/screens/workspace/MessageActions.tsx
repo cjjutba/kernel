@@ -36,9 +36,9 @@ export function MessageActions({ copy, items = [], more, meta, align = 'start', 
   const [busy, run] = useBusy()
   const acts = (
     <div className="msg-acts" data-align={align} data-busy={(more && more.items.some((a) => a.label === busy)) || undefined} role="group" aria-label={label}>
-      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />
+      <IconButton box="sm" icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />
       {items.map((a) => (
-        <IconButton key={a.label} icon={a.icon} size={14} label={a.label} busy={busy === a.label} busyLabel={a.busyLabel} disabled={busy !== null}
+        <IconButton box="sm" key={a.label} icon={a.icon} size={14} label={a.label} busy={busy === a.label} busyLabel={a.busyLabel} disabled={busy !== null}
           onClick={() => void run(a.label, async () => a.onClick())} />
       ))}
       {more && <MoreMenu more={more} busy={busy} run={run} />}
@@ -55,7 +55,7 @@ function MoreMenu({ more, busy, run }: { more: MoreActions; busy: string | null;
   const running = more.items.find((a) => a.label === busy)
   return (
     <span ref={anchor} className="msg-more">
-      <IconButton icon="more" size={14} label="More actions" aria-haspopup="menu" aria-expanded={open} busy={!!running} busyLabel={running?.busyLabel} disabled={busy !== null}
+      <IconButton box="sm" icon="more" size={14} label="More actions" aria-haspopup="menu" aria-expanded={open} busy={!!running} busyLabel={running?.busyLabel} disabled={busy !== null}
         onClick={() => actions.ui.toggleMenu(more.menu)} />
       {open && (
         <Menu label="More actions" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, bottom: 'calc(100% + 4px)', width: 232 }}

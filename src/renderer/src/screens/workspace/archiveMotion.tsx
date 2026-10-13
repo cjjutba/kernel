@@ -1,7 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { Route } from '@shared/types'
 import { getState, subscribe } from '../../store'
-import './archiveMotion.css'
 
 /**
  * The archive beat (KERNEL-580, DESIGN.md Motion). When the workspace on screen is archived, the main panel swaps to the destination at once
@@ -39,7 +38,7 @@ let reduced: MediaQueryList | undefined
 /** Reduced motion jumps: no fold, no fade. `matches` follows System Settings, so a change counts at the next archive. */
 export const reducedMotion = () => (reduced ??= window.matchMedia('(prefers-reduced-motion: reduce)')).matches
 
-/** A duration from archiveMotion.css, in ms, so the CSS and the code never carry two copies of the number. */
+/** A duration from tokens.css, in ms, so the CSS and the code never carry two copies of the number. */
 export function cssMs(name: string): number {
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return v.endsWith('ms') ? parseFloat(v) : v.endsWith('s') ? parseFloat(v) * 1000 : 0

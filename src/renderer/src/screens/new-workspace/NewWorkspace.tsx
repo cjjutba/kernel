@@ -5,7 +5,7 @@ import { providerOf } from '@shared/providers'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { leadOf } from '../../lead'
-import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
+import { Button, Icon, IconButton, Menu, Modal, Select, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
@@ -175,7 +175,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
     <Modal title="New chat" onClose={close} bare width={680} top={170}>
       <div className="nw" data-plan={plan || undefined} onKeyDown={onKey} {...d.drop}>
         <div className="nw-head">
-          <span ref={roomAnchor} style={{ position: 'relative' }}>
+          <span ref={roomAnchor} className="relative">
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
               <RoomIcon room={current} className="nw-letter" fallback="?" />{current?.name ?? 'Pick a room'}<Icon name="chevron" size={12} />
             </Button>
@@ -185,7 +185,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
             )}
           </span>
           <span ref={branchAnchor}>
-            <button type="button" className="icon-btn nw-tool" aria-label="Branch options" aria-haspopup="dialog" aria-expanded={menu === 'branch'} onClick={() => toggle('branch')}><Icon name="more" /></button>
+            <IconButton className="nw-tool" icon="more" label="Branch options" aria-haspopup="dialog" aria-expanded={menu === 'branch'} onClick={() => toggle('branch')} />
           </span>
           {menu === 'branch' && <BranchMenu anchorRef={branchAnchor} target={target} targets={targets} onTarget={setBaseRef} mode={mode} onMode={setMode} hint={modeInfo.hint} />}
           <span className="grow" />
@@ -207,14 +207,14 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
         </div>
 
         <div className="nw-foot">
-          <span ref={modelAnchor} style={{ position: 'relative' }}>
-            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={12} /></Button>
+          <span ref={modelAnchor} className="relative">
+            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted fw-regular">{effortLabel}</span><Icon name="chevron" size={12} /></Button>
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { pickModel(m, x); actions.ui.closeMenu() }} onEffort={pickEffort} />}
           </span>
           <span className="grow">
             {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}
           </span>
-          <span ref={plusAnchor} className="nw-plus" style={{ position: 'relative' }}>
+          <span ref={plusAnchor} className="nw-plus relative">
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
@@ -233,16 +233,10 @@ function BranchMenu({ anchorRef, target, targets, onTarget, mode, onMode, hint }
   return (
     <div ref={ref} role="dialog" aria-label="Branch options" className="nw-pop nw-branch">
       <label className="nw-row"><span>Target branch</span>
-        <span className="nw-select mono" style={{ fontSize: 12.5 }}>
-          <select aria-label="Target branch" value={target} disabled={mode === 'current'} onChange={(e) => onTarget(e.target.value)}>{targets.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-          <Icon name="chevrons" size={12} />
-        </span>
+        <Select variant="inline" className="mono nw-target" label="Target branch" value={target} disabled={mode === 'current'} onChange={(e) => onTarget(e.target.value)} options={targets.map((t) => ({ value: t, label: t }))} />
       </label>
       <label className="nw-row"><span>Runs in</span>
-        <span className="nw-select">
-          <select aria-label="Runs in" value={mode} onChange={(e) => onMode(e.target.value as WorkspaceMode)}>{MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
-          <Icon name="chevrons" size={12} />
-        </span>
+        <Select variant="inline" label="Runs in" value={mode} onChange={(e) => onMode(e.target.value as WorkspaceMode)} options={MODES.map((m) => ({ value: m.id, label: m.label }))} />
       </label>
       <p className="nw-hint">{hint}</p>
     </div>

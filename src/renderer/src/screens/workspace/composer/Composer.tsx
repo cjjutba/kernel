@@ -292,7 +292,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
             </div>
           )}
           {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
-            <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
+            <div className="cmp-ac" role="status"><p className="cmp-ac-none">No files match “{mention.query}”.</p></div>
           )}
           <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} data-blocked={blocked || undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
             {plan && <PlanBar a={plan} />}
@@ -300,11 +300,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               onInput={() => setDismissed('')} onKeyDown={onKey} />
             <div className="row cmp-foot">
               <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
-              <span ref={modelAnchor} style={{ position: 'relative' }}>
-                <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={12} /></Button>
+              <span ref={modelAnchor} className="relative">
+                <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted fw-regular">{effort}</span><Icon name="chevron" size={12} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
-              <span ref={modeAnchor} style={{ position: 'relative' }}>
+              <span ref={modeAnchor} className="relative">
                 <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
                   <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
                 </Button>
@@ -312,7 +312,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-              <span ref={plusAnchor} style={{ position: 'relative' }}>
+              <span ref={plusAnchor} className="relative">
                 <PlusMenu panel={menu === 'model' || menu === 'context' || menu === 'mode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
                   onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
               </span>

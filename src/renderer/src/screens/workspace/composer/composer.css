@@ -7,13 +7,13 @@
 .cmp > * { position: relative; }
 .cmp:focus-within { border-color: var(--line-4); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
-.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: var(--fs-chat); line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline: none; }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
 .cmp-foot { gap: 12px; }
 /* The agent is its name and role in a pill, with no letter tile and no divider after it. The role stays muted: faint is about 3.4:1 on the box. */
-.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-pill); font-size: var(--fs-code); color: var(--ink-2); white-space: nowrap; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
 /* Its own padding is its hover fill, so it pulls left to sit 12px after the pill, as the canvas draws. */
 .cmp-model { margin-left: -8px; padding: 0 8px; color: var(--ink-2); gap: 6px; }
@@ -26,14 +26,14 @@
 .cmp-branch > svg:first-child { color: var(--muted); }
 .cmp-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compare-menu.cmp-branch-menu { top: calc(100% + 8px); right: auto; left: -8px; width: 360px; }
-.cmp-branch-head { padding: 4px 8px 6px; font-size: 12px; }
-.cmp-branch-tag { flex-shrink: 0; font-size: 12px; color: var(--muted); }
-.cmp-branch-hint { margin: 0; padding: 2px 8px 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.cmp-branch-head { padding: 4px 8px 6px; font-size: var(--fs-meta); }
+.cmp-branch-tag { flex-shrink: 0; font-size: var(--fs-meta); color: var(--muted); }
+.cmp-branch-hint { margin: 0; padding: 2px 8px 4px; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
 /* The mode is a second button drawn like the model's (ComposerModes.png, KERNEL-573): its icon at 14px in muted before the name, then the same chevron. Plan keeps its blue, as the box does. */
 .cmp-mode > svg:first-child { color: var(--muted); }
 .cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }
 /* Send and stop are circles. Send turns ink when there is something to send; its color changes fast so it never looks unsure. */
-.icon-btn.send { width: 28px; height: 28px; border-radius: 50%; transition: background-color 160ms ease-out, color 160ms ease-out; }
+.icon-btn.send { width: 28px; height: 28px; border-radius: 50%; transition: background-color var(--dur-med) ease-out, color var(--dur-med) ease-out; }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
@@ -45,52 +45,53 @@
 .cmp-box { position: relative; }
 /* A chip sits in the line like a word (draft.tsx). Its margin gives a line with a chip the 6px between rows the canvas draws. */
 .cmp-input .cmp-chip { margin: 3px 2px; white-space: nowrap; cursor: default; }
-.cmp-chip { gap: 6px; height: 24px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
+.cmp-chip { gap: 6px; height: 24px; padding: 0 5px 0 8px; font: var(--fs-chip) var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
 .chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
 /* An image chip's hover preview and its modal (Chip.tsx) */
-.img-preview { position: fixed; z-index: 65; display: flex; padding: 4px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
+.img-preview { position: fixed; z-index: var(--z-preview); display: flex; padding: 4px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
 .img-preview img { display: block; max-width: 470px; max-height: 310px; border-radius: var(--r-sm); }
-.txt-preview { position: fixed; z-index: 65; width: 480px; max-height: 320px; overflow: hidden; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none;
+.txt-preview { position: fixed; z-index: var(--z-preview); width: 480px; max-height: 320px; overflow: hidden; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none;
   -webkit-mask-image: linear-gradient(to bottom, currentColor calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, currentColor calc(100% - 36px), transparent); }
-.txt-preview pre { margin: 0; font: 12px/18px var(--mono); color: var(--ink-2); white-space: pre; overflow: hidden; }
-.txt-modal { margin: 0 16px 16px; padding: 12px; max-height: calc(100vh - 260px); overflow: auto; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-3); font-size: 12.5px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.txt-preview pre { margin: 0; font: var(--fs-meta)/18px var(--mono); color: var(--ink-2); white-space: pre; overflow: hidden; }
+.txt-modal { margin: 0 16px 16px; padding: 12px; max-height: calc(100vh - 260px); overflow: auto; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-3); font-size: var(--fs-code); line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
 .img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 
-.cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }
+.cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: var(--z-popover); width: 420px; max-width: 100%; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.cmp-ac p { margin: 2px 8px 6px; font-size: var(--fs-meta); color: var(--muted); }
 .cmp-ac-row + p { margin-top: 10px; }
-.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.cmp-ac p.cmp-ac-none { margin: 6px 8px; }
+.cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
-.cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
+.cmp-ac-row .mono { font-size: var(--fs-code); flex-shrink: 0; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
 /* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { width: 360px; padding: 0; background: var(--surface-2); }
 .pick-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--card-line); color: var(--muted); cursor: text; }
-.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 13.5px; }
+.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: var(--fs-row); }
 .pick-search input::placeholder { color: var(--muted); }
 .pick-body { display: flex; flex-direction: column; padding: 6px; }
 .pick-list { display: flex; flex-direction: column; gap: 1px; }
-.pick-row { height: 36px; padding: 0 10px; gap: 9px; font-size: 13.5px; }
+.pick-row { height: 36px; padding: 0 10px; gap: 9px; font-size: var(--fs-row); }
 .pick-row:hover { background: transparent; }
 .pick-row[data-active='true'] { background: var(--hover); }
 .pick-glyph { display: inline-flex; }
-.pick-name { flex-shrink: 0; font-weight: 500; }
-.pick-effort { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
-.pick-kbd { font: 11.5px var(--mono); letter-spacing: 0.02em; color: var(--muted); }
+.pick-name { flex-shrink: 0; font-weight: var(--fw-medium); }
+.pick-effort { flex-shrink: 0; font-size: var(--fs-code); color: var(--muted); }
+.pick-kbd { font: var(--fs-chip) var(--mono); letter-spacing: 0.02em; color: var(--muted); }
 .pick-check { display: inline-flex; }
 .pick-row .pick-check svg { color: var(--ink); }
-.pick-empty { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
+.pick-empty { margin: 8px 10px; font-size: var(--fs-code); color: var(--muted); }
 .pick-effort-row { position: relative; }
 .pick-effort-row > .pick-row { width: 100%; }
 .pick-effort-row > .pick-row > svg { color: var(--muted); }
 .pick-flyout { left: calc(100% + 10px); bottom: -6px; width: 180px; }
 .pick-flyout .pick-row svg { color: var(--ink); }
-.pick-foot { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 6px; border-top: 1px solid var(--card-line); font-size: 12.5px; color: var(--muted); }
+.pick-foot { display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 8px 0 6px; border-top: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--muted); }
 .pick-link { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font: inherit; }
 .pick-link svg { color: var(--muted); }
 .pick-link:hover { background: var(--hover); color: var(--ink); }
@@ -98,50 +99,49 @@
 
 /* Permission mode (ComposerModeMenu.png, KERNEL-573): the model picker's width, two lines a row, and the picked row keeps the menu's selected fill. */
 .mode-pop { width: 360px; background: var(--surface-2); }
-.mode-head { margin: 0; padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
+.mode-head { margin: 0; padding: 6px 8px 4px; font-size: var(--fs-meta); color: var(--muted); }
 .mode-row { align-items: flex-start; height: auto; padding: 7px 8px; }
 .mode-row > svg { margin-top: 1px; }
 .mode-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.mode-t { font-size: 13px; font-weight: 500; color: var(--ink); }
-.mode-d { font-size: 12px; line-height: 1.4; color: var(--muted); }
+.mode-t { font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.mode-d { font-size: var(--fs-meta); line-height: var(--lh-snug); color: var(--muted); }
 .mode-d[data-why] { color: var(--ink-3); }
 .mode-row[data-off] .mode-t { color: var(--muted); }
 .mode-row[data-off] > svg:first-child { opacity: 0.55; }
 .mode-row[data-off]:not([aria-checked='true']):hover { background: transparent; }
 .mode-pop .menu-sep { margin: 6px 4px; }
-.mode-foot { display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
-.mode-foot .kbd { height: 20px; padding: 0 6px; font-family: inherit; font-size: 11.5px; color: var(--ink-2); }
+.mode-foot { display: flex; align-items: center; gap: 8px; padding: 6px 8px 4px; font-size: var(--fs-meta); color: var(--muted); }
+.mode-foot .kbd { height: 20px; padding: 0 6px; font-family: inherit; font-size: var(--fs-chip); color: var(--ink-2); }
 
 /* + > Link issue and Link workspaces */
 .link-pop { width: 420px; max-width: calc(100vw - 48px); padding: 0; background: var(--surface-2); }
 .link-tabs { padding: 6px 8px; border-bottom: 1px solid var(--card-line); }
 .link-tabs .tab { height: 32px; }
 .link-rows { display: flex; flex-direction: column; gap: 1px; max-height: 288px; overflow-y: auto; padding: 6px; }
-.link-row { height: 36px; padding: 0 10px; gap: 10px; font-size: 13px; }
+.link-row { height: 36px; padding: 0 10px; gap: 10px; font-size: var(--fs-ui); }
 .link-row:hover { background: transparent; }
 .link-row[data-active='true'] { background: var(--hover); }
-.link-id { flex-shrink: 0; min-width: 64px; font-size: 12px; color: var(--muted); }
+.link-id { flex-shrink: 0; min-width: 64px; font-size: var(--fs-meta); color: var(--muted); }
 .link-name { flex-shrink: 0; max-width: 55%; color: var(--ink-2); }
-.link-sub { font-size: 11.5px; color: var(--muted); text-align: right; }
+.link-sub { font-size: var(--fs-chip); color: var(--muted); text-align: right; }
 .link-box { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 15px; height: 15px; border: 1px solid var(--line-4); border-radius: var(--r-2xs); color: var(--on-ink); }
 .link-box[data-on] { border-color: var(--ink); background: var(--ink); }
-.link-note { margin: 8px 10px; font-size: 12.5px; color: var(--muted); }
+.link-note { margin: 8px 10px; font-size: var(--fs-code); color: var(--muted); }
 .link-none { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding-bottom: 6px; }
 .link-none .link-note { margin-bottom: 4px; }
 .link-none .btn { margin-left: 10px; }
-.link-foot { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 8px 0 14px; border-top: 1px solid var(--card-line); font-size: 12px; color: var(--muted); }
+.link-foot { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 8px 0 14px; border-top: 1px solid var(--card-line); font-size: var(--fs-meta); color: var(--muted); }
 
 .queue { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-sm); border: 1px dashed var(--line-4); font-size: 13px; }
+.queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: var(--r-sm); border: 1px dashed var(--line-4); font-size: var(--fs-ui); }
 .queue-text { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
 .queue-text:hover { color: var(--ink); }
-.queue-now { height: 24px; padding: 0 8px; font-size: 12px; }
+.queue-now { height: 24px; padding: 0 8px; font-size: var(--fs-meta); }
 .queue-x { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--muted); }
 .queue-x:hover { color: var(--ink); }
 
-.hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: 13px; }
+.hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: var(--fs-ui); }
 .hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
-.hunk-row input { margin-top: 3px; accent-color: var(--ink); }
 
 /* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). The mode keeps its icon and loses its name last. */
 @container chat (max-width: 520px) {
@@ -154,38 +154,37 @@
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
    top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
    glow and the caret; its border is the modal shell's.
-   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over --plan-dur each way (KERNEL-418, KERNEL-565), and
-   breathes every 8s while the box waits for input. Focus settles it. The strip opens over --plan-dur and one light crosses it.
-   Every plan mode state change reads --plan-dur (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
+   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over --dur-plan each way (KERNEL-418, KERNEL-565), and
+   breathes every 8s while the box waits for input. Focus settles it. The strip opens over --dur-plan and one light crosses it.
+   Every plan mode state change reads --dur-plan (KERNEL-650); the 8s breathing loop is ambient, so it keeps its own length.
    Normal mode focus is not a plan mode change: the real border goes --line-2 to --line-4 in 160ms ease-out like the rest of the app.
-   The blue border is a ring on ::after that fades its opacity and color over --plan-dur, so turning plan mode off fades the blue
-   out over --plan-dur even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
+   The blue border is a ring on ::after that fades its opacity and color over --dur-plan, so turning plan mode off fades the blue
+   out over --dur-plan even though the border underneath only ever moves at 160ms (CSS can't tell a plan-off from a blur, both land
    on the same style).
    Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
-.cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); --plan-dur: 0.5s; }
-.cmp { transition: border-color 160ms ease-out; }
+.cmp { transition: border-color var(--dur-med) ease-out; }
 .nw { position: relative; }
 .nw > * { position: relative; }
 .cmp::before, .nw::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
   opacity: 0; transform: scaleY(0.85); transform-origin: 50% 100%;
-  transition: opacity var(--plan-dur) var(--ease-plan), transform var(--plan-dur) var(--ease-plan);
+  transition: opacity var(--dur-plan) var(--ease-plan), transform var(--dur-plan) var(--ease-plan);
 }
 /* The modal shell rounds its corners and lets the pickers overflow, so the glow rounds its own bottom corners. */
 .nw::before { border-radius: 0 0 calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px); }
 .cmp[data-plan='true']::before, .nw[data-plan]::before {
   opacity: 0.9; transform: none;
-  transition: opacity var(--plan-dur) var(--ease-plan), transform var(--plan-dur) var(--ease-plan);
-  animation: plan-breathe 8s ease-in-out var(--plan-dur) infinite;
+  transition: opacity var(--dur-plan) var(--ease-plan), transform var(--dur-plan) var(--ease-plan);
+  animation: plan-breathe var(--dur-breathe) ease-in-out var(--dur-plan) infinite;
 }
-.cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity var(--plan-dur) var(--ease-plan); }
+.cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity var(--dur-plan) var(--ease-plan); }
 .cmp[data-blocked]::before { animation: none; }
 @keyframes plan-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.62; } }
 .cmp::after {
   content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
   border: 1px solid color-mix(in srgb, var(--plan) 45%, var(--input-bg)); opacity: 0;
-  transition: opacity var(--plan-dur) var(--ease-plan), border-color var(--plan-dur) var(--ease-plan);
+  transition: opacity var(--dur-plan) var(--ease-plan), border-color var(--dur-plan) var(--ease-plan);
 }
 .cmp[data-plan='true']::after { opacity: 1; }
 .cmp[data-plan='true']:focus-within::after { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); }
@@ -193,10 +192,10 @@
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .cmp:has(> .cmp-planbar) { padding-top: 0; }
-/* It mounts when a plan arrives: it opens over --plan-dur, then one soft light crosses it over 1.6s, behind its buttons. Done by 2.1s. The sweep is an accent, so it keeps its own length like the breathing loop. */
-.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
+/* It mounts when a plan arrives: it opens over --dur-plan, then one soft light crosses it over 1.6s, behind its buttons. Done by 2.1s. The sweep is an accent, so it keeps its own length like the breathing loop. */
+.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--dur-plan) var(--ease-plan) both; }
 .cmp-planbar > * { position: relative; }
-.cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--plan) 2%, transparent) 25%, color-mix(in srgb, var(--plan) 7%, transparent) 38%, color-mix(in srgb, var(--plan) 12%, transparent) 50%, color-mix(in srgb, var(--plan) 7%, transparent) 62%, color-mix(in srgb, var(--plan) 2%, transparent) 75%, transparent 90%); transform: translateX(-100%); opacity: 0; animation: planbar-sweep 1.6s cubic-bezier(0.4, 0.1, 0.6, 0.9) var(--plan-dur) both; }
+.cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--plan) 2%, transparent) 25%, color-mix(in srgb, var(--plan) 7%, transparent) 38%, color-mix(in srgb, var(--plan) 12%, transparent) 50%, color-mix(in srgb, var(--plan) 7%, transparent) 62%, color-mix(in srgb, var(--plan) 2%, transparent) 75%, transparent 90%); transform: translateX(-100%); opacity: 0; animation: planbar-sweep var(--dur-sweep) var(--ease-sweep) var(--dur-plan) both; }
 @keyframes planbar-in { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 44px; opacity: 1; } }
 @keyframes planbar-sweep { 0% { transform: translateX(-100%); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
 .cmp-planbar .btn { height: 28px; }
@@ -204,7 +203,7 @@
 .cmp-planbar .btn.ghost:hover { color: var(--ink); }
 .cmp-planbar .btn.primary:not(:disabled) { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
 .cmp-planbar .btn.primary:not(:disabled):hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
-.cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
+.cmp-planbar-kbd { margin-left: 2px; font-size: var(--fs-chip); font-weight: var(--fw-regular); letter-spacing: 0.04em; opacity: 0.6; }
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
   .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
@@ -217,9 +216,9 @@
 .ctx-full .ctx-arc { stroke: var(--del-fill); }
 .ctx-pop.ctx-near > .meter span { background: var(--needs-fill); }
 .ctx-pop.ctx-full > .meter span { background: var(--del-fill); }
-.ctx-pop { width: 330px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; }
+.ctx-pop { width: 330px; display: flex; flex-direction: column; gap: 10px; font-size: var(--fs-code); }
 .ctx-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.ctx-title { color: var(--ink); font-weight: 500; }
+.ctx-title { color: var(--ink); font-weight: var(--fw-medium); }
 .ctx-rows { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .ctx-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 4px; align-items: baseline; color: var(--ink-2); }
 .ctx-row .meter { grid-column: 1 / -1; height: 3px; }
@@ -231,5 +230,5 @@
 .ctx-foot .btn { flex-shrink: 0; }
 
 /* KERNEL-406: the picker's provider headings */
-.pick-group { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
+.pick-group { display: flex; align-items: center; gap: 6px; margin: 0; padding: 10px 8px 4px; font-size: var(--fs-meta); color: var(--muted); }
 .pick-list > div:first-child .pick-group { padding-top: 4px; }

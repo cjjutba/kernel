@@ -2,7 +2,7 @@ import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type { Provider } from '@shared/types'
 import type { ModeAvailabilities } from '../../../permissionModes'
 import { Icon, Kbd } from '../../../ui'
-import { useLayer } from '../../../ui/hooks'
+import { moveInList, useLayer } from '../../../ui/hooks'
 import { modeRows, type ComposerMode, type Shown } from './modes'
 
 /**
@@ -29,14 +29,8 @@ export function ModeMenu({ anchorRef, provider, availability, shown, onPick, onC
   }, [])
 
   const onKey = (e: KeyboardEvent) => {
-    const list = items()
-    const i = list.indexOf(document.activeElement as HTMLElement)
-    const go = (to: number) => { e.preventDefault(); e.stopPropagation(); list[(to + list.length) % list.length]?.focus() }
-    if (e.key === 'ArrowDown') go(i + 1)
-    else if (e.key === 'ArrowUp') go(i - 1)
-    else if (e.key === 'Home') go(0)
-    else if (e.key === 'End') go(list.length - 1)
-    else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) onCycle(); else onClose() }
+    if (moveInList(e, items())) return
+    if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); if (e.shiftKey) onCycle(); else onClose() }
   }
 
   return (

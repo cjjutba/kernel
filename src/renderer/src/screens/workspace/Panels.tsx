@@ -59,7 +59,7 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
     setOpen(next)
   }
   const collapseAll = () => (found ? filter.foldAll(found.dirs) : setOpen(new Set()))
-  if (failed) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
+  if (failed) return <div className="panel-empty"><span className="ink2 fw-medium">Could not list files</span><span>Try again in a moment.</span></div>
   return (
     <>
       <PanelTools>
@@ -68,9 +68,9 @@ function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; cha
       </PanelTools>
       <FilterField filter={filter} label="Filter files" />
       {found && !found.entries.length
-        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No files match</span><span>Try another name or folder.</span></div>
+        ? <div className="panel-empty"><span className="ink2 fw-medium">No files match</span><span>Try another name or folder.</span></div>
         : (
-          <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
+          <div className="panel-scroll ps-files">
             <FileTree label="All files" entries={found ? found.entries : tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
           </div>
         )}
@@ -146,26 +146,26 @@ function ChangesList({ ws, changes: base, onOpenDiff, activePath }: { ws: Worksp
         <CompareButton ws={ws} compare={compare} />
       </PanelTools>
       {error
-        ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not compare</span><span>{error}</span></div>
+        ? <div className="panel-empty"><span className="ink2 fw-medium">Could not compare</span><span>{error}</span></div>
         : files === null
           ? null
           : !changes.length
-            ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>{empty.title}</span><span>{empty.sub}</span></div>
+            ? <div className="panel-empty"><span className="ink2 fw-medium">{empty.title}</span><span>{empty.sub}</span></div>
             : (
               <>
                 <FilterField filter={filter} label="Filter changed files" />
-                <div className="panel-scroll" style={{ padding: '4px 10px' }}>
+                <div className="panel-scroll ps-changes">
                   <div className="changes-head">
                     <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed{note && ` ${note}`}</span>
                     <span className="grow" />
                     <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
                   </div>
                   {filter.filtering && !shown.length
-                    ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No changes match</span><span>Try another name or folder.</span></div>
+                    ? <div className="panel-empty"><span className="ink2 fw-medium">No changes match</span><span>Try another name or folder.</span></div>
                     : view === 'tree'
                       ? <FileTree label="Changed files" entries={treeEntries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
                       : shown.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} conflicted={conflicts.has(f.path)} ranges={matchRanges(f.path, filter.query)} onOpen={() => onOpenDiff(f.path)} />)}
-                  {ws.mode === 'current' && !note && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
+                  {ws.mode === 'current' && !note && <p className="muted t-meta changes-hidden">Changes from before this workspace started are hidden.</p>}
                 </div>
               </>
             )}
@@ -181,7 +181,7 @@ interface CheckRow { state: CheckState; label: string; meta?: string; dim?: bool
 const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail', running: 'run', queued: 'run', skipped: 'idle' }
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'run') return <span className="spin" role="status" aria-label="Running" style={{ margin: '0 1px' }} />
+  if (state === 'run') return <span className="spin check-spin" role="status" aria-label="Running" />
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'x' : state === 'warn' ? 'warning' : 'minus'
   const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
@@ -266,20 +266,20 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
         <RefreshButton ids={[ws.id]} label="Refresh checks" failTitle="Could not refresh checks" />
         <ToolButton icon="ext" label="Open on GitHub" disabled={!url} onClick={() => { if (url) void attempt('Could not open GitHub', () => call('system.openExternal', { url })) }} />
       </PanelTools>
-      <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
+      <div className="panel-scroll ps-checks gap-14">
         {groups.map((g) => (
-          <div key={g.title} className="col" style={{ gap: 4 }}>
-            <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{g.title}</span>
+          <div key={g.title} className="col gap-4">
+            <span className="muted t-meta fw-medium">{g.title}</span>
             {g.rows.map((r, i) => (
-              <div key={i} className="row" style={{ gap: 10, minHeight: 26 }}>
+              <div key={i} className="row gap-10" style={{ minHeight: 26 }}>
                 <CheckIcon state={r.state} />
                 <span className="grow ellipsis" style={{ color: r.dim ? 'var(--muted)' : 'var(--ink-2)' }}>{r.label}</span>
-                {r.meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{r.meta}</span>}
+                {r.meta && <span className="mono muted t-chip">{r.meta}</span>}
               </div>
             ))}
           </div>
         ))}
-        <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
+        <div className="row muted gap-10 t-meta"><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
       </div>
     </>
   )
@@ -357,7 +357,7 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   const [tools, setTools] = useState<HTMLDivElement | null>(null)
   return (
     <ToolSlot.Provider value={tools}>
-      <div className="col grow" style={{ minHeight: 0 }}>
+      <div className="col grow min-h-0">
         <div className="panel-tabs" data-lead={isLead || undefined}>
           <TabStrip label="Workspace panel" value={right} onChange={pick} tabs={[
             // The PRs tab has no count: the band and the Ready to merge heading show it.
@@ -461,17 +461,17 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     <div ref={panel} className="bottom-panel" data-collapsed={collapsed || undefined}>
       {!collapsed && <BottomResize panel={panel} />}
       <div className="bottom-tabs">
-        <IconButton icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
+        <IconButton box="sm" icon="chevron" size={14} label={collapsed ? 'Expand bottom panel' : 'Collapse bottom panel'} aria-expanded={!collapsed} data-tip-kbd="⌘J" onClick={() => actions.ui.setBottomCollapsed(kind, !collapsed)} />
         <TabStrip label="Scripts" value={collapsed ? '' : bottom} onChange={pick} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && <span className="bottom-word" role="status">{collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun, port: ws.port })}</span>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
-        {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
-        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {!collapsed && bottom === 'setup' && setupBusy && <Button size="sm" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
+        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button size="sm" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Run and Stop are the one action for the script picked on the Run tab. Its empty state has a Run button of its own, so the strip's Run steps aside while that shows (KERNEL-512). A collapsed bar has no empty state, so it keeps Run and Stop. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
         {(collapsed || bottom !== 'setup') && (selectedRunning
-          ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
-          : !noRun && !runEmpty && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
+          ? <Button size="sm" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
+          : !noRun && !runEmpty && <Button size="sm" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
       </div>
       {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">

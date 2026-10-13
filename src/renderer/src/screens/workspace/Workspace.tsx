@@ -253,7 +253,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
           <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
-          <div className="col grow" style={{ minHeight: 0 }}>
+          <div className="col grow min-h-0">
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
               : sharedId
@@ -318,7 +318,7 @@ export function LeadNewScreen({ roomId }: { roomId: string }) {
         <span className="grow" />
       </header>
       <section aria-label="Agent" className="ws-main">
-        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} /></div>
+        <div className="col grow min-h-0"><NewLeadChat roomId={roomId} /></div>
       </section>
     </div>
   )

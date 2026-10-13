@@ -37,7 +37,7 @@ export function SharedPanel({ ws }: { ws: Workspace }) {
   const files = useStore((s) => sharedHere(s, ws))
   const shown = useStore((s) => s.ui.tabs[ws.id]?.tab)
   if (!files.length) {
-    return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing shared in this workspace yet</span><span style={{ fontSize: 12.5 }}>Files an agent shares show up here.</span></div>
+    return <div className="panel-empty"><span className="ink2 fw-medium">Nothing shared in this workspace yet</span><span className="t-code">Files an agent shares show up here.</span></div>
   }
   return (
     <div className="shpanel">

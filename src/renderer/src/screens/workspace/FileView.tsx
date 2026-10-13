@@ -14,7 +14,7 @@ function ViewHead({ path, children, trailing }: { path: string; children?: React
   const { dir, name } = split(path)
   return (
     <div className="view-head">
-      <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{dir}</span>{name}</span></span>
+      <span className="row min-w-0"><FileIcon path={path} /><span className="mono ellipsis t-code"><span className="muted">{dir}</span>{name}</span></span>
       {children}
       <span className="grow" />
       {trailing}
@@ -25,7 +25,7 @@ function ViewHead({ path, children, trailing }: { path: string; children?: React
 /** A file's name over its diff in All changes: its icon, and its git color as the Changes tab shows it (KERNEL-399). */
 function DiffFileName({ path, status }: { path: string; status?: ChangedFile['status'] }) {
   const deco = gitDecoration(status)
-  return <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="ellipsis" style={deco ? { color: deco.color, textDecoration: deco.struck ? 'line-through' : undefined } : undefined}>{path}</span></span>
+  return <span className="row min-w-0"><FileIcon path={path} /><span className="ellipsis" style={deco ? { color: deco.color, textDecoration: deco.struck ? 'line-through' : undefined } : undefined}>{path}</span></span>
 }
 
 const IMAGE_PATH = /\.(png|jpe?g|gif|webp|svg)$/i
@@ -53,9 +53,9 @@ function ImagePane({ wsId, path, at, label, target, onSize }: { wsId: string; pa
   const size = loaded && loaded.url === url ? loaded : null
   return (
     <figure className="image-pane">
-      {label && <figcaption className="muted" style={{ fontSize: 12 }}>{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
+      {label && <figcaption className="muted t-meta">{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
       {url === null
-        ? <span className="muted" style={{ fontSize: 12 }}>Can't show this picture.</span>
+        ? <span className="muted t-meta">Can't show this picture.</span>
         : url && <img src={url} alt={label ? `${label}: ${path}` : path} onLoad={(e) => { const s = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }; setLoaded({ url, ...s }); onSize?.(s) }} />}
     </figure>
   )
@@ -84,9 +84,9 @@ export function FileView(props: { ws: Workspace; path: string; editedBy?: string
 function ImageFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className="col grow min-h-0">
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
+        <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
       </ViewHead>
       <div className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
     </div>
@@ -104,12 +104,12 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
   }, [ws.id, path])
   const lines = useMemo(() => (text ?? '').replace(/\n$/, '').split('\n'), [text])
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className="col grow min-h-0">
       <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}</span>
+        <span className="muted t-meta">Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}</span>
       </ViewHead>
       {error ? (
-        <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Can't show this file</span><span>{error}</span></div>
+        <div className="panel-empty"><span className="ink2 fw-medium">Can't show this file</span><span>{error}</span></div>
       ) : (
         <div className="code-view selectable mono" role="region" aria-label={`Contents of ${path}`} tabIndex={0}>
           {text !== null && lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
@@ -122,9 +122,9 @@ function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string
 /** An attached image opened from its chip, in a tab of its own, as in Conductor. */
 export function ImageView({ name, src, width, height }: { name: string; src: string; width?: number; height?: number }) {
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className="col grow min-h-0">
       <ViewHead path={name} trailing={null}>
-        {width && height ? <span className="muted" style={{ fontSize: 12 }}>{width}×{height}</span> : null}
+        {width && height ? <span className="muted t-meta">{width}×{height}</span> : null}
       </ViewHead>
       <div className="image-view"><img src={src} alt={name} /></div>
     </div>
@@ -135,9 +135,9 @@ export function ImageView({ name, src, width, height }: { name: string; src: str
 export function TextView({ name, text }: { name: string; text: string }) {
   const lines = useMemo(() => text.replace(/\n$/, '').split('\n'), [text])
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className="col grow min-h-0">
       <ViewHead path={name} trailing={null}>
-        <span className="muted" style={{ fontSize: 12 }}>Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
+        <span className="muted t-meta">Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
       </ViewHead>
       <div className="code-view selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
         {lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
@@ -166,7 +166,7 @@ function sendHunk(path: string, lines: { mark: string; code: string; hunk?: bool
 export function DiffView({ ws, path, changes: base }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
   const { compare, target, files, error } = useCompared(ws, base)
   // A pick whose files haven't arrived draws nothing yet, so a picture isn't shown against the wrong status.
-  if (files === null && !error) return <div className="col grow" style={{ minHeight: 0 }} />
+  if (files === null && !error) return <div className="col grow min-h-0" />
   const changes = files ?? NO_FILES
   return isImagePath(path) ? <ImageDiff ws={ws} path={path} changes={changes} target={target} /> : <TextDiff ws={ws} path={path} changes={changes} target={target} title={compareTitle(compare)} />
 }
@@ -178,8 +178,8 @@ function ImageDiff({ ws, path, changes, target }: { ws: Workspace; path: string;
   const [size, setSize] = useState<{ w: number; h: number } | null>(null)
   const status = changes.find((c) => c.path === path)?.status
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
-      <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted" style={{ fontSize: 12 }}>{sizeText(size)}</span>}</ViewHead>
+    <div className="col grow min-h-0">
+      <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted t-meta">{sizeText(size)}</span>}</ViewHead>
       <ImageChange wsId={ws.id} path={path} status={status} target={target} onSize={setSize} />
     </div>
   )
@@ -198,11 +198,11 @@ function TextDiff({ ws, path, changes, target, title }: { ws: Workspace; path: s
   const files = useMemo(() => parseDiff(text ?? ''), [text])
   const stat = path ? changes.find((c) => c.path === path) : undefined
   return (
-    <div className="col grow" style={{ minHeight: 0 }}>
+    <div className="col grow min-h-0">
       {path
-        ? <ViewHead path={path} trailing={null}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
-        : <div className="view-head"><span style={{ fontWeight: 500 }}>{title}</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
-      <div className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
+        ? <ViewHead path={path} trailing={null}>{stat && <span className="mono t-meta"><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
+        : <div className="view-head"><span className="fw-medium">{title}</span><span className="muted t-meta">{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
+      <div className="code-view diff-view selectable mono" role="region" aria-label="Diff" tabIndex={0}>
         {error && <div className="panel-empty"><span>{error}</span></div>}
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (

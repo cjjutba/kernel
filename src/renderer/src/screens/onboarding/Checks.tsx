@@ -74,7 +74,7 @@ export function Checks() {
   }
 
   return (
-    <div className="panel" style={{ background: 'transparent', border: 0 }}>
+    <div className="panel bg-none border-0">
       <div className="ob-page">
         <div className="ob-col">
           <h1 className="ob-h1">Getting Kernel ready</h1>

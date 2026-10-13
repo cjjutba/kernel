@@ -223,7 +223,7 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
     void onOpen().then((handled) => { if (!handled) setOpen((o) => !o) })
   }
   return (
-    <div className="col" style={{ gap: 4 }}>
+    <div className="col gap-4">
       <button
         type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
         {...(onPeek && {
@@ -239,9 +239,9 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
             {can && <span className="chev step-chev" data-open={open} aria-hidden="true"><Icon name="right" size={12} /></span>}
           </span>
         )}
-        <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
+        <span className="ellipsis shrink-0" style={{ maxWidth: 300, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
         {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
-        {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
+        {meta && <span className="mono muted t-chip">{meta}</span>}
       </button>
       {at && peek && <HoverPreview at={at} className="img-preview">{peek}</HoverPreview>}
       {open && can && <div id={panel} className="step-body" data-compact={compact || undefined}>{children}</div>}
@@ -389,7 +389,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
   const [open, setOpen] = useState(() => getState().ui.workspace.toolsOpen)
   const id = `${block.id}-list`
   return (
-    <div className="col" style={{ gap: 2 }}>
+    <div className="col gap-2">
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
         {groupLabel(block.tools.length, block.messages)}

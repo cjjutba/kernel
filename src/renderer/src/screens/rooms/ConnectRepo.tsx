@@ -62,7 +62,7 @@ export function ConnectRepo() {
       <div className="rm-pad">
         <div className="cr-acct">
           <span className="rm-av" aria-hidden="true">{(login ?? 'gh').slice(0, 2)}</span>
-          <span className="col grow"><span style={{ fontWeight: 500 }}>{login ?? 'GitHub'}</span><span className="cr-sub">Signed in through the GitHub CLI</span></span>
+          <span className="col grow"><span className="fw-medium">{login ?? 'GitHub'}</span><span className="cr-sub">Signed in through the GitHub CLI</span></span>
           <Button variant="ghost" onClick={() => actions.ui.toast({ title: 'Run gh auth switch in a terminal', sub: 'Then search again.' })}>Switch account</Button>
         </div>
         <div className="cr-search">
@@ -76,13 +76,13 @@ export function ConnectRepo() {
             return (
               <button key={r.fullName} type="button" role="radio" aria-checked={picked === r.fullName} className="cr-repo" onClick={() => setPicked(r.fullName)}>
                 <Icon name="branch" size={16} />
-                <span className="grow mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{owner}/</span>{name}</span>
+                <span className="grow mono ellipsis t-code"><span className="muted">{owner}/</span>{name}</span>
                 <span className="cr-vis">{r.private ? 'Private' : 'Public'}</span>
                 <span className="cr-ago">{agoShort(r.updatedAt)}</span>
               </button>
             )
           })}
-          {repos && !repos.length && <p className="muted" role={error ? 'alert' : 'status'} style={{ margin: 0, padding: '10px 12px' }}>{error ?? 'No repositories match.'}</p>}
+          {repos && !repos.length && <p className="muted m-0 cr-empty" role={error ? 'alert' : 'status'}>{error ?? 'No repositories match.'}</p>}
         </div>
       </div>
     </Modal>

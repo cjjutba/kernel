@@ -44,7 +44,7 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
     <div ref={ref} tabIndex={-1} role="dialog" aria-label="Checkpoints" className="ck-drawer" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); if (asking) setAsking(null); else close() } }}>
       <div className="ck-head">
         <span className="grow">Checkpoints</span>
-        <IconButton icon="close" size={14} label="Close checkpoints" onClick={close} />
+        <IconButton box="md" icon="close" size={14} label="Close checkpoints" onClick={close} />
       </div>
       <p className="ck-intro">Every turn saves the worktree. Reverting restores files, your chat stays.</p>
       <ul className="ck-list">
@@ -65,7 +65,7 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
               {confirming && (
                 <div className="ck-confirm" role="group" aria-label={`Revert to ${time}`}>
                   <span>Restore files to {time}? Changes after this turn move to a backup branch.</span>
-                  <div className="row" style={{ gap: 8 }}>
+                  <div className="row gap-8">
                     <button type="button" className="ck-cancel" onClick={() => setAsking(null)}>Cancel</button>
                     <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <span className="spin" aria-hidden="true" />}{busy ? 'Reverting' : 'Revert'}</button>
                   </div>

@@ -167,7 +167,7 @@ export function Home() {
             <Button variant="primary" icon="plus" onClick={() => openNewRoom()}>New room</Button>
           </div>
           <div className="hm-cols">
-            <div className="col" style={{ gap: 28, minWidth: 0 }}>
+            <div className="col gap-28 min-w-0">
               <section aria-label="Needs you">
                 <h3 className="hm-head">Needs you <span>{needs.length}</span></h3>
                 {needs.length ? needs.slice(0, 5).map((i) => <NeedsRow key={i.n.id} item={i} />) : <p className="hm-none">Nothing is waiting on you.</p>}
@@ -179,7 +179,7 @@ export function Home() {
             </div>
             <section aria-label="Rooms">
               <h3 className="hm-head">Rooms <span>{rooms.length}</span><span className="grow" /><button type="button" className="hm-see" onClick={() => go({ name: 'rooms' })}>See all</button></h3>
-              <div className="col hm-rooms" style={{ gap: 10, marginTop: 10 }}>
+              <div className="col hm-rooms gap-10 mt-10">
                 {rooms.map((r) => {
                   const team = teamOf(agents[r.id])
                   const state = roomState(r, approvals, status[r.id], workspaces)

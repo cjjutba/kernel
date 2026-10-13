@@ -75,10 +75,10 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
     <>
-      <div className="drag" style={{ height: 53, flexShrink: 0 }} />
+      <div className="drag shrink-0" style={{ height: 53 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
-        <label htmlFor="set-q" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>Search settings</label>
+        <label htmlFor="set-q" className="sr-only">Search settings</label>
         <Icon name="search" size={14} />
         <input id="set-q" type="text" autoComplete="off" placeholder="Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>

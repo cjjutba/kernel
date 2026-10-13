@@ -3,7 +3,7 @@ import type { McpAccountServer, McpConnect, McpServerKind, Provider } from '@sha
 import { mcpNeedsYou } from '@shared/mcpCounts'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, getState, mcpRunKey, useStore } from '../../../store'
-import { Button, Modal, useBusy } from '../../../ui'
+import { Button, Checkbox, Modal, useBusy } from '../../../ui'
 import { joinNames, serverName, useMcpAccounts, useSignInAll } from './mcpAccounts'
 
 // Set up this account (KERNEL-661, no PNG): the servers that need the user on one account as a checklist with everything ticked, then
@@ -76,10 +76,9 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
             <fieldset key={g.kind} className="mcp-su-group">
               <legend className="set-group">{g.title}</legend>
               {list.map((s) => (
-                <label key={s.name} className="mcp-su-item">
-                  <input type="checkbox" checked={!skipped.includes(s.name)} onChange={(e) => setSkipped(e.target.checked ? skipped.filter((n) => n !== s.name) : [...skipped, s.name])} />
+                <Checkbox key={s.name} className="mcp-su-item" align="top" checked={!skipped.includes(s.name)} onChange={(on) => setSkipped(on ? skipped.filter((n) => n !== s.name) : [...skipped, s.name])}>
                   <span><span className="set-label">{serverName(s.name)}</span><span className="set-desc">{status(s)}</span></span>
-                </label>
+                </Checkbox>
               ))}
             </fieldset>
           )

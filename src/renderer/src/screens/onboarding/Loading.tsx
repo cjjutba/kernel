@@ -22,7 +22,7 @@ export function Loading() {
           <div className="ob-load-panel" role="status" aria-live="polite">
             <span className="spin ob-spin" aria-hidden="true" />
             <span className="ink2">Starting Kernel</span>
-            <span className="muted" style={{ fontSize: 12.5 }}>{`Reconnecting ${sessions ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : 'sessions'} and the hook server`}</span>
+            <span className="muted t-code">{`Reconnecting ${sessions ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : 'sessions'} and the hook server`}</span>
           </div>
         ) : (
           <div className="ob-load-panel" role="alert">

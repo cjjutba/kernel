@@ -3,7 +3,7 @@ import { isWebUrl } from '@shared/previewUrl'
 import { call } from '../api'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
-import { useLayer } from './hooks'
+import { moveInList, useLayer } from './hooks'
 
 export interface MenuEntry {
   id: string
@@ -42,14 +42,8 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null)
   useEffect(() => { (ref.current?.querySelector<HTMLElement>(`${ITEM_ON}[aria-checked=true]`) ?? ref.current?.querySelector<HTMLElement>(ITEM_ON))?.focus({ preventScroll: true }) }, [])
   const onKey = (e: KeyboardEvent) => {
-    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(`:scope > .menu-row > ${ITEM_ON}`) ?? [])]
-    const i = nodes.indexOf(document.activeElement as HTMLElement)
-    const handled = (go: () => void) => { e.preventDefault(); e.stopPropagation(); go() }
-    if (e.key === 'ArrowDown') handled(() => nodes[(i + 1) % nodes.length]?.focus())
-    else if (e.key === 'ArrowUp') handled(() => nodes[(i - 1 + nodes.length) % nodes.length]?.focus())
-    else if (e.key === 'Home') handled(() => nodes[0]?.focus())
-    else if (e.key === 'End') handled(() => nodes[nodes.length - 1]?.focus())
-    else if (e.key === 'ArrowLeft' && onBack) handled(onBack)
+    if (moveInList(e, [...(ref.current?.querySelectorAll<HTMLElement>(`:scope > .menu-row > ${ITEM_ON}`) ?? [])])) return
+    if (e.key === 'ArrowLeft' && onBack) { e.preventDefault(); e.stopPropagation(); onBack() }
   }
   return (
     <div ref={ref} role="menu" aria-label={label} className="menu" onKeyDown={onKey}>

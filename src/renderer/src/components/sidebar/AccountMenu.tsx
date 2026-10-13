@@ -52,7 +52,7 @@ export function AccountButton() {
     return mine.length ? [...(i ? [MENU_SEPARATOR] : []), { id: `title:${p.id}`, label: p.label, title: true }, ...mine.map(accountEntry)] : []
   })
   return (
-    <div ref={anchor} style={{ position: 'relative', minWidth: 0 }}>
+    <div ref={anchor} className="relative min-w-0">
       <button type="button" className="acct" aria-haspopup="menu" aria-expanded={open} aria-label={`Account menu, ${name}`} onClick={() => actions.ui.toggleMenu('account')}>
         <span className="acct-av" aria-hidden="true">{initials(name)}</span>
         <span className="ellipsis">{name}</span>

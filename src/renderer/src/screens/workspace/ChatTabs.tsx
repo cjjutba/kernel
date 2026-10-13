@@ -142,7 +142,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   const stop = tabStop(tabs.map((t) => t.id), active)
   return (
     <div className="ws-tabs">
-      <div role="tablist" aria-label="Chats and files" className="row" style={{ gap: 2, alignItems: 'flex-end', minWidth: 0 }}>
+      <div role="tablist" aria-label="Chats and files" className="row gap-2 min-w-0" style={{ alignItems: 'flex-end' }}>
         {tabs.map((t) => {
           const on = t.id === active
           const editing = renaming === t.id
@@ -190,7 +190,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
           )
         })}
       </div>
-      <span ref={newAnchor} style={{ position: 'relative', alignSelf: 'center', marginLeft: 4 }}>
+      <span ref={newAnchor} className="relative self-center ml-4">
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
           <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 282 }} items={[

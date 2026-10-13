@@ -1,74 +1,73 @@
 .tcard { display: flex; flex-direction: column; gap: 10px; padding: 14px; margin: 6px 0 0; }
-.tcard h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.tcard h3 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); display: flex; align-items: center; gap: 8px; }
 .tcard h3 .err { color: var(--del); display: inline-flex; }
-.tcard .sub { color: var(--ink-3); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.tcard .code { font-size: 12px; line-height: 19.5px; padding: 10px 11px; max-height: 220px; overflow: auto; }
-.tcard .reason { margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.tcard .sub { color: var(--ink-3); font-size: var(--fs-ui); line-height: var(--lh); overflow-wrap: anywhere; }
+.tcard .code { font-size: var(--fs-meta); line-height: 19.5px; padding: 10px 11px; max-height: 220px; overflow: auto; }
+.tcard .reason { margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: var(--fs-code); line-height: var(--lh-ui); color: var(--ink-3); }
 .tcard .reason svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
 .tcard .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .tcard .acts .btn { height: 30px; }
 /* The hire card's servers row: pills for what the new agent reaches, a warning pill for what it can't (WorkspaceHireServers.png, KERNEL-484). */
 .hire-servers { display: flex; flex-direction: column; gap: 8px; }
 .hire-servers-row { display: flex; align-items: flex-start; gap: 12px; }
-.hire-servers-label { width: 56px; flex-shrink: 0; font-size: 12px; font-weight: 500; line-height: 24px; color: var(--muted); }
+.hire-servers-label { width: 56px; flex-shrink: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); line-height: 24px; color: var(--muted); }
 .hire-servers-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; min-width: 0; }
-.hire-servers-pills .srv { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: 12.5px; color: var(--ink-2); }
+.hire-servers-pills .srv { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-size: var(--fs-code); color: var(--ink-2); }
 .hire-servers-pills .srv-warn { display: inline-flex; flex-shrink: 0; color: var(--ink); }
 .hire-servers-pills .srv-why { color: var(--muted); }
 .hire-servers-notes { display: flex; flex-direction: column; gap: 4px; }
-.hire-servers-note, .hire-scope { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-.tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--code-bg); color: var(--ink-2); font-size: 13px; }
-.tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.hire-servers-note, .hire-scope { margin: 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
+.tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--code-bg); color: var(--ink-2); font-size: var(--fs-ui); }
+.tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: var(--lh); }
 .tcard .grow-input:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: 13.5px; color: var(--ink-2); }
-.steps .n { color: var(--muted); font-size: 12px; }
-.steps .open { border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: var(--fs-row); color: var(--ink-2); }
+.steps .n { color: var(--muted); font-size: var(--fs-meta); }
+.steps .open { border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: var(--fs-code); text-decoration: underline; text-underline-offset: 2px; }
 .qtabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -10px; }
-.qtab { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+.qtab { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-size: var(--fs-ui); font-weight: var(--fw-medium); }
 .qtab:hover { color: var(--ink-2); }
 .qtab[aria-current='step'] { background: var(--surface-3); color: var(--ink); }
 .qtab:disabled { opacity: 0.55; cursor: default; }
 .qrows { display: flex; flex-direction: column; gap: 6px; }
 /* Every row aligns to its first line, with or without a description, and grows with a long label (KERNEL-416). */
-.qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 13px; line-height: 18px; text-align: left; }
+.qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-ui); line-height: 18px; text-align: left; }
 .qrow[data-desc='true'] { padding: 10px 12px; line-height: 19.5px; }
 .qrow:not(:disabled):hover { background: var(--surface-2); border-color: var(--line-4); }
 .qrow:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .qrow:disabled { opacity: 0.55; cursor: default; }
 .qrow[aria-checked='true'], .qrow[aria-checked='true']:not(:disabled):hover { background: var(--hover); border-color: var(--ink-3); color: var(--ink); }
 .qrow[aria-checked='true'] .n { color: var(--ink); }
-.qrow .n { flex-shrink: 0; color: var(--muted); font-size: 12px; }
+.qrow .n { flex-shrink: 0; color: var(--muted); font-size: var(--fs-meta); }
 .qrow .qbox, .qother .qbox { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; box-sizing: border-box; border-radius: var(--r-2xs); border: 1px solid var(--faint); color: var(--on-ink); }
 .qrow[aria-checked='true'] .qbox, .qother .qbox { border-color: var(--ink); background: var(--ink); }
 .qrow .qbox { margin-top: 1px; }
 .qother { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; box-sizing: border-box; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--ink-3); background: var(--hover); }
-.qother .n { flex-shrink: 0; padding: 7px 0; color: var(--ink); font-size: 12px; line-height: 20px; }
+.qother .n { flex-shrink: 0; padding: 7px 0; color: var(--ink); font-size: var(--fs-meta); line-height: 20px; }
 .qother .qbox { margin-top: 9px; padding: 0; cursor: pointer; }
-.qother textarea { flex: 1; min-width: 0; box-sizing: border-box; max-height: 94px; padding: 7px 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; color: var(--ink-2); font-family: inherit; font-size: 13px; line-height: 20px; }
+.qother textarea { flex: 1; min-width: 0; box-sizing: border-box; max-height: 94px; padding: 7px 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; color: var(--ink-2); font-family: inherit; font-size: var(--fs-ui); line-height: 20px; }
 .qother textarea::placeholder { color: var(--muted); }
 .qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .qlabel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 1px solid var(--line-3); border-radius: var(--r-xs); color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1; }
-.qdesc { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 1px solid var(--line-3); border-radius: var(--r-xs); color: var(--muted); font-size: var(--fs-badge); font-weight: var(--fw-medium); line-height: var(--lh-none); }
+.qdesc { color: var(--muted); font-size: var(--fs-code); line-height: var(--lh); }
 .qans { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .qans li { display: flex; gap: 10px; }
-.qans .n { flex-shrink: 0; width: 16px; color: var(--muted); font-size: 12px; line-height: 19.5px; }
+.qans .n { flex-shrink: 0; width: 16px; color: var(--muted); font-size: var(--fs-meta); line-height: 19.5px; }
 .qans .qans-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow-wrap: anywhere; }
-.tcard .done-line { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.tcard .done-line { color: var(--muted); font-size: var(--fs-code); overflow-wrap: anywhere; }
 .pcard-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pcard-row h3 { flex: 1; min-width: 0; }
 .pcard-row .pcard-tools { margin: -6px -6px -6px 0; }
 .pcard-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: auto; }
-.pcard-tools .icon-btn { width: 26px; height: 26px; }
 .tcard.pcard { gap: 0; padding: 0; }
 .pcard-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 0 16px; min-height: 36px; }
-.pcard-kicker { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: 12.5px; }
-.pcard-file { min-width: 0; font-size: 11.5px; color: var(--muted); }
-.tcard.pcard h3 { display: block; padding: 4px 16px 0; font-size: 16px; font-weight: 600; line-height: 1.4; }
+.pcard-kicker { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: var(--fs-code); }
+.pcard-file { min-width: 0; font-size: var(--fs-chip); color: var(--muted); }
+.tcard.pcard h3 { display: block; padding: 4px 16px 0; font-size: var(--fs-dialog); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
 .pcard-body { padding: 14px 16px 2px; }
 .pcard-body[data-folded='true'] { max-height: 320px; overflow: hidden; mask-image: linear-gradient(to bottom, black 55%, transparent); }
-.pcard-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; margin: 6px 0 0 10px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12.5px; }
+.pcard-more { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 28px; margin: 6px 0 0 10px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: var(--fs-code); }
 .pcard-more:hover { background: var(--surface-3); color: var(--ink-2); }
 .pcard-foot { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; padding: 12px 16px 14px; border-top: 1px solid var(--line); }
 /* A plan in its chat (cards/plan.tsx) */
@@ -79,60 +78,60 @@
 .plan-inline .md-doc ol > li::marker { color: var(--plan); }
 /* The Lead's plan: a bordered document, its write-up, then one hairline-separated row per task (PlanWaiting.png). */
 .plan-card { border: 1px solid var(--line-2); border-radius: var(--r-md); padding: 16px 18px 4px; }
-.plan-card .md > .md-h[data-level='1'] { font-size: 15px; line-height: 1.4; margin-bottom: 6px; }
+.plan-card .md > .md-h[data-level='1'] { font-size: var(--fs-sub); line-height: var(--lh-snug); margin-bottom: 6px; }
 .plan-card .md > :not(.md-h):not(:last-child) { margin-bottom: 12px; }
-.plan-card .md { font-size: 13.5px; color: var(--ink-2); }
+.plan-card .md { font-size: var(--fs-row); color: var(--ink-2); }
 .plan-card .md > p:last-child { margin-bottom: 12px; }
 .plan-tasks { list-style: none; margin: 4px 0 0; padding: 0; }
-.plan-tasks li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; font-weight: 500; color: var(--ink-2); }
-.plan-n { width: 14px; flex-shrink: 0; color: var(--plan); font-size: 12px; font-weight: 400; }
+.plan-tasks li { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: var(--fs-row); font-weight: var(--fw-medium); color: var(--ink-2); }
+.plan-n { width: 14px; flex-shrink: 0; color: var(--plan); font-size: var(--fs-meta); font-weight: var(--fw-regular); }
 .plan-task { flex: 1; min-width: 0; }
-.plan-who { margin-left: 6px; color: var(--muted); font-size: 12.5px; font-weight: 400; }
-.plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 11.5px; }
+.plan-who { margin-left: 6px; color: var(--muted); font-size: var(--fs-code); font-weight: var(--fw-regular); }
+.plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: var(--fs-chip); }
 .plan-file:hover { border-color: var(--line-4); color: var(--ink); }
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
-.plan-open { flex-shrink: 0; margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.plan-open { flex-shrink: 0; margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: var(--fs-code); text-decoration: underline; text-underline-offset: 2px; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */
 .tucard-wrap { align-self: stretch; width: 100%; gap: 4px; }
 .tucard-wrap .msg-acts { margin-left: 2px; }
 .tcard.tucard { gap: 0; padding: 0; margin: 0; background: transparent; border-color: var(--line-2); }
-.tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
-.tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: 500; }
+.tucard-head { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 16px; border-bottom: 1px solid var(--line); font-size: var(--fs-meta); }
+.tucard .tucard-title { display: block; margin: 0; color: var(--ink-3); font-size: inherit; font-weight: var(--fw-medium); }
 .tucard-head .muted { color: var(--muted); }
 .tucard-row { display: flex; flex-direction: column; gap: 3px; padding: 12px 16px 13px; }
 .tucard-row + .tucard-row, .tucard-section + .tucard-section { border-top: 1px solid var(--line); }
-.tucard-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 13px; }
-.tucard-name { flex-shrink: 0; color: var(--ink); font-weight: 500; }
-.tucard-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--muted); }
+.tucard-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--fs-ui); }
+.tucard-name { flex-shrink: 0; color: var(--ink); font-weight: var(--fw-medium); }
+.tucard-key { flex-shrink: 0; font: var(--fs-chip) var(--mono); color: var(--muted); }
 .tucard-task { flex: 1; min-width: 0; color: var(--ink-2); }
 .tucard-act { display: flex; align-items: center; align-self: center; gap: 12px; flex-shrink: 0; margin: -4px 0 -4px 8px; }
 /* Merge #N sits in the ready band's soft tone (pr.css); the reason it can't is plain muted text, and Merged is violet (KERNEL-351). */
-.tucard-merge { height: 24px; padding: 0 9px; font-size: 12px; font-weight: 500; border-radius: var(--r-sm); }
-.tucard-why { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-.tucard-merged { font-size: 12px; font-weight: 500; color: var(--merged); }
-.tucard-open { flex-shrink: 0; border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 12px; }
+.tucard-merge { height: 24px; padding: 0 9px; font-size: var(--fs-meta); font-weight: var(--fw-medium); border-radius: var(--r-sm); }
+.tucard-why { font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tucard-merged { font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--merged); }
+.tucard-open { flex-shrink: 0; border: 0; background: transparent; padding: 0; color: var(--muted); font-size: var(--fs-meta); }
 .tucard-open[data-to='workspace']::after { content: ' ↗'; }
 .tucard-open:hover { color: var(--ink); }
-.tucard-events { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.tucard-events { margin: 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--muted); }
 .tucard-sep { margin: 0 6px; color: var(--faint); }
 .tucard-ev[data-tone='ink2'] { color: var(--ink-2); }
 .tucard-ev[data-tone='del'] { color: var(--del); }
 .tucard-ev[data-tone='add'] { color: var(--add); }
 .tucard-ev[data-tone='merged'] { color: var(--merged); }
-.tucard-quote { margin: 7px 0 0; padding: 0; color: var(--ink-3); font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tucard-quote { margin: 7px 0 0; padding: 0; color: var(--ink-3); font-size: var(--fs-ui); line-height: var(--lh-prose); white-space: pre-wrap; overflow-wrap: anywhere; }
 .tucard-quote[data-clamped='true'] { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 /* What is still open on a PR the reviews couldn't clear, one line per blocker with the review it came from; and the link a merge Kernel made leaves (KERNEL-557). */
 .tucard-items { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.tucard-items li { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: 12.5px; color: var(--muted); }
-.tucard-kind { flex-shrink: 0; width: 58px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.tucard-items li { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--fs-code); color: var(--muted); }
+.tucard-kind { flex-shrink: 0; width: 58px; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--ink-2); }
 .tucard-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tucard-items .tucard-more-open { padding-left: 68px; font-size: 12px; color: var(--faint); }
+.tucard-items .tucard-more-open { padding-left: 68px; font-size: var(--fs-meta); color: var(--faint); }
 .tucard-pr { margin-left: 6px; white-space: nowrap; color: var(--merged); text-decoration: none; }
 .tucard-pr[data-lone] { margin-left: 0; }
 .tucard-pr:hover { text-decoration: underline; }
 .tucard-pr svg { vertical-align: -1px; margin-left: 3px; }
-.tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin: 2px 0 0; padding: 0; color: var(--muted); font-size: 12px; }
+.tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin: 2px 0 0; padding: 0; color: var(--muted); font-size: var(--fs-meta); }
 .tucard-toggle:hover { color: var(--ink-2); }
-.tucard-from { padding: 10px 16px 0; font-size: 12px; color: var(--muted); }
-.tucard-omitted { padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.tucard-from { padding: 10px 16px 0; font-size: var(--fs-meta); color: var(--muted); }
+.tucard-omitted { padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: var(--fs-meta); color: var(--muted); }

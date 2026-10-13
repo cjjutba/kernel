@@ -53,7 +53,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
     <article className="is-detail" aria-label={issue.title}>
       <div className="is-scroll">
         <div className="is-inner">
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col gap-6">
             <span className="mono muted is-key">{issue.id}</span>
             <h2>{issue.title}</h2>
           </div>
@@ -83,11 +83,11 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
               {detail.body.trim() && <Markdown className="is-desc" text={detail.body} />}
               <section aria-label="Comments" className="is-sec">
                 <h3>Comments{detail.comments.length > 0 && <span className="is-count">{detail.comments.length}</span>}</h3>
-                {detail.comments.length === 0 && <p className="muted" style={{ margin: 0 }}>No comments yet.</p>}
+                {detail.comments.length === 0 && <p className="muted m-0">No comments yet.</p>}
                 {detail.comments.map((c) => (
                   <div key={c.id} className="is-comment">
                     <span className="is-av is-av-md" aria-hidden="true">{loginInitials(c.author ?? '?')}</span>
-                    <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                    <span className="col gap-2 min-w-0">
                       <span><span className="is-who">{c.author ?? 'GitHub'}</span><span className="muted is-when">{issueAge(c.createdAt)} ago</span></span>
                       <Markdown className="is-body" text={c.body} />
                     </span>
@@ -96,9 +96,9 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
               </section>
             </>
           ) : failed ? (
-            <p className="muted" style={{ margin: 0 }}>Could not load the description. {failed}</p>
+            <p className="muted m-0">Could not load the description. {failed}</p>
           ) : (
-            <div className="col" style={{ gap: 8 }} aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
+            <div className="col gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}
         </div>
       </div>

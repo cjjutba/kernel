@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import type { BranchCommit, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../ui'
-import { useLayer } from '../../ui/hooks'
+import { moveInList, useLayer } from '../../ui/hooks'
 import { commitAge, setCompare, shortSha, type Compare } from './compare'
 import { ToolButton } from './PanelTools'
 
@@ -85,16 +85,10 @@ function CompareMenu({ ws, compare, anchorRef, onClose }: { ws: Workspace; compa
 
   const pick = (next: Compare) => { setCompare(ws.id, next); onClose(true) }
   const onKey = (e: KeyboardEvent) => {
-    const all = stops()
-    const i = all.indexOf(document.activeElement as HTMLElement)
-    const move = (to: number) => { e.preventDefault(); e.stopPropagation(); all[(to + all.length) % all.length]?.focus() }
     // Home, End and ArrowLeft belong to the caret while the branch filter has focus.
+    if (moveInList(e, stops())) return
     const typing = e.target instanceof HTMLInputElement
-    if (e.key === 'ArrowDown') move(i + 1)
-    else if (e.key === 'ArrowUp') move(i - 1)
-    else if (e.key === 'Home' && !typing) move(0)
-    else if (e.key === 'End' && !typing) move(all.length - 1)
-    else if (e.key === 'ArrowLeft' && page === 'branches' && !typing) { e.preventDefault(); back() }
+    if (e.key === 'ArrowLeft' && page === 'branches' && !typing) { e.preventDefault(); back() }
     else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
   }
 

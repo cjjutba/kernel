@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { call } from '../../../api'
 import { useStore } from '../../../store'
 import { Button, Icon } from '../../../ui'
-import { useLayer } from '../../../ui/hooks'
+import { moveInList, useLayer } from '../../../ui/hooks'
 import { stripRemote } from '../../settings/remote'
 import { useRemote } from '../../settings/useSettings'
 
@@ -71,16 +71,9 @@ function BranchMenu({ roomId, lead, target, fallback, remote, anchorRef, onClose
   // The menu opens on its checked row, and again once the branches arrive.
   useEffect(() => { (ref.current?.querySelector<HTMLElement>('[aria-checked="true"]') ?? stops()[0])?.focus({ preventScroll: true }) }, [read])
   const onKey = (e: KeyboardEvent) => {
-    const all = stops()
-    const i = all.indexOf(document.activeElement as HTMLElement)
-    const move = (to: number) => { e.preventDefault(); e.stopPropagation(); all[(to + all.length) % all.length]?.focus() }
     // Home and End belong to the caret while the filter has focus.
-    const typing = e.target instanceof HTMLInputElement
-    if (e.key === 'ArrowDown') move(i + 1)
-    else if (e.key === 'ArrowUp') move(i - 1)
-    else if (e.key === 'Home' && !typing) move(0)
-    else if (e.key === 'End' && !typing) move(all.length - 1)
-    else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
+    if (moveInList(e, stops())) return
+    if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
   }
 
   return (

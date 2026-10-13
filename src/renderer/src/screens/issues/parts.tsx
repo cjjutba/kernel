@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import type { Room } from '@shared/types'
 import { go } from '../../store'
-import { Button, Icon, Menu } from '../../ui'
+import { Button, Icon, Menu, SelectChip } from '../../ui'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -11,14 +11,10 @@ type Option = { value: string; label: string }
 export function FilterChip({ label, value, options, onChange }: { label: string; value: string; options: Option[]; onChange: (v: string) => void }) {
   const shown = options.find((o) => o.value === value)?.label ?? options[0]?.label ?? ''
   return (
-    <span className="is-chip">
+    <SelectChip label={`${label}: ${shown}`} value={value} options={options} onChange={onChange}>
       <span className="muted">{label}</span>
       <span>{shown}</span>
-      <Icon name="chevron" size={12} />
-      <select aria-label={`${label}: ${shown}`} value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </span>
+    </SelectChip>
   )
 }
 

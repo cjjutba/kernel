@@ -25,7 +25,7 @@ function RoomRow({ room }: { room: Room }) {
     <div className="rm-row" onClick={open}>
       <span className="rm-name">
         <RoomIcon room={room} className="rm-letter" />
-        <span className="col" style={{ minWidth: 0 }}>
+        <span className="col min-w-0">
           <button type="button" className="rm-link" onClick={(e) => { e.stopPropagation(); open() }}>{room.name}</button>
           <span className="rm-desc ellipsis">{room.desc}</span>
         </span>
@@ -35,7 +35,7 @@ function RoomRow({ room }: { room: Room }) {
         <Icon name={room.kind === 'folder' || (!room.repo && room.kind !== 'scratch') ? 'folder' : room.kind === 'scratch' ? 'burst' : 'branch'} size={16} />
         <span className="mono ellipsis">{sourceOf(room)}</span>
       </span>
-      <span className="row" style={{ gap: 8 }}>
+      <span className="row gap-8">
         <span className="rm-team" aria-hidden="true">{agents.slice(0, 5).map((a) => <span key={a.id}>{initial(a)}</span>)}</span>
         <span className="rm-count">{agents.length} {agents.length === 1 ? 'agent' : 'agents'}</span>
       </span>
@@ -56,7 +56,7 @@ export function Rooms() {
   const tabs: [Tab, string, number][] = [['all', 'All rooms', rooms.length], ['active', 'Active', active.length], ['archived', 'Archived', rooms.length - active.length]]
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header pr-12">
         <SidebarToggle />
         <Icon name="rooms" />
         <h1>All rooms</h1>
@@ -69,7 +69,7 @@ export function Rooms() {
       <div className="rm-table">
         <div className="rm-head"><span>Name</span><span>Source</span><span>Agents</span><span>Status</span><span style={{ textAlign: 'right' }}>Updated</span></div>
         {shown.map((r) => <RoomRow key={r.id} room={r} />)}
-        {!shown.length && <p className="muted" style={{ padding: 24, margin: 0 }}>{tab === 'archived' ? 'No archived rooms.' : 'No rooms yet. Make one with New room.'}</p>}
+        {!shown.length && <p className="muted p-24 m-0">{tab === 'archived' ? 'No archived rooms.' : 'No rooms yet. Make one with New room.'}</p>}
       </div>
     </div>
   )

@@ -44,7 +44,7 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
   })
 
   return (
-    <span ref={anchor} style={{ position: 'relative' }}>
+    <span ref={anchor} className="relative">
       <button ref={ring} type="button" className={['icon-btn ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
         data-tip={usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens used` : `${pct}% of context used`}
         onClick={() => onOpen(!open)}>

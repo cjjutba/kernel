@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 
 /**
  * Open layers (menus, popovers, modals), oldest first. Escape and outside presses go to the top layer only,
@@ -78,4 +78,19 @@ export function useBusy<K extends string = string>(): [busy: K | null, run: (key
     try { await fn() } finally { running.current = false; setBusy(null) }
   }, [])
   return [busy, run]
+}
+
+/**
+ * Arrow keys for a list of focusable rows (a menu, a picker): Down and Up move with wrap-around, Home and End jump to the ends. While a
+ * filter input has focus, Home and End stay with its caret. Returns true when it moved focus, so the caller can try its own keys next.
+ */
+export function moveInList(e: KeyboardEvent | ReactKeyboardEvent, nodes: HTMLElement[]): boolean {
+  const i = nodes.indexOf(document.activeElement as HTMLElement)
+  const typing = e.target instanceof HTMLInputElement
+  const to = e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' && !typing ? 0 : e.key === 'End' && !typing ? nodes.length - 1 : null
+  if (to === null || !nodes.length) return false
+  e.preventDefault()
+  e.stopPropagation()
+  nodes[(to + nodes.length) % nodes.length]?.focus()
+  return true
 }

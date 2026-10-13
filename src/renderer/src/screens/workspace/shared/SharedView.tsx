@@ -26,7 +26,7 @@ export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sha
   const file = useStore((s) => s.shared[sharedId])
   const picked = useStore((s) => s.ui.tabs[workspaceId]?.sharedVersion?.[sharedId])
   if (!file) {
-    return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>This file isn't available</span><span>Kernel has no copy of it.</span></div>
+    return <div className="panel-empty"><span className="ink2 fw-medium">This file isn't available</span><span>Kernel has no copy of it.</span></div>
   }
   return <Loaded key={file.id} workspaceId={workspaceId} file={file} version={versionOf(file, picked)} />
 }
@@ -67,7 +67,7 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
     <div className="shared-view">
       <div className="shared-title"><h2 className="ellipsis">{file.title}</h2><span className="shared-by">Shared by {by} · {clock(version)}</span></div>
       <div className="shared-tools">
-        <span ref={anchor} style={{ position: 'relative' }}>
+        <span ref={anchor} className="relative">
           <button type="button" className="shared-ver" aria-label="Versions" aria-haspopup="menu" aria-expanded={versions} onClick={() => setVersions(!versions)}>
             v{version.n}<Icon name="chevron" size={12} />
           </button>
@@ -81,9 +81,9 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
             <Icon name="comment" size={14} />Comment
           </button>
         )}
-        {page && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
-        {pdf && <Button className="small" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
-        <Button className="small" icon="folder" onClick={reveal}>Show in Finder</Button>
+        {page && <Button size="sm" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
+        {pdf && <Button size="sm" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
+        <Button size="sm" icon="folder" onClick={reveal}>Show in Finder</Button>
       </div>
       <div className="shared-body">
         <div ref={area} className="shared-area" data-kind={file.kind}>

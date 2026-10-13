@@ -29,7 +29,7 @@ export function SharedCard({ sharedId, version }: { sharedId: string; version: n
   const { file, v, thumb, by, open } = useCard(sharedId, version)
   if (!file || !v) return null
   const meta = `${versionLine(file, v.n)} · ${by}`
-  const button = <Button className="small shcard-open" aria-label={`Open ${file.title}`} onClick={open}>Open</Button>
+  const button = <Button size="sm" className="shcard-open" aria-label={`Open ${file.title}`} onClick={open}>Open</Button>
   if (thumb && picture(file.kind)) {
     return (
       <div className="card shcard" data-layout="picture">
@@ -70,7 +70,7 @@ export function SharedRow({ sharedId, version, title, kind }: { sharedId: string
         <span className="shrow-title ellipsis">{name}</span>
         <span className="shrow-meta ellipsis">{meta.join(' · ')}</span>
       </div>
-      <Button className="small shrow-open" aria-label={`Open ${name}`} onClick={open}>Open</Button>
+      <Button size="sm" className="shrow-open" aria-label={`Open ${name}`} onClick={open}>Open</Button>
     </div>
   )
 }

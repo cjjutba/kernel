@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { ConfirmDialog, useBusy } from '../../ui'
+import { Checkbox, ConfirmDialog, useBusy } from '../../ui'
 import { tilde } from './draft'
 import { teamOf } from './roomInfo'
 import './rooms.css'
@@ -37,8 +37,8 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
       body={`Kernel stops ${n(agents, 'agent')} and archives ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
     >
       <div className="rm-box mono"><span>{tilde(room.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>
-      <label className="rm-check"><input type="checkbox" checked={worktrees} onChange={(e) => setWorktrees(e.target.checked)} />Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</label>
-      {error && <p role="alert" style={{ color: 'var(--del)' }}>{error}</p>}
+      <Checkbox checked={worktrees} onChange={setWorktrees}>Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</Checkbox>
+      {error && <p role="alert" className="confirm-error">{error}</p>}
     </ConfirmDialog>
   )
 }

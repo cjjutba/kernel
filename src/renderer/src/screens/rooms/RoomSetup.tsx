@@ -95,7 +95,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
       : 'Reviews each pull request before it merges'
 
   return (
-    <div className="panel" style={{ background: 'transparent', border: 0 }}>
+    <div className="panel bg-none border-0">
       <div className={showTeam ? 'ob-page rs-review' : 'ob-page'}>
         <div className="ob-col">
           <h1 className="ob-h1">Setting up {room?.name ?? 'your room'}</h1>
@@ -154,7 +154,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             <span role="status">{status}</span>
             <Button variant="primary" size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
           </div>
-          {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}
+          {finished && failed > 0 && <button type="button" className="ob-link self-start mt-12" onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}
         </div>
       </div>
     </div>

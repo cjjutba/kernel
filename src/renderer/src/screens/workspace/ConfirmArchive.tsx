@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { Button, ConfirmDialog, useBusy } from '../../ui'
+import { Button, Checkbox, ConfirmDialog, useBusy } from '../../ui'
 import { useRoomSettings } from '../settings/useSettings'
 import { archiveByHand } from './byHand'
 import './confirm.css'
@@ -75,7 +75,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
         {git && unpushed > 0 && <span>{plural(unpushed, 'commit')} ahead of origin</span>}
         {dirty && <span>{dirty}</span>}
       </div>
-      {!current && !unread && <label className="wsc-check"><input type="checkbox" checked={deleteBranch} onChange={(e) => setPicked(e.target.checked)} />Also delete the local branch</label>}
+      {!current && !unread && <Checkbox checked={deleteBranch} onChange={setPicked}>Also delete the local branch</Checkbox>}
       {error && <p role="alert" className="wsc-error">{error}</p>}
     </ConfirmDialog>
   )

@@ -83,8 +83,8 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
             {PRESETS.map((p) => <Pill key={p.label} onClick={() => { setDescription(p.description); if (!name.trim()) setName(p.label) }}>{p.label}</Pill>)}
           </div>
           <div className="na-two">
-            <label className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Name</span><input className="input" value={name} placeholder="Lumi" onChange={(e) => setName(e.target.value)} /></label>
-            <div className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
+            <label className="col gap-6"><span className="muted t-meta">Name</span><input className="input" value={name} placeholder="Lumi" onChange={(e) => setName(e.target.value)} /></label>
+            <div className="col gap-6"><span className="muted t-meta">Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
           </div>
         </form>
       </Modal>
@@ -103,7 +103,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
         <div className="na-body">
           <div className="na-by">
             <span className="tm-av" aria-hidden="true" style={{ background: rowan && agents ? shirtOf(rowan, agents, room) : undefined }}>{(rowan?.name ?? 'R')[0]}</span>
-            <span><b style={{ fontWeight: 500 }}>{rowan?.name ?? 'Rowan'}</b> drafted the agent file</span>
+            <span><b className="fw-medium">{rowan?.name ?? 'Rowan'}</b> drafted the agent file</span>
           </div>
           <div className="na-file">
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>

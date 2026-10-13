@@ -98,14 +98,14 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
           <DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={`Brief ${name} on what to build next`} onKeyDown={onKey} />
           <div className="row cmp-foot">
             <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{lead?.role}</span></span>
-            <span ref={modelAnchor} style={{ position: 'relative' }}>
-              <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={12} /></Button>
+            <span ref={modelAnchor} className="relative">
+              <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted fw-regular">{effortLabel(effort)}</span><Icon name="chevron" size={12} /></Button>
               {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={pickEffort} />}
             </span>
             <BranchPicker roomId={roomId} lead={name} picked={picked} open={menu === 'branch'} disabled={busy} onToggle={() => setMenu(menu === 'branch' ? null : 'branch')} onClose={() => setMenu((m) => (m === 'branch' ? null : m))}
               onPick={(ref) => setBases((b) => ({ ...b, [roomId]: ref }))} />
             <span className="grow" />
-            <span ref={plusAnchor} style={{ position: 'relative' }}>
+            <span ref={plusAnchor} className="relative">
               <PlusMenu panel={menu === 'model' || menu === 'branch' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} plan={plan} onPlan={() => { togglePlan(); setMenu(null) }}
                 onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
             </span>

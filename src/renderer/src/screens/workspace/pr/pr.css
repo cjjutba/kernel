@@ -17,17 +17,17 @@
 .pr-cap .lp-summary { flex: none; height: 100%; }
 
 /* The `#42 | ↗` pill, then where the PR stands. The label shortens with an ellipsis before anything else gives way. */
-.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: 11.5px var(--mono); }
+.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: var(--fs-chip) var(--mono); }
 .pr-link:hover { background: color-mix(in srgb, var(--b-soft) 88%, var(--b-fg)); }
 .pr-num { display: inline-flex; align-items: center; padding: 0 7px; }
 .pr-ext { display: inline-flex; align-items: center; padding: 0 6px; border-left: 1px solid var(--b-edge); }
-.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--b-text); }
+.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-code); font-weight: var(--fw-medium); color: var(--b-text); }
 .pr-state svg { flex-shrink: 0; }
 .pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits Continue and Archive side by side at the
    panel's widest, and leaves the capsule 2px above and below. */
-.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: 12px; }
+.pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: var(--fs-meta); }
 .pr-tone .split-caret { height: 26px; }
 /* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR stays ink on the neutral band. */
 .pr-tone .btn.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
@@ -38,7 +38,7 @@
 .pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
 .pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
 /* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). */
-.pr-word { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.pr-word { font-size: var(--fs-meta); color: var(--ink-3); white-space: nowrap; }
 .pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
 /* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row needs about 337px of the head's content
    box, which is 375px when the panel is at its widest (400px). The panel toggle ends the chat header, not this row (KERNEL-425). */
@@ -53,55 +53,55 @@
 
 /* "create-pr.md sent": an instruction file Kernel sent for the user. */
 .pr-sent { align-self: flex-end; width: 82%; border-radius: var(--r-md); background: var(--line); overflow: hidden; }
-.pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: 12.5px; color: var(--ink-2); }
-.pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--ink-3); }
+.pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: var(--fs-code); color: var(--ink-2); }
+.pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: var(--fs-meta)/var(--lh) var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the room's open PRs, ready ones first. */
 .lp-summary { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 .lp-summary[data-spread] { align-self: stretch; }
 .lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
-.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--muted); }
-.lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: var(--fs-meta); color: var(--muted); }
+.lp-sec h3 { margin: 0; font-size: var(--fs-meta); font-weight: var(--fw-medium); color: var(--muted); }
 /* Merge all sits at the right of the Ready to merge heading without making it taller (KERNEL-411). */
 /* Merge all sits in the panel's strip, 24px like the strip's other buttons (PanelToolbarPrs.png, KERNEL-515). */
-.panel-tools .lp-all > .btn { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); font-weight: 500; }
+.panel-tools .lp-all > .btn { height: 24px; margin-right: 4px; padding: 0 9px; border-radius: var(--r-sm); font-weight: var(--fw-medium); }
 /* Where a Merge all run stopped, above the lists, until the next run. */
-.lp-notice { margin: 0; padding: 8px 14px 10px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+.lp-notice { margin: 0; padding: 8px 14px 10px; font-size: var(--fs-code); line-height: var(--lh); color: var(--ink-3); }
 .lp-list { list-style: none; margin: 0; padding: 0; }
 .lp-row { padding: 5px 14px 7px; border-top: 1px solid var(--line); }
 .lp-l1 { display: flex; align-items: center; gap: 8px; height: 24px; }
-.lp-name { flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.lp-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--muted); }
+.lp-name { flex-shrink: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.lp-key { flex-shrink: 0; font: var(--fs-chip) var(--mono); color: var(--muted); }
 .lp-act { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.lp-open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--muted); }
+.lp-open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; background: transparent; padding: 0; font-size: var(--fs-meta); color: var(--muted); }
 .lp-open:hover { color: var(--ink); }
-.lp-title { font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.lp-title { font-size: var(--fs-ui); line-height: 18px; color: var(--ink-2); }
 .lp-row:not([data-ready]) .lp-name, .lp-row:not([data-ready]) .lp-title { color: var(--muted); }
-.lp-l3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.lp-l3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-meta); line-height: 16px; color: var(--muted); }
 .lp-review[data-tone='good'] { color: var(--add); }
 .lp-review[data-tone='bad'] { color: var(--del); }
 .lp-review[data-tone='faint'] { color: var(--muted); }
-.lp-stat { font-size: 11px; font-variant-numeric: tabular-nums; }
+.lp-stat { font-size: var(--fs-badge); font-variant-numeric: tabular-nums; }
 
 /* A branch that merges on the Mac: a plain `→ main` pill where the PR link was, in the band's tone, with nothing to open (KERNEL-478). */
-.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); background: var(--b-soft); color: var(--b-fg); font-size: 11.5px; }
+.pr-pill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px 0 7px; border: 1px solid var(--b-edge); border-radius: var(--r-sm); background: var(--b-soft); color: var(--b-fg); font-size: var(--fs-chip); }
 /* The merge line and its note under the band, above the tabs: how far the branch is from its base, then what is in the way. */
-.lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.lm-line { display: flex; align-items: center; gap: 6px; padding: 10px 14px 0; font-size: var(--fs-meta); color: var(--muted); white-space: nowrap; }
 .lm-line:empty { display: none; }
 .lm-line .n { color: var(--ink-2); }
-.lm-line .hot { color: var(--ink); font-weight: 500; }
+.lm-line .hot { color: var(--ink); font-weight: var(--fw-medium); }
 .lm-line .sep { color: var(--faint); }
-.lm-line .meth { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.lm-line .meth { margin-left: auto; font-size: var(--fs-chip); color: var(--muted); }
 .lm-note { margin: 10px 12px 0; padding: 10px 12px 8px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-sm); }
-.lm-note h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
-.lm-note p { margin: 3px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
-.lm-note code { font-size: 11.5px; color: var(--ink-2); }
+.lm-note h3 { margin: 0; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink); }
+.lm-note p { margin: 3px 0 0; font-size: var(--fs-meta); line-height: var(--lh); color: var(--muted); }
+.lm-note code { font-size: var(--fs-chip); color: var(--ink-2); }
 .lm-files { list-style: none; margin: 8px 0 0; padding: 4px 0 0; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--line); }
-.lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: 11.5px var(--mono); color: var(--ink-2); }
+.lm-file { display: flex; align-items: center; gap: 10px; height: 24px; font: var(--fs-chip) var(--mono); color: var(--ink-2); }
 .lm-file .p { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lm-file .d { color: var(--muted); }
-.lm-file .why { font-family: var(--font); font-size: 11.5px; color: var(--muted); }
+.lm-file .why { font-family: var(--font); font-size: var(--fs-chip); color: var(--muted); }
 .lm-letter { color: var(--muted); }
 .lm-letter[data-tone='add'] { color: var(--add); }
 .lm-letter[data-tone='del'] { color: var(--del); }
@@ -115,7 +115,7 @@
    under the chat tabs. No line splits the two rows. */
 .ws-aside-head:has(.pr-r1) { height: auto; flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
 .pr-r1 { height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; }
-.pr-r1 .pr-state { font-size: 13px; }
+.pr-r1 .pr-state { font-size: var(--fs-ui); }
 .pr-r2 { height: 39px; display: flex; align-items: flex-start; gap: 6px; padding: 0 12px; }
 .pr-r2 > .btn, .pr-r2 > .pr-split { flex: 1; min-width: 0; }
 .pr-r2 .btn { justify-content: center; }

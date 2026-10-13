@@ -137,7 +137,8 @@ describe('the scrollbar block in tokens.css', () => {
   it('shows the thumb for data-scrolling only, so a pointer resting on an area does not keep it', () => {
     const css = readFileSync(new URL('../src/renderer/src/tokens.css', import.meta.url), 'utf8')
     expect(css).toMatch(/:where\(\[data-scrolling\]\) \{ --scroll-thumb: var\(--line-4\);/)
-    expect(css).toMatch(/transition: --scroll-thumb 200ms ease-out;/)
+    expect(css).toMatch(/transition: --scroll-thumb var\(--dur-slow\) ease-out;/)
+    expect(css).toMatch(/--dur-slow: 200ms;/)
     expect(css).not.toMatch(/:where\([^)]*:hover[^)]*\) \{ --scroll-thumb/)
   })
 })

@@ -296,8 +296,8 @@ function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const open = () => void attempt('Could not open the plan', async () => { await call('system.openInEditor', { path: (await call('approvals.planFile', { id: a.id })).path }) })
   return (
     <div className="pcard-tools">
-      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
-      {file && <IconButton icon="ext" size={14} label="Open in editor" onClick={open} />}
+      <IconButton box="md" icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
+      {file && <IconButton box="md" icon="ext" size={14} label="Open in editor" onClick={open} />}
     </div>
   )
 }

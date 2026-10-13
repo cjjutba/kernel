@@ -49,7 +49,7 @@ export function History() {
 
   return (
     <div className="panel">
-      <header className="header" style={{ paddingRight: 12 }}>
+      <header className="header pr-12">
         <SidebarToggle />
         <Icon name="history" />
         <h1>History</h1>

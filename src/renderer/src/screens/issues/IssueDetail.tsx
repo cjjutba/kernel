@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
-import { Button, Icon, Skeleton, useBusy } from '../../ui'
+import { Button, Icon, SelectChip, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
@@ -96,7 +96,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
     <article className="is-detail" aria-label={issue.title}>
       <div className="is-scroll">
         <div className="is-inner">
-          <div className="col" style={{ gap: 6 }}>
+          <div className="col gap-6">
             <span className="mono muted is-key">{issue.id}</span>
             <h2>{issue.title}</h2>
           </div>
@@ -128,11 +128,11 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
               {detail.description.trim() && <Markdown className="is-desc" text={detail.description} />}
               <section aria-label="Comments" className="is-sec">
                 <h3>Comments{detail.comments.length > 0 && <span className="is-count">{detail.comments.length}</span>}</h3>
-                {detail.comments.length === 0 && <p className="muted" style={{ margin: 0 }}>No comments yet.</p>}
+                {detail.comments.length === 0 && <p className="muted m-0">No comments yet.</p>}
                 {detail.comments.map((c) => (
                   <div key={c.id} className="is-comment">
                     <span className="is-av is-av-md" aria-hidden="true">{initials(c.author ?? '?')}</span>
-                    <span className="col" style={{ gap: 2, minWidth: 0 }}>
+                    <span className="col gap-2 min-w-0">
                       <span><span className="is-who">{c.author ?? 'Linear'}</span><span className="muted is-when">{issueAge(c.createdAt)} ago</span></span>
                       <Markdown className="is-body" text={c.body} />
                     </span>
@@ -141,9 +141,9 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
               </section>
             </>
           ) : failed ? (
-            <p className="muted" style={{ margin: 0 }}>Could not load the description. {failed}</p>
+            <p className="muted m-0">Could not load the description. {failed}</p>
           ) : (
-            <div className="col" style={{ gap: 8 }} aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
+            <div className="col gap-8" aria-busy="true"><Skeleton width="85%" /><Skeleton width="70%" /><Skeleton width="40%" /></div>
           )}
         </div>
       </div>
@@ -159,15 +159,11 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
           )}
           <div className="is-actions">
             {room && (
-              <span className="is-room">
+              <SelectChip className="is-room" label={`Room: ${room.name}`} value={room.id} options={choices.map((r) => ({ value: r.id, label: r.name }))} onChange={(v) => setPicked({ issue: id, room: v })}>
                 <span className="muted">Room</span>
                 <RoomIcon room={room} className="is-letter" />
                 <span>{room.name}</span>
-                <Icon name="chevron" size={12} />
-                <select aria-label={`Room: ${room.name}`} value={room.id} onChange={(e) => setPicked({ issue: id, room: e.target.value })}>
-                  {choices.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </span>
+              </SelectChip>
             )}
             <span className="grow" />
             <a className="btn lg" href={issue.url} target="_blank" rel="noreferrer">Open in Linear<Icon name="ext" size={12} /></a>

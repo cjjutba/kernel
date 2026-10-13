@@ -116,7 +116,7 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
       <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
         <Glyph g={shown} />
         <span className="grow ellipsis">{lead.name}</span>
-        {slot?.hint ? <KeyHint n={slot.n} /> : <><span className="muted" style={{ fontSize: 12 }}>Lead</span>{g.icon === 'spin' && <RunningMark />}</>}
+        {slot?.hint ? <KeyHint n={slot.n} /> : <><span className="muted t-meta">Lead</span>{g.icon === 'spin' && <RunningMark />}</>}
       </button>
       {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} hold={card.hold} />}
     </>
@@ -236,7 +236,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={<>
           {diff && ws.stat && <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>}
-          {ws.prNumber ? <span className="mono muted ws-right ws-pr" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
+          {ws.prNumber ? <span className="mono muted ws-right ws-pr t-badge">#{ws.prNumber}</span> : null}
           {g.icon === 'spin' && <RunningMark archivable />}
         </>}
       />
@@ -324,8 +324,8 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const unread = roomUnread({ rows, chats, expanded })
   return (
     <div className="nav-list">
-      <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
-        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} aria-label={unread ? `${room.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
+      <div ref={anchor} className="hv room-row relative">
+        <button className="nav-item pr-60" style={{ color: current ? 'var(--ink)' : undefined }} aria-expanded={expanded} aria-label={unread ? `${room.name}, Unread` : undefined} data-unread={unread ? '' : undefined} onClick={onToggle}>
           <span className="room-mark">
             <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
@@ -333,9 +333,9 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
           <span className="grow ellipsis">{room.name}</span>
         </button>
         {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
-        <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
-          <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
+        <div className="row gap-2" style={{ position: 'absolute', right: 4, top: 3 }}>
+          <IconButton box="sm" className="more" icon="more" size={14} label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)} />
+          <IconButton box="sm" icon="plus" size={14} label={`New chat in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })} />
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
@@ -434,28 +434,28 @@ export function AppSidebar() {
   return (
     <>
       {/* The strip lines up with the screen header (y 9 to 53), where the traffic lights sit. The toggle is at x 87, the spot the header's Show sidebar takes when hidden (KERNEL-431). */}
-      <div className="drag" style={{ height: 53, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '9px 0 0 77px' }}>
+      <div className="drag shrink-0 sb-top">
         <IconButton className="nodrag" icon="sidebar" size={16} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
         <span className="grow" />
         <HistoryButtons />
       </div>
       {/* Only the rooms list gives up space when it outgrows the window, so the rows above it keep their height and y (flexShrink 0). */}
-      <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
+      <div className="row pl-4 shrink-0" style={{ height: 36 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
+        <IconButton className="sb-compose" icon="compose" label="New chat" data-tip-kbd="⌘N" onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })} />
       </div>
-      <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
-        <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
+      <div className="nav-list mt-10 shrink-0">
+        <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted t-chip">⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
       <div className="sb-rule" role="separator" />
-      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8, flexShrink: 0 }}>
+      <div ref={roomsAnchor} className="section-label hv relative mt-8 shrink-0">
         <span>Your rooms</span>
-        <button className="icon-btn more" style={{ width: 24, height: 24, opacity: roomsMenu ? 1 : undefined }} aria-label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')}><Icon name="more" size={14} /></button>
+        <IconButton box="sm" className="more" icon="more" size={14} label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')} />
         {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
       </div>
       {/* A room's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
