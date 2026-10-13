@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { Terminal as Xterm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
+import { isWebUrl } from '@shared/previewUrl'
 import { call } from '../../../api'
 import { appended } from './buffer'
 import { getState, replayTerminal, useStore } from '../../../store'
@@ -16,6 +18,11 @@ export const xtermTheme = () => {
     brightBlack: css('--muted'), brightRed: c('red'), brightGreen: c('green'), brightYellow: c('yellow'), brightBlue: c('blue'), brightMagenta: c('magenta'), brightCyan: c('cyan'), brightWhite: c('white')
   }
 }
+
+const openLink = (_event: MouseEvent, url: string) => {
+  if (isWebUrl(url)) void call('system.openExternal', { url }).catch(() => undefined)
+}
+export const xtermLinks = { linkHandler: { activate: openLink, allowNonHttpProtocols: false }, addon: () => new WebLinksAddon(openLink) }
 
 /**
  * A real terminal: xterm.js here, node-pty in the main process. `id` is a terminal chat id, or `shell:<workspaceId>` for the plain shell.
@@ -37,10 +44,12 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
       scrollback: 10_000,
       cursorBlink: true,
       allowProposedApi: true,
+      linkHandler: xtermLinks.linkHandler,
       theme: xtermTheme()
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
+    term.loadAddon(xtermLinks.addon())
     term.open(el)
     // The first resize is also what starts the process, so it goes out only once the size is known.
     let sent = ''

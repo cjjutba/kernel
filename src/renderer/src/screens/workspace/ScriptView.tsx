@@ -7,7 +7,7 @@ import { scriptKey } from '@shared/scriptLog'
 import { call } from '../../api'
 import { getState, useStore } from '../../store'
 import { appended } from './terminal/buffer'
-import { css, xtermTheme } from './terminal/Terminal'
+import { css, xtermLinks, xtermTheme } from './terminal/Terminal'
 
 const HIDE_CURSOR = '\x1b[?25l'
 
@@ -31,10 +31,12 @@ export function ScriptView({ workspaceId, kind, name, label, fallback }: { works
       disableStdin: true,
       cursorInactiveStyle: 'none',
       allowProposedApi: true,
+      linkHandler: xtermLinks.linkHandler,
       theme: xtermTheme()
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
+    term.loadAddon(xtermLinks.addon())
     term.open(el)
     let sent = ''
     const resize = () => {
