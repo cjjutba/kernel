@@ -281,15 +281,6 @@
       "x": 6080,
       "y": 0
     },
-    "QuickAsk.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Ask Rowan from anywhere",
-      "w": 1440,
-      "x": 4560,
-      "y": 3900
-    },
     "RoomSetup.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1478,15 +1469,6 @@
       "x": 15200,
       "y": 20800
     },
-    "GroupedAskRowan.dc.html": {
-      "h": 900,
-      "is_interactive": true,
-      "radius": 12,
-      "title": "Grouped chats \u00b7 Ask Rowan opens a tab",
-      "w": 1440,
-      "x": 16720,
-      "y": 20800
-    },
     "GroupedPalette.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -2320,7 +2302,6 @@
     "SidebarRoomsMenu.dc.html",
     "SidebarRoomMenu.dc.html",
     "AccountMenu.dc.html",
-    "QuickAsk.dc.html",
     "UpdateReady.dc.html",
     "HomeRoomIcon.dc.html",
     "SidebarChatFolded.dc.html",
@@ -2469,7 +2450,6 @@
     "GroupedRowStatus.dc.html",
     "GroupedCloseLastTab.dc.html",
     "GroupedCloseLastTabAfter.dc.html",
-    "GroupedAskRowan.dc.html",
     "GroupedPalette.dc.html",
     "TeamWarnings.dc.html",
     "TeamPersonal.dc.html",

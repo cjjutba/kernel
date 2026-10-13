@@ -66,9 +66,6 @@ const noCanvas = [
   'InboxTrustHeld', // a workspace held for script trust listed in the Inbox, its detail pane open on it (KERNEL-395)
   'LoadingError', // boot failed: the error and Try again (KERNEL-217)
   'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
-  'QuickAskAnswered', // Ask Rowan reopened after a question, with the answer in (KERNEL-146)
-  'QuickAskOpenChat',
-  'QuickAskLeadGone',
   'NavMemory',
   'SidebarLeadChats',
   'SidebarTrustHeld', // a workspace held for script trust next to an idle one, and a folded chat hiding another (KERNEL-342)

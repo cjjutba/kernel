@@ -260,10 +260,8 @@ export interface KernelApi {
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
-  /** Ask Rowan from anywhere (QuickAsk.png). The answer streams into the returned chat. */
-  'lead.ask': { req: { roomId: string; text: string; threadId?: string }; res: { chatId: string } }
   /**
-   * The workspace of the room's newest open chat with Rowan, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Null when no chat
+   * The workspace of the room's newest open chat with Rowan, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
    * is open: it never starts one (KERNEL-405).
    */
   'lead.open': { req: { roomId: string }; res: Workspace | null }

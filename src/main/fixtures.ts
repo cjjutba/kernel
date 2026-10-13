@@ -245,12 +245,6 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'tasks.list': async ({ roomId }) => f.tasks?.[roomId] ?? [],
     'notifications.list': async () => f.notifications ?? [],
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
-    'lead.ask': async ({ roomId }) => {
-      const ws = leadWs(roomId)
-      const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
-      if (!c) throw new Error('This fixture has no chat for the Lead.')
-      return { chatId: c.id }
-    },
     'lead.open': async ({ roomId }) => {
       if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Lead.')
       return leadWs(roomId) ?? null

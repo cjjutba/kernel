@@ -101,7 +101,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const reviewerPick = reviewerChoice(team, rs?.team)
   const reviewerOptions = [...files.filter((a) => !a.lead).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Kernel’s code review' }, { value: NO_REVIEWER, label: 'No reviewer' }]
   return (
-    <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.">
+    <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or have Rowan write one in a chat, and it joins the team.">
       {!!files.length && (
         <Section title="Who leads and reviews" note="A change is saved in settings.toml, so everyone on the repo gets it.">
           <Row label="Lead" source={sourceLine(rs, 'team.lead')} desc="Plans with you and hands out every task">

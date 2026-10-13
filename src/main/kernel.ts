@@ -327,7 +327,6 @@ export class Kernel {
   setWait(...a: Parameters<Waits['setWait']>): ReturnType<Waits['setWait']> { return this.waits.setWait(...a) }
   leadChat(...a: Parameters<Lead['leadChat']>): ReturnType<Lead['leadChat']> { return this.lead.leadChat(...a) }
   startLeadChat(...a: Parameters<Lead['startLeadChat']>): ReturnType<Lead['startLeadChat']> { return this.lead.startLeadChat(...a) }
-  askLead(...a: Parameters<Lead['askLead']>): ReturnType<Lead['askLead']> { return this.lead.askLead(...a) }
   sortOverlap(...a: Parameters<Lead['sortOverlap']>): ReturnType<Lead['sortOverlap']> { return this.lead.sortOverlap(...a) }
   closeChat(...a: Parameters<Chats['closeChat']>): ReturnType<Chats['closeChat']> { return this.chats.closeChat(...a) }
   toolsFor(...a: Parameters<Tools['toolsFor']>): ReturnType<Tools['toolsFor']> { return this.tools.toolsFor(...a) }

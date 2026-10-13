@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  AskEntry, ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -106,10 +106,6 @@ export interface State {
   /** By shared id. Every file agents shared, from `shared.list` and the `shared` push (KERNEL-305). */
   shared: Record<string, SharedFile>
   system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null; github: GitHubStatus }
-  /** By room id. The Ask Rowan popover's draft and last question, kept while it is closed. */
-  quickAsk: Record<string, QuickAskState>
-  /** Questions asked from Ask Rowan, newest first, kept across launches (KERNEL-589). */
-  askHistory: AskEntry[]
   ui: UiState
 }
 
@@ -129,26 +125,14 @@ function showing(panel: keyof typeof HIDDEN) {
 function keep(panel: keyof typeof HIDDEN, open: boolean) {
   try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
 }
+/** KERNEL-670 removed the footer's question box and its history. Drop the questions the last version stored, so none stay on the Mac. localStorage may be missing or blocked. */
+try { localStorage.removeItem('kernel.askHistory') } catch { /* nothing stored */ }
 /**
  * The right panel's bottom pane (KERNEL-513), kept across launches like the panel toggles. Its size is one fraction of the panel below the PR band
  * for every chat, and a key is stored only once it is dragged. Collapsed or open is kept apart for Rowan's chats, which start collapsed, and for
  * teammate workspaces, which start open. localStorage may be missing or blocked, and a stored value may be junk.
  */
 export const BOTTOM_RATIO_DEFAULT = 1 / 3
-/** Ask Rowan's history (KERNEL-589): the newest 50 questions, newest first. localStorage may be missing, blocked or hold junk. */
-const ASK_HISTORY = 'kernel.askHistory'
-export const ASK_HISTORY_MAX = 50
-export function askHistory(): AskEntry[] {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(ASK_HISTORY) ?? '[]')
-    if (!Array.isArray(v)) return []
-    return v.filter((e): e is AskEntry => !!e && typeof e.roomId === 'string' && typeof e.chatId === 'string' && typeof e.question === 'string' && typeof e.at === 'number').slice(0, ASK_HISTORY_MAX)
-  } catch { return [] }
-}
-/** The list with `entry` first. Asking the same question into the same chat again moves it to the top rather than listing it twice. */
-export function withAsked(list: AskEntry[], entry: AskEntry): AskEntry[] {
-  return [entry, ...list.filter((e) => !(e.chatId === entry.chatId && e.question === entry.question))].slice(0, ASK_HISTORY_MAX)
-}
 const BOTTOM_RATIO = 'kernel.bottomPanelRatio'
 const BOTTOM_COLLAPSED: Record<BottomKind, string> = { lead: 'kernel.bottomCollapsed.lead', teammate: 'kernel.bottomCollapsed.teammate' }
 const COLLAPSED_AT_FIRST: Record<BottomKind, boolean> = { lead: true, teammate: false }
@@ -215,8 +199,6 @@ let state: State = {
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  quickAsk: {},
-  askHistory: askHistory(),
   ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') } }
 }
 const listeners = new Set<() => void>()
@@ -631,19 +613,6 @@ export const actions = {
       return { retry: next }
     })
   },
-  quickAsk: {
-    setDraft: (roomId: string, draft: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft } } })),
-    setSending: (roomId: string, sending: boolean) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft: s.quickAsk[roomId]?.draft ?? '', sending } } })),
-    /** The question sent. Clears the draft, which is what was just asked. */
-    setAsked: (roomId: string, asked: NonNullable<QuickAskState['asked']>) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: '', asked } } })),
-    clearAsked: (roomId: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: s.quickAsk[roomId]?.draft ?? '' } } })),
-    /** Adds a question to Ask Rowan's history and saves it (KERNEL-589). */
-    remember: (entry: AskEntry) => setState((s) => {
-      const list = withAsked(s.askHistory, entry)
-      try { localStorage.setItem(ASK_HISTORY, JSON.stringify(list)) } catch { /* not remembered */ }
-      return { askHistory: list }
-    })
-  },
   approvals: {
     set: (list: Approval[]) => setState({ approvals: byRecent(list) }),
     upsert: (a: Approval) => setState((s) => ({ approvals: byRecent(upsert(s.approvals, a)) }))
@@ -903,8 +872,8 @@ export function launchRoute(): Route {
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
-function applyFixture({ quickAsk, askHistory: asked, ...ui }: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk, askHistory: asked ?? s.askHistory }))
+function applyFixture(ui: ForcedUi, push: PushEvent[]) {
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } } }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)

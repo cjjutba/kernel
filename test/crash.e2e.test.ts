@@ -21,7 +21,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('crash
     for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
     data = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
     logs = mkdtempSync(join(tmpdir(), 'kernel-logs-'))
-    Object.assign(env, { KERNEL_FIXTURES: 'QuickAskOpenChat', KERNEL_HEADLESS: '1', KERNEL_FIXTURE_DATA: data, KERNEL_LOG_DIR: logs })
+    Object.assign(env, { KERNEL_FIXTURES: 'Workspace', KERNEL_HEADLESS: '1', KERNEL_FIXTURE_DATA: data, KERNEL_LOG_DIR: logs })
     app = await electron.launch({ args: ['.', '--force-device-scale-factor=1'], env })
     const page = await app.firstWindow()
     await page.waitForSelector('html[data-fixture="ready"]', { state: 'attached', timeout: 15_000 })

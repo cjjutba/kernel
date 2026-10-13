@@ -105,11 +105,11 @@ export type Modal =
  * Composer and new workspace menus share names because only one of the two is on screen.
  */
 export type MenuId =
-  | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
+  | 'rooms' | `room:${string}` | 'account' | 'plan'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
-  | 'roomTracker' | 'askHistory'
+  | 'roomTracker'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
@@ -195,23 +195,5 @@ export interface UiState {
   startError?: string
 }
 
-/** One room's Ask Rowan popover (QuickAsk.png). It outlasts the popover, which unmounts when it closes. */
-export interface QuickAskState {
-  /** What you typed and haven't sent. */
-  draft: string
-  /** A question is on its way to the Lead. Ask stays busy while the popover is closed and reopened. */
-  sending?: boolean
-  /** The question just sent, with the chat it went to and when, so the answer is the Lead's text after `since`. */
-  asked?: { chatId: string; since: number; question: string }
-}
-
-/** A question asked from Ask Rowan, kept in its history (KERNEL-589): the room, the Lead chat it went to, the question and when. */
-export interface AskEntry {
-  roomId: string
-  chatId: string
-  question: string
-  at: number
-}
-
-/** UI state a fixture forces on boot. `quickAsk` is by room id, a slice of its own that a fixture can set, and so is `askHistory`. */
-export type ForcedUi = Partial<UiState> & { quickAsk?: Record<string, QuickAskState>; askHistory?: AskEntry[] }
+/** UI state a fixture forces on boot. */
+export type ForcedUi = Partial<UiState>

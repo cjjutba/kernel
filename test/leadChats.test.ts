@@ -692,7 +692,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     expect(await ask()).toEqual({ isError: true, text: SPENT })
   })
 
-  it('starts over when the user answers the Lead\'s question or the PR merges, and not on an Ask Rowan question', async () => {
+  it('starts over when the user answers the Lead\'s question or the PR merges, and not on a first message to another new chat', async () => {
     const { k, room, first, ws, ask, spend, call } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
@@ -702,8 +702,9 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     await asking
     expect(new Nudges(k.store).count(ws.id)).toBe(0)
     await spend()
-    // The question gets a Lead chat of its own (KERNEL-145), which hears none of this workspace's updates.
-    await k.askLead(room.id, 'How is Kai doing?')
+    // A first message in a new chat of its own hears none of this workspace's updates.
+    const fresh = await k.startLeadChat(room.id, { prompt: 'How is Kai doing?' })
+    await setUp(k, fresh.id)
     expect(new Nudges(k.store).count(ws.id)).toBe(3)
     bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
     expect(new Nudges(k.store).count(ws.id)).toBe(0)
@@ -833,40 +834,26 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
   })
 })
 
-describe('Ask Rowan (KERNEL-145)', () => {
-  it('asks in a new tab of the newest open chat, past a busy tab, joins the chat it is asked from, and gives it the Lead tools (KERNEL-405)', async () => {
-    const { k, room, first, icons, sent, rowan } = await setup()
+describe('Lead tabs (KERNEL-145)', () => {
+  it("opens a tab in its chat's workspace, past a busy tab, and gives it the Lead tools (KERNEL-405)", async () => {
+    const { k, first, icons, tab, rowan } = await setup()
     k.sessions.isRunning = (id: string) => id === icons.id
-    const a = await k.askLead(room.id, 'What is kai working on?')
-    const b = await k.askLead(room.id, 'Is the release branch ready to merge?')
-    expect(sent).toEqual([
-      { chatId: a.chatId, text: 'What is kai working on?', from: undefined },
-      { chatId: b.chatId, text: 'Is the release branch ready to merge?', from: undefined }
-    ])
-    expect(k.chatTabs(icons.workspaceId).map((c) => c.id)).toEqual([icons.id, a.chatId, b.chatId])
+    const a = await tab(icons.threadId)
+    const b = await tab(icons.threadId)
+    expect(k.chatTabs(icons.workspaceId).map((c) => c.id)).toEqual([icons.id, a.id, b.id])
     expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id])
-    expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.threadId)).toEqual([icons.threadId, icons.threadId])
-    expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.plan)).toEqual([false, false])
-    // Asked from a chat, the question joins that chat.
-    const c = await k.askLead(room.id, 'And this one?', first.threadId)
-    expect(k.store.chat(c.chatId)).toMatchObject({ workspaceId: first.workspaceId, threadId: first.threadId })
-    expect(await k.leadChat(room.id)).toEqual(k.store.chat(icons.id))
+    expect([a, b].map((c) => k.store.chat(c.id)!.threadId)).toEqual([icons.threadId, icons.threadId])
     // Each tab gets the Lead's kernel server, bound to that tab.
     const ws = k.store.workspace(icons.workspaceId)!
-    expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.chatId)!)).toHaveProperty('kernel')
-    expect(wired!.chatId).toBe(b.chatId)
+    expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.id)!)).toHaveProperty('kernel')
+    expect(wired!.chatId).toBe(b.id)
   })
 
   it('leaves an unused Lead tab alone, since the user may be typing a brief there', async () => {
-    const { k, room, first, icons, sent } = await setup()
+    const { k, room, icons } = await setup()
     // Nothing sent yet, so the engine sees it as unused, but the composer may hold a draft.
     const drafting = k.store.saveChat({ ...k.newChat(icons.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true }), threadId: icons.threadId })
-    for (const c of [first, icons]) k.store.saveChat({ ...k.store.chat(c.id)!, closed: true })
-    const { chatId } = await k.askLead(room.id, 'What is kai working on?')
-    expect(chatId).not.toBe(drafting.id)
-    expect(sent.map((s) => s.chatId)).toEqual([chatId])
-    expect(k.store.chat(drafting.id)).toEqual(drafting)
-    // The New chat modal leaves it too, and starts a chat of its own with the brief (KERNEL-242, KERNEL-405, KERNEL-490).
+    // The New chat modal leaves it alone and starts a chat of its own with the brief (KERNEL-242, KERNEL-405, KERNEL-490).
     const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
     expect(brief.id).not.toBe(drafting.id)
     expect(brief.workspaceId).not.toBe(icons.workspaceId)
@@ -887,9 +874,6 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const started = await h['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
     expect(started.title).toBe('New tab')
     await setUp(k, started.id)
-    // Ask Rowan joins the newest open chat (KERNEL-405).
-    const asked = k.store.chat((await h['lead.ask']({ roomId: room.id, text: 'How is Kai doing?' })).chatId)!
-    expect(asked.threadId).toBe(started.threadId)
     const opened = await tab()
     expect(opened).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     const threads = [first, icons, started, opened].map((c) => thread(c)!.id)
@@ -898,8 +882,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect(thread(opened)).toMatchObject({ title: 'New tab' })
     // Given a Lead chat, a tab joins it.
     expect((await tab(started.threadId)).threadId).toBe(started.threadId)
-    const askedIn = (await h['lead.ask']({ roomId: room.id, text: 'And Noor?', threadId: first.threadId })).chatId
-    expect(k.store.chat(askedIn)!.threadId).toBe(first.threadId)
+    expect((await tab(first.threadId)).threadId).toBe(first.threadId)
     expect((await h['threads.list']({ roomId: room.id })).map((t) => t.id)).toEqual(threads)
     // A big terminal belongs to no Lead chat, and a tab in a chat's workspace joins that chat, whatever thread it names.
     expect((await h['chats.create']({ workspaceId: first.workspaceId, kind: 'terminal' })).threadId).toBeUndefined()
