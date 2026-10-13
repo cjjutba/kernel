@@ -3,7 +3,7 @@ import { call, cleanError } from '../../../api'
 import { useFreshUsage } from '../../../accountRows'
 import { planAccounts, type PlanAccount } from '../../../components/sidebar/planModel'
 import { actions, go, useStore } from '../../../store'
-import { Button, Meter, Toggle, useBusy } from '../../../ui'
+import { Button, Meter, ProviderMark, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings, useSettings } from '../useSettings'
 
@@ -62,7 +62,7 @@ export function Account() {
     <Page title="Account and usage">
       {sections.map((p) => (
         <section key={p.id} className="set-section">
-          <h2>{p.name}</h2>
+          <h2 className="prov-title"><ProviderMark provider={p.id} size={16} />{p.name}</h2>
           <div className="set-cards">
             {p.accounts.map((a) => <AccountCard key={a.account.id} provider={p.name} a={a} />)}
             {p.signedOut && (

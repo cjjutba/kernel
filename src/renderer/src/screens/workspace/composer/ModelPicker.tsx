@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EFFORT_LABELS, EFFORTS, MODELS, type Effort, type Provider } from '@shared/types'
 import { actions } from '../../../store'
-import { ClaudeMark, Icon } from '../../../ui'
+import { Icon, ProviderMark } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
@@ -98,10 +98,10 @@ export function ModelPicker({ provider = 'claude', grouped = false, started = fa
         <div role="listbox" aria-label="Models" className="pick-list">
           {rows.map((m, i) => (
             <div key={`${m.provider}:${m.id}`} role="presentation">
-              {grouped && (i === 0 || rows[i - 1].provider !== m.provider) && <p className="pick-group" role="presentation">{providerLabel(m.provider)}</p>}
+              {grouped && (i === 0 || rows[i - 1].provider !== m.provider) && <p className="pick-group" role="presentation"><ProviderMark provider={m.provider} size={12} />{providerLabel(m.provider)}</p>}
               <button type="button" role="option" aria-selected={m.id === model} tabIndex={-1} className="menu-item pick-row" data-active={!sub && i === at}
                 onMouseEnter={() => { setAt(i); setSub(false) }} onMouseDown={(e) => e.preventDefault()} onClick={() => pickModel(m)}>
-                {!grouped && <span className="pick-glyph"><ClaudeMark size={14} /></span>}
+                {!grouped && <span className="pick-glyph"><ProviderMark provider={m.provider} size={14} /></span>}
                 <span className="pick-name">{m.label}</span>
                 {!elsewhere(m) && <span className="pick-effort">{effortLabel(rowEffort(m))}</span>}
                 <span className="grow" />
