@@ -40,6 +40,70 @@ details.dd>summary::-webkit-details-marker{display:none}
 @keyframes skp{50%{opacity:.5}}
 @media (prefers-reduced-motion: reduce){.sk{animation:none}}
 </style>
+<style>
+.uf { --ink:#f7f8f8; --ink-2:#d0d6e0; --ink-3:#b7bcc4; --muted:#8a8f98; --faint:#62666d; --line:#1d1e22; --line-2:#26272b; --line-3:#2a2b30; --surface-2:#18191b; --surface-3:#1c1d21; --input-bg:#141516; --nav-hover:#141518; --needs:#f2c55c; --needs-fill:#f2c55c; --del:#f06363; --del-fill:#f06363; --r-sm:6px; --r:8px; --r-md:10px; --r-pill:999px; --canvas:#08090a; --claude:#d97757; }
+.uf * { box-sizing:border-box; }
+.uf button { font:inherit; color:inherit; cursor:pointer; }
+.uf .grow { flex:1; min-width:0; }
+.uf .ellipsis { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.uf .nv-e { font-size:11.5px; color:var(--muted); }
+.uf .popat { position:absolute; z-index:60; left:10px; bottom:34px; }
+.uf .menu-item:hover, .uf .chip:hover { background:var(--surface-3); }
+.uf { position:relative; height:34px; flex-shrink:0; display:flex; align-items:center; gap:4px; padding:0 10px; font-size:12px; color:var(--muted); }
+.uf .ft-l { display:inline-flex; align-items:center; gap:2px; }
+.uf .ft-pm { display:inline-flex; }
+.uf .chip { display:inline-flex; align-items:center; gap:8px; height:24px; padding:0 8px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--ink-2); font-size:12px; white-space:nowrap; }
+.uf .chip:hover { background:var(--nav-hover); }
+.uf .cn { color:var(--ink-2); font-weight:500; }
+.uf .cn.dim { color:var(--muted); font-weight:400; }
+.uf .fw { display:inline-flex; align-items:center; gap:5px; }
+.uf .wl { color:var(--muted); }
+.uf .fw + .fw { margin-left:8px; }
+.uf .pc, .uf .pm-mp { font-variant-numeric:tabular-nums; color:var(--ink-2); }
+.uf .fdiv { width:1px; height:14px; margin:0 6px; background:var(--line-2); }
+.uf [data-tone='near'] { color:var(--needs) !important; }
+.uf [data-tone='full'] { color:var(--del) !important; }
+.uf .meter { display:inline-block; border-radius:var(--r-pill); background:var(--line-2); overflow:hidden; flex-shrink:0; }
+.uf .meter > span { display:block; height:100%; border-radius:inherit; background:var(--muted); }
+.uf .meter[data-level='near'] > span { background:var(--needs-fill); }
+.uf .meter[data-level='full'] > span { background:var(--del-fill); }
+.uf .ft-pill { display:inline-flex; align-items:center; gap:7px; height:24px; padding:0 10px; border:1px solid var(--line-3); border-radius:var(--r-pill); background:transparent; color:var(--ink-2); font-size:12px; white-space:nowrap; }
+.uf .segmented { display:inline-flex; gap:2px; padding:2px; border:1px solid var(--line-2); border-radius:var(--r); background:var(--input-bg); }
+.uf .segmented button { height:24px; padding:0 10px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--muted); font-size:12.5px; }
+.uf .segmented button[aria-checked='true'] { background:var(--surface-3); color:var(--ink); font-weight:500; }
+.uf .menu-item { display:flex; align-items:center; gap:10px; width:100%; height:32px; padding:0 8px; border:0; border-radius:var(--r-sm); background:transparent; color:var(--ink-2); text-align:left; font-size:13px; }
+.uf .menu-item svg { color:var(--muted); flex-shrink:0; }
+.uf .popover { border-radius:var(--r-md); border:1px solid var(--line-3); background:var(--surface-2); }
+.uf .pm { width:360px; overflow:hidden; }
+.uf .pm-top { display:flex; align-items:center; justify-content:space-between; height:48px; padding:0 10px 0 14px; border-bottom:1px solid var(--line-2); }
+.uf .pm-title { font-size:13px; font-weight:500; color:var(--ink); }
+.uf .pm-sec + .pm-sec { border-top:1px solid var(--line-2); }
+.uf .pm-head { display:flex; align-items:center; gap:10px; width:100%; padding:11px 14px; border:0; background:transparent; text-align:left; }
+.uf .pm-mark { display:inline-flex; width:14px; justify-content:center; color:var(--ink); }
+.uf .pm-who { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.uf .pm-line { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.uf .pm-name { font-size:13px; font-weight:500; color:var(--ink); white-space:nowrap; }
+.uf .pm-acct { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.uf .pm-chev { display:inline-flex; color:var(--muted); }
+.uf .pm-cw { display:inline-flex; align-items:baseline; gap:8px; font-size:12px; }
+.uf .pm-cl { color:var(--muted); }
+.uf .pm-minis { display:flex; align-items:center; gap:14px; padding:0 14px 12px 38px; margin-top:-3px; }
+.uf .pm-mini { display:inline-flex; align-items:center; gap:6px; font-size:12px; white-space:nowrap; }
+.uf .pm-ml { color:var(--muted); }
+.uf .pm-body { display:flex; flex-direction:column; gap:12px; padding:0 14px 8px 38px; margin-top:-4px; }
+.uf .plan-email { font-size:12px; color:var(--muted); }
+.uf .plan-rows { display:flex; flex-direction:column; gap:12px; }
+.uf .plan-row { display:flex; flex-direction:column; gap:5px; }
+.uf .plan-title { font-size:12.5px; color:var(--ink-2); }
+.uf .plan-note { font-size:11.5px; color:var(--muted); }
+.uf .plan-switch { display:flex; flex-direction:column; gap:2px; margin:0 -8px; }
+.uf .plan-switch-title { padding:0 8px; font-size:12px; font-weight:500; color:var(--muted); }
+.uf .menu-item.plan-other { align-items:baseline; gap:8px; color:var(--ink); }
+.uf .plan-other-name { font-weight:500; }
+.uf .plan-other-plan { flex:1; min-width:0; font-size:12px; color:var(--muted); }
+.uf .plan-other-use { font-size:12px; color:var(--muted); }
+.uf .plan-foot { padding:6px; border-top:1px solid var(--line-2); }
+</style>
 </helmet>
 <div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
 <nav aria-label="Sidebar" style="position: relative; z-index: 5; width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
@@ -55,7 +119,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: #f7f8f8; color: #08090a; font-size: 9.5px; font-weight: 600">CJ</span>
 CJ Jutba
 <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg>
-</summary><div role="menu" style="position: absolute; z-index: 60; width: 232px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px"><div style="display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; font-size: 12px; color: #8a8f98"><span style="display: flex; gap: 8px"><span style="width: 76px; flex-shrink: 0; color: #d0d6e0">Claude Code</span><span>cjjutba · Claude Max</span></span><span style="display: flex; gap: 8px"><span style="width: 76px; flex-shrink: 0; color: #d0d6e0">Codex</span><span>cjjutba · ChatGPT Plus</span></span></div><a role="menuitem" class="mi" href="Settings.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Settings</span><span style="font-size: 12px; color: #8a8f98">⌘,</span></a><a role="menuitem" class="mi" href="SettingsShortcuts.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Keyboard shortcuts</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="SettingsAccount.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Usage</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="WhatsNew.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">What's new</span><span style="font-size: 12px; color: #8a8f98"></span></a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="SettingsProviders.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Switch to Work</span><span style="font-size: 12px; color: #8a8f98">Claude Code</span></a><a role="menuitem" class="mi" href="SettingsProviders.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Manage accounts</span><span style="font-size: 12px; color: #8a8f98"></span></a></div></details>
+</summary><div role="menu" style="position: absolute; z-index: 60; width: 232px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px"><div style="display: flex; align-items: center; height: 32px; padding: 0 8px; font-size: 13px; color: #8a8f98">cjjutba · Claude Max</div><a role="menuitem" class="mi" href="Settings.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Settings</span><span style="font-size: 12px; color: #8a8f98">⌘,</span></a><a role="menuitem" class="mi" href="SettingsShortcuts.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Keyboard shortcuts</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="SettingsAccount.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Usage</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="WhatsNew.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">What’s new</span><span style="font-size: 12px; color: #8a8f98"></span></a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="SettingsProviders.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Switch account</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="Setup.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Sign out</span><span style="font-size: 12px; color: #8a8f98"></span></a></div></details>
 <span style="flex: 1"></span>
 <a href="NewWorkspace.dc.html" aria-label="New workspace" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #23252a; background: #141516; color: #d0d6e0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 2.8H4a1.2 1.2 0 0 0-1.2 1.2v8A1.2 1.2 0 0 0 4 13.2h8a1.2 1.2 0 0 0 1.2-1.2V7.5"></path><path d="m12.2 2.4 1.4 1.4-5.4 5.4-2 .6.6-2Z"></path></svg></a>
 </div>
@@ -119,12 +183,7 @@ CJ Jutba
 
 
 <div style="flex: 1"></div>
-<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 0 0 2px">
-<a href="SettingsAccount.dc.html" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #23252a; font-size: 12px; color: #d0d6e0; text-decoration: none">Claude Pro</a>
-<span style="flex: 1"></span>
-<a href="WhatsNew.dc.html" aria-label="What's new" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z"></path></svg></a>
-<a href="Settings.dc.html" aria-label="Settings" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M11.5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7.5 11a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"></path></svg></a>
-</div>
+<div style="height: 40px; flex-shrink: 0"></div>
 </nav>
 
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
@@ -463,19 +522,10 @@ CJ Jutba
 </div>
 <sc-if value="{{ hasToasts }}" hint-placeholder-val="{{ false }}"><div role="status" style="position: absolute; right: 16px; bottom: 16px; z-index: 30; display: flex; flex-direction: column; gap: 8px; width: 300px"><sc-for list="{{ toasts }}" as="o" hint-placeholder-count="2"><div style="display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 10px; border: 1px solid #2a2b30; background: #1c1d20"><span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500">{{ o.title }}</span><span style="font-size: 12px; color: #8a8f98">{{ o.sub }}</span></span><sc-if value="{{ o.hasAction }}" hint-placeholder-val="{{ false }}"><a href="{{ o.href }}" style="color: #f7f8f8; font-size: 12.5px; font-weight: 500">{{ o.action }}</a></sc-if><sc-if value="{{ o.hasBtn }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ o.btnAct }}" style="flex-shrink: 0; height: 24px; padding: 0 8px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ o.btn }}</button></sc-if><button type="button" onClick="{{ o.close }}" aria-label="Dismiss" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button></div></sc-for></div></sc-if>
 </div>
-<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
-<span></span>
-<span style="display: inline-flex; align-items: center; gap: 6px">
-<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
-<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
-<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
-<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
-<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
-<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="QuickAsk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
-</div></details>
-
-</span>
+<footer class="uf">
+<span class="ft-l"><button type="button" class="chip on" aria-label="Claude Code, 2nd account, active: 5-hour 9%, weekly 19%. Opens usage"><span class="ft-pm"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="var(--claude)" style="flex-shrink:0"><path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg></span><span class="cn">2nd account</span><span class="fw"><span class="wl">5h</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:9%"></span></span><span class="pc" data-tone="ok">9%</span></span><span class="fw"><span class="wl">wk</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:19%"></span></span><span class="pc" data-tone="ok">19%</span></span></button><button type="button" class="chip" aria-label="Claude Code, Main account: 5-hour 12%. Switch to it"><span class="cn dim">Main account</span><span class="pc" data-tone="ok">12%</span></button><button type="button" class="chip" aria-label="Claude Code, 3rd account: 5-hour 75%. Switch to it"><span class="cn dim">3rd account</span><span class="pc" data-tone="near">75%</span></button><span class="fdiv"></span><button type="button" class="chip on" aria-label="Codex, cjjutbaofficial, active: 5-hour 31%, weekly 16%. Opens usage"><span class="ft-pm"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" style="color:var(--ink);flex-shrink:0"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"/></svg></span><span class="cn">cjjutbaofficial</span><span class="fw"><span class="wl">5h</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:31%"></span></span><span class="pc" data-tone="ok">31%</span></span><span class="fw"><span class="wl">wk</span><span class="meter" data-level="" style="width:30px;height:4px"><span style="width:16%"></span></span><span class="pc" data-tone="ok">16%</span></span></button></span><span class="grow"></span>
 </footer>
+
 </div>
 </div>
 </x-dc>
@@ -639,6 +689,9 @@ class Component extends DCLogic {
     if (sc === 'providerlimit') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work', primary: true }]);
     // KERNEL-522: when the account on offer is an API key, the banner says it is billed per token, since the button starts paid use.
     if (sc === 'providerlimitkey') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Work key is billed per token.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work key', primary: true }]);
+    // KERNEL-617: the limit banner when the only other account is signed out, and the warning after a switch to a plan that lacks a model the team pins.
+    if (sc === 'providerlimitout') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working. Personal is signed out. Sign in to switch to it.', [{ id: 'notify', label: 'Notify me' }, { id: 'signin', label: 'Sign in', primary: true }]);
+    if (sc === 'switchwarn') { B('warn', 'Personal\u2019s plan doesn\u2019t include Opus 5.5', 'Theo and Noor use it.', [{ id: 'switchback', label: 'Switch back to Work' }, { id: 'models', label: 'Models and effort', primary: true }]); s.banner.dismiss = true; }
     if (sc === 'nearlimit') { B('limit', 'Work is at 90% of its 5-hour limit', 'Personal has room.', [{ id: 'switchacct', label: 'Switch to Personal', primary: true }]); s.banner.dismiss = true; }
     var accountNote = function (text) { s.msgs = base.concat([U('Also add a loading skeleton.'), { kind: 'note', text: text }, { kind: 'tools', text: '3 tool calls' }, { kind: 'ai', text: 'Added a loading skeleton to the invoice table and held it for 200ms. The tests still pass.' }, { kind: 'meta', text: '38s \u00b7 10:44' }]); };
     if (sc === 'accountnote') accountNote('Now on Personal');
@@ -652,7 +705,6 @@ class Component extends DCLogic {
     if (sc === 'setupfail') B('setup', 'Setup script failed', 'pnpm install exited with code 1. Kai waits until setup passes.', [{ id: 'editscript', label: 'Edit script' }, { id: 'rerun', label: 'Run again', primary: true }], { bottom: 'setup', block: true, msgs: [], setupFailed: true, right: 'files' });
     if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
     // KERNEL-401: the footer says a GitHub rate limit holds PR reads off; the page is an open PR that passed its checks.
-    if (sc === 'ghpaused') Object.assign(s, { pr: 'ready' });
     if (sc === 'newchat') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 'c2', kind: 'chat', title: 'New chat', empty: true }], tab: 'c2', newMenu: true });
     if (sc === 'terminal') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 't1', kind: 'term', title: 'Terminal (claude)' }], tab: 't1' });
     if (sc === 'lead') Object.assign(s, { agent: 'rowan', model: 'opus', plan: true, wsName: 'export-invoices-as-pdf', badge: 'feat/export-invoices-as-pdf', filesKey: 'rowan', tabs: [{ id: 'c1', kind: 'chat', title: 'Export invoices as PDF' }], msgs: [
@@ -1067,7 +1119,8 @@ class Component extends DCLogic {
       offline: 'M3 3l10 10M5.2 7.6a4 4 0 0 1 2-1M10.8 7.6a4 4 0 0 0-.9-.6M2.5 5.5a8 8 0 0 1 3-1.6M13.5 5.5a8 8 0 0 0-4.7-1.9M6.6 10a2 2 0 0 1 2.8 0',
       auth: 'M10 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM7.6 8.4 2.5 13.5M4 12l1.5 1.5M5.5 10.5 7 12',
       setup: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM6 6l4 4M10 6l-4 4',
-      hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14'
+      hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14',
+      warn: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1'
     };
     var banner = { title: '', sub: '', actions: [], spin: false, icon: false, path: '', dismiss: false };
     if (s.banner) {

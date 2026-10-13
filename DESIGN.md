@@ -154,12 +154,17 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Servers row (KERNEL-440): the hire card and the New agent review list the servers the new agent's file names, one pill each. A server that works shows its name. One that doesn't shows the warning triangle in ink and the problem. A sentence under the row says what that means for Rowan's hand-offs.
 - Roster picker and rule conflicts (KERNEL-440): with more than about 12 agents, room setup asks who joins. The card has a search box, checkbox rows (name, role, tags, one description line, any warning) and "8 of 23 picked" with Clear and Pick the suggested 8. Kernel suggests the agents that can open pull requests. One written as a subagent with no pull request workflow starts unpicked as a Helper, with its warning. The list scrolls inside the card, so a half row shows at the bottom. The conflicts card lists each rule in CLAUDE.md or AGENTS.md that fights Kernel's workflow, with its file and line, next to what Kernel tells agents. Kernel never edits those files. Setup is taller than the window with these cards, so `RoomSetupRoster` and `RoomSetupConflicts` are drawn scrolled to the end.
 
-## Footer (KERNEL-588)
+## Footer (KERNEL-588, KERNEL-672)
 
-- A 32px strip under the main panel on every screen but Settings and onboarding. It amends KERNEL-527, which had removed it.
-- Left: Hooks down and GitHub paused, only while they hold.
-- Right: the Update ready pill once an update is ready, and nothing else (KERNEL-670 removed Ask Rowan and its history). Nothing moves when the sidebar or the right panel hides.
-- The sidebar's bottom row is the plan chip, What's new and Settings. With the sidebar hidden, the header starts with Show sidebar alone.
+- A 34px strip, full width under the sidebar and the main panel, on every screen but Settings and onboarding. It amends KERNEL-527, which had removed it. The PNGs draw 34px, so that is the height.
+- Left: usage in one row. Right: the Update ready pill once an update is ready. Nothing else lives in the footer. Hooks down is the banner above the composer, GitHub paused is gone, and KERNEL-670 removed Ask Rowan.
+- The row lists every account of a provider, Claude Code first, then a 1px `line-2` divider, then Codex. The active account comes first and is detailed: the provider mark (Claude in `--claude`, OpenAI in ink), its name in `ink-2` weight 500, then `5h` and `wk` with a 30px by 4px meter and a percent. The other accounts are minimal: the name in `muted` and one percent.
+- Compact drops the names and labels for the active account: mark, meter and one percent per provider. Other Claude accounts stay as minimal chips.
+- Colors: the meter and percent are grey, amber (`needs`) from 75% and red (`del`) from 90%. At 100% the percent and bar are red and the reset shows in the popover.
+- Each chip is a real button 24px high. The active one opens the popover. The others switch to that account.
+- The popover opens upward from the footer's bottom left, 360px wide, hairline border, no shadow. A Detailed and Compact switch sits in its 48px header. Each provider is a row that expands in place, with its windows (5-hour, Weekly, and a model window such as "Fable 5.1 weekly") as meters with "N% used, resets at 11:00 PM". Reset times are clock times, never countdowns. Switch lists the other accounts, Codex too. "Account and usage" at the bottom is the one link to Settings.
+- The sidebar's bottom row is empty. The gear, What's new and the Usage pill left it. Settings and What's new live in the account menu. With the sidebar hidden, the header starts with Show sidebar alone.
+- The PNGs: `UsageFooter`, `UsageFooterCompact`, `UsageFooterCodexFull`, `UsagePopover`, `UsagePopoverCompact`, `UsagePopoverCompactCodex`, `UsagePopoverApiKey`, `UsagePopoverSignedOut`, `AccountMenu`.
 
 ## Busy buttons
 
