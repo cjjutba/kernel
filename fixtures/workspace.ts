@@ -1318,6 +1318,12 @@ function sidebarUnread(f: Fixture): Partial<Fixture> {
   }
 }
 
+/** SidebarPlanChat (no PNG): `grouped` with the table chat and its copy tab planning, so their rows take the blue icon next to the ordinary ones. */
+function sidebarPlanChat(f: Fixture): Partial<Fixture> {
+  const g = grouped(f, { tab: 'chat-login', running: [] })
+  return { ...g, chats: g.chats!.map((c) => (c.id === 'chat-table' || c.id === 'chat-login' ? { ...c, plan: true } : c)) }
+}
+
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
   const plan = leadPlan(f, { agentId: 'rowan' })
@@ -1860,6 +1866,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Hovering a chat row shows Archive, like a workspace row's (KERNEL-405). The shot hovers the table chat (scripts/shots.ts).
   GroupedChatArchive: scene((f) => grouped(f, { running: [] })),
   SidebarUnread: scene(sidebarUnread),
+  SidebarPlanChat: scene(sidebarPlanChat),
   // Archiving the export chat would stop Kai's open PR and drop the renderer's uncommitted changes, so it asks first (KERNEL-405).
   ConfirmArchiveChat: scene((f) => {
     const g = grouped(f, { running: [] })
