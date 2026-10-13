@@ -1159,7 +1159,9 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
   })
 
   it('stops Sign in to all on Cancel, so no server after the current one starts', async () => {
-    const { k, h, runs, logins } = await setUp()
+    const { k, h, runs, logins, claude } = await setUp()
+    const diag: unknown[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.mcpSignIn' || e.type === 'account.mcpSignInAll') diag.push([Date.now() % 100000, e]) })
     const side = await h['accounts.add']({ provider: 'claude' })
     const folder = k.providers.claudeHome(side.id)
     sdk.mcp = { [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'figma', status: 'needs-auth', scope: 'user' }] }
@@ -1167,10 +1169,12 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     process.env.FAKE_LOGIN_WAIT = '1'
     const running = h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })
     await until(async () => (await logins()).includes('figma'))
+    diag.push(['SEEN', Date.now() % 100000, await claude.calls()])
     await expect(h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).rejects.toThrow('Sign in to all is already running.')
     await h['accounts.cancelAdd']({ provider: 'claude' })
     expect(await running).toEqual({ accountId: side.id, servers: ['figma', 'linear'], done: [], failed: [], finished: true, canceled: true })
-    expect(await logins()).toEqual(['figma'])
+    diag.push(['AFTER', Date.now() % 100000, await claude.calls()])
+    expect(await logins(), JSON.stringify(diag)).toEqual(['figma'])
     // It can run again once it ended.
     delete process.env.FAKE_LOGIN_WAIT
     expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
