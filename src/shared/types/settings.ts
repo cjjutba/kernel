@@ -7,6 +7,8 @@ export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
   | 'models' | 'providers' | 'permissions' | 'env'
+  /** Every account's MCP servers, one account at a time (KERNEL-661). */
+  | 'mcp'
   /** The personal and plugin agents that join every room, and the editor for one (KERNEL-641). */
   | 'agents'
   | 'git' | 'scripts' | 'prs'
