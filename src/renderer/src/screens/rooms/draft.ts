@@ -28,7 +28,7 @@ export interface RoomDraft extends Omit<NewRoomRequest, 'source' | 'from' | 'des
   named: boolean
 }
 
-/** The starter files a new room gets: Settings > Agents > Default team for new rooms. The pair is Kai. */
+/** The starter files a new room gets: Settings, Agents, New rooms start with. The pair is Kai. */
 export function defaultTeam(): string[] {
   const pair = getState().settings?.team.defaultTemplate === 'pair'
   return STARTER_TEAMMATES.filter((m) => !pair || m.id === 'kai').map((m) => m.id)

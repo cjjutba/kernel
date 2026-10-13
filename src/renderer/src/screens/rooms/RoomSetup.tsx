@@ -137,7 +137,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             <section className="rs-team" aria-labelledby="rs-team">
               <div className="rs-team-head">
                 <h2 id="rs-team">Your team</h2>
-                <p>This repo brought its own agents. Check who leads and who reviews. Settings, Agents changes it later.</p>
+                <p>This repo brought its own agents. Check who leads and who reviews. The room's Agents page in Settings changes it later.</p>
               </div>
               <div className="rs-team-row">
                 <span className="rs-team-text"><span className="rs-team-label">Lead</span><span>Plans with you and hands out tasks</span></span>
