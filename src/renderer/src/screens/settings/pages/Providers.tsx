@@ -4,7 +4,7 @@ import { switchChoices } from '@shared/usage'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { PROVIDER_NAME as NAME, accountRow, limitHit, ownLogin, useFreshUsage } from '../../../accountRows'
-import { Button, ConfirmDialog, Icon, MENU_SEPARATOR, SegmentedControl, Select, Tabs, Toggle, useBusy, type MenuEntry } from '../../../ui'
+import { Button, ConfirmDialog, Icon, MENU_SEPARATOR, ProviderMark, SegmentedControl, Select, Tabs, Toggle, useBusy, type MenuEntry } from '../../../ui'
 import { noteCodexStatus } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
@@ -32,7 +32,7 @@ export function Providers({ s }: { s: AppSettings }) {
   return (
     <Page title="Providers">
       <div className="prov-tabs">
-        <Tabs variant="underline" label="Providers" value={provider} onChange={setTab} tabs={[{ id: 'claude', label: NAME.claude }, { id: 'codex', label: NAME.codex }]} />
+        <Tabs variant="underline" label="Providers" value={provider} onChange={setTab} tabs={(['claude', 'codex'] as const).map((p) => ({ id: p, label: <span className="prov-title"><ProviderMark provider={p} size={14} />{NAME[p]}</span> }))} />
       </div>
       <ProviderTab key={provider} provider={provider} s={s} />
     </Page>

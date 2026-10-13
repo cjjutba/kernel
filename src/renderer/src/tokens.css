@@ -308,6 +308,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .icon-btn:disabled { color: var(--faint); cursor: default; }
 .pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
+.prov-title { display: inline-flex; align-items: center; gap: 6px; }
 .tab { height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-weight: 500; }
 .tab[aria-selected='true'] { background: var(--surface-3); color: var(--ink); }
 /* Underline tabs (Settings, Providers): text tabs on a hairline, the selected one ink with a 2px bar under it. */
