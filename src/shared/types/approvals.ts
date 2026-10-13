@@ -54,7 +54,10 @@ export interface Approval {
   /** Why Kernel asked, for the card's reason line: the classifier's reason, the blocked path, or that Codex runs it outside its sandbox (KERNEL-432). */
   reason?: string
   status: 'pending' | 'allowed' | 'denied' | 'answered' | 'expired'
+  /** Request changes on a plan: the user's notes. An answer behavior: the answer's text. */
   answer?: string
+  /** Expired plans: why. A newer plan replaced it, its chat closed, or its workspace was archived. Unset on other kinds and older rows. */
+  expiredBy?: 'replaced' | 'closed' | 'archived'
   createdAt: number
 }
 
