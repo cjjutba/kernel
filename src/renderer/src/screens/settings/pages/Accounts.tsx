@@ -157,7 +157,7 @@ export function Accounts({ s }: { s: AppSettings }) {
         })
       }
       if (!a.active && !!others.length) details.push({ k: 'Organization', v: `Same organization as ${joinNames(others)}, so they may share limits` })
-      details.push({ k: 'Sign-in source', v: a.cli ? `${NAME[a.provider]}’s own login, also used in Terminal` : 'Added in Kernel' })
+      details.push({ k: 'Sign-in source', v: a.cli ? `${NAME[a.provider]}’s own login, also used in Terminal` : a.alsoCli ? `Added in Kernel, also ${NAME[a.provider]}’s own login in Terminal` : 'Added in Kernel' })
     }
     const backText = blocked && !out ? (at ? `Back ${resetPhrase(at, now)}` : 'At a limit') : undefined
     return (
