@@ -1923,6 +1923,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { kind: 'modeSuggestion', id: 'lm-s1', ts: at(10, 5), mode: 'handoff', why: 'This change touches 14 files across three modules. Splitting it between teammates keeps each PR small.' }
     ]
   })),
+  WorkspaceLeadOldSuggestions: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles,
+    items: [
+      { kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' },
+      ...lmReply('lm-b', 'Rounding is shared by invoices, credit notes and the export. That touches 14 files across three modules.', 4),
+      { kind: 'modeSuggestion', id: 'lm-s1', ts: at(10, 5), mode: 'handoff', why: 'This change touches 14 files across three modules.' },
+      { kind: 'leadMode', id: 'lm-d2', ts: at(10, 8), mode: 'handoff' },
+      { kind: 'leadMode', id: 'lm-d3', ts: at(10, 9), mode: 'build' },
+      ...lmReply('lm-c', 'The export also needs the same rounding, which is another 6 files.', 11),
+      { kind: 'modeSuggestion', id: 'lm-s2', ts: at(10, 12), mode: 'handoff', why: 'The export adds 6 more files. Splitting it between teammates keeps each PR small.' }
+    ]
+  })),
   WorkspaceLeadHandOffDirty: scene((f) => leadModeScene(f, {
     mode: 'handoff', changes: lmFiles,
     items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Noor has it. Your edits in this chat stay where they are.', 3)]

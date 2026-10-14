@@ -640,11 +640,19 @@ function LeadModeDivider({ mode }: { mode: LeadMode }) {
   return <div className="mode-divider" role="separator" aria-label={leadModeSwitched(mode)}><Icon name={LEAD_MODE_ICON[mode]} size={14} /><span>{leadModeSwitched(mode)}</span></div>
 }
 
-/** Under Kernel's reply when the work is bigger than one PR: one button, only while the chat is still in Build here. Kernel never switches on its own. */
-function ModeSuggestion({ workspaceId, mode }: { workspaceId: string; mode: LeadMode }) {
+/** Under Kernel's reply when the work is bigger than one PR: one button, only for the newest suggestion with no mode switch after it, and only while the chat is still in Build here. Kernel never switches on its own. */
+function ModeSuggestion({ workspaceId, chatId, itemId, mode }: { workspaceId: string; chatId: string; itemId: string; mode: LeadMode }) {
   const current = useStore((s) => leadModeOf(s.workspaces.find((w) => w.id === workspaceId)))
+  const live = useStore((s) => {
+    const list = s.items[chatId] ?? EMPTY
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].kind === 'leadMode') return false
+      if (list[i].kind === 'modeSuggestion') return list[i].id === itemId
+    }
+    return false
+  })
   const [busy, run] = useBusy()
-  if (current === mode) return null
+  if (current === mode || !live) return null
   return (
     <div className="mode-suggest">
       <Button icon={LEAD_MODE_ICON[mode]} busy={!!busy} busyLabel="Switching" onClick={() => void run('Switching', () => attempt('Could not switch', () => setLeadMode(workspaceId, mode)))}>Switch to {leadModeName(mode)}</Button>
@@ -713,7 +721,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
     case 'leadMode': return <LeadModeDivider mode={item.mode} />
-    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} mode={item.mode} />
+    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} chatId={chatId} itemId={item.id} mode={item.mode} />
     // Result is folded into a meta row or an error card by buildThread.
     case 'result': return null
   }
