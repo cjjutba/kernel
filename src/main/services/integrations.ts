@@ -54,7 +54,7 @@ export async function saveLinearToken(dataDir: string, token: string, cipher?: C
 /** The rows of the page. GitHub is the signed-in `gh`. Vercel and Remote Control come back as rows once they are built (KERNEL-540). */
 export function integrationRows(o: { ghUser: string | null; linear: boolean }): Integration[] {
   return [
-    { id: 'github', name: 'GitHub', connected: !!o.ghUser, detail: o.ghUser ? `Through the GitHub CLI as ${o.ghUser}` : 'Sign in with gh auth login in a terminal' },
-    { id: 'linear', name: 'Linear', connected: o.linear, detail: o.linear ? 'Token saved. Create workspaces from issues' : 'Create workspaces from issues' }
+    { id: 'github', name: 'GitHub', connected: !!o.ghUser, detail: o.ghUser ? `Signed in as ${o.ghUser} through the GitHub CLI.` : 'Not signed in. Run gh auth login in a terminal.' },
+    { id: 'linear', name: 'Linear', connected: o.linear, detail: o.linear ? 'Connected. Issues open as workspaces.' : 'Not connected. Issues open as workspaces once it is.' }
   ]
 }

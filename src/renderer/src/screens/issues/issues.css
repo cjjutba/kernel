@@ -8,11 +8,6 @@
 .is-pills .pill { gap: 6px; font-size: 13px; }
 .is-n { font-size: 12px; color: var(--muted); font-weight: 400; }
 .is-sep { width: 1px; height: 16px; margin: 0 6px; background: var(--pill-line); }
-.is-chip, .is-room { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
-.is-chip:hover, .is-room:hover { background: var(--surface-3); }
-.is-chip > svg, .is-room > svg { color: var(--muted); flex-shrink: 0; }
-.is-chip select, .is-room select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.is-chip:has(select:focus-visible), .is-room:has(select:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
 .is-search { position: relative; display: inline-flex; align-items: center; }
 .is-search > svg { position: absolute; left: 9px; color: var(--muted); pointer-events: none; }
 .is-search input { width: 220px; height: 28px; box-sizing: border-box; padding: 0 10px 0 28px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--input-bg); color: var(--ink-2); font-size: 12.5px; outline: none; }
@@ -86,7 +81,7 @@
 .is-foot .is-inner { gap: 12px; }
 .is-link { padding: 10px 10px 10px 14px; gap: 12px; border-radius: var(--r-md); }
 .is-actions { display: flex; align-items: center; gap: 8px; }
-.is-room { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: 13px; }
+.is-room .select-trigger { height: 32px; gap: 8px; border-radius: var(--r-sm); font-size: 13px; }
 .is-letter { width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
 .is-actions a.btn { text-decoration: none; }
 

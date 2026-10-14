@@ -439,7 +439,7 @@ describe('a room Settings page with a section', () => {
     actions.ui.openTab('lead', 'c2')
     actions.ui.go(page)
     expect(placeToSave(getState(), { route: at('lead') })?.route).toEqual(at('lead'))
-    actions.ui.go({ ...page, section: 'scripts' } as Route)
+    actions.ui.go({ ...page, section: 'setup' } as Route)
     expect(placeToSave(getState(), { route: at('lead') })?.route).toEqual(at('lead'))
     expect(placeToSave(getState(), { route: at('lead') })?.tabs.lead.tab).toBe('c2')
   })

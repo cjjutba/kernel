@@ -19,6 +19,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const designDir = join(root, 'design/screens')
 // The redesign's PNGs (KERNEL-274) replace the ones in design/screens for the surfaces they draw, and some screens exist only there.
 const redesignDir = join(root, 'design/redesign')
+// The settings canvas (KERNEL-680) is the spec for Settings. boards.json names the board each Settings fixture is drawn on.
+const settingsDir = join(root, 'design/settings-redesign')
+const settingsBoards: Record<string, string> = JSON.parse(readFileSync(join(settingsDir, 'boards.json'), 'utf8'))
 const shotsDir = join(root, 'shots')
 const WIDTH = 1440
 const HEIGHT = 900
@@ -32,7 +35,7 @@ const theme = themeAt >= 0 ? args[themeAt + 1] : undefined
 if (theme !== undefined && theme !== 'light' && theme !== 'dark') throw new Error('--theme takes light or dark')
 const suffix = theme === 'light' ? '.light' : ''
 const names = args.filter((a, i) => !a.startsWith('--') && a !== 'compare' && (themeAt < 0 || i !== themeAt + 1))
-const allDesigns = () => readdirSync(designDir).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)).sort()
+const allDesigns = () => [...new Set([...readdirSync(designDir).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)), ...Object.keys(settingsBoards)])].sort()
 // Plain Node cannot import fixtures/index.ts (extensionless imports), so read the keys: one `  Name:` line per fixture.
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
 const withFixture = () => allDesigns().filter((n) => fixtureNames().has(n))
@@ -262,16 +265,22 @@ async function openBaseBranch(page: Page) {
 
 // SettingsAddAccountApiKey is the Add account sheet on its API key step with a name and a key typed. The sheet and what is typed in it are local to the page (KERNEL-524).
 async function typeApiKey(page: Page) {
-  await page.getByRole('button', { name: 'Add key' }).click()
+  await pickAddAccount(page, 'API key', 0)
   await page.locator('#acct-label').fill('Work key')
   await page.locator('#acct-key').fill('sk-ant-api03-5f1c9d27a0b84e63')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// The Add account sheets (KERNEL-561): the sheet is opened from the page's button, and Browser is the sheet after Sign in. Both are local to the page.
-async function openAddAccount(page: Page, signIn?: string) {
+// Add account's menu lists Subscription and API key under Claude Code, then under Codex (KERNEL-680). `nth` 0 is Claude Code's, 1 Codex's.
+async function pickAddAccount(page: Page, kind: 'Subscription' | 'API key', nth: 0 | 1) {
   await page.getByRole('button', { name: 'Add account' }).click()
+  await page.getByRole('menuitem', { name: new RegExp(`^${kind}`) }).nth(nth).click()
+}
+
+// The Add account sheets (KERNEL-561): the sheet is opened from the page's menu, and Browser is the sheet after Sign in. Both are local to the page.
+async function openAddAccount(page: Page, nth: 0 | 1, signIn?: string) {
+  await pickAddAccount(page, 'Subscription', nth)
   if (signIn) {
     await page.getByRole('button', { name: signIn }).click()
     await page.getByText('Finish signing in in your browser.').waitFor()
@@ -282,17 +291,17 @@ async function openAddAccount(page: Page, signIn?: string) {
 
 // SettingsAddAccountDuplicate is the sheet after Sign in with Claude, once the engine has refused an account Kernel already has (KERNEL-619).
 async function addDuplicate(page: Page) {
-  await page.getByRole('button', { name: 'Add account' }).click()
+  await pickAddAccount(page, 'Subscription', 0)
   await page.getByRole('button', { name: 'Sign in with Claude' }).click()
   await page.getByText('That account is already in Kernel').waitFor()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
 
-// SettingsProvidersMenu is Personal's menu open, SettingsProvidersRename its name turned into a field and SettingsProvidersRemove its Remove
+// SettingsAccountsMenu is Personal's menu open, SettingsAccountsRename its name turned into a field and SettingsAccountsRemove its Remove
 // asking first. The menu, the field and the dialog are local to the page, so click them open.
 async function personalMenu(page: Page, item?: string) {
-  await page.getByRole('button', { name: 'More for Personal' }).click()
+  await page.getByRole('button', { name: 'More for Personal' }).first().click()
   if (item) await page.getByRole('menuitem', { name: item }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -335,14 +344,14 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   LeadNoChatsBranch: openBaseBranch,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
-  SettingsAddAccount: (page) => openAddAccount(page),
-  SettingsAddAccountBrowser: (page) => openAddAccount(page, 'Sign in with Claude'),
-  SettingsAddAccountCodex: (page) => openAddAccount(page),
-  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 'Sign in with ChatGPT'),
+  SettingsAddAccount: (page) => openAddAccount(page, 0),
+  SettingsAddAccountBrowser: (page) => openAddAccount(page, 0, 'Sign in with Claude'),
+  SettingsAddAccountCodex: (page) => openAddAccount(page, 1),
+  SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 1, 'Sign in with ChatGPT'),
   SettingsAddAccountDuplicate: addDuplicate,
-  SettingsProvidersRename: (page) => personalMenu(page, 'Rename'),
-  SettingsProvidersMenu: (page) => personalMenu(page),
-  SettingsProvidersRemove: (page) => personalMenu(page, 'Remove'),
+  SettingsAccountsRename: (page) => personalMenu(page, 'Rename'),
+  SettingsAccountsMenu: (page) => personalMenu(page),
+  SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),
   SearchSwitchAccount: typeSwitch,
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
@@ -445,8 +454,9 @@ function compare() {
   mkdirSync(join(shotsDir, 'compare'), { recursive: true })
   let failed = 0
   for (const name of list) {
-    const shotFile = join(shotsDir, `${name}.png`)
-    const designFile = [join(designDir, `${name}.png`), join(redesignDir, `${name}.png`)].find((f) => existsSync(f)) ?? join(designDir, `${name}.png`)
+    const shotFile = join(shotsDir, `${name}${suffix}.png`)
+    const board = settingsBoards[name] && join(settingsDir, `${settingsBoards[name]}${theme === 'light' ? 'Light' : ''}.png`)
+    const designFile = [board, join(designDir, `${name}.png`), join(redesignDir, `${name}.png`)].find((f) => f && existsSync(f)) ?? join(designDir, `${name}.png`)
     if (!existsSync(shotFile)) { console.error(`${name}: no shot yet. Run pnpm shots ${name}`); failed++; continue }
     if (!existsSync(designFile)) { console.error(`${name}: no design/screens/${name}.png`); failed++; continue }
     const shot = PNG.sync.read(readFileSync(shotFile))
@@ -459,7 +469,7 @@ function compare() {
     for (let i = 0; i < out.data.length; i += 4) out.data.writeUInt32BE(0x808080ff, i)
     blit(shot, out, 0, 0)
     blit(design, out, w + GAP, 0)
-    writeFileSync(join(shotsDir, 'compare', `${name}.png`), PNG.sync.write(out))
+    writeFileSync(join(shotsDir, 'compare', `${name}${suffix}.png`), PNG.sync.write(out))
     console.log(`shots/compare/${name}.png (shot left, design right)`)
   }
   if (failed) process.exit(1)

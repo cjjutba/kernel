@@ -244,6 +244,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'tasks.list': async ({ roomId }) => f.tasks?.[roomId] ?? [],
     'notifications.list': async () => f.notifications ?? [],
+    'notifications.playSound': async () => ({ ok: true }),
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
     'lead.open': async ({ roomId }) => {
       if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Lead.')

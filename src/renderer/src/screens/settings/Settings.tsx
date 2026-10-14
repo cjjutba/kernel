@@ -5,17 +5,15 @@ import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { AgentEdit } from './pages/AgentEdit'
 import { Agents } from './pages/Agents'
-import { Account } from './pages/Account'
+import { Accounts } from './pages/Accounts'
 import { Appearance } from './pages/Appearance'
 import { BigTerminal } from './pages/BigTerminal'
 import { Environment } from './pages/Environment'
 import { General } from './pages/General'
 import { McpServers } from './pages/McpServers'
 import { Models } from './pages/Models'
-import { Providers } from './pages/Providers'
 import { Notifications } from './pages/Notifications'
 import { Permissions } from './pages/Permissions'
-import { Files } from './pages/Files'
 import { Git } from './pages/Git'
 import { Hooks } from './pages/Hooks'
 import { Integrations } from './pages/Integrations'
@@ -23,11 +21,9 @@ import { PRs } from './pages/PRs'
 import { Privacy } from './pages/Privacy'
 import { Room } from './pages/Room'
 import { RoomGit } from './pages/RoomGit'
-import { RoomInstructions } from './pages/RoomInstructions'
 import { RoomPermissions } from './pages/RoomPermissions'
-import { RoomReviews } from './pages/RoomReviews'
-import { RoomScripts } from './pages/RoomScripts'
-import { Scripts } from './pages/Scripts'
+import { RoomPrs } from './pages/RoomPrs'
+import { RoomSetup } from './pages/RoomSetup'
 import { Shortcuts } from './pages/Shortcuts'
 import { Skills } from './pages/Skills'
 import { Team } from './pages/Team'
@@ -39,7 +35,6 @@ export function Settings({ page, roomId, section, agentId }: { page: SettingsPag
   const settings = useSettings()
   let body: ReactNode
   if (page === 'shortcuts') body = <Shortcuts />
-  else if (page === 'account') body = <Account />
   else if (page === 'about') body = <About />
   else if (!settings) body = null
   else if (page === 'general') body = <General s={settings} />
@@ -47,14 +42,13 @@ export function Settings({ page, roomId, section, agentId }: { page: SettingsPag
   else if (page === 'notifications') body = <Notifications s={settings} />
   else if (page === 'models') body = <Models s={settings} />
   else if (page === 'agents') body = agentId ? <AgentEdit key={agentId} agentId={agentId} /> : <Agents />
-  else if (page === 'providers') body = <Providers s={settings} />
+  else if (page === 'accounts') body = <Accounts s={settings} />
   else if (page === 'mcp') body = <McpServers />
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'env') body = <Environment />
   else if (page === 'privacy') body = <Privacy s={settings} />
   else if (page === 'bigterm') body = <BigTerminal s={settings} />
   else if (page === 'git') body = <Git s={settings} />
-  else if (page === 'scripts') body = <Scripts s={settings} />
   else if (page === 'prs') body = <PRs s={settings} />
   else if (page === 'hooks') body = <Hooks s={settings} />
   else if (page === 'integrations') body = <Integrations />
@@ -66,12 +60,10 @@ export function Settings({ page, roomId, section, agentId }: { page: SettingsPag
 function RoomBody({ roomId, section = 'general', agentId, s }: { roomId?: string; section?: RoomSettingsSection; agentId?: string; s: AppSettings }) {
   switch (section) {
     case 'git': return <RoomGit roomId={roomId} s={s} />
-    case 'scripts': return <RoomScripts roomId={roomId} />
-    case 'files': return <Files roomId={roomId} />
-    case 'instructions': return <RoomInstructions roomId={roomId} s={s} />
+    case 'setup': return <RoomSetup roomId={roomId} />
     case 'permissions': return <RoomPermissions roomId={roomId} />
     case 'agents': return agentId && roomId ? <AgentEdit key={`${roomId}/${agentId}`} roomId={roomId} agentId={agentId} /> : <Team roomId={roomId} s={s} />
-    case 'reviews': return <RoomReviews roomId={roomId} />
+    case 'prs': return <RoomPrs roomId={roomId} s={s} />
     case 'skills': return <Skills roomId={roomId} />
     case 'environment': return <Environment roomId={roomId} />
     default: return <Room roomId={roomId} />

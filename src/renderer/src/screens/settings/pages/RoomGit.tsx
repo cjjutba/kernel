@@ -1,22 +1,18 @@
+import './rooms.css'
 import { useEffect, useState } from 'react'
 import type { AppSettings, PushCheck, PushCheckRow, RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
-import { Button, CodeBlock, Icon, SegmentedControl, Select, Spinner, useBusy } from '../../../ui'
-import { isOverride, LinesField, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { Button, CodeBlock, Select, useBusy } from '../../../ui'
+import { isOverride, NoRoom, Row, RoomPage, Section, StatusLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-import { BranchPattern } from './Git'
 
 const USE_DEFAULT = ''
-const withCurrent = (list: string[], current: string) => [...new Set([current, ...list])].map((v) => ({ value: v, label: v }))
-const ON_OFF = [{ value: USE_DEFAULT, label: 'Use default' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]
-const onOff = (v: boolean | undefined) => (v === undefined ? USE_DEFAULT : v ? 'on' : 'off')
 const MODE: Record<AppSettings['workspace']['mode'], string> = { worktree: 'New worktree', current: 'Current branch' }
+const onOff = (v: boolean | undefined) => (v === undefined ? USE_DEFAULT : v ? 'on' : 'off')
+const yesNo = (on: boolean) => (on ? 'On' : 'Off')
 
-const REACHED: Record<PushCheckRow['state'], string> = { ok: 'Reached', fail: 'Failed', unchecked: 'Not checked' }
-const PUSHES: Record<PushCheckRow['state'], string> = { ok: 'Can push', fail: 'Can’t push', unchecked: 'Not checked' }
-
-/** "just now", "2 minutes ago", for Last checked. */
+/** "just now", "2 minutes ago", for Checked. */
 export function checkedAgo(at: number, now = Date.now()): string {
   const m = Math.floor((now - at) / 60_000)
   const unit = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'} ago`
@@ -25,27 +21,21 @@ export function checkedAgo(at: number, now = Date.now()): string {
   return m < 24 * 60 ? unit(Math.floor(m / 60), 'hour') : unit(Math.floor(m / (24 * 60)), 'day')
 }
 
-/** One push check row: its result in words with an icon and no dot, and under it git's error, the fix or what to try (KERNEL-437). */
-function PushRow({ label, row, words }: { label: string; row?: PushCheckRow; words: Record<PushCheckRow['state'], string> }) {
-  const more = row && (row.output || row.fix || row.note)
+/** What a failed row adds under the status: git's own error, the fix to copy, what to try. */
+function FailDetail({ row }: { row: PushCheckRow }) {
+  if (!row.output && !row.fix && !row.note) return null
   return (
-    <Row label={label} desc={row?.detail} full={more ? (
-      <div className="set-push-more">
-        {row.output && <pre className="code boxed">{row.output}</pre>}
-        {row.fix && <CodeBlock>{row.fix}</CodeBlock>}
-        {row.note && <p className="set-desc">{row.note}</p>}
-      </div>
-    ) : undefined}>
-      {row
-        ? <span className="set-result" data-state={row.state}>{row.state === 'ok' && <Icon name="check" size={14} />}{row.state === 'fail' && <Icon name="xCircle" size={14} />}{words[row.state]}</span>
-        : <span className="set-result"><Spinner label="Checking" />Checking</span>}
-    </Row>
+    <div className="rm-fail">
+      {row.output && <pre className="code boxed">{row.output}</pre>}
+      {row.fix && <CodeBlock>{row.fix}</CodeBlock>}
+      {row.note && <p className="set-note">{row.note}</p>}
+    </div>
   )
 }
 
 /**
- * Push access (SettingsRoomGit.png, SettingsRoomGitPushFailed.png, SettingsRoomGitUnreachable.png): whether git can reach
- * the room's remote and push to it, from the last check. Check again runs it now. A room with no remote has no section.
+ * Push access (MorePage roomGit, KERNEL-680): whether git can reach the room's remote and push to it, from the last check, as one
+ * status line. Check again runs it now. A room with no remote has no line.
  */
 function PushAccess({ roomId, remote }: { roomId: string; remote: string }) {
   const [check, setCheck] = useState<PushCheck | null>()
@@ -57,22 +47,42 @@ function PushAccess({ roomId, remote }: { roomId: string; remote: string }) {
     call('rooms.pushCheck', { roomId }).then((c) => { if (!stale) setCheck(c) }, () => { if (!stale) setCheck(null) })
     return () => { stale = true }
   }, [roomId, remote])
-  // Last checked keeps counting while the page is open.
+  // The age keeps counting while the page is open.
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30_000); return () => clearInterval(t) }, [])
   const recheck = () => run('recheck', async () => {
     try { setCheck(await call('rooms.pushCheck', { roomId, recheck: true })) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
   })
   if (check === null) return null
   const name = check?.remote ?? remote
+  const failed = check && (check.reach.state === 'fail' ? check.reach : check.push.state === 'fail' ? check.push : undefined)
+  const title = !check ? `Checking ${name}` : check.reach.state === 'fail' ? `Can’t reach ${name}` : check.push.state === 'fail' ? `Can’t push to ${name}` : check.push.state === 'ok' ? `Can push to ${name}` : 'Push access not checked'
+  const sub = !check ? undefined : [failed?.detail, `Checked ${checkedAgo(check.at)}`].filter(Boolean).join(' · ')
   return (
-    <Section title="Push access" action={<Button busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null || !check} onClick={() => void recheck()}>Check again</Button>} note={check && `Last checked ${checkedAgo(check.at)}.`}>
-      <PushRow label={`Reach ${name}`} row={check?.reach} words={REACHED} />
-      <PushRow label="Permission to push" row={check?.push} words={PUSHES} />
+    <Section label="Push access" plain>
+      <StatusLine
+        icon={!check ? 'clock' : failed ? 'xCircle' : 'check'} tone={failed ? 'warn' : check?.push.state === 'ok' ? 'ok' : undefined} title={title} sub={sub}
+        action={<Button busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null || !check} onClick={() => void recheck()}>Check again</Button>}
+      />
+      {failed && <FailDetail row={failed} />}
     </Section>
   )
 }
 
-/** Settings > a room > Git (SettingsRoomGit.png): the room's overrides of the app's Git defaults. A field the room leaves alone shows the app's value. */
+/** The pattern keeps `{slug}`, or every chat would get one branch name. Empty goes back to the default. */
+function LeadPattern({ value, placeholder, save }: { value: string; placeholder: string; save: (v: string | null) => void }) {
+  const [text, setText] = useState(value)
+  useEffect(() => { setText(value) }, [value])
+  const commit = () => {
+    const next = text.trim()
+    if (next === value) return
+    if (!next) return save(null)
+    if (!next.includes('{slug}')) return setText(value)
+    save(next)
+  }
+  return <input className="set-inline" aria-label="Lead chat branch names" spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+}
+
+/** Settings > a room > Git (MorePage roomGit, KERNEL-680): the room's overrides of the app's Git defaults. Each Select starts with "Default (the app's value)", and Reset goes back to it. */
 export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const { room, rs } = useRoomPage(roomId)
   const [branches, setBranches] = useState<string[]>([])
@@ -82,54 +92,37 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   if (!room || !roomId) return <NoRoom />
   const app = s.workspace
   const set = (patch: Partial<Record<keyof RoomSettings['workspace'], string | boolean | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
-  const reset = (key: 'mode' | 'baseRef' | 'remote') => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
-  // The source line when the room's file says where the value is from, else what the app default is.
-  const note = (key: 'mode' | 'baseRef' | 'remote' | 'deleteBranchOnArchive' | 'archiveOnMerge' | 'leadWaitForSetup' | 'archiveChatWorkspaces', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
-  // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
-  const saveOptional = (lines: string[]) => void patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
-  const base = rs?.workspace.baseRef ?? app.baseRef
-  const remote = rs?.workspace.remote ?? app.remote
+  const reset = (key: keyof RoomSettings['workspace']) => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
+  const choice = (appValue: string, list: { value: string; label: string }[]) => [{ value: USE_DEFAULT, label: `Default (${appValue})` }, ...list]
+  const flag = (key: 'deleteBranchOnArchive' | 'archiveOnMerge' | 'archiveChatWorkspaces', label: string) => (
+    <Row label={label} onReset={reset(key)}>
+      <Select label={label} align="right" value={onOff(rs?.workspace[key])} onChange={(v) => set({ [key]: v ? v === 'on' : null })} options={choice(yesNo(app[key]), [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }])} />
+    </Row>
+  )
+  const own = (key: 'baseRef' | 'remote') => rs?.workspace[key] ?? USE_DEFAULT
+  const named = (list: string[], current: string) => [...new Set([...(current ? [current] : []), ...list])].map((v) => ({ value: v, label: v }))
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
   return (
-    <RoomPage room={room} rs={rs} title="Git" intro={`Overrides for ${room.name}. Anything else follows the app default.`}>
-      <Section title="New workspaces">
-        <Row label="Default workspace type" {...note('mode', MODE[app.mode])}>
-          <SegmentedControl label="Default workspace type" value={rs?.workspace.mode ?? USE_DEFAULT} onChange={(v) => set({ mode: v || null })} options={[{ value: USE_DEFAULT, label: 'Use default' }, { value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
+    <RoomPage room={room} rs={rs} title="Git">
+      <PushAccess roomId={roomId} remote={rs?.workspace.remote ?? app.remote} />
+      <Section title="New workspaces" scope="mac">
+        <Row label="Workspace type" onReset={reset('mode')}>
+          <Select label="Workspace type" align="right" value={rs?.workspace.mode ?? USE_DEFAULT} onChange={(v) => set({ mode: v || null })} options={choice(MODE[app.mode], [{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }])} />
         </Row>
-        <Row label="Branch new workspaces from" {...note('baseRef', app.baseRef)} onReset={reset('baseRef')}>
-          <Select label="Branch new workspaces from" value={base} options={withCurrent(branches, base)} onChange={(e) => set({ baseRef: e.target.value })} />
+        <Row label="Branch from" onReset={reset('baseRef')}>
+          <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v || null })} options={choice(app.baseRef, named(branches, own('baseRef')))} />
         </Row>
-        <Row label="Remote origin" {...note('remote', app.remote)} onReset={reset('remote')}>
-          <Select label="Remote origin" value={remote} options={withCurrent(remotes.length ? remotes : ['origin'], remote)} onChange={(e) => set({ remote: e.target.value })} />
+        <Row label="Remote" onReset={reset('remote')}>
+          <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v || null })} options={choice(app.remote, named(remotes.length ? remotes : ['origin'], own('remote')))} />
         </Row>
-      </Section>
-      <PushAccess roomId={roomId} remote={remote} />
-      <Section title="Cleanup">
-        <Row label="Delete branch on archive" {...note('deleteBranchOnArchive', app.deleteBranchOnArchive ? 'On' : 'Off')}>
-          <SegmentedControl label="Delete branch on archive" value={onOff(rs?.workspace.deleteBranchOnArchive)} onChange={(v) => set({ deleteBranchOnArchive: v ? v === 'on' : null })} options={ON_OFF} />
-        </Row>
-        <Row label="Archive on merge" {...note('archiveOnMerge', app.archiveOnMerge ? 'On' : 'Off')}>
-          <SegmentedControl label="Archive on merge" value={onOff(rs?.workspace.archiveOnMerge)} onChange={(v) => set({ archiveOnMerge: v ? v === 'on' : null })} options={ON_OFF} />
+        <Row label="Lead chat branch names" onReset={reset('leadBranchPattern')}>
+          <LeadPattern value={rs?.workspace.leadBranchPattern ?? ''} placeholder={`${app.leadBranchPattern}  Default`} save={(v) => set({ leadBranchPattern: v })} />
         </Row>
       </Section>
-      <Section title="Pull requests">
-        <Row label="Optional checks" source={sourceLine(rs, 'pr.optionalChecks')} onReset={isOverride(rs, 'pr.optionalChecks') ? () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }) : undefined} full={
-          <>
-            <LinesField label="Optional checks" value={rs?.pr?.optionalChecks ?? []} onSave={saveOptional} />
-            <p className="set-hint">One check name per line. <code>*</code> matches anything, like <code>Vercel*</code>. A check on this list that fails doesn’t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.</p>
-          </>
-        } />
-      </Section>
-      <Section title="Lead chats">
-        <Row label="Branch name pattern" source={sourceLine(rs, 'workspace.leadBranchPattern')} desc={sourceLine(rs, 'workspace.leadBranchPattern') ? undefined : `The app default is ${app.leadBranchPattern}`} onReset={isOverride(rs, 'workspace.leadBranchPattern') ? () => set({ leadBranchPattern: null }) : undefined}>
-          <BranchPattern value={rs?.workspace.leadBranchPattern ?? ''} label="Lead chat branch name pattern" placeholder={app.leadBranchPattern} save={(v) => set({ leadBranchPattern: v })} />
-        </Row>
-        <Row label="Wait for setup before the first message" {...note('leadWaitForSetup', app.leadWaitForSetup ? 'On' : 'Off')}>
-          <SegmentedControl label="Wait for setup before the first message" value={onOff(rs?.workspace.leadWaitForSetup)} onChange={(v) => set({ leadWaitForSetup: v ? v === 'on' : null })} options={ON_OFF} />
-        </Row>
-        <Row label="Archive a chat's workspaces with it" {...note('archiveChatWorkspaces', app.archiveChatWorkspaces ? 'On' : 'Off')}>
-          <SegmentedControl label="Archive a chat's workspaces with it" value={onOff(rs?.workspace.archiveChatWorkspaces)} onChange={(v) => set({ archiveChatWorkspaces: v ? v === 'on' : null })} options={ON_OFF} />
-        </Row>
+      <Section title="Cleanup" scope="mac">
+        {flag('deleteBranchOnArchive', 'Delete the branch on archive')}
+        {flag('archiveOnMerge', 'Archive on merge')}
+        {flag('archiveChatWorkspaces', 'Archive a chat’s workspaces with it')}
       </Section>
     </RoomPage>
   )

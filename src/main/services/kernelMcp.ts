@@ -152,7 +152,7 @@ export interface OpenCap { cap: number; own: boolean; room: string }
 /** create_workspace's refusal at the cap, naming the setting that gave it. `user_asked` is the way past it, for a user who asked for more. */
 export function capRefusal(open: number, { cap, own, room }: OpenCap): string {
   const count = `${open} teammate ${open === 1 ? 'workspace is' : 'workspaces are'} open in this room`
-  const where = own ? `change it in Settings, ${room}, Agents` : `raise Agents working at once in Settings, Models, or set this room's own limit in Settings, ${room}, Agents`
+  const where = own ? `change it in Settings, ${room}, Agents` : `raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, ${room}, Agents`
   return `${count}${open === cap ? ', the limit' : `, over the limit of ${cap}`}. Archive one, or the user can ${where}.`
 }
 
@@ -268,7 +268,7 @@ const BLOCKED: Record<AgentReach['blocked'][number]['why'], string> = {
   failed: 'failed to connect',
   'needs-auth': 'needs the user to sign in with /mcp in Claude Code',
   disabled: 'is switched off in Claude Code, and /mcp turns it on',
-  off: 'is switched off in this room, in Settings, Skills and MCP',
+  off: 'is switched off in this room, in Settings, under the room, Skills and MCP',
   missing: 'is not a server in this room'
 }
 

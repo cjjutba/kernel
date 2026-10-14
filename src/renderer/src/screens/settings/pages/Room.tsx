@@ -2,22 +2,22 @@ import { useEffect, useState } from 'react'
 import type { LinearScope } from '@shared/types'
 import { trackerKind } from '@shared/trackerKind'
 import { call, cleanError } from '../../../api'
-import { actions, go, useStore } from '../../../store'
-import { Button, Select, useBusy } from '../../../ui'
+import { actions, go } from '../../../store'
+import { Button, ConfirmDialog, Select, useBusy } from '../../../ui'
 import { sourceOf } from '../../rooms/roomInfo'
 import { RoomIconRow } from './RoomIconRow'
 import { RoomTrackerRow } from './RoomTrackerRow'
-import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
+import { NoRoom, Row, RoomPage, Section, SettingsLink, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 const USE_DEFAULT = ''
 const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
 
-/** Settings > a room > General (SettingsRoom.png): what the room is, its issue tracker, its Linear team when that is the tracker, and Archive. The rest of the room's settings have pages of their own. */
+/** Settings > a room > General (MorePage roomGeneral, KERNEL-680): the room, its issue tracker and Linear team, and Archive behind a confirm. The rest of the room's settings have pages of their own. */
 export function Room({ roomId }: { roomId?: string }) {
   const { room, rs } = useRoomPage(roomId)
-  const agents = useStore((x) => (roomId ? x.agents[roomId] : undefined))
   const [busy, run] = useBusy()
+  const [confirming, setConfirming] = useState(false)
   // undefined until Integrations answers, so the rows don't flash "Connect Linear" for a connected account or the wrong detected tracker.
   // `teams` is null when Linear isn't connected or its teams didn't load.
   const [linear, setLinear] = useState<{ connected: boolean; teams: LinearScope['teams'] | null } | undefined>(undefined)
@@ -42,26 +42,43 @@ export function Room({ roomId }: { roomId?: string }) {
       await call('rooms.update', { roomId, patch: { archived: true } })
       go({ name: 'rooms' })
     } catch (e) { actions.ui.toast({ title: 'Could not archive the room', sub: cleanError(e) }) }
+    setConfirming(false)
   })
+  const open = (what: () => Promise<unknown>, failed: string) => void what().catch((e) => actions.ui.toast({ title: failed, sub: cleanError(e) }))
   return (
-    <RoomPage room={room} rs={rs} title="General" intro={`How ${room.name} is set up in Kernel.`}>
+    <RoomPage room={room} rs={rs} title="General">
       <Section title="Room">
         <RoomIconRow room={room} />
-        <Row label="Repository"><span className="set-value">{room.repo ?? sourceOf(room)}</span></Row>
-        <Row label="Local path"><span className="set-value">{home(room.path)}</span></Row>
-        <Row label="Team"><span className="set-value">{agents?.filter((a) => !a.retired).map((a) => a.role).join(', ') || 'No agents yet'}</span></Row>
-        {rs && linear && <RoomTrackerRow roomId={roomId} rs={rs} detected={detected} />}
-        {rs && linear && tracker === 'linear' && (teams
-          ? <Row label="Linear team" desc="Issues from this team open in this room">
-              <Select label="Linear team" value={team ?? USE_DEFAULT} options={teamOptions} onChange={(e) => void patchRoomSettings(roomId, { linear: { team: e.target.value || null } })} />
-            </Row>
-          : <Row label="Linear team" desc={<>Connect Linear in <button type="button" className="set-link" onClick={() => go({ name: 'settings', page: 'integrations' })}>Settings, Integrations</button></>} />)}
-      </Section>
-      <Section title="Danger zone">
-        <Row label="Archive room" desc="Stops every agent and archives all workspaces. You can restore it later.">
-          <Button busy={!!busy} busyLabel="Archiving" disabled={!!room.archived} onClick={() => void archive()}>Archive</Button>
+        <Row label="Repository">
+          <span className="set-value">{room.repo ?? sourceOf(room)}</span>
+          {room.repo && <Button onClick={() => open(() => call('system.openExternal', { url: `https://github.com/${room.repo}` }), 'Could not open GitHub')}>Open on GitHub</Button>}
+        </Row>
+        <Row label="Local path">
+          <span className="set-value">{home(room.path)}</span>
+          <Button onClick={() => open(() => call('app.openIn', { path: room.path }), 'Could not open the folder')}>Open</Button>
         </Row>
       </Section>
+      {rs && linear && (
+        <Section title="Issues">
+          <RoomTrackerRow roomId={roomId} rs={rs} detected={detected} />
+          {tracker === 'linear' && (teams
+            ? <Row label="Linear team" desc="Issues from this team open here.">
+                <Select label="Linear team" value={team ?? USE_DEFAULT} options={teamOptions} align="right" onChange={(v) => void patchRoomSettings(roomId, { linear: { team: v || null } })} />
+              </Row>
+            : <Row label="Linear team" desc={<>Connect Linear in <SettingsLink to={{ page: 'integrations' }}>Settings, Integrations</SettingsLink>.</>} />)}
+        </Section>
+      )}
+      <Section title="Danger zone">
+        <Row label="Archive room" desc="Stops every agent and archives its workspaces. You can restore it.">
+          <Button variant="danger" disabled={!!room.archived} onClick={() => setConfirming(true)}>Archive room</Button>
+        </Row>
+      </Section>
+      {confirming && (
+        <ConfirmDialog
+          title={`Archive ${room.name}?`} body="Every agent stops and all of the room’s workspaces are archived. You can restore the room later." danger
+          confirmLabel="Archive room" busy={!!busy} busyLabel="Archiving" onConfirm={() => void archive()} onCancel={() => setConfirming(false)}
+        />
+      )}
     </RoomPage>
   )
 }

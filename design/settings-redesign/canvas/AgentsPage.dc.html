@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agents settings page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.ks-dark{--k-canvas:#09090a;--k-panel:#121213;--k-card:#161618;--k-group:#141415;--k-surface-2:#1d1d1f;--k-surface-3:#232325;--k-row-hover:#1a1a1c;--k-line-2:#29292b;--k-line-3:#333335;--k-line-4:#424245;--k-panel-line:#222224;--k-pill-line:#232325;--k-input-bg:#151517;--k-ink:#f7f7f8;--k-ink-2:#d6d6d7;--k-ink-3:#b6b6b8;--k-muted:#919194;--k-faint:#6f6f72;--k-needs-fill:#f2c55c;--k-del-fill:#f06363;--k-del-ink:#f58a8a;--k-on-ink:#09090a;--k-ink-hover:#ffffff;--k-nav-hover:#18181a;--k-focus:rgba(247,247,248,.55);--k-frame:#29292b;--k-claude:#d97757;--k-pop-shadow:0 8px 24px rgba(0,0,0,.35)}
+.ks-light{--k-canvas:#f3f3f4;--k-panel:#ffffff;--k-card:#ffffff;--k-group:#fafafa;--k-surface-2:#ffffff;--k-surface-3:#eeeef0;--k-row-hover:#f7f7f8;--k-line-2:#e6e6e9;--k-line-3:#d9d9de;--k-line-4:#c4c4ca;--k-panel-line:#ebebee;--k-pill-line:#e6e6e9;--k-input-bg:#ffffff;--k-ink:#18191b;--k-ink-2:#35383f;--k-ink-3:#4c4f56;--k-muted:#62666d;--k-faint:#8a8e96;--k-needs-fill:#d97706;--k-del-fill:#dc3e42;--k-del-ink:#c4292d;--k-on-ink:#f3f3f4;--k-ink-hover:#000000;--k-nav-hover:#ebebed;--k-focus:rgba(24,25,27,.55);--k-frame:#d6d6db;--k-claude:#d97757;--k-pop-shadow:0 8px 24px rgba(20,21,24,.10)}
+.ks-app button:focus-visible,.ks-app select:focus-visible,.ks-app input:focus-visible{outline:2px solid var(--k-focus);outline-offset:1px}
+.ks-nav{background:transparent;color:var(--k-muted)}.ks-nav:hover{background:var(--k-nav-hover);color:var(--k-ink-2)}.ks-nav.on{background:var(--k-surface-3);color:var(--k-ink)}
+.ks-back{background:transparent;color:var(--k-ink-2)}.ks-back:hover{background:var(--k-nav-hover)}
+.ks-btn{background:transparent;transition:background .12s}.ks-btn:hover:not(:disabled){background:var(--k-surface-3)}
+.ks-primary{background:var(--k-ink);transition:background .12s}.ks-primary:hover:not(:disabled){background:var(--k-ink-hover)}
+.ks-icon{background:transparent;color:var(--k-muted);transition:color .12s,background .12s}.ks-icon:hover:not(:disabled){color:var(--k-ink);background:var(--k-surface-3)}
+.ks-link{background:transparent;color:var(--k-ink-3)}.ks-link:hover{color:var(--k-ink)}
+.ks-search{background:var(--k-panel);border:1px solid var(--k-panel-line)}.ks-search::placeholder{color:var(--k-muted)}.ks-search:focus{background:var(--k-input-bg);border-color:var(--k-line-4)}.ks-search:focus-visible{outline:none}
+.ks-filter{background:var(--k-input-bg);border:1px solid var(--k-line-3);color:var(--k-ink)}.ks-filter::placeholder{color:var(--k-muted)}.ks-filter:hover,.ks-filter:focus{border-color:var(--k-line-4)}.ks-filter:focus-visible{outline:none}
+.ks-seg{background:transparent;color:var(--k-muted)}.ks-seg:hover{color:var(--k-ink-2)}.ks-seg.on{background:var(--k-surface-3);color:var(--k-ink)}
+.ks-select{appearance:none;-webkit-appearance:none;background:var(--k-input-bg);border:1px solid var(--k-line-3);color:var(--k-ink-2)}.ks-select:hover{border-color:var(--k-line-4)}
+.ks-chip{background:transparent;color:var(--k-muted)}.ks-chip:hover{color:var(--k-ink-2)}
+.ks-meter{display:block;height:3px;flex-shrink:0;border-radius:999px;background:var(--k-line-2);overflow:hidden}
+.ks-row{transition:background .12s}.ks-row:hover{background:var(--k-row-hover)}
+.ks-acts{opacity:0;transition:opacity .12s}.ks-row:hover .ks-acts,.ks-row:focus-within .ks-acts{opacity:1}
+.ks-open{background:transparent;color:inherit}.ks-open:focus-visible{outline-offset:3px!important;border-radius:6px}
+.ks-mode{background:transparent;border:1px solid var(--k-pill-line);transition:border-color .12s,background .12s}.ks-mode:hover{border-color:var(--k-line-4)}.ks-mode.on{border-color:var(--k-ink-3);background:var(--k-card)}
+.ks-tag{display:inline-flex;align-items:center;gap:2px;height:26px;box-sizing:border-box;padding:0 3px 0 9px;border-radius:7px;border:1px solid var(--k-line-3);background:var(--k-input-bg);color:var(--k-ink-2);font-family:'Geist Mono',ui-monospace,monospace;font-size:12px}
+.ks-tagx{background:transparent;color:var(--k-faint)}.ks-tagx:hover{color:var(--k-ink);background:var(--k-surface-3)}
+.ks-add{background:transparent;border:1px dashed var(--k-line-4);color:var(--k-muted)}.ks-add:hover{color:var(--k-ink-2);border-color:var(--k-ink-3)}
+.ks-badge{display:inline-flex;align-items:center;height:18px;box-sizing:border-box;padding:0 6px;border-radius:6px;border:1px solid var(--k-line-3);color:var(--k-muted);font-size:11px;font-weight:500}
+.ks-mono{font-family:'Geist Mono',ui-monospace,monospace}
+.ks-tw{position:relative}
+.ks-tip{position:absolute;left:-8px;top:calc(100% + 6px);z-index:35;width:300px;padding:7px 10px;border-radius:8px;border:1px solid var(--k-line-3);background:var(--k-surface-2);color:var(--k-ink-2);font-size:12px;font-weight:400;line-height:1.5;text-align:left;pointer-events:none;opacity:0;transition:opacity .12s}
+.ks-tw:hover .ks-tip,.ks-tw:focus-visible .ks-tip{opacity:1}
+.ks-info{background:transparent;color:var(--k-faint)}.ks-info:hover,.ks-info:focus-visible{color:var(--k-ink-2)}
+</style>
+</helmet>
+<div class="ks-app {{ themeCls }}" style="position: relative; width: {{ frameW }}; height: {{ frameH }}; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid var(--k-frame); background: var(--k-canvas); color: var(--k-ink-2); font-family: 'Geist', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="flex: 1; min-height: 0; display: flex">
+
+<nav aria-label="Settings" style="width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow: hidden">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<button type="button" class="ks-back" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg>Back to app</button>
+<div style="position: relative; display: flex; align-items: center; margin: 6px 0">
+<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-faint)" stroke-width="1.5" stroke-linecap="round" style="position: absolute; left: 9px; pointer-events: none"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<input type="text" class="ks-search" aria-label="Search settings" placeholder="Search settings" style="width: 100%; height: 30px; box-sizing: border-box; padding: 0 10px 0 29px; border-radius: 8px; color: var(--k-ink-2); font-family: inherit; font-size: 13px; outline: none">
+</div>
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+<p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--k-muted)">{{ g.title }}</p>
+<sc-for list="{{ g.items }}" as="n" hint-placeholder-count="5">
+<button type="button" class="{{ n.cls }}" aria-current="{{ n.current }}" aria-label="{{ n.aria }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.d }}"></path></svg><span style="flex: 1">{{ n.label }}</span><sc-if value="{{ n.hasBadge }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--k-muted)">{{ n.badge }}</span></sc-if></button>
+</sc-for>
+</sc-for>
+<p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--k-muted)">Rooms</p>
+<button type="button" class="ks-nav" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 8px; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid var(--k-line-3); font-size: 9px; font-weight: 600; color: var(--k-ink-2)">K</span><span style="flex: 1">Kernel</span></button>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0">
+<main style="position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--k-panel); border: 1px solid var(--k-panel-line); border-radius: 12px">
+<div style="max-width: 820px; margin: 0 auto; padding: 56px 24px 64px; box-sizing: border-box; display: flex; flex-direction: column; gap: 36px">
+
+<div style="display: flex; align-items: flex-end; gap: 12px">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 26px; line-height: 1.2; font-weight: 600; letter-spacing: -0.6px; color: var(--k-ink)">{{ title }}</h1>
+<sc-if value="{{ hasSubtitle }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 13px; color: var(--k-muted)">{{ subtitle }}</p></sc-if>
+</div>
+<sc-if value="{{ hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" class="ks-primary" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 10px; border-radius: 10px; border: 1px solid var(--k-ink); color: var(--k-on-ink); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="{{ actionIcon }}"></path></svg>{{ actionLabel }}</button></sc-if>
+</div>
+
+<sc-if value="{{ isModels }}" hint-placeholder-val="{{ false }}"><section aria-labelledby="ks-roles" style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 196px 128px 128px; column-gap: 12px; align-items: center; padding: 0 13px 0 17px">
+<h2 id="ks-roles" style="margin: 0; display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 500; color: var(--k-ink)">Roles<button type="button" class="ks-info ks-tw" aria-label="About pinned models" aria-describedby="ks-pin-tip" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; cursor: help"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 7.5V11M8 5.3v.01"></path></svg><span id="ks-pin-tip" role="tooltip" class="ks-tip">An agent file with its own model line keeps that model. Its profile shows the pin.</span></button></h2>
+<span aria-hidden="true" style="font-size: 12px; color: var(--k-faint)">Model</span><span aria-hidden="true" style="font-size: 12px; color: var(--k-faint)">Effort</span><span aria-hidden="true" style="font-size: 12px; color: var(--k-faint)">Compact at</span>
+</div>
+<div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ roles }}" as="r" hint-placeholder-count="4">
+<div role="group" aria-label="{{ r.name }}" style="display: grid; grid-template-columns: minmax(0, 1fr) 196px 128px 128px; column-gap: 12px; align-items: center; min-height: 54px; box-sizing: border-box; padding: 10px 12px 10px 16px; border-top: 1px solid {{ r.divider }}">
+<span style="display: flex; flex-direction: column; gap: 1px; min-width: 0"><span style="font-size: 13.5px; font-weight: 500; color: var(--k-ink-2)">{{ r.name }}</span><span style="font-size: 12px; color: var(--k-muted)">{{ r.provider }}</span></span>
+<span style="position: relative; display: flex; align-items: center"><select class="ks-select" aria-label="{{ r.modelAria }}" value="{{ r.model }}" onChange="{{ r.onModel }}" style="width: 100%; height: 28px; box-sizing: border-box; padding: 0 26px 0 10px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer"><sc-for list="{{ modelGroups }}" as="mg" hint-placeholder-count="2"><optgroup label="{{ mg.label }}"><sc-for list="{{ mg.models }}" as="m" hint-placeholder-count="4"><option value="{{ m.id }}">{{ m.label }}</option></sc-for></optgroup></sc-for></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 9px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span>
+<span style="position: relative; display: flex; align-items: center"><select class="ks-select" aria-label="{{ r.effortAria }}" value="{{ r.effort }}" onChange="{{ r.onEffort }}" style="width: 100%; height: 28px; box-sizing: border-box; padding: 0 26px 0 10px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer"><sc-for list="{{ efforts }}" as="e" hint-placeholder-count="5"><option value="{{ e.id }}">{{ e.label }}</option></sc-for></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 9px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span>
+<sc-if value="{{ r.isClaude }}" hint-placeholder-val="{{ true }}"><span style="position: relative; display: flex; align-items: center"><select class="ks-select" aria-label="{{ r.compactAria }}" value="{{ r.compact }}" onChange="{{ r.onCompact }}" style="width: 100%; height: 28px; box-sizing: border-box; padding: 0 26px 0 10px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer"><option value="200k">200k tokens</option><option value="full">Full window</option></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 9px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span></sc-if>
+<sc-if value="{{ r.isCodex }}" hint-placeholder-val="{{ false }}"><span title="Codex manages its own context" style="padding-left: 11px; font-size: 12.5px; color: var(--k-muted)">Auto</span></sc-if>
+</div>
+</sc-for>
+</div>
+</section></sc-if>
+
+<sc-if value="{{ isAgents }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 28px; margin-top: -12px">
+<div style="position: relative; display: flex; align-items: center">
+<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.5" stroke-linecap="round" style="position: absolute; left: 11px; pointer-events: none"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<input type="text" class="ks-filter" aria-label="Filter agents" placeholder="Filter agents" autocomplete="off" spellcheck="false" value="{{ query }}" onChange="{{ onQuery }}" style="width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 31px; border-radius: 10px; font-family: inherit; font-size: 13px">
+</div>
+<sc-for list="{{ agentGroups }}" as="ag" hint-placeholder-count="3">
+<section aria-label="{{ ag.title }}" style="display: flex; flex-direction: column; gap: 10px">
+<button type="button" class="ks-open" aria-expanded="{{ ag.open }}" onClick="{{ ag.toggle }}" style="align-self: flex-start; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 2px; border: 0; font-family: inherit; text-align: left; cursor: pointer">
+<span style="font-size: 15px; font-weight: 500; color: var(--k-ink)">{{ ag.title }}</span>
+<span style="font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--k-faint)">{{ ag.count }}</span>
+<sc-if value="{{ ag.isPlugin }}" hint-placeholder-val="{{ false }}"><span class="ks-badge">Plugin</span></sc-if>
+<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({{ ag.chev }}); transition: transform .15s"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+</button>
+<sc-if value="{{ ag.open }}" hint-placeholder-val="{{ true }}"><div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ ag.rows }}" as="a" hint-placeholder-count="3">
+<div class="ks-row" style="display: flex; align-items: center; gap: 12px; min-height: 58px; box-sizing: border-box; padding: 10px 12px 10px 14px; border-top: 1px solid {{ a.divider }}; border-radius: {{ a.radius }}">
+<button type="button" class="ks-open" aria-label="{{ a.aria }}" onClick="{{ noop }}" style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0; border: 0; font-family: inherit; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--k-line-3); background: var(--k-input-bg); font-size: 12px; font-weight: 600; color: var(--k-ink-2)">{{ a.initial }}</span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+<span style="display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap"><span style="font-size: 13.5px; font-weight: 500; color: var(--k-ink)">{{ a.name }}</span><sc-if value="{{ a.hasRole }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: var(--k-muted)">{{ a.role }}</span></sc-if></span>
+<span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--k-muted)">{{ a.desc }}</span>
+</span>
+</button>
+<div class="ks-acts" style="display: flex; align-items: center; gap: 4px">
+<button type="button" class="ks-btn" aria-label="{{ a.openAria }}" onClick="{{ noop }}" style="height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ a.openLabel }}</button>
+<button type="button" class="ks-icon" aria-label="{{ a.moreAria }}" aria-haspopup="menu" onClick="{{ noop }}" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><circle cx="3.5" cy="8" r="1.15"></circle><circle cx="8" cy="8" r="1.15"></circle><circle cx="12.5" cy="8" r="1.15"></circle></svg></button>
+</div>
+</div>
+</sc-for>
+</div></sc-if>
+</section>
+</sc-for>
+<sc-if value="{{ noAgents }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 24px 0; text-align: center; font-size: 13px; color: var(--k-muted)">No agents match “{{ query }}”</p></sc-if>
+</div></sc-if>
+
+<sc-if value="{{ isMcp }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 28px; margin-top: -12px">
+<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px">
+<span style="position: relative; display: inline-flex; align-items: center"><select class="ks-select" aria-label="Account" value="{{ mcpAccount }}" onChange="{{ onMcpAccount }}" style="height: 34px; box-sizing: border-box; padding: 0 30px 0 12px; border-radius: 10px; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><option value="main">Main account · Claude Code</option><option value="second">2nd account · Claude Code</option><option value="third">3rd account · Claude Code</option><option value="codex">Personal · Codex</option></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 11px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span>
+<span role="status" style="font-size: 12.5px; color: var(--k-muted)">{{ mcpSummary }}</span>
+<span style="flex: 1"></span>
+<span style="position: relative; display: flex; align-items: center; width: 220px">
+<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.5" stroke-linecap="round" style="position: absolute; left: 11px; pointer-events: none"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<input type="text" class="ks-filter" aria-label="Filter servers" placeholder="Filter servers" autocomplete="off" spellcheck="false" value="{{ query }}" onChange="{{ onQuery }}" style="width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 31px; border-radius: 10px; font-family: inherit; font-size: 13px">
+</span>
+</div>
+<sc-for list="{{ mcpGroups }}" as="mg" hint-placeholder-count="3">
+<section aria-label="{{ mg.title }}" style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; padding-left: 2px; display: flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 500; color: var(--k-ink)">{{ mg.title }}<span style="font-size: 12.5px; font-weight: 400; font-variant-numeric: tabular-nums; color: var(--k-faint)">{{ mg.count }}</span><span style="font-size: 12.5px; font-weight: 400; color: var(--k-muted)">{{ mg.note }}</span></h2>
+<div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ mg.rows }}" as="s" hint-placeholder-count="4">
+<div class="ks-row" style="display: flex; align-items: center; gap: 12px; min-height: 46px; box-sizing: border-box; padding: 8px 12px 8px 16px; border-top: 1px solid {{ s.divider }}; border-radius: {{ s.radius }}">
+<span style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px">
+<span class="{{ s.nameCls }}" style="font-size: {{ s.nameSize }}; font-weight: 500; color: var(--k-ink-2); white-space: nowrap">{{ s.name }}</span>
+<span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--k-faint)">{{ s.meta }}</span>
+</span>
+<sc-if value="{{ s.hasIssue }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--k-ink-2)"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ s.issueColor }}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="{{ s.issueIcon }}"></path></svg>{{ s.issue }}</span><button type="button" class="ks-btn" aria-label="{{ s.actionAria }}" onClick="{{ s.onAction }}" style="height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--k-line-3); color: var(--k-ink-2); font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer">{{ s.action }}</button></sc-if>
+<sc-if value="{{ s.isReady }}" hint-placeholder-val="{{ true }}"><span class="ks-acts" style="font-size: 12px; color: var(--k-muted)">Ready</span></sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+<sc-if value="{{ noServers }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 24px 0; text-align: center; font-size: 13px; color: var(--k-muted)">No servers match “{{ query }}”</p></sc-if>
+</div></sc-if>
+
+<sc-if value="{{ isPerms }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 36px">
+<section aria-labelledby="ks-mode" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="ks-mode" style="margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500; color: var(--k-ink)">Mode</h2>
+<div role="radiogroup" aria-labelledby="ks-mode" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+<sc-for list="{{ modes }}" as="m" hint-placeholder-count="4">
+<button type="button" role="radio" aria-checked="{{ m.on }}" class="{{ m.cls }}" onClick="{{ m.pick }}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 104px; box-sizing: border-box; padding: 12px 12px 12px 13px; border-radius: 12px; font-family: inherit; text-align: left; cursor: pointer">
+<span style="width: 100%; display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 14px; height: 14px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid {{ m.ring }}"><span style="width: 6px; height: 6px; border-radius: 50%; background: {{ m.dot }}"></span></span><span style="font-size: 13.5px; font-weight: 500; color: var(--k-ink)">{{ m.label }}</span></span>
+<span style="font-size: 12.5px; line-height: 1.45; color: var(--k-muted)">{{ m.desc }}</span>
+<sc-if value="{{ m.hasNote }}" hint-placeholder-val="{{ false }}"><span style="margin-top: auto; font-size: 11.5px; color: var(--k-faint)">{{ m.note }}</span></sc-if>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{ isBypass }}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 24px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><span id="ks-wt" style="font-size: 13.5px; font-weight: 500; color: var(--k-ink-2)">Only in worktrees</span><span style="font-size: 12.5px; color: var(--k-muted)">Never skip prompts on your current branch.</span></div>
+<button type="button" role="switch" aria-checked="{{ wtOn }}" aria-labelledby="ks-wt" onClick="{{ toggleWt }}" style="position: relative; width: 32px; height: 20px; flex-shrink: 0; padding: 0; border-radius: 999px; border: 1px solid {{ wtTg.border }}; background: {{ wtTg.bg }}; cursor: pointer"><span style="position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: {{ wtTg.knob }}; transform: translateX({{ wtTg.x }}); transition: transform .12s"></span></button>
+</div></sc-if>
+</section>
+<section aria-labelledby="ks-rules" style="display: flex; flex-direction: column; gap: 10px">
+<h2 id="ks-rules" style="margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500; color: var(--k-ink)">Rules</h2>
+<div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ rules }}" as="ru" hint-placeholder-count="3">
+<div role="group" aria-label="{{ ru.label }}" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: 1px solid {{ ru.divider }}">
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13.5px; font-weight: 500; color: var(--k-ink-2)">{{ ru.label }}</span><span style="font-size: 12.5px; color: var(--k-muted)">{{ ru.desc }}</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<sc-for list="{{ ru.tags }}" as="t" hint-placeholder-count="2"><span class="ks-tag">{{ t.text }}<button type="button" class="ks-tagx" aria-label="{{ t.aria }}" onClick="{{ t.remove }}" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; cursor: pointer"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button></span></sc-for>
+<button type="button" class="ks-add" aria-label="{{ ru.addAria }}" onClick="{{ noop }}" style="display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: 7px; font-family: inherit; font-size: 12.5px; cursor: pointer"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>{{ ru.addLabel }}</button>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+</div></sc-if>
+
+<sc-for list="{{ sections }}" as="sec" hint-placeholder-count="2">
+<section aria-label="{{ sec.title }}" style="display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; padding-left: 2px; display: flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 500; color: var(--k-ink)">{{ sec.title }}</h2>
+<div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
+<div style="position: relative; display: flex; align-items: center; gap: 24px; min-height: 52px; box-sizing: border-box; padding: {{ r.pad }}; border-top: 1px solid {{ r.divider }}">
+<sc-if value="{{ r.isChild }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; left: 24px; top: 0; height: {{ r.guideH }}; width: 1px; background: var(--k-line-4)"></span><span aria-hidden="true" style="position: absolute; left: 24px; top: 50%; width: 10px; height: 1px; background: var(--k-line-4)"></span></sc-if>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<span style="display: flex; align-items: center; gap: 8px"><span id="{{ r.labelId }}" style="font-size: 13.5px; font-weight: 500; color: var(--k-ink-2)">{{ r.label }}</span><sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span class="ks-badge">{{ r.tag }}</span></sc-if></span>
+<sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: var(--k-muted)">{{ r.desc }}</span></sc-if>
+</div>
+<sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ true }}"><button type="button" role="switch" aria-checked="{{ r.on }}" aria-labelledby="{{ r.labelId }}" onClick="{{ r.toggle }}" style="position: relative; width: 32px; height: 20px; flex-shrink: 0; padding: 0; border-radius: 999px; border: 1px solid {{ r.tg.border }}; background: {{ r.tg.bg }}; cursor: pointer"><span style="position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: {{ r.tg.knob }}; transform: translateX({{ r.tg.x }}); transition: transform .12s"></span></button></sc-if>
+<sc-if value="{{ r.isSeg }}" hint-placeholder-val="{{ false }}"><span role="radiogroup" aria-labelledby="{{ r.labelId }}" style="display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; flex-shrink: 0; gap: 2px; padding: 2px; border-radius: 9px; border: 1px solid var(--k-line-3); background: var(--k-input-bg)"><sc-for list="{{ r.opts }}" as="o" hint-placeholder-count="2"><button type="button" role="radio" aria-checked="{{ o.on }}" class="{{ o.cls }}" onClick="{{ o.pick }}" style="height: 24px; padding: 0 10px; border: 0; border-radius: 7px; font-family: inherit; font-size: 12.5px; font-weight: 500; white-space: nowrap; cursor: pointer">{{ o.label }}</button></sc-for></span></sc-if>
+<sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ false }}"><span style="position: relative; display: inline-flex; align-items: center; flex-shrink: 0"><select class="ks-select" aria-labelledby="{{ r.labelId }}" value="{{ r.value }}" onChange="{{ r.onSelect }}" style="min-width: 128px; height: 28px; box-sizing: border-box; padding: 0 28px 0 10px; border-radius: 8px; font-family: inherit; font-size: 12.5px; cursor: pointer"><sc-for list="{{ r.options }}" as="o" hint-placeholder-count="3"><option value="{{ o.value }}">{{ o.label }}</option></sc-for></select><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 10px; pointer-events: none"><path d="M4 6.5 8 10.5 12 6.5"></path></svg></span></sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+
+<sc-if value="{{ isPerms }}" hint-placeholder-val="{{ false }}"><p style="margin: -20px 0 0; padding-left: 2px; font-size: 12.5px; color: var(--k-muted)">Commands and tools you allow from an approval are saved per room, on each room’s <button type="button" class="ks-link" onClick="{{ noop }}" style="padding: 0; border: 0; font-family: inherit; font-size: 12.5px; font-weight: 500; text-decoration: underline; text-decoration-color: var(--k-line-4); text-underline-offset: 3px; cursor: pointer">Permissions page</button>.</p></sc-if>
+
+<sc-if value="{{ isEnv }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 36px">
+<section aria-labelledby="ks-vars" style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) 72px; column-gap: 16px; align-items: center; padding: 0 13px 0 17px">
+<h2 id="ks-vars" style="margin: 0; display: flex; align-items: baseline; gap: 8px; font-size: 15px; font-weight: 500; color: var(--k-ink)">Variables<span style="font-size: 12.5px; font-weight: 400; color: var(--k-faint)">{{ varCount }}</span></h2>
+<span aria-hidden="true" style="font-size: 12px; color: var(--k-faint)">Value</span><span></span>
+</div>
+<div style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ vars }}" as="v" hint-placeholder-count="3">
+<div class="ks-row" style="display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) 72px; column-gap: 16px; align-items: center; min-height: 46px; box-sizing: border-box; padding: 8px 12px 8px 16px; border-top: 1px solid {{ v.divider }}; border-radius: {{ v.radius }}">
+<span class="ks-mono" style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--k-ink)">{{ v.name }}</span>
+<span class="ks-mono" style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: {{ v.valueColor }}">{{ v.value }}</span>
+<span class="ks-acts" style="display: flex; justify-content: flex-end; gap: 4px">
+<button type="button" class="ks-icon" aria-label="{{ v.showAria }}" aria-pressed="{{ v.shown }}" onClick="{{ v.toggle }}" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.8 8S4 3.8 8 3.8 14.2 8 14.2 8 12 12.2 8 12.2 1.8 8 1.8 8z"></path><circle cx="8" cy="8" r="1.9"></circle></svg></button>
+<button type="button" class="ks-icon" aria-label="{{ v.moreAria }}" aria-haspopup="menu" onClick="{{ noop }}" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 8px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><circle cx="3.5" cy="8" r="1.15"></circle><circle cx="8" cy="8" r="1.15"></circle><circle cx="12.5" cy="8" r="1.15"></circle></svg></button>
+</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px">
+<button type="button" class="ks-open" aria-expanded="{{ kvOpen }}" aria-controls="ks-kv" onClick="{{ toggleKv }}" style="align-self: flex-start; display: flex; align-items: center; gap: 8px; height: 24px; padding: 0 2px; border: 0; font-family: inherit; text-align: left; cursor: pointer">
+<span style="font-size: 15px; font-weight: 500; color: var(--k-ink)">Kernel’s variables</span>
+<span style="font-size: 12.5px; color: var(--k-faint)">11</span>
+<span style="font-size: 12.5px; color: var(--k-muted)">Set in every chat, script and terminal. Read only.</span>
+<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--k-muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({{ kvChev }}); transition: transform .15s"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+</button>
+<sc-if value="{{ kvOpen }}" hint-placeholder-val="{{ false }}"><div id="ks-kv" style="border-radius: 12px; border: 1px solid var(--k-pill-line); background: var(--k-card)">
+<sc-for list="{{ kernelVars }}" as="k" hint-placeholder-count="6">
+<div style="display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); column-gap: 16px; align-items: center; min-height: 38px; box-sizing: border-box; padding: 7px 16px; border-top: 1px solid {{ k.divider }}">
+<span class="ks-mono" style="font-size: 12px; color: var(--k-ink-2)">{{ k.name }}</span>
+<span style="font-size: 12.5px; color: var(--k-muted)">{{ k.desc }}</span>
+</div>
+</sc-for>
+</div></sc-if>
+</section>
+</div></sc-if>
+
+</div>
+</main>
+</div>
+</div>
+
+<footer style="height: 34px; flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 10px 0 12px; font-size: 12px; color: var(--k-muted); white-space: nowrap; overflow: hidden">
+<sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+<sc-if value="{{ c.isSep }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 1px; height: 14px; background: var(--k-line-3)"></span></sc-if>
+<sc-if value="{{ c.isChip }}" hint-placeholder-val="{{ true }}"><button type="button" class="ks-chip" aria-label="{{ c.aria }}" style="display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 4px; border: 0; border-radius: 6px; font-family: inherit; font-size: 12px; cursor: pointer"><sc-if value="{{ c.hasMark }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="{{ c.markFill }}"><path d="{{ c.mark }}"></path></svg></sc-if><span style="color: {{ c.nameColor }}">{{ c.name }}</span><sc-if value="{{ c.hasMeter }}" hint-placeholder-val="{{ false }}"><span class="ks-meter" style="width: 28px"><span style="display: block; width: {{ c.width }}; height: 100%; border-radius: 999px; background: {{ c.fill }}"></span></span></sc-if><span style="font-variant-numeric: tabular-nums; color: {{ c.pctColor }}">{{ c.text }}</span></button></sc-if>
+</sc-for>
+<button type="button" class="ks-icon" aria-label="Refresh usage" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; margin-left: -6px; padding: 0; border: 0; border-radius: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"></path><path d="M13 3v2.5h-2.5"></path></svg></button>
+<span style="flex: 1"></span>
+<button type="button" class="ks-icon" aria-label="Help" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; cursor: pointer"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11z"></path><path d="M6.4 6.4a1.7 1.7 0 0 1 3.2.6c0 1.1-1.6 1.4-1.6 2.3M8 11.3v.01"></path></svg></button>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"page":{"editor":"enum","options":["models","agents","mcp","permissions","environment"],"default":"models"},"theme":{"editor":"enum","options":["dark","light"],"default":"dark"},"frameWidth":{"editor":null},"frameHeight":{"editor":null},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var self = this;
+    var st = this.state || {};
+    var props = this.props;
+    var set = function (p) { self.setState(p); };
+    var V = function (n) { return 'var(--k-' + n + ')'; };
+    var noop = function () {};
+    var page = props.page || 'models';
+    var vals = st.vals || {};
+    var val = function (id, d) { return vals[id] !== undefined ? vals[id] : d; };
+    var put = function (id, v) { var o = Object.assign({}, (self.state && self.state.vals) || {}); o[id] = v; set({ vals: o }); };
+    var query = st.query || '';
+    var q = query.trim().toLowerCase();
+    var onQuery = function (e) { set({ query: e.target.value }); };
+    var edge = function (i, n) { return n === 1 ? '11px' : i === 0 ? '11px 11px 0 0' : i === n - 1 ? '0 0 11px 11px' : '0'; };
+
+    var tg = function (on) { return on ? { bg: V('ink'), border: V('ink'), knob: V('on-ink'), x: '12px' } : { bg: V('surface-3'), border: V('line-3'), knob: V('muted'), x: '0px' }; };
+    var n = 0;
+    var base = function (label, extra) { n += 1; return Object.assign({ label: label, labelId: 'ks-r-' + n, desc: '', hasDesc: false, hasTag: false, tag: '', isToggle: false, isSeg: false, isSelect: false, on: false, tg: tg(false), toggle: noop, opts: [], options: [], value: '', onSelect: noop, pad: '12px 16px', isChild: false, guideH: '100%' }, extra || {}); };
+    var toggle = function (id, label, d, desc, extra) { var on = val(id, d); return base(label, Object.assign({ isToggle: true, on: on, tg: tg(on), toggle: function () { put(id, !on); }, desc: desc || '', hasDesc: !!desc }, extra || {})); };
+    var seg = function (id, label, d, list, desc) { var v = val(id, d); return base(label, { isSeg: true, desc: desc || '', hasDesc: !!desc, opts: list.map(function (o) { return { label: o[1], on: v === o[0], cls: v === o[0] ? 'ks-seg on' : 'ks-seg', pick: function () { put(id, o[0]); } }; }) }); };
+    var select = function (id, label, d, list, desc) { var v = val(id, d); return base(label, { isSelect: true, desc: desc || '', hasDesc: !!desc, value: v, options: list.map(function (o) { return { value: o[0], label: o[1] }; }), onSelect: function (e) { put(id, e.target.value); } }); };
+    // A child row hangs off the row above it: no divider between them, a guide line from the parent, and the last child's line stops at its tick.
+    var S = function (title, rows) {
+      return { title: title, rows: rows.map(function (r, i) {
+        r.divider = i && !r.isChild ? V('panel-line') : 'transparent';
+        if (r.isChild) r.guideH = rows[i + 1] && rows[i + 1].isChild ? '100%' : '50%';
+        return r;
+      }) };
+    };
+
+    var out = { isModels: page === 'models', isAgents: page === 'agents', isMcp: page === 'mcp', isPerms: page === 'permissions', isEnv: page === 'environment' };
+    var title = '', subtitle = '', action = null, sections = [];
+    var PLUS = 'M8 3.5v9M3.5 8h9';
+
+    // Models and effort: one row per role, the model picker grouped by provider, so no separate provider dropdown.
+    var MODELS = { claude: [['fable', 'Fable 5.1'], ['opus', 'Opus 5.5'], ['sonnet', 'Sonnet 5.5'], ['haiku', 'Haiku 4.5']], codex: [['gpt', 'GPT-5.5'], ['gpt-mini', 'GPT-5.5 mini']] };
+    var providerOf = function (m) { return MODELS.codex.some(function (x) { return x[0] === m; }) ? 'codex' : 'claude'; };
+    var roles = [['lead', 'Lead', 'opus', 'high', '200k'], ['build', 'Frontend and Backend', 'sonnet', 'medium', '200k'], ['qa', 'QA', 'gpt', 'medium', '200k'], ['review', 'Reviewer', 'opus', 'high', 'full']].map(function (r, i) {
+      var m = val('m-' + r[0], r[2]);
+      var p = providerOf(m);
+      return {
+        name: r[1], divider: i ? V('panel-line') : 'transparent', provider: p === 'codex' ? 'Codex' : 'Claude Code',
+        model: m, effort: val('e-' + r[0], r[3]), compact: val('c-' + r[0], r[4]), isClaude: p === 'claude', isCodex: p === 'codex',
+        modelAria: r[1] + ' model', effortAria: r[1] + ' effort', compactAria: r[1] + ' compact at',
+        onModel: function (e) { put('m-' + r[0], e.target.value); }, onEffort: function (e) { put('e-' + r[0], e.target.value); }, onCompact: function (e) { put('c-' + r[0], e.target.value); }
+      };
+    });
+    var modelGroups = [{ label: 'Claude Code', models: MODELS.claude.map(function (m) { return { id: m[0], label: m[1] }; }) }, { label: 'Codex', models: MODELS.codex.map(function (m) { return { id: m[0], label: m[1] }; }) }];
+    var efforts = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high'], ['max', 'Max']].map(function (e) { return { id: e[0], label: e[1] }; });
+
+    if (out.isModels) {
+      title = 'Models and effort';
+      subtitle = 'What each role runs on by default.';
+      var teams = val('teams', true);
+      var teamRows = [
+        select('limit', 'Agents working at once', 'none', [['2', '2'], ['3', '3'], ['4', '4'], ['6', '6'], ['8', '8'], ['none', 'No limit']], 'More agents use more of your limits. Lead chats don’t count.'),
+        toggle('updates', 'Keep the Lead updated', true, 'Tells the Lead about failed checks, reviews and questions.'),
+        toggle('teams', 'Agent teams', true, 'The Lead coordinates teammates through a shared task list.', { hasTag: true, tag: 'Experimental' })
+      ];
+      if (teams) {
+        teamRows.push(toggle('gate-tests', 'Send back tasks without test output', true, 'A task marked done before any test ran goes back once.', { pad: '10px 16px 10px 44px', isChild: true }));
+        teamRows.push(toggle('gate-idle', 'Keep idle teammates working', true, 'An idle teammate picks up an open task.', { pad: '10px 16px 12px 44px', isChild: true }));
+      }
+      sections = [
+        S('Planning', [toggle('planLead', 'Lead starts in plan mode', false), toggle('planWs', 'New workspaces start in plan mode', false, 'The Lead’s hand-offs skip it, since the Lead already planned.')]),
+        S('Teamwork', teamRows)
+      ];
+    }
+
+    // Agents: one compact row each, grouped by where it comes from.
+    var AGENTS = [
+      ['Yours', false, [['Sol', 'Release manager', 'Cuts Kernel releases from a worktree: notes, release PR, tag, signed build, publish and verify.', 'Edit']]],
+      ['feature-dev', true, [['Code Architect', '', 'Designs feature architectures from the codebase’s own patterns and conventions.', 'View'], ['Code Explorer', '', 'Traces execution paths and maps architecture layers before new work.', 'View'], ['Code Reviewer', '', 'Reviews code for bugs, security issues and project conventions.', 'View']]],
+      ['vercel', true, [['AI Architect', '', 'Architects AI apps on Vercel: AI SDK, providers, agents and MCP servers.', 'View'], ['Deployment Expert', '', 'Deployments, CI/CD, preview URLs, rollbacks and domains on Vercel.', 'View'], ['Performance Optimizer', '', 'Core Web Vitals, caching, fonts and bundle size on Vercel.', 'View']]]
+    ];
+    var closed = st.closed || {};
+    var agentGroups = AGENTS.map(function (g) {
+      var rows = g[2].filter(function (a) { return !q || (a[0] + ' ' + a[1] + ' ' + a[2]).toLowerCase().indexOf(q) >= 0; });
+      var open = !closed[g[0]] || !!q;
+      return {
+        title: g[0], isPlugin: g[1], count: String(rows.length), open: open, chev: open ? '90deg' : '0deg',
+        toggle: function () { var c = Object.assign({}, closed); c[g[0]] = open; set({ closed: c }); },
+        rows: rows.map(function (a, i) {
+          return { name: a[0], role: a[1], hasRole: !!a[1], desc: a[2], initial: a[0].charAt(0), divider: i ? V('panel-line') : 'transparent', radius: edge(i, rows.length),
+            aria: 'Open ' + a[0] + (a[1] ? ', ' + a[1] : '') + '. ' + a[2], openLabel: a[3], openAria: a[3] + ' ' + a[0], moreAria: 'More for ' + a[0] };
+        })
+      };
+    }).filter(function (g) { return g.rows.length; });
+    if (out.isAgents) {
+      title = 'Agents';
+      subtitle = 'Agents that join every room. A room adds its own on its Agents page.';
+      action = { label: 'New agent', icon: PLUS };
+      sections = [S('New rooms', [seg('team', 'New rooms start with', 'starter', [['starter', 'Starter team'], ['pair', 'Pair']])])];
+    }
+
+    // MCP servers: every server shown. Healthy ones stay quiet; only problems carry a status and an action.
+    var mcpAccount = st.acct || 'main';
+    var codex = mcpAccount === 'codex';
+    var WARN = 'M8 2.2 14.6 13.6H1.4ZM8 6.6v3.2M8 11.7v.1';
+    var STOP = 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8';
+    var fixed = st.fixed || {};
+    var SV = function (name, meta, issue) { return { name: name, meta: meta, issue: issue || null }; };
+    var MCP = [
+      ['Your servers', 'Shared with every account', true, [SV('github', 'stdio'), SV('playwright', 'stdio'), SV('context7', 'http'), SV('posthog', 'stdio', 'failed'), SV('sentry', 'http'), SV('filesystem', 'stdio'), SV('chrome-devtools', 'stdio'), SV('supabase', 'http')]],
+      ['claude.ai connectors', 'Set up on claude.ai for this account', false, [SV('Gmail', 'claude.ai'), SV('Google Calendar', 'claude.ai'), SV('Google Drive', 'claude.ai', 'signin'), SV('Notion', 'claude.ai'), SV('Linear', 'claude.ai'), SV('Mobbin', 'claude.ai'), SV('Vercel', 'claude.ai'), SV('Figma', 'claude.ai')]],
+      ['Plugins', 'From your Claude Code plugins', false, [SV('vercel', 'http · vercel plugin'), SV('linear', 'http · linear plugin')]]
+    ];
+    var total = 0, needs = 0;
+    var mcpGroups = MCP.filter(function (g) { return !codex || g[2]; }).map(function (g) {
+      var all = g[3].map(function (s) { return Object.assign({}, s, { issue: fixed[s.name] ? null : s.issue }); });
+      total += all.length; needs += all.filter(function (s) { return s.issue; }).length;
+      var rows = all.filter(function (s) { return !q || s.name.toLowerCase().indexOf(q) >= 0; });
+      rows = rows.filter(function (s) { return s.issue; }).concat(rows.filter(function (s) { return !s.issue; }));
+      return {
+        title: g[0], note: g[1], count: String(all.length),
+        rows: rows.map(function (s, i) {
+          var fail = s.issue === 'failed';
+          return {
+            name: s.name, meta: s.meta, nameCls: g[2] || g[0] === 'Plugins' ? 'ks-mono' : '', nameSize: g[2] || g[0] === 'Plugins' ? '12.5px' : '13px',
+            divider: i ? V('panel-line') : 'transparent', radius: edge(i, rows.length),
+            hasIssue: !!s.issue, isReady: !s.issue, issue: fail ? 'Failed to start' : 'Needs sign-in', issueIcon: fail ? STOP : WARN, issueColor: fail ? V('del-fill') : V('needs-fill'),
+            action: fail ? 'Try again' : 'Sign in', actionAria: (fail ? 'Try again: ' : 'Sign in to ') + s.name,
+            onAction: function () { var f = Object.assign({}, fixed); f[s.name] = true; set({ fixed: f }); }
+          };
+        })
+      };
+    }).filter(function (g) { return g.rows.length; });
+    if (out.isMcp) {
+      title = 'MCP servers';
+      subtitle = 'Checked again whenever you come back to Kernel.';
+      if (needs) action = { label: 'Set up all', icon: 'M3.5 8.5l3 3 6-7' };
+    }
+
+    // Permissions: the mode as four cards, lists as tags, guardrails together.
+    var mode = val('mode', 'bypass');
+    var modes = [['manual', 'Manual', 'Asks before every edit and command.', ''], ['edits', 'Accept edits', 'Edits files freely. Commands ask unless a rule allows them.', ''], ['auto', 'Auto', 'Routine work runs. Anything else asks you.', 'Not on Codex yet'], ['bypass', 'Bypass', 'Skips prompts. Never allow, protected branches and network off still hold.', '']].map(function (m) {
+      var on = mode === m[0];
+      return { label: m[1], desc: m[2], note: m[3], hasNote: !!m[3], on: on, cls: on ? 'ks-mode on' : 'ks-mode', ring: on ? V('ink') : V('line-4'), dot: on ? V('ink') : 'transparent', pick: function () { put('mode', m[0]); } };
+    });
+    var removedTags = st.rm || {};
+    var rules = [['ask', 'Always ask before', 'Every mode except Bypass.', ['npm publish', 'git push --force', 'gh release create'], 'Add command'], ['never', 'Never allow', 'Blocked in every mode, Bypass included.', ['git push origin main', 'rm -rf /', 'gh repo delete'], 'Add command'], ['branches', 'Protected branches', 'Pushes are blocked in every mode.', ['main', 'dev'], 'Add branch']].map(function (r, i) {
+      return {
+        label: r[1], desc: r[2], divider: i ? V('panel-line') : 'transparent', addLabel: r[4], addAria: r[4] + ' to ' + r[1],
+        tags: r[3].filter(function (t) { return !removedTags[r[0] + ':' + t]; }).map(function (t) { return { text: t, aria: 'Remove ' + t, remove: function () { var o = Object.assign({}, removedTags); o[r[0] + ':' + t] = true; set({ rm: o }); } }; })
+      };
+    });
+    var wtOn = val('wt', true);
+    if (out.isPerms) {
+      title = 'Permissions';
+      subtitle = 'How agents ask before acting. A room can pick its own mode.';
+      sections = [S('Safety', [toggle('net', 'Allow network access', true, 'Off blocks the network in every mode.'), select('timeout', 'Approval timeout', '10', [['5', '5 min'], ['10', '10 min'], ['30', '30 min'], ['never', 'Never']], 'Then the request falls back to Claude Code’s own prompt.')])];
+    }
+
+    // Environment: your variables as a table, Kernel's folded away.
+    var shownVars = st.shown || {};
+    var VARS = [['DATABASE_URL', 'postgres://kernel:secret@localhost:5432/dev'], ['STRIPE_SECRET_KEY', 'sk_test_51NfQ8x2eZvKYlo2C'], ['NODE_OPTIONS', '--max-old-space-size=8192']];
+    var vars = VARS.map(function (v, i) {
+      var shown = !!shownVars[v[0]];
+      return { name: v[0], value: shown ? v[1] : '••••••••••••', valueColor: shown ? V('ink-2') : V('faint'), shown: shown, divider: i ? V('panel-line') : 'transparent', radius: edge(i, VARS.length),
+        showAria: (shown ? 'Hide ' : 'Show ') + v[0], moreAria: 'More for ' + v[0], toggle: function () { var o = Object.assign({}, shownVars); o[v[0]] = !shown; set({ shown: o }); } };
+    });
+    var KV = [['KERNEL_PORT', 'The first of the workspace’s ten ports.'], ['KERNEL_WORKSPACE_ID', 'The workspace’s id.'], ['KERNEL_WORKSPACE', 'The workspace’s folder.'], ['KERNEL_ROOT_PATH', 'The room’s main checkout.'], ['KERNEL_WORKSPACE_NAME', 'The name the sidebar shows.'], ['KERNEL_WORKSPACE_SLUG', 'A short unique name, for a database or a Compose project.'], ['KERNEL_BRANCH', 'The branch the workspace started on.'], ['KERNEL_BASE_REF', 'The ref it started from, like origin/main.'], ['KERNEL_DEFAULT_BRANCH', 'The room’s default branch.'], ['PORT', 'Same as KERNEL_PORT. Scripts only.'], ['KERNEL_ENV', 'A file setup writes NAME=value lines to. Setup only.']];
+    var kvOpen = !!st.kvOpen;
+    if (out.isEnv) {
+      title = 'Environment';
+      subtitle = 'Variables for every chat, script and terminal, in every room.';
+      action = { label: 'Add variable', icon: PLUS };
+    }
+
+    var P = {
+      sliders: 'M3 5h10M3 11h10M6 3.5v3M10 9.5v3', half: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 2.5v11', bell: 'M4.5 11V7.5a3.5 3.5 0 0 1 7 0V11l1 1.5h-9zM6.8 14h2.4',
+      user: 'M8 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM3.5 13.5c.6-2.3 2.3-3.5 4.5-3.5s3.9 1.2 4.5 3.5', kbd: 'M2.5 4.5h11v7h-11zM5 7h.01M8 7h.01M11 7h.01M5.5 9.5h5',
+      spark: 'M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2', users: 'M6 7.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2.5 13c.5-2 1.8-3 3.5-3s3 1 3.5 3M10.5 7.5a2 2 0 1 0 0-4M11.5 10c1.2.3 2 1.3 2.3 3',
+      layers: 'M8 2.5l5.5 3-5.5 3-5.5-3zM2.5 8.5l5.5 3 5.5-3M2.5 11l5.5 3 5.5-3', shield: 'M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z',
+      braces: 'M5.5 3c-1.5 0-2 .7-2 2v1.3c0 .8-.4 1.2-1 1.7.6.5 1 .9 1 1.7V11c0 1.3.5 2 2 2M10.5 3c1.5 0 2 .7 2 2v1.3c0 .8.4 1.2 1 1.7-.6.5-1 .9-1 1.7V11c0 1.3-.5 2-2 2',
+      branch: 'M5 2.5v11M11 2.5v3c0 2.5-6 2-6 5', term: 'M2.5 3.5h11v9h-11zM5 6.5l2 1.5-2 1.5M8.5 10h2.5', pr: 'M4.5 2.5v11M11.5 6.5v7M11.5 6.5c0-2-1-3-3-3H7M8.5 2 7 3.5 8.5 5',
+      hook: 'M7 9.5a2.5 2.5 0 0 0 3.5 0l2-2a2.5 2.5 0 0 0-3.5-3.5l-.8.8M9 6.5a2.5 2.5 0 0 0-3.5 0l-2 2a2.5 2.5 0 0 0 3.5 3.5l.8-.8', plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0zM8 11.5v2',
+      big: 'M2.5 3.5h11v9h-11zM5 7l1.5 1L5 9', lock: 'M4 7.5h8v6H4zM5.5 7.5v-2a2.5 2.5 0 0 1 5 0v2', info: 'M8 2.5a5.5 5.5 0 1 1 0 11 5.5 5.5 0 0 1 0-11zM8 7.5V11M8 5.3v.01'
+    };
+    var current = { models: 'Models and effort', agents: 'Agents', mcp: 'MCP servers', permissions: 'Permissions', environment: 'Environment' }[page];
+    var NAV = [
+      { title: 'Personal', items: [['General', 'sliders'], ['Appearance', 'half'], ['Notifications', 'bell'], ['Accounts', 'user'], ['Shortcuts', 'kbd']] },
+      { title: 'Agents', items: [['Models and effort', 'spark'], ['Agents', 'users'], ['MCP servers', 'layers'], ['Permissions', 'shield'], ['Environment', 'braces']] },
+      { title: 'Workspaces', items: [['Git and worktrees', 'branch'], ['Pull requests', 'pr'], ['Big terminal', 'big']] },
+      { title: 'System', items: [['Integrations', 'plug'], ['Hooks', 'hook'], ['Privacy', 'lock'], ['About', 'info']] }
+    ];
+    // The nav count is every account's servers that need you, as on the other settings pages.
+    var navNeeds = 10;
+    var groups = NAV.map(function (g) {
+      return { title: g.title, items: g.items.map(function (it) {
+        var on = it[0] === current;
+        var badge = it[0] === 'MCP servers' && navNeeds ? String(navNeeds) : '';
+        return { label: it[0], d: P[it[1]], cls: on ? 'ks-nav on' : 'ks-nav', current: on ? 'page' : undefined, hasBadge: !!badge, badge: badge, aria: badge ? it[0] + ', ' + badge + ' need you' : it[0] };
+      }) };
+    });
+
+    var CLAUDE = 'm4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z';
+    var OPENAI = 'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z';
+    var C = function (o) { return Object.assign({ isSep: false, isChip: true, hasMark: false, mark: '', markFill: '', name: '', nameColor: V('muted'), hasMeter: false, width: '0%', fill: '', text: '', pctColor: V('muted'), aria: '' }, o); };
+    var chips = [
+      C({ hasMark: true, mark: CLAUDE, markFill: V('claude'), name: '2nd account', nameColor: V('ink-2'), hasMeter: true, width: '11%', fill: V('muted'), text: '5h 11% · wk 27% · Fable 5.1 4%', pctColor: V('ink-3'), aria: '2nd account, in use' }),
+      C({ name: 'Main account', text: '6%', aria: 'Switch to Main account' }),
+      C({ name: '3rd account', text: '100%', pctColor: V('del-fill'), aria: 'Switch to 3rd account' }),
+      { isSep: true, isChip: false },
+      C({ hasMark: true, mark: OPENAI, markFill: 'currentColor', name: 'Personal', nameColor: V('ink-2'), hasMeter: true, width: '0%', fill: V('muted'), text: '5h 0% · wk 16%', pctColor: V('ink-3'), aria: 'Personal, in use' })
+    ];
+
+    return Object.assign(out, {
+      themeCls: props.theme === 'light' ? 'ks-light' : 'ks-dark',
+      frameW: (parseInt(props.frameWidth, 10) || 1440) + 'px', frameH: (parseInt(props.frameHeight, 10) || 1000) + 'px', noop: noop,
+      groups: groups, chips: chips, title: title, subtitle: subtitle, hasSubtitle: false,
+      hasAction: !!action, actionLabel: action ? action.label : '', actionIcon: action ? action.icon : '',
+      sections: sections, query: query, onQuery: onQuery,
+      roles: roles, modelGroups: modelGroups, efforts: efforts,
+      agentGroups: agentGroups, noAgents: out.isAgents && !agentGroups.length,
+      mcpAccount: mcpAccount, onMcpAccount: function (e) { set({ acct: e.target.value }); }, mcpGroups: mcpGroups, noServers: out.isMcp && !mcpGroups.length,
+      mcpSummary: total + ' servers' + (needs ? ' · ' + needs + ' need you' : ' · all ready'),
+      modes: modes, isBypass: mode === 'bypass', wtOn: wtOn, wtTg: tg(wtOn), toggleWt: function () { put('wt', !wtOn); }, rules: rules,
+      vars: vars, varCount: String(VARS.length), kernelVars: KV.map(function (k, i) { return { name: k[0], desc: k[1], divider: i ? V('panel-line') : 'transparent' }; }),
+      kvOpen: kvOpen, kvChev: kvOpen ? '90deg' : '0deg', toggleKv: function () { set({ kvOpen: !kvOpen }); }
+    });
+  }
+}
+</script>
+</body>
+</html>

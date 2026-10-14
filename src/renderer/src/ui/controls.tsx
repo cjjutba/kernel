@@ -1,4 +1,4 @@
-import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import { Icon, type IconName, type IconSize } from '../icons'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
@@ -65,17 +65,10 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
   return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className="toggle" onClick={() => onChange(!checked)}><span /></button>
 }
 
-/** A native select with the canvas chrome, so keyboard and screen readers work for free. */
-export function Select({ options, label, className, ...rest }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'aria-label'> & { options: { value: string; label: string }[]; label: string }) {
-  return (
-    <span className={['select', className].filter(Boolean).join(' ')}>
-      <select aria-label={label} {...rest}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      <Icon name="chevron" size={12} />
-    </span>
-  )
-}
-
-/** One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's label, for a script that is running. */
+/**
+ * One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's
+ * label, for a script that is running. Every option is the same width, so none looks like the default (KERNEL-680).
+ */
 export function SegmentedControl({ options, value, onChange, label }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {

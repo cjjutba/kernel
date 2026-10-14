@@ -1,17 +1,35 @@
+import './agents.css'
 import { useRef, type KeyboardEvent } from 'react'
-import { PERMISSION_MODES, type AppSettings, type PermissionMode } from '@shared/types'
-import { MODE_INFO, pickMode, unavailable, useModeAvailability, type ModeAvailabilities } from '../../../permissionModes'
-import { Icon, Select, Toggle } from '../../../ui'
-import { LinesField, ListField, Page, Row, Section } from '../kit'
+import { PERMISSION_MODES, PROVIDERS, type AppSettings, type PermissionMode } from '@shared/types'
+import { pickMode, unavailable, useModeAvailability, type ModeAvailabilities } from '../../../permissionModes'
+import { Select, Toggle } from '../../../ui'
+import { useStore } from '../../../store'
+import { Page, Row, Section, SettingsLink, TagList } from '../kit'
 import { patchSettings } from '../useSettings'
 
 const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 min' }, { value: '600', label: '10 min' }, { value: '1800', label: '30 min' }]
 
 /**
- * The four modes as a radio list, like Big terminal's presets. A mode no provider can run keeps its row, dimmed with the reason, and can't be picked
- * unless it is the saved one. One that only some providers can run says which can't. Arrow keys move the pick and the focus, and skip a dimmed mode.
+ * The four modes as cards in a radio group (KERNEL-680). A mode no provider can run keeps its card, dimmed with the reason, and can't be
+ * picked unless it is the saved one. One that only some providers can run says which can't. Arrow keys move the pick and the focus, and skip a dimmed mode.
  */
-function ModeList({ value, availability }: { value: PermissionMode; availability: ModeAvailabilities | null }) {
+/** The cards' own short copy (AgentsPage.dc.html). The composer's mode menu keeps MODE_INFO's longer lines. */
+const CARD: Record<PermissionMode, { label: string; desc: string }> = {
+  default: { label: 'Manual', desc: 'Asks before every edit and command.' },
+  acceptEdits: { label: 'Accept edits', desc: 'Edits files freely. Commands ask unless a rule allows them.' },
+  auto: { label: 'Auto', desc: 'Routine work runs. Anything else asks you.' },
+  bypassPermissions: { label: 'Bypass', desc: 'Skips prompts. Never allow, protected branches and network off still hold.' }
+}
+
+/** "Not on Codex yet" under a mode some provider can't run. The full reason is the note's tooltip. */
+function notOn(mode: PermissionMode, availability: ModeAvailabilities | null): string | undefined {
+  const key = mode === 'auto' ? 'auto' : mode === 'bypassPermissions' ? 'bypass' : null
+  if (!availability || !key) return undefined
+  const off = PROVIDERS.filter((p) => !availability[p.id][key]).map((p) => p.label)
+  return off.length ? `Not on ${off.join(' or ')} yet` : undefined
+}
+
+function ModeCards({ value, availability }: { value: PermissionMode; availability: ModeAvailabilities | null }) {
   const radios = useRef<(HTMLButtonElement | null)[]>([])
   const rows = PERMISSION_MODES.map((mode) => ({ mode, ...unavailable(mode, availability) }))
   const pickable = (i: number) => !rows[i].dim || rows[i].mode === value
@@ -27,52 +45,52 @@ function ModeList({ value, availability }: { value: PermissionMode; availability
     radios.current[next]?.focus()
   }
   return (
-    <div role="radiogroup" aria-label="Permission mode">
+    <div className="ag-modes" role="radiogroup" aria-label="Permission mode">
       {rows.map(({ mode, lines, dim }, i) => {
         const on = mode === value
         const off = dim && !on
-        const info = MODE_INFO[mode]
-        const pick = () => { if (!off) void pickMode(mode) }
+        const info = CARD[mode]
+        const note = notOn(mode, availability)
         return (
-          <div key={mode} className="set-row set-preset set-mode" aria-disabled={off || undefined}>
-            <button
-              ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-disabled={off || undefined} aria-label={info.label}
-              tabIndex={on ? 0 : -1} aria-describedby={`mode-${mode}`} onClick={pick} onKeyDown={(e) => onKey(e, i)}
-            >{on && <Icon name="check" size={12} />}</button>
-            <div id={`mode-${mode}`} className="set-text" onClick={pick}>
-              <span className="set-label">{info.label}</span>
-              <span className="set-desc">{info.desc}</span>
-              {info.note && <span className="set-desc">{info.note}</span>}
-              {lines.map((line) => <span key={line} className="set-avail"><Icon name="info" size={14} />{line}</span>)}
-            </div>
-          </div>
+          <button
+            key={mode} ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="ag-mode" aria-checked={on} aria-disabled={off || undefined}
+            tabIndex={on ? 0 : -1} onClick={() => { if (!off) void pickMode(mode) }} onKeyDown={(e) => onKey(e, i)}
+          >
+            <span className="ag-mode-head"><span className="ag-ring" aria-hidden="true" />{info.label}</span>
+            <span className="ag-mode-desc">{info.desc}</span>
+            {note && <span className="ag-mode-note" data-tip={lines.join(' ')}>{note}</span>}
+          </button>
         )
       })}
     </div>
   )
 }
 
-/** Settings > Permissions (SettingsPermissions.png). Running sessions read these on their next tool call. */
+/** Settings > Permissions (AgentsPage.dc.html, KERNEL-680). Running sessions read these on their next tool call. */
 export function Permissions({ s }: { s: AppSettings }) {
   const p = s.permissions
   const availability = useModeAvailability()
+  const firstRoom = useStore((st) => st.rooms.find((r) => !r.hidden && !r.archived))
+  const save = (permissions: Partial<AppSettings['permissions']>) => void patchSettings({ permissions })
+  const timeouts = TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} sec` }]
+  const rule = (label: string, desc: string, value: string[], key: 'alwaysAsk' | 'neverAllow' | 'protectedBranches', addLabel: string) => (
+    <Row className="ag-rule" label={label} desc={desc} full={<TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />} />
+  )
   return (
-    <Page title="Permissions" intro="The mode new chats start in. A room can set its own.">
-      <Section title="Mode">
-        <ModeList value={p.mode} availability={availability} />
-        <Row className="set-sub" label="Only in worktrees" desc="Never skip permissions on your current branch"><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => void patchSettings({ permissions: { bypassOnlyInWorktrees: v } })} /></Row>
+    <Page title="Permissions">
+      <Section title="Mode" plain>
+        <ModeCards value={p.mode} availability={availability} />
+        {p.mode === 'bypassPermissions' && <div className="set-card ag-wt"><Row label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row></div>}
       </Section>
-      <Section title="Network">
-        <Row label="Allow network access" desc="When off, agents can’t reach the network in any mode, Bypass permissions included"><Toggle label="Allow network access" checked={p.network} onChange={(v) => void patchSettings({ permissions: { network: v } })} /></Row>
+      <Section title="Rules">
+        {rule('Always ask before', 'Every mode except Bypass.', p.alwaysAsk, 'alwaysAsk', 'Add command')}
+        {rule('Never allow', 'Blocked in every mode, Bypass included.', p.neverAllow, 'neverAllow', 'Add command')}
+        {rule('Protected branches', 'Pushes are blocked in every mode.', p.protectedBranches, 'protectedBranches', 'Add branch')}
       </Section>
-      <Section title="Commands">
-        <Row label="Always ask before" desc="You decide these in every mode except Bypass permissions" full={<LinesField label="Always ask before" value={p.alwaysAsk} onSave={(alwaysAsk) => void patchSettings({ permissions: { alwaysAsk } })} />} />
-        <Row label="Never allow" desc="Blocked in every mode, Bypass permissions included" full={<LinesField label="Never allow" value={p.neverAllow} onSave={(neverAllow) => void patchSettings({ permissions: { neverAllow } })} />} />
-        <Row label="Protected branches" desc="Pushes to these are blocked in every mode">
-          <ListField label="Protected branches" value={p.protectedBranches} onSave={(protectedBranches) => void patchSettings({ permissions: { protectedBranches } })} />
-        </Row>
-        <Row label="Approval timeout" desc="After this, the request falls back to the normal prompt in Claude Code">
-          <Select label="Approval timeout" value={String(p.approvalTimeoutSec)} options={TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} sec` }]} onChange={(e) => void patchSettings({ permissions: { approvalTimeoutSec: Number(e.target.value) } })} />
+      <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per room, on {firstRoom ? <>each room’s <SettingsLink to={{ page: 'room', roomId: firstRoom.id, section: 'permissions' }}>Permissions page</SettingsLink></> : 'each room’s Permissions page'}.</>}>
+        <Row label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
+        <Row label="Approval timeout" desc="Then the request falls back to Claude Code’s own prompt.">
+          <Select label="Approval timeout" value={String(p.approvalTimeoutSec)} options={timeouts} onChange={(v) => save({ approvalTimeoutSec: Number(v) })} />
         </Row>
       </Section>
     </Page>

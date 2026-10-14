@@ -16,6 +16,7 @@ function Controls() {
   const [tab, setTab] = useState('chat')
   const [seg, setSeg] = useState('dark')
   const [on, setOn] = useState(true)
+  const [size, setSize] = useState('default')
   const [pill, setPill] = useState(true)
   return (
     <>
@@ -35,7 +36,7 @@ function Controls() {
         <div className="devui-row" style={{ marginTop: 10 }}>
           <SegmentedControl label="Theme" value={seg} onChange={setSeg} options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }, { value: 'system', label: 'System' }]} />
           <Toggle label="Reduce motion" checked={on} onChange={setOn} /><Toggle label="Pointer cursors" checked={false} onChange={() => undefined} />
-          <Select label="Font size" defaultValue="default" options={[{ value: 'default', label: 'Default' }, { value: 'small', label: 'Small' }]} />
+          <Select label="Font size" value={size} onChange={setSize} options={[{ value: 'small', label: 'Small' }, { value: 'default', label: 'Default' }, { value: 'large', label: 'Large' }]} />
         </div>
       </Section>
       <Section title="Chips">

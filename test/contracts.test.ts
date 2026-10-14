@@ -110,7 +110,7 @@ describe('IPC contract', () => {
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
     await k.start()
     const h = k.handlers()
-    expect((await h['settings.get']()).experimental.floor3d).toBe(false)
+    expect((await h['settings.get']()).experimental.sharing).toBe(true)
     const room = await k.addRoom(repo)
     expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
     expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })
@@ -182,8 +182,10 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 8 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists every PNG in design/screens once, each with a route and a component file', () => {
-    const pngs = readdirSync('design/screens').filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4))
+  it('lists every PNG in design/screens and every settings board fixture once, each with a route and a component file', () => {
+    // KERNEL-680: a Settings fixture drawn on the settings canvas has its row with the board's PNG instead.
+    const boards = Object.keys(JSON.parse(readFileSync('design/settings-redesign/boards.json', 'utf8')))
+    const pngs = [...readdirSync('design/screens').filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)), ...boards]
     expect(rows.map((r) => r[0]).sort()).toEqual(pngs.sort())
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')

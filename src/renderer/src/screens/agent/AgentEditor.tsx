@@ -5,6 +5,7 @@ import { isReviewer } from '@shared/team'
 import { call } from '../../api'
 import { useStore } from '../../store'
 import { Icon, SegmentedControl } from '../../ui'
+import { SettingsLink } from '../settings/kit'
 import { STANDARD_TOOLS, modelAlias, sameModel, warningText, withExtras } from './model'
 import './agent.css'
 
@@ -107,12 +108,12 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
           <div className="ap-field">
             <span className="ap-label" id="ap-model">Model</span>
             <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
-            {builtIn ? <span className="hint">From Settings, Models</span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
+            {builtIn ? <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span> : <PinHint agent={agent} model={form.model} disabled={locked} onClear={() => set({ model: '' })} />}
           </div>
           <div className="ap-field">
             <span className="ap-label">Effort</span>
             <SegmentedControl label="Effort" value={effort} onChange={(v) => set({ effort: v as Effort })} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} />
-            {builtIn && <span className="hint">From Settings, Models</span>}
+            {builtIn && <span className="hint">From <SettingsLink to={{ page: 'models' }}>Models and effort</SettingsLink></span>}
           </div>
         </div>
         <div className="ap-field">

@@ -45,7 +45,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
       </div>
       {sections.map((s) => <Row key={s.provider} s={s} compact={view === 'compact'} open={expanded.includes(s.provider)} busy={busy} onSwitch={onSwitch} onSignIn={onSignIn} />)}
       <div className="plan-foot">
-        <button type="button" className="menu-item" onClick={() => go({ name: 'settings', page: 'account' })}>
+        <button type="button" className="menu-item" onClick={() => go({ name: 'settings', page: 'accounts' })}>
           <span className="grow">Account and usage</span><Icon name="right" size={14} />
         </button>
       </div>

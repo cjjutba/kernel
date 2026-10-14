@@ -1,13 +1,13 @@
+import './system.css'
 import { useState } from 'react'
 import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Select, Toggle, useBusy } from '../../../ui'
-import { Page, Row, Section } from '../kit'
-import { patchSettings } from '../useSettings'
+import { Button, useBusy } from '../../../ui'
+import { DataTable, Page, Row, Section, StatusLine } from '../kit'
 
-const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 min' }, { value: '600', label: '10 min' }, { value: '1800', label: '30 min' }]
+const SETTINGS_FILE = '~/.claude/settings.json'
 
 /** What Kernel writes under "hooks" in Claude Code's user settings, for pasting by hand. The installer writes the same matchers. */
 export function hooksSnippet(status: HookStatus, approvalTimeoutSec: number): string {
@@ -26,7 +26,10 @@ export function seenAgo(ts: number | undefined, now = Date.now()): string {
   return h < 24 ? `${h} h ago` : `${Math.floor(h / 24)} d ago`
 }
 
-/** Settings > Hooks (SettingsHooks.png). Events, port, the snippet and Remove sit below what the canvas draws. */
+/**
+ * Settings > Hooks (MorePage hooks, KERNEL-680): the server's status with a test, Maintenance, the events (folded) and the port
+ * (folded). The approval timeout lives on Permissions and the agent-team gates on Models and effort.
+ */
 export function Hooks({ s }: { s: AppSettings }) {
   const status = useStore((x) => x.system.hooks)
   const [busy, track] = useBusy<'test' | 'remove' | 'install' | 'open' | 'port'>()
@@ -41,63 +44,61 @@ export function Hooks({ s }: { s: AppSettings }) {
     } catch (e) { actions.ui.toast({ title: 'Hooks did not change', sub: cleanError(e) }) }
   })
   const installed = !!status?.installed
-  // A workspace run never writes Claude's settings, so it says so in place of Install and has no snippet to paste (KERNEL-679).
+  // A workspace run never writes Claude's settings, so it says so in place of Reinstall and has no snippet to copy (KERNEL-679).
   const workspaceRun = status?.problem?.kind === 'workspace-run'
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
+  const count = status?.events.filter((e) => e.installed).length ?? 0
   // Copy says "Copied" for 1.5s, like a code block's. Only a failure toasts.
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     if (!status) return
-    try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Select the snippet and copy it by hand.' }) }
+    try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Try again.' }) }
   }
   const openFile = () => track('open', async () => {
-    try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'open ~/.claude/settings.json' }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
+    try { await call('system.openInEditor', { path: SETTINGS_FILE }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
   })
   const newPort = Number(port)
   return (
     <Page title="Hooks">
-      <Section title="Status">
-        <Row label="Hook server"><span className="set-value">{status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}</span></Row>
-        <Row label="Test"><Button busy={busy === 'test'} busyLabel="Sending" disabled={busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button></Row>
-      </Section>
-      <Section title="Gates">
-        <Row label="Block TaskCompleted without test output" desc="With agent teams on, a task marked done before any test command ran goes back to the agent once"><Toggle label="Block TaskCompleted without test output" checked={s.hooks.requireTestOutput} onChange={(v) => void patchSettings({ hooks: { requireTestOutput: v } })} /></Row>
-        <Row label="Keep idle teammates working" desc="A teammate that goes idle while the task list has open tasks is sent back to pick one up"><Toggle label="Keep idle teammates working" checked={s.hooks.keepTeammatesWorking} onChange={(v) => void patchSettings({ hooks: { keepTeammatesWorking: v } })} /></Row>
-        <Row label="Approval timeout" desc="After this, the request falls back to the normal prompt in Claude Code">
-          <Select label="Approval timeout" value={String(timeout)} options={TIMEOUTS.some((t) => t.value === String(timeout)) ? TIMEOUTS : [...TIMEOUTS, { value: String(timeout), label: `${timeout} sec` }]} onChange={(e) => void patchSettings({ permissions: { approvalTimeoutSec: Number(e.target.value) } })} />
-        </Row>
+      <Section label="Status" plain>
+        <StatusLine
+          icon={status && !status.listening ? 'xCircle' : 'checkCircle'} tone={status && !status.listening ? 'warn' : undefined}
+          title={status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}
+          sub={status && `${seen ? `Last event ${seenAgo(seen).toLowerCase()}` : 'No event yet'} · ${count} hook${count === 1 ? '' : 's'} installed`}
+          action={<Button busy={busy === 'test'} busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
+        />
       </Section>
       <Section title="Maintenance">
-        {workspaceRun ? <Row label="Hooks are off in a workspace run" desc="This copy of Kernel never changes ~/.claude/settings.json, so it doesn't see Claude sessions started outside it." /> : <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites Kernel's entries in ~/.claude/settings.json">
+        {workspaceRun
+          ? <Row label="Hooks are off in a workspace run" desc={`This copy of Kernel never changes ${SETTINGS_FILE}.`} />
+          : (
+            <Row label="Kernel’s hooks" desc={`Its entries in ${SETTINGS_FILE}, nothing else.`}>
+              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
+              <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
+            </Row>
+          )}
+        <Row label="Settings file">
           <span className="set-actions">
-            {status && installed && <Button busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
-            <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
+            <span className="set-value">{SETTINGS_FILE}</span>
+            {!workspaceRun && <Button disabled={!status} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy snippet'}</Button>}
+            <Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open</Button>
           </span>
-        </Row>}
-        <Row label="Settings file"><Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open settings.json</Button></Row>
+        </Row>
       </Section>
       {status && (
-        <>
-          <Section title="Events">
-            <Row label="Last event received"><span className="set-value">{seenAgo(seen || undefined)}</span></Row>
-            {status.events.map((e) => (
-              <Row key={e.name} label={e.name}><span className="set-value">{e.installed ? `Installed · ${seenAgo(e.lastSeen)}` : 'Not installed'}</span></Row>
-            ))}
-          </Section>
-          <Section title="Port">
-            <Row label="Hook server port" desc="Moving it restarts the server and rewrites the hooks that are installed">
-              <span className="set-actions">
-                <input className="set-token" style={{ width: 90 }} aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
-                <Button busy={busy === 'port'} busyLabel="Moving" disabled={!newPort || newPort === status.port || busy !== null} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>
-              </span>
-            </Row>
-          </Section>
-          {!workspaceRun && <Section title="Snippet">
-            <Row label="settings.json" desc="What Kernel adds, if you would rather paste it yourself" full={<pre className="set-snippet" tabIndex={0} aria-label="Hooks snippet">{hooksSnippet(status, timeout)}</pre>}>
-              <Button onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</Button>
-            </Row>
-          </Section>}
-        </>
+        <Section title="Events" count={`${count} installed`} collapsible plain>
+          <DataTable label="Events" columns={['Event', 'Last fired']} grid="minmax(0, 1fr) 160px" rows={status.events.map((e) => ({ key: e.name, cells: [<span key="n" className="mono">{e.name}</span>, e.installed ? seenAgo(e.lastSeen) : 'Not installed'] }))} />
+        </Section>
+      )}
+      {status && (
+        <Section title="Advanced" collapsible>
+          <Row label="Hook server port" desc="Moving it restarts the server and rewrites the hooks.">
+            <span className="set-actions">
+              <input className="set-token sys-port" aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
+              <Button busy={busy === 'port'} busyLabel="Moving" disabled={!newPort || newPort === status.port || busy !== null} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>
+            </span>
+          </Row>
+        </Section>
       )}
     </Page>
   )

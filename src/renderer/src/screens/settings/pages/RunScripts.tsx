@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type RoomSettings } from '@shared/types'
 import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
-import { isOverride, Row, Section, sourceLine } from '../kit'
+import { DataTable, isOverride, Row, Section, sourceLine } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 type Script = RoomSettings['runScripts'][number]
@@ -15,7 +15,7 @@ export function nameProblem(name: string, others: string[]): string | undefined 
   return undefined
 }
 
-/** The Run scripts section of Settings > a room > Scripts (SettingsRoomScripts.png). Saved in the personal file, so a script stays on this Mac. */
+/** Run scripts, a table on Settings > a room > Setup and scripts (MorePage roomSetup, KERNEL-680). Saved in the personal file, so a script stays on this Mac. */
 export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
   const [editing, setEditing] = useState<Script | 'new' | null>(null)
   const scripts = rs?.runScripts ?? []
@@ -23,31 +23,42 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
   const drop = (name: string) => void patchRoomSettings(roomId, { runScripts: { [name]: null } })
   return (
     <>
-      <Section
-        title="Run scripts"
-        action={<Button onClick={() => setEditing('new')}>Add run script</Button>}
-        note={`Each workspace gets ${PORT_BLOCK} ports, $KERNEL_PORT to $((KERNEL_PORT + ${PORT_BLOCK - 1})).`}
-      >
-        {scripts.length === 0 && <div className="set-empty">No run scripts. Add one to start the app from a workspace.</div>}
-        {scripts.map((s) => {
-          // Only the personal file is written. A script settings.toml defines can be edited here, and Reset drops the personal edit. Remove is for a script only this Mac has.
-          const source = rs?.sources?.[path(s.name)]
-          return (
-            <Row key={s.name} label={s.name} source={sourceLine(rs, path(s.name))} desc={<span className="set-cmd">{s.command}</span>}>
-              <div className="set-entry-actions">
-                {source === 'override' && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
-                <Button variant="ghost" aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
-                {source === 'local' && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
-              </div>
-            </Row>
-          )
-        })}
-        <Row label="Run mode" source={sourceLine(rs, 'scripts.runMode')} onReset={isOverride(rs, 'scripts.runMode') ? () => void patchRoomSettings(roomId, { scripts: { runMode: null } }) : undefined}>
-          <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchRoomSettings(roomId, { scripts: { runMode: v as NonNullable<RoomSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
-        </Row>
+      <Section title="Run scripts" scope="mac" plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
+        <DataTable
+          label="Run scripts" columns={['Name', 'Command']} grid="140px minmax(0, 1fr)" empty="No run scripts. Add one to start the app from a workspace."
+          rows={scripts.map((s) => {
+            // Only the personal file is written. A script settings.toml defines can be edited here, and Reset drops the personal edit. Remove is for a script only this Mac has.
+            const source = rs?.sources?.[path(s.name)]
+            return {
+              key: s.name,
+              cells: [s.name, <span key="c" className="mono">{s.command}</span>],
+              actions: (
+                <>
+                  {source === 'override' && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
+                  <Button variant="ghost" aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
+                  {source === 'local' && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
+                </>
+              )
+            }
+          })}
+        />
       </Section>
       {editing && <RunScriptForm roomId={roomId} rs={rs} script={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
     </>
+  )
+}
+
+/** Run mode and Ports, the card under the run scripts table. The ports are explained here once; the forms only say how to use them. */
+export function RunMode({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
+  return (
+    <Section label="Running">
+      <Row label="Run mode" source={sourceLine(rs, 'scripts.runMode')} onReset={isOverride(rs, 'scripts.runMode') ? () => void patchRoomSettings(roomId, { scripts: { runMode: null } }) : undefined}>
+        <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchRoomSettings(roomId, { scripts: { runMode: v as NonNullable<RoomSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
+      </Row>
+      <Row label="Ports" desc={`Each workspace gets ${PORT_BLOCK}.`}>
+        <span className="set-value">{`$KERNEL_PORT to $((KERNEL_PORT + ${PORT_BLOCK - 1}))`}</span>
+      </Row>
+    </Section>
   )
 }
 

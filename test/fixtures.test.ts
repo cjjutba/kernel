@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fixtures } from '../fixtures'
@@ -10,7 +10,6 @@ const noCanvas = [
   'UsageFooterNoUpdate', // the usage footer with no update ready: the Help button alone at the right
   'FooterHelpMenu', // the Help menu open upward from the footer's bottom right: What's new, Keyboard shortcuts, Report a problem
   'SettingsTeamOrigins', // Room Agents grouped by origin, scrolled to In this repo, with a personal and two plugin agents (KERNEL-639)
-  'SettingsTeamOwnAgents', // a repo's own agents in Settings, Agents: a warning on a row, Add a starter agent and New agent, and Retired with Restore (KERNEL-642)
   'SettingsHooksWorkspaceRun', // Settings, Hooks in a dev run started inside a workspace: hooks are off, no Install and no snippet (KERNEL-679)
   'SettingsAgents', // Settings, Agents with no room open: a personal agent and two plugin agents (KERNEL-641)
   'SettingsAgentEdit', // a personal agent's editor inside Settings, with Back to Agents (KERNEL-641)
@@ -23,8 +22,6 @@ const noCanvas = [
   'SettingsMcpSetUp', // Set up this account: the checklist, everything ticked (KERNEL-661)
   'SettingsMcpSetUpRunning', // Set up this account while it signs in, with the claude.ai step (KERNEL-661)
   'SettingsMcpSetUpDone', // Set up this account at the end: what is done and what failed (KERNEL-661)
-  'SettingsProvidersMcpSigningIn', // Providers, Personal's MCP line while Set up this account runs (KERNEL-661)
-  'SettingsProvidersMcpSignInFailed', // Providers, Personal's line after a sign-in failed on one server (KERNEL-661)
   'SettingsMcpNeededNotice', // the notice after adding an account that needs MCP sign-ins, with Set up (KERNEL-661)
   'WorkspaceHistoryButtons', // the sidebar strip with Back lit and Forward disabled (KERNEL-643)
   'WorkspaceHistoryButtonsNarrow', // the sidebar dragged to its 200px minimum, with Back and Forward both on (KERNEL-643)
@@ -140,11 +137,37 @@ const noCanvas = [
   'TurnFilesHover',
   'SettingsTeamEmpty',
   'NewAgentNoRoom',
+  'SettingsTeamOwnAgents', // a repo's own agents in Settings, Agents: a warning on a row, Add a starter agent and New agent, and Retired with Restore (KERNEL-642)
+  // KERNEL-680: Accounts and room setup states the settings canvas doesn't draw.
+  'SettingsAccountsApiKey',
+  'SettingsAccountsApiKeyActive',
+  'SettingsAccountsCodex',
+  'SettingsAccountsCodexApiKey',
+  'SettingsAccountsKeychain',
+  'SettingsAccountsLegacy',
+  'SettingsAccountsLimitLight',
+  'SettingsAccountsMcp',
+  'SettingsAccountsMcpSignInFailed',
+  'SettingsAccountsMcpSigningIn',
+  'SettingsAccountsRemove',
+  'SettingsAccountsRename',
+  'SettingsAccountsSameOrg',
+  'SettingsRoomSetupFiles',
+  'SettingsRoomSetupProduction',
 ]
 
+const boards: Record<string, string> = JSON.parse(readFileSync('design/settings-redesign/boards.json', 'utf8'))
+
 describe('fixtures', () => {
-  it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {
-    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !noCanvas.includes(name) && !existsSync(join('design/screens', `${name}.png`)))
+  it('every fixture key has a PNG in design/screens or a settings board, except the DevUi component gallery and noCanvas', () => {
+    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !noCanvas.includes(name) && !existsSync(join('design/screens', `${name}.png`)) && !boards[name])
+    expect(missing).toEqual([])
+  })
+
+  // KERNEL-680: a Settings fixture drawn on the settings canvas names its board, in dark and light.
+  it('every settings board a fixture names is rendered', () => {
+    // The Calm boards are Accounts' states, drawn once; the page boards have a Light twin.
+    const missing = Object.values(boards).flatMap((b) => (b.startsWith('Calm') ? [b] : [b, `${b}Light`])).filter((b) => !existsSync(join('design/settings-redesign', `${b}.png`)))
     expect(missing).toEqual([])
   })
 

@@ -94,7 +94,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   const rowan = { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true } as AgentDef
   const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
   const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
-  const APP = "Archive one, or the user can raise Agents working at once in Settings, Models, or set this room's own limit in Settings, app, Agents."
+  const APP = "Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, app, Agents."
   const ROOM = 'Archive one, or the user can change it in Settings, app, Agents.'
   /** create_workspace with `cap` from Settings, Models, or from the room's own limit when `own`. */
   function tools(workspaces: Workspace[], cap?: number, own = false) {
@@ -188,7 +188,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     // With the room on Same as, the app's 4 applies, and the user's workspace is one of the four.
     await roomCap(null)
     await appCap(4)
-    expect(await make('Five')).toEqual({ isError: true, text: `Not created: 4 teammate workspaces are open in this room, the limit. Archive one, or the user can raise Agents working at once in Settings, Models, or set this room's own limit in Settings, ${room.name}, Agents.` })
+    expect(await make('Five')).toEqual({ isError: true, text: `Not created: 4 teammate workspaces are open in this room, the limit. Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, ${room.name}, Agents.` })
     expect((await make('Five, as asked', { user_asked: true })).isError).toBe(false)
     // Neither sets a limit: No limit is no cap, not three.
     await appCap(0)
