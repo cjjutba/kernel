@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react'
-import type { Approval, Decision, Workspace } from '@shared/types'
-import { call } from '../../api'
+import type { Workspace } from '@shared/types'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon, useBusy } from '../../ui'
+import { Button, Icon } from '../../ui'
 import { KernelMark, LargeMark } from '../../icons'
-import { attempt } from '../workspace/MessageActions'
+import { decideAtOnce, useFoldPhase, useHeldRows } from '../workspace/cards/decideFold'
 import { planReadyLine } from '../workspace/cards/steps'
 import { openRoom } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
@@ -15,7 +14,6 @@ import { roomState, sourceOf, stateLabel, teamOf } from '../rooms/roomInfo'
 import './home.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
-const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision })))
 const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 const dayKey = (ts: number) => new Date(ts).toDateString()
 
@@ -29,7 +27,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
   const { n, approval: a, overlap } = item
   const agents = useStore((s) => (n.roomId ? s.agents[n.roomId] : undefined)) ?? []
   const room = useStore((s) => s.rooms.find((r) => r.id === n.roomId))
-  const [busy, run] = useBusy<'deny' | 'approve'>()
+  const folding = useFoldPhase(a?.id ?? '') === 'folding'
   const agent = agents.find((x) => x.id === n.agentId)
   const who = agent?.name ?? 'An agent'
   const input = (a?.input ?? {}) as Record<string, unknown>
@@ -47,8 +45,8 @@ function NeedsRow({ item }: { item: InboxItem }) {
       : <span>{who} wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
     actionsEl = (
       <>
-        <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))} aria-label={busy === 'deny' ? `Denying: ${a.title}` : `Deny: ${a.title}`}>Deny</Button>
-        <Button variant="primary" busy={busy === 'approve'} busyPattern="pulse" busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))} aria-label={busy === 'approve' ? `Approving: ${a.title}` : `Approve: ${a.title}`}>Approve</Button>
+        <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })} aria-label={`Deny: ${a.title}`}>Deny</Button>
+        <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })} aria-label={`Approve: ${a.title}`}>Approve</Button>
       </>
     )
   } else if (n.kind === 'trust' && n.roomId) {
@@ -65,7 +63,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
     actionsEl = <Button onClick={toItem}>{n.kind === 'merge' ? 'Open PR' : 'Open'}</Button>
   }
   return (
-    <div className="hm-need">
+    <div className={`hm-need${folding ? ' decide-fold' : ''}`}>
       <RoomIcon room={room} className="hm-av" fallback="K" />
       <span className="hm-need-text">{text}{a && a.kind === 'tool' && !plan && room && <span className="hm-by">{room.name}</span>}</span>
       <span className="hm-need-acts">{actionsEl}</span>
@@ -148,6 +146,8 @@ export function Home() {
   const workspaces = useStore((s) => s.workspaces)
   const account = useStore((s) => s.account)
   const needs = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps), workspaces).filter(needsYou), [notifications, approvals, allRooms, overlaps, workspaces])
+  const top = useMemo(() => needs.slice(0, 5), [needs])
+  const shownNeeds = useHeldRows(top, (i) => i.n.id, (i) => i.approval?.id)
   const shipped = useMemo(() => workspaces.filter((w) => w.prState === 'merged').sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt)).slice(0, 8), [workspaces])
   if (!rooms.length) return <Welcome />
   const working = rooms.reduce((n, r) => n + Object.values(status[r.id] ?? {}).filter((x) => x === 'working' || x === 'planning' || x === 'walking').length, 0)
@@ -170,7 +170,7 @@ export function Home() {
             <div className="col" style={{ gap: 28, minWidth: 0 }}>
               <section aria-label="Needs you">
                 <h3 className="hm-head">Needs you <span>{needs.length}</span></h3>
-                {needs.length ? needs.slice(0, 5).map((i) => <NeedsRow key={i.n.id} item={i} />) : <p className="hm-none">Nothing is waiting on you.</p>}
+                {needs.length ? shownNeeds.map(({ item: i }) => <NeedsRow key={i.n.id} item={i} />) : <p className="hm-none">Nothing is waiting on you.</p>}
               </section>
               <section aria-label="Shipped recently">
                 <h3 className="hm-head">Shipped recently <span>{shipped.length}</span></h3>
