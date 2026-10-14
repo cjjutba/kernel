@@ -22,6 +22,7 @@
     "postinstall": "electron-builder install-app-deps && install-electron",
     "dist:mac": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
     "release": "bash scripts/release.sh",
+    "update:e2e": "bash scripts/update-e2e.sh",
     "release:notes": "node scripts/release-notes.ts",
     "release:rollout": "node scripts/release-rollout.ts"
   },
