@@ -250,6 +250,8 @@ export type TeamEventKind =
   | 'pr.review'
   | 'review'
   | 'wait.started' | 'wait.released' | 'wait.broken'
+  // A turn Kernel started to rebase onto a merge ended without the merge in the branch (KERNEL-691).
+  | 'wait.rebase_missing'
   | 'shared'
 
 /**
