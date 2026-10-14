@@ -147,10 +147,10 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
   }
   return (
     <div className="set-tags" role="list" aria-label={label}>
-      {locked.map((t) => <span key={`l-${t}`} role="listitem" className="set-tag" data-locked=""><Icon name="lock" size={12} /><span className={mono ? 'mono' : undefined}>{t}</span></span>)}
+      {locked.map((t) => <span key={`l-${t}`} role="listitem" className="set-tag" data-locked=""><Icon name="lock" size={12} /><span className={['set-tag-text', mono && 'mono'].filter(Boolean).join(' ')} title={t}>{t}</span></span>)}
       {value.filter((t) => !locked.includes(t)).map((t) => (
         <span key={t} role="listitem" className="set-tag">
-          <span className={mono ? 'mono' : undefined}>{t}</span>
+          <span className={['set-tag-text', mono && 'mono'].filter(Boolean).join(' ')} title={t}>{t}</span>
           <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="x" size={12} /></button>
         </span>
       ))}
