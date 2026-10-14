@@ -7,13 +7,15 @@ import { parseBlocks } from '../src/renderer/src/screens/workspace/mdParse'
 import { visibleRows } from '../src/renderer/src/screens/workspace/tree'
 
 describe('transcript thread', () => {
-  it('folds a finished turn into one group, then the reply with the changed files and the duration under it', () => {
+  it("folds a finished turn's steps between its messages, then the reply with the changed files and the duration under it (KERNEL-800)", () => {
     const blocks = buildThread(tableItems)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'reply'])
-    const group = blocks[1]
-    if (group.kind !== 'group') throw new Error('expected a group')
-    expect(group.summary).toEqual({ text: 'Read 4 files, ran 6 commands, edited 2 files and 1 more', bad: '' })
-    const reply = blocks[2]
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'reply'])
+    const [, before, message, after] = blocks
+    if (before.kind !== 'group' || after.kind !== 'group') throw new Error('expected groups')
+    expect(before.summary).toEqual({ text: 'Read 4 files, ran 1 command', bad: '' })
+    expect(message.kind === 'item' && message.item.id).toBe('x0')
+    expect(after.summary).toEqual({ text: 'Edited 2 files, wrote 2 files, ran 5 commands', bad: '' })
+    const reply = blocks[4]
     if (reply.kind !== 'reply') throw new Error('expected the reply')
     expect(reply.item.id).toBe('x1')
     expect(reply.files).toHaveLength(4)
@@ -24,7 +26,7 @@ describe('transcript thread', () => {
     const end = tableItems.length - 1
     const late = { kind: 'tool' as const, id: 't-late', ts: tableItems[end].ts, toolUseId: 'tu-late', name: 'Bash', label: 'Run the linter', detail: 'pnpm lint', status: 'done' as const }
     const blocks = buildThread([...tableItems.slice(0, end), late, tableItems[end]])
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'item', 'files', 'meta'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'item', 'item', 'files', 'meta'])
     // A turn with no reply at all ends in its duration alone.
     expect(buildThread(tableItems.filter((i) => i.kind !== 'text')).map((b) => b.kind)).toEqual(['item', 'group', 'files', 'meta'])
   })
@@ -32,15 +34,15 @@ describe('transcript thread', () => {
   it('puts a note written after the turn ended below its duration', () => {
     const note = { kind: 'note' as const, id: 'n1', ts: tableItems[tableItems.length - 1].ts + 1, text: 'PR #42 was squashed into main.' }
     const blocks = buildThread([...tableItems, note])
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'reply', 'item'])
-    const last = blocks[3]
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'group', 'reply', 'item'])
+    const last = blocks[5]
     expect(last.kind === 'item' && last.item.id).toBe('n1')
   })
 
   it('keeps a note the turn began with above its folded work (KERNEL-569)', () => {
     const note = { kind: 'note' as const, id: 'n-account', ts: tableItems[0].ts, text: 'Now on Personal' }
     const blocks = buildThread([tableItems[0], note, ...tableItems.slice(1)])
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'group', 'reply'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'group', 'item', 'group', 'reply'])
     const opening = blocks[1]
     expect(opening.kind === 'item' && opening.item.id).toBe('n-account')
     // With no work to fold, the note sits where it was written, ahead of the reply.
@@ -138,6 +140,23 @@ describe('the summary of a turn (KERNEL-784)', () => {
   })
 })
 
+describe('tools the labels do not know (KERNEL-800)', () => {
+  const unknown = (name: string): ChatItem => ({ kind: 'tool', id: `un${++n}`, ts: at, toolUseId: `tu${n}`, name, label: name, detail: '', status: 'done', output: 'No such tool available' })
+
+  it('tallies them as "used 1 tool" and never prints the name', () => {
+    const items = [bash('a'), bash('b'), unknown('bash_placeholder'), read('c')]
+    expect(summarize(items).text).toBe('Ran 2 commands, used 1 tool, read 1 file')
+    expect(summarize([unknown('bash_placeholder'), unknown('Mystery')]).text).toBe('Used 2 tools')
+    expect(summarize([...items, unknown('Other')]).text).not.toMatch(/placeholder|Mystery|Other/)
+  })
+
+  it('keeps an unknown MCP server humanised, and counts a Bash call with no description as a command', () => {
+    const docs: ChatItem = { kind: 'tool', id: 'dq', ts: at, toolUseId: 'dq', name: 'mcp__context7__query_docs', label: '', detail: '', status: 'done' }
+    expect(summarize([docs]).text).toBe('Query docs')
+    expect(summarize([bash('a'), bash('b')]).text).toBe('Ran 2 commands')
+  })
+})
+
 describe('a turn that is still running folds its finished steps (KERNEL-784)', () => {
   it('folds the steps before the current one into a row, with the current one as the live line', () => {
     const items = [ask(), think(), read('a'), bash('x'), bash('y'), bash('z', 'running')]
@@ -147,8 +166,31 @@ describe('a turn that is still running folds its finished steps (KERNEL-784)', (
     expect(live.kind === 'live' && live.item.id).toBe(items[5].id)
     const group = blocks[1]
     if (group.kind !== 'group') throw new Error('expected a group')
-    expect(group.entries.map((e) => e.kind)).toEqual(['item', 'item', 'run'])
+    expect(group.entries.map((e) => e.kind)).toEqual(['item', 'item', 'item', 'item'])
     expect(group.summary.text).toBe('Read 1 file, ran 2 commands')
+  })
+
+  it('never nests a run inside a fold, and lists same-kind calls as plain rows in one flat list (KERNEL-800)', () => {
+    const items = [ask(), read('a'), bash('x'), bash('y'), bash('z'), think(), read('b'), read('c'), say('Done.'), done()]
+    const group = buildThread(items)[1]
+    if (group.kind !== 'group') throw new Error('expected a group')
+    expect(group.entries.every((e) => e.kind === 'item')).toBe(true)
+    expect(group.entries.map((e) => e.kind === 'item' && e.item.id)).toEqual(items.slice(1, 8).map((i) => i.id))
+    expect(group.summary.text).toBe('Read 3 files, ran 3 commands')
+    const lone = buildThread([ask(), bash('x'), bash('y'), bash('z'), say('Done.'), done()])
+    expect(lone.map((b) => b.kind)).toEqual(['item', 'run', 'reply'])
+  })
+
+  it('drops thinking with no text from folds and runs, and keeps thinking with text (KERNEL-800)', () => {
+    const empty = (): ChatItem => ({ kind: 'thinking', id: `th${++n}`, ts: at, text: '  ' })
+    const kept = think()
+    expect(entriesOf([bash('a'), empty(), bash('b'), kept]).flatMap((e) => (e.kind === 'run' ? e.run.items : [e.item]))).toHaveLength(3)
+    const group = buildThread([ask(), empty(), read('a'), empty(), kept, bash('x'), say('Done.'), done()])[1]
+    if (group.kind !== 'group') throw new Error('expected a group')
+    expect(group.items).toHaveLength(3)
+    expect(group.entries.map((e) => e.kind === 'item' && e.item.kind)).toEqual(['tool', 'thinking', 'tool'])
+    expect(buildThread([ask(), empty(), empty(), say('Done.'), done()]).map((b) => b.kind)).toEqual(['item', 'reply'])
+    expect(buildThread([ask(), read('a'), empty(), read('b')], true).map((b) => b.kind)).toEqual(['item', 'run'])
   })
 
   it('shows a lone run as the run, not as a fold of one row', () => {
