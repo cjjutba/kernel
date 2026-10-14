@@ -152,6 +152,8 @@ export class Mcp extends Feature {
    * is when the check started, so a sign-in during it counts as newer.
    */
   private checkAccount(provider: Provider, accountId: string, o: { fresh?: boolean } = {}): Promise<void> {
+    // A queued re-check outlives a Kernel that stopped meanwhile, and would start a Claude Code query after it.
+    if (this.stopped) return Promise.resolve()
     const key = `${provider}:${accountId}`
     const running = this.checks.get(key)
     if (running && !o.fresh) return running

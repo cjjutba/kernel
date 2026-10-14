@@ -32,7 +32,7 @@ export function SortOverlap({ overlap: o }: { overlap: Overlap }) {
   const [busy, run] = useBusy()
   const name = lead?.name ?? 'the Lead'
   return (
-    <Button variant="primary" busy={!!busy} busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('rooms.resolveOverlap', { overlapId: o.id })))}>
+    <Button variant="primary" busy={!!busy} busyPattern="arrow-right" busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('rooms.resolveOverlap', { overlapId: o.id })))}>
       Let {name} sort it
     </Button>
   )
@@ -93,10 +93,10 @@ function Detail({ item }: { item: InboxItem }) {
             {ws && <><dt>Workspace</dt><dd className="mono">{ws.branch}</dd></>}
           </dl>
           <div className="ib-acts">
-            <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
-            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><Spinner label={null} kind="action" />Allowing</> : 'Always allow in this room'}</button>
+            <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
+            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><Spinner label={null} pattern="pulse" />Allowing</> : 'Always allow in this room'}</button>
             <span className="grow" />
-            <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>Approve</Button>
+            <Button variant="primary" busy={busy === 'approve'} busyPattern="pulse" busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>Approve</Button>
           </div>
         </>
       )}

@@ -93,11 +93,11 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
             </div>
             <div className="row" style={{ gap: 4 }}>
               {ws.worktreePending ? (
-                <Button variant="primary" busy={busy === 'again'} busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button>
+                <Button variant="primary" busy={busy === 'again'} busyPattern="rotate" busyLabel="Creating" disabled={busy !== null} onClick={() => void again()}>Try again</Button>
               ) : (
                 <>
-                  <Button variant="primary" busy={busy === 'again'} busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
-                  <Button variant="ghost" busy={busy === 'skip'} busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
+                  <Button variant="primary" busy={busy === 'again'} busyPattern="rotate" busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
+                  <Button variant="ghost" busy={busy === 'skip'} busyPattern="arrow-right" busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
                   <Button variant="ghost" disabled={busy !== null} onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })}>Edit script</Button>
                 </>
               )}
@@ -105,13 +105,13 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
           </div>
         ) : making ? (
           <div className="setup-line" role="status">
-            <Spinner label={null} kind="process" />
+            <Spinner label={null} pattern="snake" />
             <span className="ink2">Creating worktree</span>
             {ws.baseRef && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{ws.baseRef}</span>}
           </div>
         ) : (
           <div className="setup-line" role="status">
-            <Spinner label={null} kind="process" />
+            <Spinner label={null} pattern="snake" />
             <span className="ink2">Running setup</span>
             {cmd && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{cmd}</span>}
             <span className="grow" />

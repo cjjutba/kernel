@@ -22,9 +22,8 @@ const base = (path: string) => path.split('/').pop() ?? path
 
 /**
  * The row of chat, terminal, file, diff, shared file, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
- * a close button on hover and the Checkpoints button. The new tab menu lists a New tab row, then every terminal preset (Settings, Big terminal).
+ * a close button on hover. The new tab menu lists a New tab row, then every terminal preset (Settings, Big terminal).
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
- * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
 export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
   workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
@@ -34,7 +33,6 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   const menu = useStore((s) => s.ui.menu)
   const newAnchor = useRef<HTMLSpanElement>(null)
   const tabAnchor = useRef<HTMLSpanElement>(null)
-  const checkpoints = useStore((s) => s.ui.workspace.checkpoints)
   const approvals = useStore((s) => s.approvals)
   const sharedFiles = useStore((s) => s.shared)
   // Only this workspace's tabs: another chat starting or stopping leaves the strip alone.
@@ -165,7 +163,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
                   <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
-                    {g?.icon === 'spin' ? <Spinner label={null} /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                    {g?.icon === 'spin' ? <Spinner label={null} pattern="twinkle" /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>
@@ -199,10 +197,6 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
           ]} />
         )}
       </span>
-      <span className="grow" />
-      <button type="button" className="cp-btn" aria-expanded={checkpoints} aria-label="Checkpoints" onClick={() => actions.ui.setWorkspaceView({ checkpoints: !checkpoints })}>
-        <Icon name="history" size={14} /><span className="cp-label">Checkpoints</span>
-      </button>
     </div>
   )
 }

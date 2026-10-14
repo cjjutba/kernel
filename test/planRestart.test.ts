@@ -95,7 +95,7 @@ async function relaunch(where: { dataDir: string; home: string }) {
 describe('plan cards outlive a restart', () => {
   it('keeps a Claude plan card through a quit, with no nudge, and approving sends one note that builds from the file', async () => {
     const { k, where, ws, kai, card, answer, tool } = await planning()
-    expect(card.planFile).toBe('.kernel/plans/invoice-table.md')
+    expect(card.planFile).toBe('.kernel/plans/plan.md')
     await k.stop()
     // The turn that asked was cut off, so ExitPlanMode got no approval.
     expect(await answer).toMatchObject({ behavior: 'deny' })
@@ -117,7 +117,7 @@ describe('plan cards outlive a restart', () => {
     expect(decided).toMatchObject({ id: card.id, status: 'allowed' })
     expect(k2.store.chat(kai.id)?.plan).toBe(false)
     const note = planApproval({ lead: false, planFile: card.planFile, restarted: true }).text
-    expect(note).toBe('Plan approved. Build it from `.kernel/plans/invoice-table.md`.\n\nKernel restarted while the plan waited, so check git status before you start.')
+    expect(note).toBe('Plan approved. Build it from `.kernel/plans/plan.md`.\n\nKernel restarted while the plan waited, so check git status before you start.')
     expect(users(k2, kai).at(-1)).toBe(note)
     expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
     // One turn, in the same conversation, out of plan mode. The note is the message itself, so no other note is added.

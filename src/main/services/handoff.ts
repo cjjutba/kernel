@@ -37,6 +37,7 @@ const HANDOFF_LINES = [
 const SHARED_LINES = [
   'Messages that start with "Team update" (older ones start with "Update from Kernel") are reports on your teammates\' work, not from the user. One comes only when something needs you: it lists each workspace you handed off in this chat that changed, with its id, what happened and the teammate\'s last reply, then what to do under "To do". Work listed under "From <tab>, a tab you closed" was handed off in a tab of this chat that the user closed, and work under "From <chat>, a Lead chat that is now closed" comes from another chat. Both are yours now.',
   "When a teammate asks a question or says it is blocked, answer from the approved plan if it covers it, else ask the user with mcp__kernel__ask_user, then answer with mcp__kernel__message_agent. Never leave a teammate waiting. A hand-off a teammate proposes is yours to propose to the user, and needs the same go-ahead.",
+  "A teammate's limit reply doesn't mean its work stopped: Kernel moves it to another account or carries it on at the reset. Its chat keeps queued messages, so never resend them.",
   "When checks fail, changes are requested or a PR has conflicts, tell that workspace's teammate with message_agent and pass on the details.",
   "When a review found blockers, pass on the blockers and nothing else. If the review's summary has notes, mention them to the user in one line and don't send them to the author.",
   "Reviews start on their own once a PR passes checks, and run again after a fix passes checks, so never start or repeat those yourself. When the user asks for a review that didn't start on its own, hand the PR to the team's reviewer with create_workspace and review_of set to that PR's workspace id. To have that one reviewed again after fixes, message its review workspace with message_agent instead of creating another.",
@@ -101,6 +102,7 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
     `Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. ${r.author} picks the fix.`,
     'When nothing blocks, approve. Put minor findings in the summary as at most three short notes. They don\'t hold the approval.',
     "Read the PR's checks with `gh pr checks` instead of running the suite. Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.",
+    "Don't approve while a check is still running. Wait for it to finish, or block and say which check.",
     'When you are done, call mcp__kernel__submit_review once: "approved", or "blockers" with each blocker. The Lead passes blockers on.',
     "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",
     `When you are asked to review again, run \`${pickUp}\` again, check only your earlier blockers and anything the fix broke, and call submit_review again. Raise nothing new unless the fix caused it.`

@@ -181,7 +181,7 @@ interface CheckRow { state: CheckState; label: string; meta?: string; dim?: bool
 const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail', running: 'run', queued: 'run', skipped: 'idle' }
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" kind="process" /></span>
+  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" pattern="snake" /></span>
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'close' : state === 'warn' ? 'warning' : 'minus'
   const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
@@ -424,7 +424,7 @@ function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }
         </div>
       )}
       <div className="add-setup-actions">
-        <Button busy={busy === 'ask'} busyLabel="Starting" disabled={busy !== null} onClick={() => void ask()}>Ask {lead}</Button>
+        <Button busy={busy === 'ask'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void ask()}>Ask {lead}</Button>
         <Button variant="ghost" disabled={busy !== null} onClick={onManual}>Add manually</Button>
       </div>
     </div>
@@ -485,7 +485,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     ) : (
       <div className="script-empty">
         <span className="script-empty-icon"><Icon name="play" size={20} /></span>
-        {!selectedRunning && <Button className="idle-run" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
+        {!selectedRunning && <Button className="idle-run" busy={busy === 'run'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
         <span>Runs on port {ws.port}. Output shows here.</span>
       </div>
     )
@@ -495,7 +495,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       <div className="script-empty">
         <span className="ink2">No setup output yet</span>
         <span>Setup output appears here after it runs.</span>
-        <Button icon="play" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
+        <Button icon="play" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
       </div>
     )
   return (
@@ -507,16 +507,16 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         {/* Folded, the bar says what the scripts are doing, so you can tell the app is up without opening it (KERNEL-529). */}
         {collapsed && <span className="bottom-word" role="status">{collapsedWord({ setupRunning: setupBusy, setupFailed: ws.status === 'failed', running: runningNames, scripts: names.length, noRun, port: ws.port })}</span>}
         {/* Running, setup can be stopped. Failed, the chat's card has Run again, so the tab doesn't repeat it (KERNEL-430). */}
-        {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
-        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {!collapsed && bottom === 'setup' && setupBusy && <Button className="small" busy={busy === 'stopSetup'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stopSetup()}>Stop</Button>}
+        {!collapsed && bottom === 'setup' && !setupBusy && ws.status !== 'failed' && !noSetup && hasOutput && <Button className="small" busy={busy === 'setup'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Run and Stop are the one action for the script picked on the Run tab. Its empty state has a Run button of its own, so the strip's Run steps aside while that shows (KERNEL-512). A collapsed bar has no empty state, so it keeps Run and Stop. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
         {(collapsed || bottom !== 'setup') && (selectedRunning
-          ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
-          : !noRun && !runEmpty && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
+          ? <Button className="small" busy={busy === 'stop'} busyPattern="snake" busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{onRunTab ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
+          : !noRun && !runEmpty && <Button className="small" icon="play" busy={busy === 'run'} busyPattern="snake" busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
       </div>
       {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">
-          <SegmentedControl label="Run script" value={selected} onChange={(name) => setPicked((p) => ({ ...p, [ws.id]: name }))} options={names.map((name) => ({ value: name, label: name, busy: runningNames.includes(name) }))} />
+          <SegmentedControl label="Run script" busyPattern="snake" value={selected} onChange={(name) => setPicked((p) => ({ ...p, [ws.id]: name }))} options={names.map((name) => ({ value: name, label: name, busy: runningNames.includes(name) }))} />
         </div>
       )}
       {!collapsed && bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}

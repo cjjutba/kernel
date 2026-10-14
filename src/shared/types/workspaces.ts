@@ -245,7 +245,7 @@ export interface Hunk {
   patch: string
 }
 
-/** A snapshot of the worktree after an agent turn (WorkspaceCheckpoints.png). */
+/** A snapshot of the worktree after an agent turn. */
 export interface Checkpoint {
   id: string
   workspaceId: string
@@ -260,6 +260,24 @@ export interface Checkpoint {
   current: boolean
   /** Taken before the first turn, so reverting to it undoes all of the agent's work ("start of chat"). */
   start?: boolean
+}
+
+/**
+ * What reverting to a checkpoint would do, read before the user confirms (KERNEL-764). Revert rewrites files only, so commits
+ * HEAD gained since the checkpoint stay, and their changes come back as uncommitted edits that undo them.
+ */
+export interface CheckpointPreview {
+  /**
+   * The files the revert would write or remove, as the revert does it: `A` brings a file back, `D` removes one, and `added` and
+   * `removed` are the lines it puts back and takes out. Submodules are left out, since revert leaves them alone.
+   */
+  files: ChangedFile[]
+  /** `files` summed. */
+  stat: DiffStat
+  /** Commits HEAD has now that it didn't have when the checkpoint was taken. 0 when none. */
+  commitsAhead: number
+  /** Some of those commits are on a remote, as a pushed branch or PR is. False when `commitsAhead` is 0. */
+  pushed: boolean
 }
 
 export type ScriptKind = 'setup' | 'run' | 'archive'

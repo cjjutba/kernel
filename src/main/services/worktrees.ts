@@ -88,10 +88,23 @@ export const onRemote = (ref: string, remote = 'origin') => (remote !== 'origin'
  * remote's branches are listed; without one, every remote's, as before KERNEL-190 (KERNEL-244). `<remote>/HEAD` is left out.
  */
 export async function listBranches(repo: string, remote?: string): Promise<string[]> {
-  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', remote ? `refs/remotes/${remote}` : 'refs/remotes')
-  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && !l.endsWith('/HEAD'))
-    .map((l) => l.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, ''))
-  return [...new Set(names)]
+  return (await listBranchTimes(repo, remote)).map((b) => b.name)
+}
+
+/** `listBranches` with each branch's last commit time in ms, from one `for-each-ref` (KERNEL-776). */
+export async function listBranchTimes(repo: string, remote?: string): Promise<{ name: string; committedAt: number }[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname) %(committerdate:unix)', 'refs/heads', remote ? `refs/remotes/${remote}` : 'refs/remotes')
+  const seen = new Set<string>()
+  const branches: { name: string; committedAt: number }[] = []
+  for (const line of out.split('\n')) {
+    const [ref, unix] = line.trim().split(' ')
+    if (!ref || ref.endsWith('/HEAD')) continue
+    const name = ref.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, '')
+    if (seen.has(name)) continue
+    seen.add(name)
+    branches.push({ name, committedAt: Number(unix) * 1000 })
+  }
+  return branches
 }
 
 /** Whether git accepts `name` as a branch name (`git check-ref-format --branch`). */

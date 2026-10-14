@@ -7,6 +7,7 @@ import { actions, getState, go, loadWorkspace, useStore, type State } from '../.
 import { sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
+import { dropPlace } from './chatPlace'
 import { nextTab } from './nextTab'
 import { sharedTab } from './shared/shared'
 import { archiveChatFromSidebar } from './archiveChat'
@@ -69,6 +70,7 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
   for (const id of ids) {
     await call('chats.close', { chatId: id })
     dropDrafts([id])
+    dropPlace(id)
   }
   await loadWorkspace(workspaceId)
   if (closing) {
@@ -122,7 +124,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
     return (
       <ConfirmDialog
         title="Close this chat?" body={`${agent} is still working in this chat. Closing its last tab stops that turn and closes the chat.${handed}`}
-        busy={!!closing} busyLabel="Closing" confirmLabel="Close chat" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
+        busy={!!closing} busyPattern="scatter" busyLabel="Closing" confirmLabel="Close chat" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
       >
         <div className="wsc-facts mono"><span>{title}</span><span>{plural(chatIds.length, 'tab')} · {agent} is working</span></div>
         {error && <p role="alert" className="wsc-error">{error}</p>}
@@ -133,7 +135,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   return (
     <ConfirmDialog
       title={one ? `Close ${chats[0]?.title ?? 'this chat'}?` : `Close ${plural(chatIds.length, 'tab')}?`} body={body}
-      danger busy={!!closing} busyLabel="Closing" confirmLabel="Stop and close" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
+      danger busy={!!closing} busyPattern="scatter" busyLabel="Closing" confirmLabel="Stop and close" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
     >
       {error && <p role="alert" className="wsc-error">{error}</p>}
     </ConfirmDialog>

@@ -387,7 +387,7 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
       ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
       ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
     ],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup', toolsOpen: false }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
   }
 }
 
@@ -410,6 +410,17 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.
+  // KERNEL-774: Main account has Fable, 2nd account (Pro) has none and says Not in plan, and 3rd account's 5-hour window has reset and sits at 0%.
+  SettingsAccountsReset: providersPage('claude', {
+    accounts: [secondClaude, mainClaude, thirdClaude, footerKey(), footerCodex],
+    usage: [
+      window5('claude', 'cli', 18, next(23, 0)), windowWeek('claude', 'cli', 32, nextOn(1, 3, 0)),
+      window5('claude', 'main', 9, next(22, 0)), windowWeek('claude', 'main', 9, nextOn(2, 3, 0)),
+      { type: 'seven_day_opus', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main', model: 'claude-fable-5-1' },
+      window5('claude', 'third', 100, Date.now() - 3600_000), windowWeek('claude', 'third', 49, nextOn(3, 3, 0)),
+      window5('codex', 'cli', 0, next(18, 36)), windowWeek('codex', 'cli', 24, inDays(8, 13, 36))
+    ]
+  }),
   SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
   SettingsAccountsCodex: providersPage('codex'),
   SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
@@ -843,7 +854,7 @@ export const platformFixtures: Record<string, Fixture> = {
       setupData(ids.table, SETUP_RAW.frozen),
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
-    ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'setup', toolsOpen: false } }
   })),
   // A chat with Kernel sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
   WorkspaceLeadSetup: scene((f) => leadSetup(f, [

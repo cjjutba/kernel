@@ -169,6 +169,11 @@ export interface SessionDeps {
    * Personal", and why when a limit moved it (KERNEL-568). Without it the chat says nothing.
    */
   switchNote?: (provider: Provider, accountId: string) => string
+  /**
+   * A note the agent reads at the start of the chat's next turn, taken as the turn starts so it goes once, as after its files
+   * were reverted (KERNEL-764). The chat's row doesn't show it.
+   */
+  turnNote?: (chat: Chat) => string | undefined
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -181,8 +186,17 @@ export interface SessionDeps {
   onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
-  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it; `account` is the one it ran on, undefined for the CLI's own login. */
-  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string }) => void
+  /**
+   * A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started
+   * it; `account` is the one it ran on, undefined for the CLI's own login. `limit`: a usage limit Kernel knows cut it off, so
+   * the chat waits to carry on (KERNEL-777).
+   */
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) => void
+  /**
+   * `carryOn` restarted a chat a usage limit or a quit cut off: its queue went, or Kernel's nudge did. After a limit, the
+   * chat runs on the account its provider uses now (KERNEL-777).
+   */
+  onCarriedOn?: (chatId: string, reason: CutOffReason) => void
   /**
    * The session's process ended without being stopped. `midTurn` is true when a turn was running, so the agent's work
    * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
@@ -868,7 +882,8 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])
+    const note = this.d.turnNote?.(chat)
+    live.sent = [...(note ? [{ type: 'text' as const, text: note }] : []), ...this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
   }
@@ -1022,6 +1037,8 @@ export class Sessions {
       }
       if (this.queued(id).length) this.drain(id)
       else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel' })
+      // A send that started clears the cut-off, so only a chat that really carried on is reported (KERNEL-777).
+      if (!this.cutOff.has(id)) this.d.onCarriedOn?.(id, reason)
     }
   }
 
@@ -1537,7 +1554,7 @@ export class Sessions {
   /** The text of the chat's first message that isn't one of Kernel's nudges: the brief a fresh session starts from. */
   private brief(chatId: string): string | undefined {
     const first = this.d.store.items(chatId).find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))
-    const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
+    const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'pr' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
     return text || undefined
   }
 
@@ -1561,7 +1578,8 @@ export class Sessions {
     if (interrupted) this.expireCards(live.cards)
     // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop. The limit is the
     // account's the turn ran on, which a switch at the limit may already have left (KERNEL-568).
-    if (live.limited && !stopped && this.limitHolds(chat, live)) this.setCutOff(chatId, 'limit')
+    const limit = live.limited && !stopped && this.limitHolds(chat, live)
+    if (limit) this.setCutOff(chatId, 'limit')
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
     // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
     if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')
@@ -1578,7 +1596,7 @@ export class Sessions {
     live.cleared = false
     this.setRunning(chat, ws, live, false)
     // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account })
+    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limit ? { limit: true as const } : {}) })
     // Stop means stop: held messages are dropped, not sent. Send now keeps them.
     if (stopped) this.setQueue(chatId, [])
     else this.drain(chatId)
@@ -1604,7 +1622,7 @@ export class Sessions {
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
     o.placed?.(approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
-      void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
+      void savePlan(ws.path, plan, { reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
     this.turns.get(chatId)?.plans?.delete(approval.id)

@@ -4,3 +4,5 @@
 The README's build note said the container rule that hides the PR button labels must count the toggle's width. It no longer does. The merged row needs about 337px of the head's content box, and the box is 375px with the panel at its widest, so the labels hide below 337px instead of 372px. KERNEL-425.
 
 **⌘⇧B toggles the right panel, next to ⌘⌥B.** ⌘⌥B keeps working, ⌘B stays the sidebar only, and ⌘⌥⇧B does nothing. The toggle's tooltip shows ⌘⇧B because it is the shorter chord. The handler matches the physical `KeyB`, since Option turns B into ∫. `meta+shift+KeyB` also joins the keys a preview hands back to Kernel, so ⌘⇧B works while a preview has focus. That adds ⌘⇧B to the list in KERNEL-303's "App shortcuts typed in a preview go to Kernel". KERNEL-425.
+
+KERNEL-769 replaces this: the toggle now stays in the top right corner, in a neutral cell beside the band, in both states.

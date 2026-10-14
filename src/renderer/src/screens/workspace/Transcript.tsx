@@ -1,8 +1,10 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
+import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Card, Icon, IconButton, Spinner, type IconName } from '../../ui'
+import { Avatar, Button, Card, Icon, IconButton, Spinner, type IconName } from '../../ui'
+import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
@@ -11,7 +13,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
-import { attempt, MessageActions, type MessageAction } from './MessageActions'
+import { attempt, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, groupLabel, turnFiles, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -24,6 +26,7 @@ import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
+import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 
 const EMPTY: ChatItem[] = []
@@ -90,13 +93,24 @@ export function PartChip({ part }: { part: ChatPart }) {
   return <span className="msg-chip" data-kind={part.type}>{body}</span>
 }
 
-function UserMessage({ item, onEdit }: { item: Extract<ChatItem, { kind: 'user' }>; onEdit: (text: string) => void }) {
+/** True when a revert to this checkpoint would change something: it is linked and the worktree isn't already there. */
+function useRevertable(workspaceId: string, checkpointId: string | undefined): boolean {
+  return useStore((s) => !!checkpointId && !s.checkpoints[workspaceId]?.some((c) => c.current && c.id === checkpointId))
+}
+
+const revertAction = (workspaceId: string, checkpointId: string, label: string, start?: boolean): MessageAction =>
+  ({ icon: 'history', label, onClick: () => actions.ui.openModal({ name: 'confirm', kind: 'revert', workspaceId, checkpointId, ...(start ? { start } : {}) }) })
+
+function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceId: string; onEdit: (text: string) => void }) {
+  const revertable = useRevertable(workspaceId, item.checkpointId)
+  const more: MessageAction[] = revertable && item.checkpointId ? [revertAction(workspaceId, item.checkpointId, 'Revert files to start of chat', true)] : []
   return (
     <div className="msg msg-user" data-jump={item.id}>
       <div className="bubble">
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}
       </div>
-      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={[{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]} />
+      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={[{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
+        more={more.length ? { menu: `reply:${item.id}`, items: more } : undefined} />
     </div>
   )
 }
@@ -118,8 +132,8 @@ function showChanges() {
  * The files a finished turn created, edited or deleted, each row a button that opens that file's diff (KERNEL-586). From 7 files the
  * card shows the first 5 and a row that opens the rest in place. The rows are one tab stop and the arrow keys move between them.
  */
-function TurnFilesCard({ files, inWorkspace, onOpenDiff }: { files: ChangedFile[]; inWorkspace?: number; onOpenDiff: (path: string) => void }) {
-  const [open, setOpen] = useState(false)
+function TurnFilesCard({ rowId, files, inWorkspace, onOpenDiff }: { rowId: string; files: ChangedFile[]; inWorkspace?: number; onOpenDiff: (path: string) => void }) {
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), `${rowId}:files`, false)
   const [stop, setStop] = useState<string>()
   const v = useMemo(() => turnFiles(files), [files])
   const rows = open ? [...v.shown, ...v.hidden] : v.shown
@@ -162,19 +176,21 @@ function TurnFilesCard({ files, inWorkspace, onOpenDiff }: { files: ChangedFile[
   )
 }
 
-interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; inWorkspace?: number; meta?: string; onOpenDiff: (path: string) => void }
+interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; workspaceId: string; checkpointId?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; inWorkspace?: number; meta?: string; onOpenDiff: (path: string) => void }
 
 /**
- * A reply, with Copy, Retry and a "..." menu that forks. The reply that ends a finished turn also carries the turn's files and
+ * A reply, with Copy, Retry and a "..." menu that forks and, on the reply that ends a turn with changed files, reverts the files to that turn (KERNEL-766). The reply that ends a finished turn also carries the turn's files and
  * its time, which leads the actions' row (KERNEL-346). Fork into new workspace only shows where the workspace has its own worktree.
  */
-function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, inWorkspace, meta, onOpenDiff }: ReplyProps) {
+function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkWorkspace, files, inWorkspace, meta, onOpenDiff }: ReplyProps) {
+  const revertable = useRevertable(workspaceId, files?.length ? checkpointId : undefined)
   const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(item.id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(item.id) })
+  if (revertable && checkpointId) forks.push(revertAction(workspaceId, checkpointId, 'Revert files to here'))
   return (
     <div className="msg msg-reply">
       <Markdown text={item.text} />
-      {files && <TurnFilesCard files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
+      {files && <TurnFilesCard rowId={item.id} files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
       <MessageActions label="Message actions" copy={item.text} meta={meta}
         items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) }]}
         more={{ menu: `reply:${item.id}`, items: forks }} />
@@ -204,8 +220,12 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * slot and no chevron, and a right-hand note.
  */
 /** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
-function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
+function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
   icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean
+  /** The sentence a screen reader reads for the row, in place of its label and preview. */
+  name?: string
+  /** Draws in the detail's place, and `keep` leaves it in place once the row is open. */
+  preview?: ReactNode; keep?: boolean
   /** Runs on click before the row opens, and resolves true when it handled the click, so the row stays closed. */
   onOpen?: () => Promise<boolean>
   /** Runs when the row is hovered or focused from the keyboard, so `peek` can load. `peek` is drawn as the hover preview once it is there. */
@@ -233,7 +253,7 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
   return (
     <div className="col" style={{ gap: 4 }}>
       <button
-        type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
+        type="button" className="trow trow-btn" aria-label={name} aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
         {...(onPeek && {
           onMouseEnter: (e: MouseEvent<HTMLElement>) => show(e.currentTarget), onMouseLeave: () => setAt(null),
           // Focus shows it from the keyboard only, so a click doesn't bring it back.
@@ -247,8 +267,8 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
             {can && <span className="chev step-chev" data-open={open} aria-hidden="true"><Icon name="right" size={12} /></span>}
           </span>
         )}
-        <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
-        {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
+        <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
+        {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || keep || !open ? preview ?? detail : null}</span>}
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
       </button>
       {at && peek && <HoverPreview at={at} className="img-preview">{peek}</HoverPreview>}
@@ -274,39 +294,63 @@ function EditDiff({ from, to }: { from: string; to: string }) {
   )
 }
 
-/** The tool's input as the text a person would have typed: the command, the path, the pattern, the prompt. Anything else is JSON. */
-function inputView(item: Tool): ReactNode {
-  const i = item.input
-  if (!i || !Object.keys(i).length) return null
-  const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
-  const known = ((): ReactNode => {
-    switch (item.name) {
-      case 'Bash': return text(i.command) && `$ ${i.command}`
-      case 'Edit': return typeof i.old_string === 'string' && typeof i.new_string === 'string' ? <EditDiff from={i.old_string} to={i.new_string} /> : undefined
-      case 'Write': return text(i.file_path) && typeof i.content === 'string' ? lines(text(i.file_path), '', i.content) : undefined
-      case 'Read': return text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined)
-      case 'Grep': case 'Glob': return text(i.pattern) && lines(`pattern: ${text(i.pattern)}`, text(i.path) && `path: ${text(i.path)}`)
-      case 'Agent': case 'Task': return text(i.prompt)
-      default: return undefined
-    }
-  })()
-  return known || JSON.stringify(i, null, 2)
-}
-
-/** What a tool shows when opened: its input, then its output. A tool with neither has nothing to open. */
-function toolBody(item: Tool): ReactNode {
-  const input = inputView(item)
-  if (!input && !item.output) return null
+/** One block of an opened row with a Copy button, shown on hover and on focus. `text` is what it copies. */
+function ToolBlock({ text, label, children }: { text: string; label: string; children: ReactNode }) {
+  const [copied, copy] = useCopy(text)
   return (
-    <>
-      {input && <div className="code tool-out">{input}</div>}
-      {item.output && <div className="code tool-out">{item.output}{item.outputCut && <span className="step-cut">Output cut at 20,000 characters</span>}</div>}
-    </>
+    <div className="tool-block">
+      <div className="code tool-out">{children}</div>
+      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : label} onClick={copy} />
+    </div>
   )
 }
 
-/** The tools whose detail is a file. Their rows show the file's icon in place of the terminal glyph (KERNEL-399). */
-const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit'])
+/** The tool's input as the text a person would have typed: the command, the path, the pattern, the prompt. Anything else is JSON. Secrets are masked. */
+function inputView(item: Tool): { node: ReactNode; text: string } | null {
+  const i = item.input
+  if (!i || !Object.keys(i).length) return null
+  const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
+  const plain = (t: string | undefined) => t && { text: maskSecrets(t), node: maskSecrets(t) }
+  const known = ((): { node: ReactNode; text: string } | undefined | '' => {
+    switch (item.name) {
+      case 'Bash': return plain(text(i.command) && `$ ${i.command}`)
+      case 'Edit': {
+        if (typeof i.old_string !== 'string' || typeof i.new_string !== 'string') return undefined
+        const from = maskSecrets(i.old_string)
+        const to = maskSecrets(i.new_string)
+        return { node: <EditDiff from={from} to={to} />, text: lines(...from.split('\n').map((l) => `-${l}`), ...to.split('\n').map((l) => `+${l}`)) }
+      }
+      case 'Write': return text(i.file_path) && typeof i.content === 'string' ? plain(lines(text(i.file_path), '', i.content)) : undefined
+      case 'Read': return plain(text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined))
+      case 'Grep': case 'Glob': return plain(text(i.pattern) && lines(`pattern: ${text(i.pattern)}`, text(i.path) && `path: ${text(i.path)}`))
+      case 'Agent': case 'Task': return plain(text(i.prompt))
+      default: return undefined
+    }
+  })()
+  return known || plain(JSON.stringify(i, null, 2)) || null
+}
+
+/** The call as it was made, for whoever wants to replay or report it. Masked like everything the row shows. */
+const rawCall = (item: Tool) => maskSecrets(JSON.stringify({ name: item.name, input: item.input, output: item.output }, null, 2))
+
+function CopyRaw({ item }: { item: Tool }) {
+  const [copied, copy] = useCopy(rawCall(item))
+  return <Button variant="ghost" icon={copied ? 'check' : 'copy'} className="tool-raw" onClick={copy}>{copied ? 'Copied' : 'Copy raw call'}</Button>
+}
+
+/** What a tool shows when opened: its input, then its output with the terminal's colour codes stripped. A tool with neither has nothing to open. */
+function toolBody(item: Tool): ReactNode {
+  const input = inputView(item)
+  if (!input && !item.output) return null
+  const output = item.output ? maskSecrets(stripAnsi(item.output)) : ''
+  return (
+    <>
+      {input && <ToolBlock text={input.text} label="Copy input">{input.node}</ToolBlock>}
+      {output && <ToolBlock text={output} label="Copy output">{output}{item.outputCut && <span className="step-cut">Output cut at 20,000 characters</span>}</ToolBlock>}
+      <CopyRaw item={item} />
+    </>
+  )
+}
 
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i
 
@@ -340,6 +384,7 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   const pending = useRef<Promise<ImagePart | null> | null>(null)
   const rel = workspaceRelative(image, root)
   const name = image.split(/[\\/]/).pop() ?? image
+  const view = toolView(item, { root })
   const load = (): Promise<ImagePart | null> => {
     if (loaded) return Promise.resolve(loaded)
     if (!workspaceId || rel === null) return Promise.resolve(null)
@@ -351,8 +396,8 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   }
   return (
     <StepRow
-      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
-      label="Read image" detail={item.detail} chip={<PartChip part={{ type: 'image', name }} />}
+      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={view.state === 'failed'}
+      label={`${view.verb} image`} name={`${view.verb} image: ${name}`} detail={item.detail} chip={<PartChip part={{ type: 'image', name }} />}
       mono meta={meta} compact={compact}
       onPeek={openImage ? () => void load() : undefined} peek={loaded && <img src={loaded.dataUrl} alt="" />}
       onOpen={openImage ? async () => { const part = await load(); if (!part) return false; openImage(part); return true } : undefined}
@@ -362,15 +407,32 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   )
 }
 
+/** The agent a workspace belongs to, by name, for a message_agent row. */
+const agentNamed = (workspaceId: unknown) => (s: ReturnType<typeof getState>) => {
+  const ws = typeof workspaceId === 'string' ? s.workspaces.find((w) => w.id === workspaceId) : undefined
+  return ws && s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name
+}
+
 const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
-  const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
+  const workspaceId = useContext(TranscriptWorkspace)
+  const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
+  const target = useStore(agentNamed(item.name.endsWith('__message_agent') ? item.input?.workspace_id : undefined))
+  const view = useMemo(() => toolView(item, { root, agentOf: target ? () => target : undefined }), [item, root, target])
+  if (view.hidden) return null
   const image = readImage(item)
-  if (image) return <ReadImageRow item={item} image={image} file={file} meta={meta} compact={compact} />
+  if (image) return <ReadImageRow item={item} image={image} file={compact ? undefined : view.file ?? item.detail} meta={meta} compact={compact} />
+  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <Avatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
+  const preview = (view.object || view.dir || view.detail) && (
+    <>
+      {view.object && <span className={view.mono ? 'step-cmd mono' : 'step-obj'}>{view.object}</span>}
+      {view.dir && <span className="step-dir">{view.dir}</span>}
+      {view.detail && <span className="step-det">{view.detail}</span>}
+    </>
+  )
   return (
     <StepRow
-      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
-      label={item.label} detail={item.detail}
-      mono meta={meta} compact={compact}
+      icon={compact || mark ? undefined : 'term'} glyph={compact ? undefined : mark} failed={view.state === 'failed'}
+      label={view.verb} preview={preview} keep name={view.sentence} meta={meta} compact={compact}
     >
       {toolBody(item)}
     </StepRow>
@@ -386,7 +448,7 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 
 /** A row in the folded list: every step the turn took before its reply, in order, each closed until opened. */
 const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta?: string }) {
-  if (item.kind === 'tool') return <div className="group-item"><ToolRow item={item} meta={meta} compact /></div>
+  if (item.kind === 'tool') return toolView(item).hidden ? null : <div className="group-item"><ToolRow item={item} meta={meta} compact /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} compact /></div>
   if (item.kind === 'text') return <div className="group-item"><StepRow label="Message" detail={item.text} compact>{item.text.trim() && <div className="step-text"><Markdown text={item.text} /></div>}</StepRow></div>
   return null
@@ -394,7 +456,7 @@ const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta
 
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
   // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
-  const [open, setOpen] = useState(() => getState().ui.workspace.toolsOpen)
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolsOpen)
   const id = `${block.id}-list`
   return (
     <div className="col" style={{ gap: 2 }}>
@@ -415,7 +477,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
 function Elapsed({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  return <span className="running"><Spinner label="Working" />{fmtDuration(now - since)}</span>
+  return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
 }
 
 function ApprovalRow({ id }: { id: string }) {
@@ -433,20 +495,20 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
     case 'group': return b.kind === 'group' && a.id === b.id && a.messages === b.messages && sameList(a.tools, b.tools) && sameList(a.items, b.items)
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text
-    case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && sameList(a.files ?? [], b.files ?? [])
+    case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
     case 'relaunch': return b.kind === 'relaunch' && a.note === b.note && a.message === b.message
     case 'error': return b.kind === 'error' && a.id === b.id && a.message === b.message && a.output === b.output
   }
 }
 
-interface BlockProps { block: ThreadBlock; chatId: string; changes: ChangedFile[]; inWorkspace?: number; agentName: string; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; onTerminal: () => Promise<unknown> }
+interface BlockProps { block: ThreadBlock; chatId: string; workspaceId: string; changes: ChangedFile[]; inWorkspace?: number; agentName: string; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; onTerminal: () => Promise<unknown> }
 
 /** Only a tool group reads the changed files, so a new list redraws the groups and nothing else. */
 const sameProps = (a: BlockProps, b: BlockProps) =>
-  sameBlock(a.block, b.block) && a.chatId === b.chatId && a.inWorkspace === b.inWorkspace && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
+  sameBlock(a.block, b.block) && a.chatId === b.chatId && a.workspaceId === b.workspaceId && a.inWorkspace === b.inWorkspace && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
   && (a.block.kind !== 'group' || a.changes === b.changes)
 
-const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
+const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorkspace, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
   if (block.kind === 'error') {
     return (
       <ErrorCard message={block.message} output={block.output} agentName={agentName} onTerminal={onTerminal}
@@ -457,17 +519,17 @@ const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentNa
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
-  if (block.kind === 'files') return <TurnFilesCard files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
-  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} workspaceId={workspaceId} checkpointId={block.checkpointId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} onOpenDiff={onOpenDiff} />
   const item = block.item
   switch (item.kind) {
     case 'user': {
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
       const view = userView(item)
-      return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} onEdit={onEdit} />
+      return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} workspaceId={workspaceId} onEdit={onEdit} />
     }
-    case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
+    case 'text': return <ReplyMessage item={item} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
     case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text"><NoteText text={item.text} refs={item.refs} /></span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
@@ -479,7 +541,16 @@ const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentNa
   }
 }, sameProps)
 
-export const Transcript = memo(function Transcript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void }) {
+interface TranscriptProps { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void }
+
+/** Each chat is its own view, so its scroll and open rows never carry over from the one before, and leaving it saves where the reader was (KERNEL-765). */
+export const Transcript = memo(function Transcript(props: TranscriptProps) {
+  return <ChatTranscript key={props.chat.id} {...props} />
+})
+
+const blockKey = (b: ThreadBlock) => (b.kind === 'item' ? b.item.id : b.id)
+
+function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: TranscriptProps) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const approvals = useStore((s) => s.approvals)
@@ -490,6 +561,11 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items), [items])
+  // The blocks that put an element in the thread, in order, so the thread's children line up with them.
+  const drawn = useRef<string[]>([])
+  drawn.current = blocks.filter((b) => b.kind !== 'item' || !(b.item.kind === 'result' || (b.item.kind === 'user' && !instructionOf(b.item) && userView(b.item) === 'hidden') || (b.item.kind === 'approval' && !approvals.some((a: Approval) => a.id === (b.item as Extract<ChatItem, { kind: 'approval' }>).approvalId)))).map(blockKey)
+  const itemsNow = useRef(items)
+  itemsNow.current = items
   // What the chat rail lists. A streamed reply redraws the transcript but changes none of this, so the rail keeps its list.
   const listed = useMemo(() => railEntries(items, isLead), [items, isLead])
   const rail = useRef(listed)
@@ -556,8 +632,50 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   }
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
   const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
-  // A chat opens at its end.
-  useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); if (scroller.current) remember(scroller.current); return () => cancelAnimationFrame(frame.current) }, [chat.id])
+  // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
+  const rowBoxes = (): RowBox[] => {
+    const el = scroller.current
+    const kids = thread.current?.children
+    if (!el || !kids) return []
+    const base = el.getBoundingClientRect().top - el.scrollTop
+    return drawn.current.flatMap((id, i) => {
+      const r = kids[i]?.getBoundingClientRect()
+      return r ? [{ id, top: r.top - base, height: r.height }] : []
+    })
+  }
+  // A chat opens where it was left, or at its end when it was left there or the reader has sent something since (KERNEL-765).
+  useLayoutEffect(() => {
+    gliding.current = false
+    byHand.current = false
+    const el = scroller.current
+    const place = takePlace(chat.id)
+    const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
+    let again = 0
+    if (!el || opensAtEnd(place, lastSent)) {
+      pin(true)
+      followNow()
+      if (el) remember(el)
+    } else {
+      pinned.current = false
+      const put = () => {
+        const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
+        el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
+        remember(el)
+        show(distFromEnd(el) > PIN_PX)
+      }
+      put()
+      // Rows far above are measured a frame after they first show, so their heights move the spot once.
+      again = requestAnimationFrame(() => { if (!byHand.current) put() })
+    }
+    return () => {
+      cancelAnimationFrame(frame.current)
+      cancelAnimationFrame(again)
+      const view = scroller.current
+      // A chat that was just closed or archived has no spot to keep.
+      if (!view || !getState().chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed)) return
+      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, pinned.current, [...itemsNow.current].reverse().find(followsSend)?.id))
+    }
+  }, [])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
   // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
   const opening = useRef(false)
@@ -585,8 +703,11 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // Sending a message follows it even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const sent = followsSend(last)
+  const arrived = useRef(false)
   useEffect(() => {
-    if (sent) { release(); byHand.current = false; pin(true) }
+    // The first run is the chat opening, which the effect above has placed already.
+    if (sent && arrived.current) { release(); byHand.current = false; pin(true) }
+    arrived.current = true
     if (pinned.current) followNow()
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
@@ -598,6 +719,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
   const empty = !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
   // The rows are memoized, so these keep one identity while the chat and workspace stay the same, whatever the parent passes.
+  useEffect(() => {
+    if (!getState().checkpoints[workspaceId]) void call('checkpoints.list', { workspaceId }).then((l) => actions.workspaces.setCheckpoints(workspaceId, l)).catch(() => undefined)
+  }, [workspaceId])
   const forked = useRef(onForked)
   forked.current = onForked
   const chatId = chat.id
@@ -640,17 +764,19 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
         )}
         <TranscriptWorkspace.Provider value={workspaceId}>
+        <TranscriptChat.Provider value={chatId}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
-          {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
+          {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
           {running && !planWaits && <Elapsed since={since} />}
           <div ref={end} />
         </div>
+        </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
       </div>
       {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
     </div>
   )
-})
+}

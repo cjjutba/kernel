@@ -122,7 +122,7 @@ function usageView(): UsageView {
 }
 const usageOpenAtFirst = (view: UsageView): Provider[] => (view === 'detailed' ? ['claude'] : [])
 
-const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false, changesView: changesView() }
+const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false, changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
 const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const

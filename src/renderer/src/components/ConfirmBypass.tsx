@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { rememberBypassConfirmed } from '../bypassConfirm'
 import { saveAppMode, saveChatMode, saveRoomMode } from '../permissionModes'
+import { savePicks } from '../screens/workspace/composer/draftStore'
 import { actions, useStore } from '../store'
 import { ConfirmDialog, useBusy } from '../ui'
 import './confirmBypass.css'
@@ -17,19 +18,19 @@ const STOPS = [
  * or as the own mode of `chatId`, the chat whose composer picked it (KERNEL-456), and never shows again once the user has said yes.
  * Cancelling saves nothing and asks again next time.
  */
-export function ConfirmBypass({ roomId, chatId }: { roomId?: string; chatId?: string }) {
+export function ConfirmBypass({ roomId, chatId, draftKey }: { roomId?: string; chatId?: string; draftKey?: string }) {
   const id = useId()
   const onlyInWorktrees = useStore((s) => s.settings?.permissions.bypassOnlyInWorktrees ?? true)
   const [busy, run] = useBusy()
   const use = () => run('use', async () => {
-    const saved = chatId ? await saveChatMode(chatId, 'bypassPermissions') : roomId ? await saveRoomMode(roomId, 'bypassPermissions') : await saveAppMode('bypassPermissions')
+    const saved = draftKey ? (savePicks(draftKey, { mode: 'bypassPermissions', plan: false }), true) : chatId ? await saveChatMode(chatId, 'bypassPermissions') : roomId ? await saveRoomMode(roomId, 'bypassPermissions') : await saveAppMode('bypassPermissions')
     if (!saved) return
     rememberBypassConfirmed()
     actions.ui.closeModal()
   })
   return (
     <ConfirmDialog
-      title="Turn on Bypass permissions?" danger busy={busy !== null} busyLabel="Saving" confirmLabel="Use Bypass permissions"
+      title="Turn on Bypass permissions?" danger busy={busy !== null} busyPattern="pulse" busyLabel="Saving" confirmLabel="Use Bypass permissions"
       body="Agents will edit files and run commands without asking, including the commands on your Always ask list. Kernel asks this once."
       onConfirm={() => void use()} onCancel={actions.ui.closeModal}
     >

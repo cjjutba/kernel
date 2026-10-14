@@ -9,7 +9,7 @@ import { bus } from '../bus'
 import { watchTeamSettings } from '../services/agents'
 import { discoverSkills } from '../services/files'
 import { productionInCopy, resolveFilesToCopy } from '../services/filesToCopy'
-import { listBranches } from '../services/worktrees'
+import { listBranches, listBranchTimes } from '../services/worktrees'
 import { deepMerge } from '../services/settings'
 import { Feature } from './feature'
 
@@ -188,6 +188,12 @@ export class Config extends Feature {
         const repo = await loadRepoSettings(path)
         this.roomRemotes.set(path, repo.workspace.remote)
         return listBranches(path, configuredRemote(repo, this.settings))
+      },
+      'git.branchList': async ({ roomId }) => {
+        const { path } = this.mustRoom(roomId)
+        const repo = await loadRepoSettings(path)
+        this.roomRemotes.set(path, repo.workspace.remote)
+        return listBranchTimes(path, configuredRemote(repo, this.settings))
       },
       'skills.list': async ({ roomId }) => {
         const off = (await loadRepoSettings(this.mustRoom(roomId).path)).disabled?.skills ?? []

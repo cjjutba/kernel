@@ -7,7 +7,9 @@
 /* 28% of the window between 320 and 400px, so 400px at 1440 as on the canvas. The panel folds below 1024px (D-080). A dragged width
    is inline over this (Workspace.tsx), and its resize handle sits on the left border (components/resize.css). */
 .ws-aside { position: relative; grid-column: 2; grid-row: 1 / span 2; width: clamp(320px, 28vw, 400px); display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; background: var(--panel); }
-.ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 0; padding: 0; border-bottom: 1px solid var(--line); }
+/* 28px button, 10px from the window's right edge and centred on the first 44px, as in the chat header. */
+.ws-aside-toggle { flex-shrink: 0; display: flex; align-items: flex-start; align-self: stretch; padding: 8px 10px 0; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
 .crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
@@ -49,8 +51,6 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-caret.more { opacity: 0; }
 .tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
-.cp-btn { flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-size: 12.5px; }
-.cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
@@ -194,6 +194,19 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
 .group-item .tool-out { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); font-size: 11.5px; }
 .step-glyph { display: inline-flex; flex-shrink: 0; }
+/* The service's mark in the icon slot, in ink at the row's muted tone, so a row says where it went without a color. */
+.step-mark { display: inline-flex; color: var(--muted); }
+.step-slot .avatar { display: flex; }
+/* A row's preview is a sentence: what it touched, in the muted body face, then its folder fainter and, on a failure, the error's first line. Only a raw command is mono. */
+.step-dir, .step-det { margin-left: 8px; }
+.step-dir { color: var(--faint); }
+.step-cmd { font-size: 12px; }
+/* An opened row's blocks carry their own Copy, shown on hover and on focus, and Copy raw call under them. */
+.tool-block { position: relative; }
+.tool-block > .icon-btn { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; opacity: 0; transition: opacity 0.12s; background: var(--code-bg); }
+.tool-block:hover > .icon-btn, .tool-block > .icon-btn:focus-visible { opacity: 1; }
+.tool-block .tool-out { padding-right: 34px; }
+.tool-raw { align-self: flex-start; color: var(--muted); }
 /* The image a Read image row opened, the chip a message draws. The negative margin keeps the row as tall as its neighbours, and a long name is clipped rather than push the row's note off. */
 .step-chip { display: flex; min-width: 0; }
 .step-chip .msg-chip { margin: -2px 0; max-width: 100%; overflow: hidden; white-space: nowrap; }
@@ -404,20 +417,21 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
-/* New chat's composer, 640px wide. */
-.chat-empty-box { width: 100%; max-width: 640px; margin-top: 34px; text-align: left; }
-/* New chat sits a third of the way down, so Up next has room under the composer: the space above is about half the space below. */
-.chat-empty.lead-new { justify-content: flex-start; gap: 0; padding: 0 24px; }
-.chat-empty.lead-new::before { content: ''; flex: 0.55 1 0; min-height: 32px; }
-.chat-empty.lead-new::after { content: ''; flex: 1 1 0; min-height: 24px; }
-.lead-new .chat-empty-box { margin-top: 24px; }
+/* New chat is a chat's page without a transcript: the title block takes the space above Up next, Up next sits on the box, and the box is the composer shell, pinned to the bottom edge like a chat's.
+   A long draft grows the box up. The title block gives way first (NewLeadChat hides it), then Up next scrolls. */
+.lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 0 24px; text-align: center; }
+.lead-title { flex-shrink: 0; }
+.lead-title h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
+.lead-up .up-next { max-width: 760px; margin: 0 auto; }
 /* What the room is doing, under the title. Its height holds when it is empty, so the composer never moves. */
 .lead-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; min-height: 20px; margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
 .lead-status-sep { margin: 0 8px; color: var(--faint); }
 .lead-status-link { padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
 .lead-status-link:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
 /* Up next: the tracker's issues nobody has started, one hairline row each, with Plan at the end. */
-.up-next { width: 100%; max-width: 640px; margin-top: 36px; text-align: left; }
+.up-next { width: 100%; max-width: 640px; text-align: left; }
 .up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
 .up-next-head h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--muted); }
 .up-next-all { padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
@@ -435,10 +449,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
 .tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; }
 
-/* A narrow chat column: Checkpoints keeps its icon, and the transcript and composer pull in from the edges (D-080). */
+/* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
-  .cp-btn { width: 28px; justify-content: center; padding: 0; }
-  .cp-label { display: none; }
   .ws-scroll { padding: 16px 16px 8px; }
   .ws-chat[data-rail] .ws-scroll { padding-right: 32px; }
 }

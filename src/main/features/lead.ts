@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
@@ -92,9 +92,9 @@ export class Lead extends Feature {
    * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
    * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps the Lead on the
-   * checkout with no setup, as before KERNEL-355.
+   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776).
    */
-  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
+  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
@@ -108,7 +108,8 @@ export class Lead extends Feature {
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = this.updateWs(cut.ws.id, { leadMode, ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
-    const chat = this.saveChat(cut.chat)
+    // Through the composer's own path, so Bypass where policy or the workspace doesn't allow it still runs as Accept edits.
+    const chat = o.mode ? await this.sessions.configure(this.saveChat(cut.chat).id, { mode: o.mode }) : this.saveChat(cut.chat)
     this.userSpoke(chat.id)
     const parts = messageOf(o.prompt, o.parts)
     if (ws.mode === 'current') {
@@ -605,7 +606,7 @@ export class Lead extends Feature {
         // `update` skips an approval that is gone. The catch covers a store closed while the file was written, as on quit
         // (KERNEL-383).
         if (o.kind === 'plan' && o.detail?.trim() && ws && existsSync(ws.path)) {
-          void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
+          void savePlan(ws.path, o.detail, { reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
         }
         // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125). It isn't a send, so
         // the chat keeps its place in the sidebar (KERNEL-498).

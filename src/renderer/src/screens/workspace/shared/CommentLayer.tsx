@@ -224,7 +224,7 @@ function Writing({ draft, file, version, kind, by, archived, busy, onNote, onCan
       <div className="cm-foot">
         <span className="cm-hint">{archived ? '' : `${sendHint(sendWith)}, Esc to cancel`}</span>
         <Button onClick={onCancel} disabled={busy}>Cancel</Button>
-        <Button variant="primary" disabled={!ok && !busy} busy={busy} busyLabel="Sending" onClick={onSend}>Send</Button>
+        <Button variant="primary" disabled={!ok && !busy} busy={busy} busyPattern="arrow-right" busyLabel="Sending" onClick={onSend}>Send</Button>
       </div>
     </>
   )

@@ -67,7 +67,7 @@ function Chip({ g, c, compact, open, busy, now, onOpen, onSwitch }: { g: FooterG
     const switching = busy === `switch:${g.provider}:${c.id}`
     return (
       <button type="button" className="ft-chip ft-other" aria-label={label} data-tip={switchTip(g, c, now)} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(g.provider, c.id)}>
-        <span className="ft-swap" aria-hidden="true">{switching ? <Spinner label={null} kind="swap" /> : <Icon name="swap" size={12} />}</span>
+        <span className="ft-swap" aria-hidden="true">{switching ? <Spinner label={null} pattern="wave-back" /> : <Icon name="swap" size={12} />}</span>
         <span className="ft-name" data-dim="">{c.name}</span>
         {c.five !== undefined && <span className="ft-pc" data-tone={tone(c.five)}>{pct(c.five)}</span>}
       </button>
@@ -130,5 +130,5 @@ function RefreshButton() {
   const refresh = () => run('refresh', async () => {
     try { actions.usage.set(await call('usage.get', { force: true })) } catch { /* a failed read keeps the last numbers */ }
   })
-  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyLabel="Refreshing usage" onClick={refresh} />
+  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyPattern="rotate" busyLabel="Refreshing usage" onClick={refresh} />
 }

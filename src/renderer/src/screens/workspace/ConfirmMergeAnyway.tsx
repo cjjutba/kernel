@@ -20,7 +20,7 @@ export function ConfirmMergeAnyway({ ws, reviewer, count, onClose }: { ws: Pick<
   return (
     <ConfirmDialog
       title={`Merge ${pr} anyway?`} body={`${reviewer} found ${count} ${count === 1 ? 'blocker' : 'blockers'} on the latest commit of ${pr}.`}
-      confirmLabel="Merge anyway" busy={!!busy} busyLabel="Merging"
+      confirmLabel="Merge anyway" busy={!!busy} busyPattern="ripple-in" busyLabel="Merging"
       onConfirm={() => void merge()} onCancel={onClose}
     />
   )

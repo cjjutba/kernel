@@ -58,7 +58,7 @@ export function ConfirmArchiveChat({ threadId }: { threadId: string }) {
 
   return (
     <ConfirmDialog
-      title={`Archive ${title}?`} body={body} busy={busy !== null} busyLabel="Archiving" disabled={busy !== null || (!preview && !unread)}
+      title={`Archive ${title}?`} body={body} busy={busy !== null} busyPattern="scatter" busyLabel="Archiving" disabled={busy !== null || (!preview && !unread)}
       confirmLabel="Archive" onConfirm={() => void archive()} onCancel={actions.ui.closeModal}
     >
       {preview && (

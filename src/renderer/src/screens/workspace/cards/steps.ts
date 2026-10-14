@@ -1,4 +1,5 @@
 import { linkText } from '@shared/links'
+import { toolAsk } from '@shared/toolView'
 import type { Approval, AskedQuestion, ChatPart, Decision, PlanStep } from '@shared/types'
 import { leadingTitle, parseBlocks, type Block } from '../mdParse'
 
@@ -60,10 +61,14 @@ export const isPlanApproval = (a: Pick<Approval, 'kind' | 'toolName'>) => a.kind
 /** "Plan for T-15 is ready", or "Plan ready: Export invoices" when the title doesn't start with Plan. The Home list and the chat hover card say it this way. */
 export const planReadyLine = (a: Pick<Approval, 'title'>): string => (/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`)
 
-/** What a tool permission asks, by the agent who asks: "Noor wants to run a command", "wants to edit a file" or "wants to use WebFetch". The approval card and the chat hover card say it this way. */
+/**
+ * What a tool permission asks, by the agent who asks: "Noor wants to run a command", "wants to edit a file", "wants to file
+ * issue in Linear: Export invoices as PDF" or "wants to use WebFetch". The approval card and the chat hover card say it this way.
+ */
 export function permissionTitle(a: Pick<Approval, 'toolName' | 'input'>, who: string): string {
   const input = (a.input ?? {}) as Record<string, unknown>
   if (a.toolName === 'Bash') return `${who} wants to run a command`
+  if (a.toolName?.startsWith('mcp__')) { const ask = toolAsk(a.toolName, input); return `${who} wants to ${ask.charAt(0).toLowerCase()}${ask.slice(1)}` }
   return String(input.file_path ?? input.path ?? '') ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`
 }
 

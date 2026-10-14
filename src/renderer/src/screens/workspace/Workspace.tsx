@@ -14,9 +14,9 @@ import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './l
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
-import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
+import { WhereBranch, WhereRow } from './composer/WhereRow'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
@@ -237,7 +237,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
   // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
-  // chrome, not a PR action, so it always ends the header, just left of the panel's edge, outside the PR band (KERNEL-425).
+  // chrome, not a PR action, so it stays in the window's top right corner: the header's last item while the panel is hidden, the end of
+  // the panel's head while it is open, in a neutral cell beside the PR band so it never takes the band's tone (KERNEL-769).
   return (
     <div className="panel ws-panel">
       <header className="header">
@@ -251,7 +252,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <span className="grow" />
         <OpenIn ws={ws} />
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule />)}
-        <RightPanelToggle name="panels" />
+        {!panels && <RightPanelToggle name="panels" />}
       </header>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
@@ -279,8 +280,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
-          {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} where={<WhereRow room={room} mode={ws.mode} branch={<WhereBranch branch={ws.branch} />} />} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
         </section>
       </OpenText.Provider>
       </OpenImage.Provider>
@@ -292,6 +292,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           />
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
+            <div className="ws-aside-toggle"><RightPanelToggle name="panels" /></div>
           </div>
           {ownPr && <LocalMergeInfo ws={ws} />}
           {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
