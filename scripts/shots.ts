@@ -585,6 +585,15 @@ async function freezeAnimations(page: Page) {
     const tracked = new Map<Animation, Tracked>()
     const w = window as unknown as { __motion: { tracked: Map<Animation, Tracked>; scroll: Map<Element, number> } }
     w.__motion = { tracked, scroll: new Map() }
+    // Timers run on the stepped clock too, or a fold that ends on a timeout (decideFold) would end in real time, long before its stepped frames (KERNEL-839).
+    const vt = { now: 0, id: 1_000_000, queue: new Map<number, { at: number; run: () => void }>() }
+    ;(window as unknown as { __vt: typeof vt }).__vt = vt
+    window.setTimeout = ((fn: TimerHandler, ms = 0, ...args: unknown[]) => {
+      const id = ++vt.id
+      vt.queue.set(id, { at: vt.now + Number(ms), run: () => (typeof fn === 'function' ? fn(...args) : undefined) })
+      return id
+    }) as typeof window.setTimeout
+    window.clearTimeout = ((id?: number) => { if (id !== undefined) vt.queue.delete(id) }) as typeof window.clearTimeout
     const take = () => {
       for (const a of document.getAnimations()) {
         if (tracked.has(a)) continue
@@ -610,8 +619,11 @@ async function stepTo(page: Page, t: number): Promise<boolean> {
     type Tracked = { birth: number | null; done: boolean }
     const m = (window as unknown as { __motion: { tracked: Map<Animation, Tracked>; scroll: Map<Element, number> } }).__motion
     const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    const vt = (window as unknown as { __vt: { now: number; queue: Map<number, { at: number; run: () => void }> } }).__vt
+    vt.now = now
     for (let pass = 0; pass < 4; pass++) {
       let found = false
+      for (const [id, t] of [...vt.queue].sort((a, b) => a[1].at - b[1].at)) if (t.at <= now && vt.queue.delete(id)) { t.run(); found = true }
       for (const a of document.getAnimations()) if (!m.tracked.has(a)) { a.pause(); m.tracked.set(a, { birth: null, done: false }) }
       for (const [a, s] of m.tracked) {
         if (s.done) continue

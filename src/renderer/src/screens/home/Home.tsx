@@ -27,7 +27,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
   const { n, approval: a, overlap } = item
   const agents = useStore((s) => (n.roomId ? s.agents[n.roomId] : undefined)) ?? []
   const room = useStore((s) => s.rooms.find((r) => r.id === n.roomId))
-  const folding = useFoldPhase(a?.id ?? '') === 'folding'
+  const phase = useFoldPhase(a?.id ?? '')
   const agent = agents.find((x) => x.id === n.agentId)
   const who = agent?.name ?? 'An agent'
   const input = (a?.input ?? {}) as Record<string, unknown>
@@ -62,8 +62,10 @@ function NeedsRow({ item }: { item: InboxItem }) {
     text = <><span>{n.title}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
     actionsEl = <Button onClick={toItem}>{n.kind === 'merge' ? 'Open PR' : 'Open'}</Button>
   }
+  // A pressed row stays folded until the store drops it, however long the call takes. A failed call clears the press and the row comes back.
+  if (phase === 'folded') return null
   return (
-    <div className={`hm-need${folding ? ' decide-fold' : ''}`}>
+    <div className={`hm-need${phase ? ' decide-fold' : ''}`}>
       <RoomIcon room={room} className="hm-av" fallback="K" />
       <span className="hm-need-text">{text}{a && a.kind === 'tool' && !plan && room && <span className="hm-by">{room.name}</span>}</span>
       <span className="hm-need-acts">{actionsEl}</span>
@@ -147,7 +149,7 @@ export function Home() {
   const account = useStore((s) => s.account)
   const needs = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps), workspaces).filter(needsYou), [notifications, approvals, allRooms, overlaps, workspaces])
   const top = useMemo(() => needs.slice(0, 5), [needs])
-  const shownNeeds = useHeldRows(top, (i) => i.n.id, (i) => i.approval?.id)
+  const shownNeeds = useHeldRows(top, (i) => i.n.id, (i) => i.approval?.id, 5)
   const shipped = useMemo(() => workspaces.filter((w) => w.prState === 'merged').sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt)).slice(0, 8), [workspaces])
   if (!rooms.length) return <Welcome />
   const working = rooms.reduce((n, r) => n + Object.values(status[r.id] ?? {}).filter((x) => x === 'working' || x === 'planning' || x === 'walking').length, 0)
