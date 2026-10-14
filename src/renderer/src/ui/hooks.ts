@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
  * Open layers (menus, popovers, modals), oldest first. Escape and outside presses go to the top layer only,
  * so a menu inside a modal closes first and a confirm dialog over a modal doesn't close both.
  */
-interface Layer { escape?: () => void; outside?: () => void; ref?: RefObject<HTMLElement | null>; anchorRef?: RefObject<HTMLElement | null> }
+interface Layer { escape?: () => void; outside?: () => void; blocking?: boolean; ref?: RefObject<HTMLElement | null>; anchorRef?: RefObject<HTMLElement | null> }
 
 /**
  * Is a press at `target` outside the layer? A press inside the layer, or inside its `anchor` (the trigger that opened it),
@@ -16,6 +16,16 @@ export function isOutsidePress(target: Node | null, layer: HTMLElement | null | 
   return !anchor?.contains(target)
 }
 const stack: Layer[] = []
+
+/** Close the open menus and popovers in `layers`, newest first. A modal has no close handler of its own to call here and is never closed this way. */
+function closeLayers(layers: Layer[]) {
+  for (const l of [...layers].reverse()) if (!l.blocking) (l.outside ?? l.escape)?.()
+}
+
+/** A move to another chat, tab or screen closes every open menu and popover. Background events never call this. */
+export function closeAllLayers() {
+  closeLayers(stack)
+}
 let installed = false
 
 function install() {
@@ -35,8 +45,11 @@ function install() {
   })
 }
 
-/** Register an open layer while `active`. Only the newest layer reacts to Escape or a press outside `ref`. */
-export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; ref?: RefObject<HTMLElement | null>; anchorRef?: RefObject<HTMLElement | null> }, active = true) {
+/**
+ * Register an open layer while `active`. Only the newest layer reacts to Escape or a press outside `ref`. A `blocking` layer (a modal)
+ * closes the menus and popovers below it when it opens, through their own handlers. Layers opened after it are left alone.
+ */
+export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; blocking?: boolean; ref?: RefObject<HTMLElement | null>; anchorRef?: RefObject<HTMLElement | null> }, active = true) {
   const latest = useRef(opts)
   latest.current = opts
   useEffect(() => {
@@ -45,10 +58,13 @@ export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; 
     const layer: Layer = {
       escape: latest.current.onEscape ? () => latest.current.onEscape?.() : undefined,
       outside: latest.current.onOutside ? () => latest.current.onOutside?.() : undefined,
+      blocking: latest.current.blocking,
       get ref() { return latest.current.ref },
       get anchorRef() { return latest.current.anchorRef }
     }
+    const below = [...stack]
     stack.push(layer)
+    if (layer.blocking) closeLayers(below)
     return () => { const i = stack.indexOf(layer); if (i >= 0) stack.splice(i, 1) }
   }, [active])
 }
