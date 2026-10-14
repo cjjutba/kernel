@@ -1,0 +1,101 @@
+import { SectionHead } from '@/components/ui/SectionHead'
+import { Clip } from './Clip'
+
+// What surrounds the loop the hero and How it works show, as a bento of clips recorded from the real app on sample data
+// (demo/clips.ts). Two wide tiles bracket two rows of pairs. The pairs share a height, since their clips share an aspect.
+
+type Feature = { id: string; title: string; text: string; clip: string; width: number; height: number; label: string; wide?: boolean }
+
+const FEATURES: Feature[] = [
+  {
+    id: 'f-workspaces',
+    wide: true,
+    title: 'A workspace for every task.',
+    text: "Approve the plan and each agent gets its own git worktree, branch and port, so the team builds side by side without touching each other's files.",
+    clip: 'workspaces',
+    width: 2400,
+    height: 1500,
+    label: 'The plan is approved, three workspaces appear under the chat and each agent builds in its own; back in Kernel\'s chat the team updates arrive, Theo approves the first pull request and it merges'
+  },
+  {
+    id: 'f-reviews',
+    title: 'Reviews that run themselves.',
+    text: 'Theo reviews each pull request once its checks pass. Blockers hold the merge, and approved work can merge on its own.',
+    clip: 'reviews',
+    width: 1592,
+    height: 1200,
+    label: 'A team update arrives row by row: one pull request merged on its own, one held by blockers, one approved and merged; Noor then fixes both blockers and that pull request merges too'
+  },
+  {
+    id: 'f-permissions',
+    title: 'You decide what runs.',
+    text: 'Every request says why it asks. Allow it once, allow it in this workspace, or deny it.',
+    clip: 'permissions',
+    width: 1592,
+    height: 1200,
+    label: 'Noor asks to run a command that writes outside the workspace and gets Allow once, then a bigger export gets Always allow here, and a third export runs without asking'
+  },
+  {
+    id: 'f-sharing',
+    title: 'Agents show you their work.',
+    text: 'Pin a comment to any spot on a page an agent shared, and it goes straight back to that agent.',
+    clip: 'sharing',
+    width: 1592,
+    height: 1440,
+    label: 'A comment pinned to a button on a shared pricing page goes to Noor, who changes the button and shares the page again; the version menu then lists v3'
+  },
+  {
+    id: 'f-accounts',
+    title: 'Claude Code and Codex, side by side.',
+    text: "Every account's usage stays in view. At a limit, Kernel moves the work to an account with room.",
+    clip: 'accounts',
+    width: 1600,
+    height: 1440,
+    label: 'With switching on, the Work account reaches its 5-hour limit and Kernel moves Claude Code to Personal'
+  },
+  {
+    id: 'f-issues',
+    wide: true,
+    title: 'From issue to plan to team.',
+    text: 'Plan a Linear, GitHub or Jira issue with Kernel. It reads the issue and its comments first, and every workspace it starts links back to the issue.',
+    clip: 'issues',
+    width: 2400,
+    height: 1500,
+    label: 'An issue planned with Kernel, which reads it and proposes three tasks; once approved, the issue lists its three linked workspaces'
+  }
+]
+
+function Tile({ f }: { f: Feature }) {
+  return (
+    <article aria-labelledby={f.id} className={`flex flex-col overflow-hidden rounded-frame border border-line bg-surface-1 ${f.wide ? 'col-span-full' : ''}`}>
+      <div className={`px-8 pt-8 pb-7 max-nav:px-5 max-nav:pt-6 ${f.wide ? 'grid grid-cols-2 items-end gap-x-12 gap-y-3 max-faq:grid-cols-1' : ''}`}>
+        <h3 id={f.id} className={`text-balance ${f.wide ? 'text-h3' : 'text-entry-title max-nav:text-h3'}`}>
+          {f.title}
+        </h3>
+        <p className={`text-body text-muted ${f.wide ? 'max-w-120' : 'mt-3 max-w-110'}`}>{f.text}</p>
+      </div>
+      <div className="mt-auto px-8 max-nav:px-3">
+        <div className="overflow-hidden rounded-t-lg border border-b-0 border-line-strong">
+          <Clip name={f.clip} width={f.width} height={f.height} label={f.label} />
+        </div>
+      </div>
+    </article>
+  )
+}
+
+export function Features() {
+  return (
+    <section id="features" aria-labelledby="features-title" className="mx-auto max-w-312 px-6 pt-40">
+      <SectionHead
+        title="The whole team, in one window."
+        titleId="features-title"
+        lead="Recorded from the app on sample data: where agents work, how their work is checked, and what stays in your hands."
+      />
+      <div className="mt-14 grid grid-cols-2 gap-4 max-faq:grid-cols-1">
+        {FEATURES.map((f) => (
+          <Tile key={f.id} f={f} />
+        ))}
+      </div>
+    </section>
+  )
+}

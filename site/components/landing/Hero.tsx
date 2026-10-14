@@ -1,9 +1,8 @@
 import Link from 'next/link'
-import leadPlan from '@/public/images/lead-plan.png'
 import { Button } from '@/components/ui/Button'
 import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
-import { Shot } from '@/components/ui/Shot'
 import { DOWNLOAD_URL, REPO_URL } from '@/lib/links'
+import { HeroDemo } from './HeroDemo'
 
 /** `version` is the newest release's label, such as "0.1". */
 export function Hero({ version }: { version: string }) {
@@ -43,13 +42,7 @@ export function Hero({ version }: { version: string }) {
         <p className="mt-4 text-small text-faint">Free · For Macs with Apple silicon</p>
       </div>
       <div className="relative mt-16 px-6">
-        <Shot
-          src={leadPlan}
-          alt="Kernel: Kernel's plan for four tasks waits for review, with the room's team and workspaces in the sidebar"
-          sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
-          preload
-          className="mx-auto max-w-320"
-        />
+        <HeroDemo />
       </div>
     </section>
   )

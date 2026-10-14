@@ -1,10 +1,10 @@
-import { Details } from '@/components/landing/Details'
 import { Faq } from '@/components/landing/Faq'
+import { Features } from '@/components/landing/Features'
 import { FinalCta } from '@/components/landing/FinalCta'
 import { Hero } from '@/components/landing/Hero'
 import { HowItWorks } from '@/components/landing/HowItWorks'
 import { Privacy } from '@/components/landing/Privacy'
-import { ProductTour } from '@/components/landing/ProductTour'
+import { Shipped } from '@/components/landing/Shipped'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
 import { latestRelease } from '@/content/changelog'
@@ -41,11 +41,11 @@ export default async function Home() {
       <main id="content">
         <Hero version={latestVersionLabel(latest.version)} />
         <HowItWorks />
-        <ProductTour />
-        <Details />
+        <Features />
         <Privacy />
+        <Shipped />
         <Faq />
-        <FinalCta />
+        <FinalCta version={latest.version} />
       </main>
       <SiteFooter />
     </>

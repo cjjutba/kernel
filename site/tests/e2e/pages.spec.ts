@@ -45,7 +45,9 @@ for (const path of ['/', '/changelog']) {
 
 test('release notes, the hero pill and the nav go to /changelog', async ({ page }, testInfo) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: 'Release notes' })).toHaveAttribute('href', '/changelog')
+  // Recently shipped and the closing panel both link to the release notes.
+  await expect(page.getByRole('link', { name: 'All release notes' })).toHaveAttribute('href', '/changelog')
+  await expect(page.getByRole('link', { name: /^Kernel [\d.]+ · Release notes$/ })).toHaveAttribute('href', '/changelog')
   const footerChangelog = page.getByRole('contentinfo').getByRole('link', { name: 'Changelog' })
   await expect(footerChangelog).toHaveAttribute('href', '/changelog')
   if (!isMobile(testInfo)) {

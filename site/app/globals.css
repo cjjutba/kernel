@@ -45,6 +45,26 @@
 
   --color-wordmark-top: #1b1c1f;
 
+  /* Plan mode, as the app draws it (src/renderer/src/tokens.css --plan, --on-plan). Blue means plan mode, nothing else. */
+  --color-plan: #5aa2ff;
+  --color-on-plan: #06101e;
+
+  /* The app's PR header tones (DESIGN.md pr-ready-*, pr-merged-*): green while a PR is ready or merging, purple once merged. */
+  --color-ready-band: #15281f;
+  --color-ready-line: #22432f;
+  --color-ready-soft: #1d3b2c;
+  --color-ready-edge: #33704f;
+  --color-ready-fg: #a3e8c3;
+  --color-ready-text: #62d69d;
+  --color-ready-solid: #1b7f50;
+  --color-merged-band: #2a2140;
+  --color-merged-line: #3c2f5c;
+  --color-merged-soft: #372b55;
+  --color-merged-tone-edge: #64509c;
+  --color-merged-fg: #d4c2ff;
+  --color-merged-text: #b88fff;
+  --color-merged-solid: #8b45f5;
+
   --text-*: initial;
   --text-display: clamp(44px, 5.6vw, 80px);
   --text-display--line-height: 1;
@@ -58,6 +78,10 @@
   --text-h2--line-height: 1.08;
   --text-h2--letter-spacing: -0.04em;
   --text-h2--font-weight: 600;
+  --text-h3: clamp(28px, 2.6vw, 36px);
+  --text-h3--line-height: 1.1;
+  --text-h3--letter-spacing: -0.035em;
+  --text-h3--font-weight: 600;
   --text-changelog-title: clamp(40px, 4vw, 56px);
   --text-changelog-title--line-height: 1.04;
   --text-changelog-title--letter-spacing: -0.04em;
@@ -203,12 +227,45 @@
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
 }
 
+/* The three steps: side by side while each card has room for the plan bar, else one centered column. */
+@utility grid-steps {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  @media (width < 960px) {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 560px;
+    margin-inline: auto;
+  }
+}
+
+/* The closing panel: the ask beside the getting started steps, stacked on smaller screens. */
+@utility grid-cta {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+
+  @media (width < 960px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The footer: the brand, then a column per group of links. Two columns of links on phones. */
+@utility grid-footer {
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+
+  @media (width < 761px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+    & > :first-child {
+      grid-column: 1 / -1;
+    }
+  }
+}
+
 @utility grid-plan-rows {
   grid-template-columns: 52px 1fr auto;
 }
 
 @utility grid-faq {
-  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
 }
 
 @utility grid-entry {
@@ -367,6 +424,108 @@
     height: 5px;
     border-radius: 50%;
     background: var(--color-rule);
+  }
+}
+
+/* The step cards' composer in plan mode: a blue ring and a soft glow that breathes, as composer.css draws .cmp[data-plan]. */
+@utility plan-ring {
+  position: relative;
+  border-color: color-mix(in srgb, var(--color-plan) 45%, var(--color-surface-2));
+  transition: border-color 0.5s cubic-bezier(0.33, 0, 0.2, 1);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      130% 115% at 50% 135%,
+      color-mix(in srgb, var(--color-plan) 22%, transparent) 0%,
+      color-mix(in srgb, var(--color-plan) 8%, transparent) 42%,
+      transparent 70%
+    );
+    opacity: 0.9;
+    animation: plan-breathe 8s ease-in-out 0.5s infinite;
+  }
+
+  &:focus-within {
+    border-color: color-mix(in srgb, var(--color-plan) 70%, var(--color-surface-2));
+  }
+
+  & > * {
+    position: relative;
+  }
+}
+
+@keyframes plan-breathe {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+@utility bg-plan-bar {
+  background: color-mix(in srgb, var(--color-plan) 8%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-plan) 24%, transparent);
+}
+
+@utility hover-mix-plan {
+  &:hover {
+    background: color-mix(in srgb, var(--color-plan) 88%, var(--color-on-plan));
+  }
+}
+
+@utility hover-mix-ready {
+  &:hover {
+    background: color-mix(in srgb, var(--color-ready-solid) 88%, var(--color-white));
+  }
+}
+
+@utility hover-mix-merged {
+  &:hover {
+    background: color-mix(in srgb, var(--color-merged-solid) 88%, var(--color-white));
+  }
+}
+
+/* A busy button's spinner, as the app's .spin. The color comes from the text. */
+@utility spinner {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-top-color: currentColor;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The hero demo is the app at 1440x900, scaled to the frame. The frame keeps its 16:10 box while the app loads. */
+@utility demo-stage {
+  width: 1440px;
+  height: 900px;
+  transform-origin: 0 0;
+  border: 0;
+}
+
+@utility fade-in {
+  animation: fade-in 0.5s ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

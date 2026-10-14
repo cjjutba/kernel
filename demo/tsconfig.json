@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "paths": { "@shared/*": ["src/shared/*"] }
+  },
+  "include": [".", "../src/preload/index.d.ts", "../src/renderer/src/env.d.ts"]
+}
