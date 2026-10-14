@@ -26,7 +26,7 @@ export const NAV: NavGroup[] = [
   { title: 'Workspaces', items: [
     { page: 'git', label: 'Git and worktrees', icon: 'branch', keywords: ['worktrees', 'branch names', 'setup script', 'archive script', 'cleanup', 'scripts'] },
     { page: 'prs', label: 'Pull requests', icon: 'pr', keywords: ['merge', 'auto merge', 'reviews', 'instructions', 'paths you always review', 'size limit'] },
-    { page: 'bigterm', label: 'Big terminal', icon: 'bigterm', keywords: ['terminal', 'presets', 'tabs'] }
+    { page: 'bigterm', label: 'Big terminal', icon: 'term', keywords: ['terminal', 'presets', 'tabs'] }
   ] },
   { title: 'System', items: [
     { page: 'integrations', label: 'Integrations', icon: 'link', keywords: ['github', 'linear', 'jira', 'connect'] },
