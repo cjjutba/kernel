@@ -217,8 +217,11 @@ describe('scripts.suggest safety (KERNEL-682)', () => {
     expect((await suggestScripts(repo, await loadRepoSettings(repo), home)).map((s) => s.source)).toEqual(['conductor'])
     await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "pnpm dev --port $KERNEL_PORT"\n[run_scripts]\nsite = "pnpm site"\n')
     expect(await suggestScripts(repo, await loadRepoSettings(repo), home)).toEqual([])
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "pnpm dev --port $KERNEL_PORT"\n[run_scripts]\nsite = "pnpm site --watch"\n')
-    expect((await suggestScripts(repo, await loadRepoSettings(repo), home)).map((s) => s.source)).toEqual(['conductor'])
+    // A script the room has under another command is the room's own, and stays out too (KERNEL-707).
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "my dev"\n[run_scripts]\nsite = "pnpm site --watch"\n')
+    expect(await suggestScripts(repo, await loadRepoSettings(repo), home)).toEqual([])
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "my dev"\n')
+    expect((await suggestScripts(repo, await loadRepoSettings(repo), home)).map((s) => s.patch)).toEqual([{ runScripts: { site: 'pnpm site' } }])
   })
 })
 
