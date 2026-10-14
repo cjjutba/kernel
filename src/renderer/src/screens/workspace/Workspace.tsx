@@ -299,8 +299,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head">
-            {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
-            <div className="ws-aside-toggle"><RightPanelToggle name="panels" /></div>
+            {ownPr ? <PrHeader ws={ws} spread toggle={<RightPanelToggle name="panels" />} /> : <LeadPrSummary roomId={ws.roomId} spread toggle={<RightPanelToggle name="panels" />} />}
           </div>
           {ownPr && <LocalMergeInfo ws={ws} />}
           {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}

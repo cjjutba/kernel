@@ -37,9 +37,9 @@ export async function copyBranch(branch: string) {
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
  * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071), on a band in the
  * state's tone (KERNEL-274). With the panel hidden they move into the chat header, where `capsule` wraps them in a pill that takes
- * the band's own tint and line (KERNEL-413). The PrMergedHidden and Pr* fixtures show every state.
+ * the band's own tint and line (KERNEL-413). `toggle` is the panel toggle, which ends the first row of the spread band (KERNEL-799). The PrMergedHidden and Pr* fixtures show every state.
  */
-export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: boolean; capsule?: boolean }) {
+export function PrHeader({ ws, spread, capsule, toggle }: { ws: Workspace; spread?: boolean; capsule?: boolean; toggle?: ReactNode }) {
   // The key is the spinner's label, such as "Merging".
   const [busy, run] = useBusy()
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
@@ -122,7 +122,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     <div className="pr-overruled"><span className="pr-overruled-text" data-tip={overruleText(overruled)}>{overruleText(overruled)}</span><button type="button" className="pr-undo" onClick={undo}>Undo</button></div>
   )
   const out = (buttons: ReactNode, extra?: ReactNode) => spread
-    ? tone(<><div className="pr-r1">{state}{gap}{link}</div>{buttons && <div className="pr-r2">{buttons}</div>}{line}{extra}</>)
+    ? tone(<><div className="pr-r1">{state}{gap}{link}{toggle}</div>{buttons && <div className="pr-r2">{buttons}</div>}{line}{extra}</>)
     : tone(<>{state}{link}{buttons}{overruled && <button type="button" className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</button>}{extra}</>)
 
   if (busy) return out(spinner(busy))
@@ -133,7 +133,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     const merged = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">PR #{ws.prNumber} merged</span></span>
     const next = <span className="pr-next">The next change starts a new branch from main.</span>
     return spread
-      ? tone(<><div className="pr-r1">{merged}</div><div className="pr-r2 pr-r2-text">{next}</div></>)
+      ? tone(<><div className="pr-r1">{merged}{gap}{toggle}</div><div className="pr-r2 pr-r2-text">{next}</div></>)
       : tone(<>{merged}{next}</>)
   }
   if (view.merged) return out(

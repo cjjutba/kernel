@@ -8,10 +8,16 @@
 /* With the panel hidden the PR cluster is a capsule in the chat header: the band's tint and line, 32px high, and it never shrinks. */
 .pr-tone.pr-cap { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 3px 0 8px; border: 1px solid var(--b-line); border-radius: var(--r); background: var(--b-band); white-space: nowrap; flex-shrink: 0; }
 .ws-aside-head { container-type: inline-size; border-bottom: 0; }
-/* The head is the band, then a neutral cell with the panel toggle (KERNEL-769). The band takes the state's tone; the cell never does, and a
-   hairline splits them. The band's own bottom line meets the cell's. */
+/* The head is the band, edge to edge, and the panel toggle sits in it as a bare icon in the band's text colour (KERNEL-799, replaces
+   KERNEL-769's separate cell). */
 .ws-aside-head > .pr-tone { display: flex; flex-direction: column; flex: 1; min-width: 0; align-self: stretch; background: var(--b-band); border-bottom: 1px solid var(--b-line); }
-.ws-aside-head > .pr-tone > .lp-summary { padding: 0 12px 0 14px; }
+.ws-aside-head > .pr-tone > .lp-summary { padding: 0 0 0 14px; }
+/* The Lead's band is one row: the summary button, then the toggle beside it. */
+.ws-aside-head > .pr-tone:has(> .lp-summary) { flex-direction: row; align-items: center; padding-right: 12px; }
+/* No fill, no border: the icon takes the band's tone. Its 28px box is pulled in 6px so the 16px glyph meets the band's 12px right padding. */
+.ws-aside-head > .pr-tone .icon-btn, .pr-r1 .icon-btn { margin-right: -6px; color: var(--b-text); }
+.ws-aside-head > .pr-tone .icon-btn:hover, .pr-r1 .icon-btn:hover { color: var(--b-fg); }
+
 .pr-tone > :not(.pr-state):not(.grow) { flex-shrink: 0; }
 .pr-cap > .pr-state { flex-shrink: 0; }
 .pr-cap .lp-summary { flex: none; height: 100%; }
@@ -47,7 +53,7 @@
 .pr-word[data-tone='ready'] { color: var(--pr-ready-text); }
 .pr-run { display: inline-flex; align-items: center; gap: 6px; --spin-ink: currentColor; }
 /* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row needs about 337px of the head's content
-   box, which is 375px when the panel is at its widest (400px). The panel toggle has a cell of its own beside the band (KERNEL-769). */
+   box, which is 375px when the panel is at its widest (400px). The panel toggle ends the band's first row, not this row. */
 @container (max-width: 336px) { .pr-tone .pr-btn-label { display: none; } }
 
 /* Create PR: a squared right edge, then the caret that opens the menu. */
