@@ -638,6 +638,8 @@ export type PushEvent =
   | { type: 'chat'; chat: Chat }
   /** A Lead chat was created, renamed, retitled or closed (KERNEL-337). */
   | { type: 'thread'; thread: Thread }
+  /** An open item of the Lead chat opened, closed or was dismissed. `openItems.list` reads what is open now (KERNEL-791). */
+  | { type: 'openItems.changed'; threadId: string }
   | { type: 'chat.item'; chatId: string; item: ChatItem }
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }

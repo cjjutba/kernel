@@ -183,8 +183,16 @@ export class Store {
     return roomId ? this.all('select data from threads where room_id = ? order by created_at, rowid', roomId) : this.all('select data from threads order by created_at, rowid')
   }
   thread(id: string): Thread | undefined { return this.one('select data from threads where id = ?', id) }
-  /** A Lead chat whose workspace is deleted from History, or that never got one (KERNEL-405). Its tabs go with their workspace. */
-  deleteThread(id: string) { this.db.prepare('delete from threads where id = ?').run(id) }
+  /**
+   * A Lead chat whose workspace is deleted from History, or that never got one (KERNEL-405). Its tabs go with their workspace,
+   * and what it owes goes with it (KERNEL-791).
+   */
+  deleteThread(id: string) {
+    this.db.transaction(() => {
+      this.db.prepare('delete from open_items where thread_id = ?').run(id)
+      this.db.prepare('delete from threads where id = ?').run(id)
+    })()
+  }
   saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.roomId, JSON.stringify(t), t.createdAt); return t }
   // open items (KERNEL-749)
   openItems(threadId: string): OpenItem[] { return this.all('select data from open_items where thread_id = ? order by created_at, rowid', threadId) }
