@@ -93,11 +93,11 @@ const order: Record<SpinnerKind, (r: number, c: number) => number> = {
 }
 const patterns = Object.fromEntries(Object.entries(order).map(([kind, at]) => [kind, Array.from({ length: 9 }, (_, i) => at(Math.floor(i / 3), i % 3))])) as Record<SpinnerKind, number[]>
 
-/** A stable offset into the 1.6s loop from an id, so a row keeps its rhythm across renders and rows run out of step. */
+/** A stable offset into the 1s loop from an id, so a row keeps its rhythm across renders and rows run out of step. */
 function phaseOf(seed: string) {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  return `${((h % 16) / 10).toFixed(1)}s`
+  return `${((h % 10) / 10).toFixed(1)}s`
 }
 
 /**
