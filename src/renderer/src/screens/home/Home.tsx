@@ -114,7 +114,7 @@ function Welcome() {
     <div className="panel">
       <header className="header"><SidebarToggle /><Icon name="home" /><h1>Home</h1></header>
       <div className="hm-welcome">
-        <span className="hm-mark" aria-hidden="true"><LargeMark size={120} stroke={0.6} /></span>
+        <span className="hm-mark" aria-hidden="true"><LargeMark size={120} /></span>
         <h2>Welcome to Kernel</h2>
         <p>A room links a project to a team of Claude Code agents. Start with one.</p>
         <div className="hm-ask">
