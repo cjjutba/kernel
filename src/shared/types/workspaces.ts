@@ -212,6 +212,8 @@ export interface FileEntry {
   dir: boolean
   /** Change status when the file differs from the base. */
   status?: ChangedFile['status']
+  /** A row from one of the room's reference folders, by the folder's name. `path` is then absolute (KERNEL-748). */
+  reference?: string
 }
 
 /**

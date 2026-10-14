@@ -62,7 +62,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, review: rs.review ?? reviewOf(undefined), merge: rs.merge ?? { alwaysReview: [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, references: rs.references ?? [], review: rs.review ?? reviewOf(undefined), merge: rs.merge ?? { alwaysReview: [] }, sources: rs.sources ?? {} }
   }
   /** A provider's status table: the fixture's, else Kernel's bundled copy, signed in (KERNEL-406). */
   const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }

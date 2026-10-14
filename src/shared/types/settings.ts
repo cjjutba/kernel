@@ -245,6 +245,14 @@ export interface RoomSettings {
    */
   env: { files: string[] }
   /**
+   * Folders outside the repo the room's agents may read but not change, as absolute paths (KERNEL-748): a backend next to a UI.
+   * Claude sessions get them as `additionalDirectories`, and the @ menu searches them. Only the personal file's top-level
+   * `references` key sets them, since the paths differ per Mac. A patch replaces the whole list.
+   */
+  references: string[]
+  /** Read-only, filled by main: the `references` that aren't a folder on this Mac now. Sessions and search skip them. */
+  missingReferences?: string[]
+  /**
    * Who leads, who reviews and who takes tasks, where it differs from what Kernel works out from the agent files (KERNEL-397).
    * Written to the shared file with `agents.setTeam`, not `settings.setRoom`.
    */
@@ -336,9 +344,11 @@ export interface ProductionHint {
  * names they list, and `null` removes one (KERNEL-432).
  */
 export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'review' | 'mcp' | 'agents'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'review' | 'mcp' | 'agents' | 'references' | 'missingReferences'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 } & {
   runScripts?: Record<string, string | null>
+  /** Only the personal file takes it, so a `shared` save that sets it is refused. An empty list or `null` removes the key (KERNEL-748). */
+  references?: string[] | null
   mcp?: { aliases?: Record<string, string | null> }
   agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null }
 }

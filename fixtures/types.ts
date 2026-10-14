@@ -78,7 +78,7 @@ export interface Fixture {
    * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,
    * and `env`, which reads as no env files.
    */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'>>>
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'>>>
   /** By room id, what `scripts.suggest` returns. None when unset (KERNEL-682). */
   scriptSuggestions?: Record<string, ScriptSuggestion[]>
   /**
