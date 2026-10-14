@@ -2,18 +2,30 @@
 # Builds, signs, notarizes, verifies and then publishes a Kernel release from the v<version> tag on HEAD (KERNEL-30).
 # One-time setup and the full routine (fragments, /release) are in docs/RELEASING.md.
 #
-#   pnpm release        publish to GitHub Releases on cjjutba/kernel
-#   pnpm release --dry  build, sign, notarize and verify, but don't publish
+#   pnpm release                  publish to GitHub Releases on cjjutba/kernel
+#   pnpm release --dry            build, sign, notarize and verify, but don't publish
+#   pnpm release --rollout <pct>  offer the update to that share of installs (default 100, KERNEL-712)
 #
 # The notes come from site/content/releases/<version>.md, compiled in the release PR (D-058). The same file becomes
 # What's new (through latest-mac.yml) and the GitHub release body.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+fail() { echo "release: $*" >&2; exit 1; }
+
 dry=false
-# pnpm passes a `--` through (`pnpm release -- --dry`). Left in, it would turn a dry run into a real release.
-[[ "${1:-}" == "--" ]] && shift
-[[ "${1:-}" == "--dry" ]] && dry=true
+rollout=100
+while (($#)); do
+  case "$1" in
+    # pnpm passes a `--` through (`pnpm release -- --dry`). Read as anything else, it would turn a dry run into a real release.
+    --) ;;
+    --dry) dry=true ;;
+    --rollout) rollout="${2:-}"; shift ;;
+    *) fail "unknown option $1. Use --dry and --rollout <percent>." ;;
+  esac
+  shift
+done
+[[ "$rollout" =~ ^([0-9]|[1-9][0-9]|100)$ ]] || fail "the rollout must be a whole percentage from 0 to 100, not \"$rollout\"."
 
 version=$(node -p "require('./package.json').version")
 tag="v$version"
@@ -21,8 +33,6 @@ notes="site/content/releases/$version.md"
 repo=cjjutba/kernel
 identity="Developer ID Application"
 profile="${APPLE_KEYCHAIN_PROFILE:-kernel-notary}"
-
-fail() { echo "release: $*" >&2; exit 1; }
 
 [[ -z "$(git status --porcelain)" ]] || fail "the working tree has changes. Commit or stash them first."
 [[ -f "$notes" ]] || fail "$notes is missing. Compile it in the release PR first (/release, or pnpm release:notes $version)."
@@ -88,10 +98,13 @@ case "${min_macos%%.*}" in
   *) fail "the app needs macOS $min_macos, and release.sh doesn't know its Darwin version. Add it to the list above." ;;
 esac
 echo "minimumSystemVersion: $min_darwin" >> dist/latest-mac.yml
+# electron-updater offers the update only to that share of installs, picked by a random id each install keeps
+# (KERNEL-712). The feed shows only the latest release, so below 100 the installs left out stay where they are.
+echo "stagingPercentage: $rollout" >> dist/latest-mac.yml
 
 if $dry; then
   node scripts/release-notes.ts --github "$version" > dist/release-body.md
-  echo "release: dry run done. Artifacts are in dist/, and the release body (without GitHub's list) in dist/release-body.md."
+  echo "release: dry run done at $rollout%. Artifacts are in dist/, and the release body (without GitHub's list) in dist/release-body.md."
   exit 0
 fi
 
@@ -103,4 +116,6 @@ node scripts/release-notes.ts --github "$version" --full-list "$tmp/full-list.md
 # latest-mac.yml and the blockmaps are what installed copies read to find and download the update.
 gh release create "$tag" --repo "$repo" --verify-tag --title "Kernel $version" --notes-file "$tmp/body.md" \
   dist/Kernel-arm64.dmg dist/Kernel-arm64.dmg.blockmap dist/Kernel-arm64.zip dist/Kernel-arm64.zip.blockmap dist/latest-mac.yml
-echo "release: published $tag. https://github.com/$repo/releases/tag/$tag"
+echo "release: published $tag at $rollout%. https://github.com/$repo/releases/tag/$tag"
+# The release is public now, so a failure here means fixing the feed with pnpm release:rollout, not releasing again.
+node scripts/release-rollout.ts --check "$version" "$rollout" || fail "the live feed for $tag doesn't match what was uploaded. Read the error above before anyone updates."
