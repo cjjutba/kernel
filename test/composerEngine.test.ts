@@ -7,7 +7,7 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
-import { attachFiles } from '../src/renderer/src/screens/workspace/composer/attach'
+import { attachFiles, Held } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
@@ -283,5 +283,18 @@ describe('attaching files', () => {
     expect(toasts).toHaveLength(1)
     expect(toasts[0].title).toBe('Could not attach')
     expect(toasts[0].sub).toContain('too large')
+  })
+
+  it('stops counting a cancelled file at once, and ignores its read when it ends', () => {
+    const held = new Held()
+    held.add('a', 'a.png')
+    held.add('b', 'b.png')
+    expect(held.release('a')).toBe(true)
+    expect(held.size).toBe(1)
+    // The cancelled file's read ends later: nothing is left to settle, and the count stays right.
+    expect(held.release('a')).toBe(false)
+    expect(held.size).toBe(1)
+    expect(held.release('b')).toBe(true)
+    expect(held.size).toBe(0)
   })
 })

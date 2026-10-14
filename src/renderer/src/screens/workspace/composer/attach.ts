@@ -34,6 +34,18 @@ export async function partOf(file: File): Promise<ChatPart> {
   return { type: 'file', name: file.name, lines: pasteLines(text), text }
 }
 
+/** The files a composer is still reading, by placeholder id. A cancelled one leaves at once, so the count is right before its read ends. */
+export class Held {
+  private names = new Map<string, string>()
+  get size() { return this.names.size }
+  ids() { return [...this.names.keys()] }
+  add(id: string, name: string) { this.names.set(id, name) }
+  nameOf(id: string) { return this.names.get(id) }
+  /** Takes the file out, for a read that ended or a cancel. False when it was already out. */
+  release(id: string) { return this.names.delete(id) }
+  clear() { this.names.clear() }
+}
+
 /** What a composer gives `attachFiles`: a place for each file while it reads, and what to do with it once it is read or fails. */
 export interface AttachHost {
   /** Puts a placeholder chip with the file's name at the caret, and returns its id. */

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type HTMLAttributes, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
-import { attachFiles, clipboardImages, pastedText } from './attach'
+import { attachFiles, clipboardImages, Held, pastedText } from './attach'
 import { ComposerChip } from './Chip'
 import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
 import { dropRoomDrafts, loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
@@ -178,7 +178,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   const shown = useRef(key)
   const [initial] = useState(() => (key ? loadDraft(key) : undefined) ?? [...(init?.parts ?? []), ...(init?.draft ? [text(init.draft)] : [])])
   /** Files still being read, by the id of their placeholder slot. Their slots are in the box but not in the draft. */
-  const pending = useRef(new Map<string, string>())
+  const pending = useRef(new Held())
   /** Chips that just landed, which fade in once. */
   const fresh = useRef(new Set<string>())
   /** The pane the box sits in, and whether files are being dragged over it. */
@@ -196,7 +196,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     const slots: Slot[] = []
     for (const s of el.querySelectorAll<HTMLElement>('[data-chip]')) {
       let id = s.dataset.chip ?? ''
-      const wait = pending.current.get(id)
+      const wait = pending.current.nameOf(id)
       if (wait !== undefined) {
         if (seen.has(id)) { s.remove(); continue }
         seen.add(id)
@@ -212,6 +212,8 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
       slots.push({ id, el: s, part, fresh: fresh.current.has(id) })
     }
+    // A placeholder the browser removed (Backspace, a cut) is no longer being waited for.
+    for (const id of pending.current.ids()) if (!seen.has(id)) pending.current.release(id)
     const parts = readParts(el, chips.current)
     if (shown.current) saveDraft(shown.current, parts, workspaceOf(shown.current))
     const caret = caretIn(el, chips.current) ?? (toEnd ? atEnd(parts) : null)
@@ -276,20 +278,19 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   /** A placeholder chip for a file being read, at the caret. */
   const hold = (name: string) => {
     const id = `c${++chipCount}`
-    pending.current.set(id, name)
+    pending.current.add(id, name)
     putHtml(slotHtml(id, { type: 'file', name }), id)
     return id
   }
   /** The file is read: its placeholder becomes the chip, in place. A placeholder that was removed or cleared meanwhile stays gone. */
   const settle = (id: string, part: ChatPart) => {
-    pending.current.delete(id)
-    if (!input.current?.querySelector(`[data-chip="${id}"]`)) return
+    if (!pending.current.release(id) || !input.current?.querySelector(`[data-chip="${id}"]`)) return
     chips.current.set(id, part)
     fresh.current.add(id)
     sync()
   }
   const release = (id: string) => {
-    pending.current.delete(id)
+    pending.current.release(id)
     input.current?.querySelector(`[data-chip="${id}"]`)?.remove()
     sync()
   }
@@ -464,6 +465,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   const removeChip = (id: string) => {
     const el = input.current
     const s = el?.querySelector(`[data-chip="${id}"]`)
+    pending.current.release(id)
     if (!el || !s) return
     if (el.isContentEditable) {
       el.focus({ preventScroll: true })
