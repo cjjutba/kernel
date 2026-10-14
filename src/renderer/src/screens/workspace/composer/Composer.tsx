@@ -352,7 +352,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
           </div>
         )}
         {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
-          <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
+          <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
         )}
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, style: { opacity: blocked ? 0.5 : 1 }, ...d.drop }}
