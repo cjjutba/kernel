@@ -144,7 +144,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       case 'review': return actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: ws.roomId })
       case 'checkHooks': return actions.ui.openModal({ name: 'checkHooks' })
       case 'reconnect': return run(id, 'Could not restart the hook server', async () => actions.system.setHooks(await call('hooks.restart', {})))
-      // A chat with Rowan archives with the workspaces it started, the way its row does (KERNEL-405).
+      // A Lead chat archives with the workspaces it started, the way its row does (KERNEL-405).
       case 'archive': return run(id, `Could not archive ${ws.name}`, async () => {
         const thread = isLeadChatWorkspace(ws) ? getState().threads[ws.threadId!] : undefined
         if (thread) return archiveChatFromSidebar(thread)

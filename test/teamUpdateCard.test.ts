@@ -110,7 +110,7 @@ describe('the Team update card', () => {
   it('draws a card from Kernel with the teammate, its events, the reply and Copy, and no Edit', async () => {
     const { TeamUpdateView } = await load()
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
-    expect(html).toContain('aria-label="Team update from Kernel"')
+    expect(html).toContain('aria-label="Team update"')
     expect(html).toContain('Team update')
     expect(html).toContain('<span class="tucard-name">Kai</span>')
     // Events read as one line between dots; only what passed, failed or merged takes a color (KERNEL-274).
@@ -290,7 +290,7 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('aria-busy="true"')
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
-    // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another, Rowan or Merge
+    // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another, the Lead or Merge
     // all (KERNEL-417). The spinner sits in the ready band's green, as the Merge button did.
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
     expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)

@@ -76,7 +76,7 @@ export function Git({ s }: { s: AppSettings }) {
   )
 }
 
-/** The pattern must keep `{slug}`, or every workspace would get the same branch name. A chat with Rowan's has its own (KERNEL-405). */
+/** The pattern must keep `{slug}`, or every workspace would get the same branch name. A Lead chat's has its own (KERNEL-405). */
 export function BranchPattern({ value, field = 'branchPattern', label = 'Branch name pattern', save = (v) => set({ [field]: v }), placeholder }: { value: string; field?: 'branchPattern' | 'leadBranchPattern'; label?: string; save?: (v: string | null) => void; placeholder?: string }) {
   const [text, setText] = useState(value)
   useEffect(() => { setText(value) }, [value])

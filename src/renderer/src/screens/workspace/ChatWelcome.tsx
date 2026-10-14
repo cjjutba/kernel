@@ -6,7 +6,7 @@ export const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review 
 
 /**
  * The centred welcome of a new tab with nothing in it (NewChat.png): the heading, the subtitle and the suggestions. New chat with
- * Rowan, where no chat exists yet, draws its own (NewLeadChat).
+ * Kernel, where no chat exists yet, draws its own (NewLeadChat).
  */
 export function ChatWelcome({ title, sub = 'Same worktree and branch, fresh context.', suggestions, onPick }: { title: string; sub?: string; suggestions: { text: string; icon: IconName }[]; onPick: (text: string) => void }) {
   return (

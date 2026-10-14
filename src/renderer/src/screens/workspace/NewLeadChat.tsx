@@ -21,7 +21,7 @@ import { UpNext } from './UpNext'
 import './composer/composer.css'
 
 /**
- * New chat with Rowan when the room has no open chat (KERNEL-366): the title, what the room is doing, a composer and the tracker's
+ * New chat when the room has no open chat (KERNEL-366): the title, what the room is doing, a composer and the tracker's
  * issues up next. Sending calls `lead.start`, as the New chat dialog does, so the chat, its own worktree and its sidebar row begin
  * with the first message (KERNEL-405), on a new branch from the one the composer names. The box shares the dialog's room's own draft,
  * so typed text survives leaving the screen and never shows in another room. `focusIn` is the workspace whose focus requests it
@@ -29,7 +29,7 @@ import './composer/composer.css'
  */
 export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: string }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
-  const name = lead?.name ?? 'Rowan'
+  const name = lead?.name ?? 'Kernel'
   const codexInUse = useCodexInUse()
   const codexModels = useProviderModels('codex')
   const draftKey = newChatDraftOf(roomId)
@@ -91,13 +91,12 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const hasDraft = !d.empty
   return (
     <div className="chat-empty lead-new">
-      <h2>New chat with {name}</h2>
+      <h2>New chat</h2>
       <RoomStatus roomId={roomId} />
       <div className="chat-empty-box">
         <div className="composer cmp" data-plan={plan || undefined} {...d.drop}>
           <DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={`Brief ${name} on what to build next`} onKeyDown={onKey} />
           <div className="row cmp-foot">
-            <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{lead?.role}</span></span>
             <span ref={modelAnchor} style={{ position: 'relative' }}>
               <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={12} /></Button>
               {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={pickEffort} />}

@@ -3,7 +3,7 @@ import type { Approval, Decision, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, useBusy } from '../../ui'
-import { LargeMark } from '../../icons'
+import { KernelMark, LargeMark } from '../../icons'
 import { attempt } from '../workspace/MessageActions'
 import { planReadyLine } from '../workspace/cards/steps'
 import { openRoom } from '../../lead'
@@ -118,9 +118,9 @@ function Welcome() {
         <h2>Welcome to Kernel</h2>
         <p>A room links a project to a team of Claude Code agents. Start with one.</p>
         <div className="hm-ask">
-          <textarea aria-label="Describe what you want to build" placeholder="Describe what you want to build, and Rowan sets up the room" rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && text.trim()) { e.preventDefault(); send() } }} />
+          <textarea aria-label="Describe what you want to build" placeholder="Describe what you want to build, and Kernel sets up the room" rows={1} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && text.trim()) { e.preventDefault(); send() } }} />
           <div className="row">
-            <span className="hm-lead"><span className="hm-lead-av" aria-hidden="true">R</span>Rowan · Lead</span>
+            <span className="hm-lead"><span className="hm-lead-av" aria-hidden="true"><KernelMark size={12} /></span>Kernel</span>
             <span className="grow" />
             <button type="button" className="hm-send" aria-label="Start the room" disabled={!text.trim()} onClick={send}><Icon name="up" size={14} /></button>
           </div>

@@ -3,7 +3,8 @@ import type { AgentDef, AppSettings, TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
-import { Button, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
+import { KernelMark } from '../../../icons'
+import { Button, ConfirmDialog, Icon, Menu, Select, Toggle, useBusy } from '../../../ui'
 import { ReviewerPicker } from '../../rooms/ReviewerPicker'
 import './rooms.css'
 import { shortFile, warningText } from '../../agent/model'
@@ -49,6 +50,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const [retired, setRetired] = useState<AgentDef[]>(NO_AGENTS)
   const [adding, setAdding] = useState(false)
   const [copying, setCopying] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const starterAnchor = useRef<HTMLSpanElement>(null)
   const copyAnchor = useRef<HTMLSpanElement>(null)
   // Other rooms that are not archived and have an agent that is not retired: the ones this room can copy from.
@@ -99,10 +101,24 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     const members = [...others.filter((x) => x.member).map((x) => x.id), ...(on ? [a.id] : [])]
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
-  const leadOptions = [...files.map((a) => ({ value: a.id, label: a.name, description: a.role || undefined })), { value: KERNEL_LEAD, label: 'Kernel’s Rowan' }]
+  const customized = !!lead?.file
+  const customize = () => run('customize', async () => {
+    try {
+      const def = await call('agents.customize', { roomId, agentId: lead?.id ?? KERNEL_LEAD })
+      actions.ui.toast({ title: `Kernel is in ${shortFile(def.file)} now`, sub: 'Edit it like any agent.' })
+      await loadRoom(roomId)
+    } catch (e) { actions.ui.toast({ title: 'Could not customize Kernel', sub: cleanError(e) }) }
+  })
+  const openFile = () => lead?.file && void call('system.openInEditor', { path: lead.file }).catch((e) => actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }))
+  const reset = () => run('reset', async () => {
+    try {
+      actions.agents.set(roomId, await call('agents.resetLead', { roomId }))
+      setResetting(false)
+    } catch (e) { actions.ui.toast({ title: 'Could not reset Kernel', sub: cleanError(e) }) }
+  })
   const reviewerPick = reviewerChoice(team, rs?.team)
-  const repoAgents = team.filter((a) => agentGroup(a) === 'repo')
-  const outside = team.length - repoAgents.length
+  const repoAgents = team.filter((a) => agentGroup(a) === 'repo' && a.builtIn !== 'lead')
+  const outside = team.filter((a) => a.builtIn !== 'lead').length - repoAgents.length
   const repoActions = (
     <span className="set-actions">
       {!!files.length && !!starters.length && (
@@ -130,16 +146,19 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   }
   return (
     <RoomPage room={room} rs={rs} title="Agents" shared>
-      {!!files.length && (
-        <Section title="Roles" scope="repo">
-          <Row label="Lead" labelId="rm-lead" source={sourceLine(rs, 'team.lead')} desc="Plans with you and hands out tasks.">
-            <Select label="Lead" labelledBy="rm-lead" align="right" value={lead?.id ?? KERNEL_LEAD} disabled={busy !== null} options={leadOptions} onChange={(v) => void setTeam('lead', { lead: v })} />
-          </Row>
+      <Section title="Roles" scope="repo">
+        <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" desc="Plans with you and hands out tasks.">
+          <span className="set-desc" role="status">{customized ? 'Customized' : 'Default'}</span>
+          {customized
+            ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button disabled={busy !== null} onClick={() => setResetting(true)}>Reset to default</Button></>
+            : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
+        </Row>
+        {!!files.length && (
           <Row label="Reviewer" labelId="rm-reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request.">
             <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
           </Row>
-        </Section>
-      )}
+        )}
+      </Section>
       {files.length === 0 && (
         <Section title="In this repo">
           <Row label="No agents yet" desc={`Add the ${preset} (the default team in Settings, General), or add a file to .claude/agents.`}>
@@ -179,6 +198,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             </Row>
           ))}
         </Section>
+      )}
+      {resetting && (
+        <ConfirmDialog
+          title="Reset Kernel to default?" body={<>This deletes <span className="mono">{lead?.file ? shortFile(lead.file) : '.claude/agents/kernel.md'}</span>. Kernel goes back to the instructions it ships with.</>}
+          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
+        />
       )}
     </RoomPage>
   )

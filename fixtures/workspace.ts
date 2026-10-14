@@ -175,7 +175,7 @@ const idleRun = (f: Fixture): Fixture => ({
   roomSettings: { ...f.roomSettings, [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } }
 })
 
-/** The same fixture with the bottom pane folded to its tab bar, in Rowan's chats and in teammates' workspaces (KERNEL-513). */
+/** The same fixture with the bottom pane folded to its tab bar, in Kernel's chats and in teammates' workspaces (KERNEL-513). */
 const bottomFolded = (f: Fixture): Fixture => ({ ...f, ui: { ...f.ui, bottomCollapsed: { lead: true, teammate: true } } })
 
 /** The invoice table's PR with two blockers from Theo on its latest commit, the only thing that holds the merge (KERNEL-501). */
@@ -368,7 +368,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
 /**
- * Rowan's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
+ * Kernel's chat picked Bypass permissions on the current branch while Only in worktrees is on, so it runs as Accept edits (KERNEL-456).
  * The label says Accept edits, and the menu keeps its check on Bypass permissions and says why.
  */
 const bypassPicked = (f: Fixture, menu?: 'mode') => ({
@@ -460,7 +460,7 @@ const queuedItems = (): ChatItem[] => {
 }
 
 /** The invoice-table workspace (or the Lead's) retitled for one agent request: its name, chat title and transcript. */
-/** New chat with Rowan in a room with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
+/** New chat with Kernel in a room with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
 function leadNoChats(f: Fixture): Partial<Fixture> {
   const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
   const issue = (id: string, title: string, priority: number): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority })
@@ -486,7 +486,7 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   }
 }
 
-/** What Rowan sends with request_plan_approval (KERNEL-373): a write-up in `detail`, next to `steps`. */
+/** What Kernel sends with request_plan_approval (KERNEL-373): a write-up in `detail`, next to `steps`. */
 const LEAD_PLAN = [
   '# Export invoices as PDF',
   '',
@@ -495,8 +495,8 @@ const LEAD_PLAN = [
   'T-15b needs the renderer from T-15a to merge first, since both change `row-actions.tsx`. Each PR runs `pnpm test`, `pnpm typecheck` and `pnpm shots`.'
 ].join('\n')
 
-/** Rowan's plan for T-15 waiting on you in plan mode, in the Lead's chat: its write-up, then one row per task. */
-const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'rowan' }, { detail: LEAD_PLAN })
+/** Kernel's plan for T-15 waiting on you in plan mode, in the Lead's chat: its write-up, then one row per task. */
+const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'kernel-lead' }, { detail: LEAD_PLAN })
 
 /** The same plan once approved: it keeps its place with your Approved bubble under it, plan mode is off and each task has a workspace to open. */
 const planApproved = (f: Fixture): Partial<Fixture> => {
@@ -510,7 +510,7 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** Rowan's plan after you asked for changes: your notes are the bubble. The Kernel message that carried them after a restart names the approval and stays hidden. */
+/** Kernel's plan after you asked for changes: your notes are the bubble. The Kernel message that carried them after a restart names the approval and stays hidden. */
 const planChanges = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
   const notes = 'Split step 2 into its own PR, after step 1 merges.\nAnd have Theo review each PR as it lands.'
@@ -570,7 +570,7 @@ const planMode = (f: Fixture): Partial<Fixture> => {
 const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
   ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer: { parts: [], draft } } } })
 
-/** Two team updates in Rowan's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
+/** Two team updates in Kernel's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
 const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
   const kai: TeamUpdateRow = {
@@ -588,7 +588,7 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
     parts: [{ type: 'text', text: [header, '', `${row.name} (${row.agentId}) · ${row.task} · workspace ${row.workspaceId}`, ...row.events.map((e) => `- ${e.text}.`), '', 'To do:', `- ${todo}`].join('\n') }]
   })
   const done = (id: string, m: number): ChatItem => ({ kind: 'result', id, ts: at(10, m), durationMs: 9_000, ok: true })
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Remove the Try section', [
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Remove the Try section', [
     userMsg('lu1', 'Remove the Try section from the sidebar, and have Theo review it before I merge.'),
     { kind: 'text', id: 'lu1-r', ts: at(10, 28), text: 'Kai has it. Once its checks pass, Theo reviews the PR.' },
     done('lu1-res', 28),
@@ -631,13 +631,13 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
   const rows = [
     { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Theo approved')]),
       reply: 'Fixed the focus race: `useLayoutEffect` now focuses the composer after the tab mounts. `pnpm test:changed` and `pnpm typecheck` pass.' },
-    row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Rowan asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
+    row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
     row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
     row('ws-160', 'kai', 'Kai', 'Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
-    row('ws-163', 'noor', 'Noor', "Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])
+    row('ws-163', 'noor', 'Noor', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     { kind: 'result', id: 'tum-res0', ts: at(20, 11), durationMs: 24 * 60_000 + 6_000, ok: true },
     // Workspaces past the 8th: the card says they didn't fit (KERNEL-654).
     withOmitted(card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]), 3),
@@ -651,10 +651,10 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
       work('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 0) }),
-      work('ws-176', 'kai', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Rowan asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Rowan asks when a brief is unclear' } }),
+      work('ws-176', 'kai', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Kernel asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Kernel asks when a brief is unclear' } }),
       work('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
       work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')], ...issue('KERNEL-172', 2) }),
-      // Rowan started this merge, and the row spins Merging all the same, as every place showing the PR does (KERNEL-417).
+      // Kernel started this merge, and the row spins Merging all the same, as every place showing the PR does (KERNEL-417).
       work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging', ...issue('KERNEL-160', 3) }),
       work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
     ],
@@ -673,12 +673,12 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
     { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('pr.opened', 'Opened PR #162'), ev('pr.merged', 'Merged automatically'), ev('pr.review', 'Reviews approved, checks passed, 84 lines')]), prNumber: 162,
       reply: 'Merged without asking you. Every review passed, checks were green and the change was 84 lines, under your 200 line limit.' },
     { ...row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), { ...ev('pr.ready', 'Checks passed'), held: true }, ev('pr.review', 'Still blocked after 2 review rounds')]), prNumber: 158 },
-    { ...row('ws-176', 'ivy', 'Ivy', 'Rowan asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
+    { ...row('ws-176', 'ivy', 'Ivy', 'Kernel asks when a brief is unclear', [ev('pr.opened', 'Opened PR #161'), ev('pr.review', 'Code approved'), ev('pr.review', 'Skipped the UX review to save usage')]), prNumber: 161,
       reply: 'Your usage is at 91% of the 5-hour limit, so Kernel left out the optional UX review.' }
   ]
   const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
   const blocker = (kind: ReviewKind, workspaceId: string, text: string): ReviewVerdict => ({ ...tuVerdict(workspaceId, 158, 'h158'), verdict: 'blockers', lens: kind, blockers: [{ text }], summary: text })
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     { kind: 'result', id: 'tur-res0', ts: at(20, 31), durationMs: 8 * 60_000 + 41_000, ok: true },
     tuCard('tur-1', 31, rows, 'Tell the user what is ready to merge, and what still needs them.'),
     { kind: 'result', id: 'tur-res1', ts: at(20, 33), durationMs: 62_000, ok: true }
@@ -690,13 +690,13 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
       ...(s.workspaces ?? f.workspaces),
       tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prState: 'merged', status: 'archived', mergedAt: at(20, 29), prHead: 'h162', ...issue('KERNEL-182', 0) }),
       tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158', reviews: [blocker('security', 'ws-review-158-security', 'The new route reads the issue id without checking the room'), blocker('code', 'ws-review-158-code', 'The retry in dedupe() has no test')], ...issue('KERNEL-172', 1) }),
-      tuWork('ws-176', 'ivy', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
+      tuWork('ws-176', 'ivy', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 2) })
     ],
     prs: { 'ws-172': tuInfo('ws-172', 158, 'h158'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
   }
 }
 
-/** Rowan's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
+/** Kernel's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
 const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = {}): Partial<Fixture> => ({
   ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
     userMsg('l1', 'Add PDF export to invoices. Spec first.'),
@@ -705,7 +705,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
     tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
     { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' }
   ], {
-    approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: T15_STEPS, ...plan }), ...f.approvals]
+    approvals: [pending('plan', 'kernel-lead', { workspaceId: ids.lead, title: 'Plan for T-15', steps: T15_STEPS, ...plan }), ...f.approvals]
   }, { plan: true, model: 'claude-opus-5-5' }),
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
@@ -719,7 +719,7 @@ interface OpenPr {
 
 /**
  * A PR title as agents write them: a Conventional Commits prefix and the issue key on the end, which the PRs tab strips
- * (KERNEL-411). "Rowan asks when a brief is unclear" becomes "feat(workspace): rowan asks when a brief is unclear (KERNEL-176)".
+ * (KERNEL-411). "Kernel asks when a brief is unclear" becomes "feat(workspace): kernel asks when a brief is unclear (KERNEL-176)".
  */
 const commitTitle = (title: string, key: string) => `feat(workspace): ${title.charAt(0).toLowerCase()}${title.slice(1)} (${key})`
 
@@ -751,11 +751,11 @@ const openPrs = (f: Fixture, list: OpenPr[]): Pick<Fixture, 'workspaces' | 'prs'
 })
 
 /**
- * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354) over a chat with Rowan: the two ready PRs first, then six that wait
+ * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354) over a chat with Kernel: the two ready PRs first, then six that wait
  * on something. #158 holds an approval of an earlier commit, so the reviewer rule keeps it back.
  */
 const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string, push: PushEvent[] = []): Partial<Fixture> => {
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     { ...userMsg('lp-u', ask), ts: at(20, 31) },
     { kind: 'text', id: 'lp-tx', ts: at(20, 31), text: reply },
     { kind: 'result', id: 'lp-res', ts: at(20, 31), durationMs: 12_000, ok: true }
@@ -777,7 +777,7 @@ const PDF_BUTTON_PR: OpenPr = { id: 'ws-pdf-button', agentId: 'kai', key: 'T-15b
 
 const LEAD_PRS: OpenPr[] = [
   { id: 'ws-182', agentId: 'kai', key: 'KERNEL-182', n: 162, title: 'New chats focus the composer, and ⌘L focuses it', state: 'ready', stat: [49, 5], review: 'approved' },
-  { id: 'ws-176', agentId: 'noor', key: 'KERNEL-176', n: 161, title: 'Rowan asks when a brief is unclear', state: 'ready', stat: [117, 16], review: 'approved' },
+  { id: 'ws-176', agentId: 'noor', key: 'KERNEL-176', n: 161, title: 'Kernel asks when a brief is unclear', state: 'ready', stat: [117, 16], review: 'approved' },
   { id: 'ws-172', agentId: 'noor', key: 'KERNEL-172', n: 158, title: 'Duplicates show once in Issues', state: 'ready', stat: [28, 7], review: 'stale' },
   { id: 'ws-183', agentId: 'noor', key: 'KERNEL-183', n: 166, title: 'Stop idle chat sessions', state: 'checks', stat: [117, 16] },
   { id: 'ws-184', agentId: 'ivy', key: 'KERNEL-184', n: 165, title: 'Run the test suite from a chat', state: 'cifail', stat: [28, 7] },
@@ -786,7 +786,7 @@ const LEAD_PRS: OpenPr[] = [
   { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
 
-/** What Rowan says under the PRs tab: two PRs ready, one waiting on an approval and one running checks. */
+/** What Kernel says under the PRs tab: two PRs ready, one waiting on an approval and one running checks. */
 const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will."
 
 /** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
@@ -893,7 +893,7 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   const names: Record<string, string> = { kai: 'Kai', noor: 'Noor', ivy: 'Ivy' }
   const rows = PR_STATES.map((p): TeamUpdateRow => ({ workspaceId: p.id, agentId: p.agentId, name: names[p.agentId], task: p.title, events: events(p) }))
   const card: ChatItem = { kind: 'user', id: 'tus-1', ts: at(20, 30), from: 'kernel', update: { rows }, parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }] }
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [card, { kind: 'result', id: 'tus-res', ts: at(20, 31), durationMs: 14_000, ok: true }], {}, { model: 'claude-opus-5-5' })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [card, { kind: 'result', id: 'tus-res', ts: at(20, 31), durationMs: 14_000, ok: true }], {}, { model: 'claude-opus-5-5' })
   const { approvals: _none, ...rest } = s
   return {
     ...rest, ...openPrs(f, PR_STATES),
@@ -1063,7 +1063,7 @@ const commentSent = scene((f) => ({
   }
 }))
 
-/** Rowan's workspace, with the page Noor shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
+/** Kernel's workspace, with the page Noor shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
 const commentArchived = (f: Fixture): Partial<Fixture> => {
   const p = sharedPanel(f)
   return {
@@ -1077,10 +1077,10 @@ const commentArchived = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** Rowan's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
+/** Kernel's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
 const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
-  const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', lead: undefined, agentId: 'rowan', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
+  const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', lead: undefined, agentId: 'kernel-lead', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
     userMsg('sp-u', 'Add PDF export to invoices. Spec first.'),
     { kind: 'text', id: 'sp-t', ts: at(14, 41), text: 'I split PDF export into four tasks. Noor shared the layout, a sample and the notes in the meantime.' }
   ], {}, { model: 'claude-opus-5-5' })
@@ -1096,7 +1096,7 @@ const sharedPanel = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** Kernel's Team update in Rowan's chat with a file under each of two teammates (TeamUpdateShared.png). */
+/** Kernel's Team update in Kernel's chat with a file under each of two teammates (TeamUpdateShared.png). */
 const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
   const noor: TeamUpdateRow = {
@@ -1116,7 +1116,7 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
     kind: 'user', id: 'tus-u', ts: at(14, 41), from: 'kernel', update: { rows },
     parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), ...(r.shared ?? []).map((x) => `- Shared "${x.title}" (v${x.version}).`), '']), 'To do:', '- Look at both files, then tell the user what you found.'].join('\n') }]
   }
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
     update,
     { kind: 'text', id: 'tus-r', ts: at(14, 42), text: "Noor shared the invoice layouts and Kai shared a note on the download button. I'll look at both before I pass anything on." },
     { kind: 'result', id: 'tus-res', ts: at(14, 42), durationMs: 45_000, ok: true }
@@ -1173,7 +1173,7 @@ const railRounds: RailRound[] = [
   ['Show me the renumber commit', 'It\'s 1440439. It changes 12 comment lines across `ipc.ts`, `kernel.ts`, `db.ts` and `approvals.ts`, and no code.', 1, 1, 21, [13, 4]],
   ['Check the Release note check, then tell me', 'It\'s still running. Vercel passed on the last push.', 2, 0, 34, [13, 6]],
   ['Did Theo review it yet?', 'Not yet. I asked him in his chat 12 minutes ago, and he hasn\'t replied.', 0, 0, 8, [13, 7]],
-  ['Ping him again if there\'s nothing by 13:30, and tell me when PR #147 is ready to merge so I can tell Rowan.', 'Will do. Right now PR #147 passes checks and has no conflicts, so only Theo\'s review is missing. I\'ll ask him again at 13:30 and write to you the moment he approves, with the PR number so you can merge from the panel.', 0, 0, 77, [13, 9]]
+  ['Ping him again if there\'s nothing by 13:30, and tell me when PR #147 is ready to merge so I can tell Kernel.', 'Will do. Right now PR #147 passes checks and has no conflicts, so only Theo\'s review is missing. I\'ll ask him again at 13:30 and write to you the moment he approves, with the PR number so you can merge from the panel.', 0, 0, 77, [13, 9]]
 ]
 const railChat = (): ChatItem[] => railRounds.flatMap(([ask, reply, tools, thoughts, secs, clock], i): ChatItem[] => [
   { kind: 'user', id: `rc-u${i}`, ts: at(...clock) - secs * 1000, parts: [{ type: 'text', text: ask }] },
@@ -1187,7 +1187,7 @@ const railScene = (panel = false): Fixture => {
 }
 
 /**
- * ChatRailLead: Rowan's chat with 11 things to list, 6 of them Team updates. The updates are the ones the PNG's rail names, and each row of each is the engine's own wording.
+ * ChatRailLead: Kernel's chat with 11 things to list, 6 of them Team updates. The updates are the ones the PNG's rail names, and each row of each is the engine's own wording.
  * Noor's PR #161 and Kai's #162 can merge, so the newest card offers Merge for both, and #150 is in History.
  */
 const railLead = (f: Fixture): Partial<Fixture> => {
@@ -1198,7 +1198,7 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     { kind: 'result', id: `${id}-r`, ts: at(20, m), durationMs: secs * 1000, ok: true }
   ]
   const kai = (events: TeamUpdateRow['events']) => row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', events)
-  const noor = (events: TeamUpdateRow['events']) => row('ws-176', 'noor', 'Noor', 'Rowan asks when a brief is unclear', events)
+  const noor = (events: TeamUpdateRow['events']) => row('ws-176', 'noor', 'Noor', 'Kernel asks when a brief is unclear', events)
   const items: ChatItem[] = [
     ask('rl-u1', 'Plan the week: what\'s ready, what\'s blocked?', 0),
     ...answer('rl-u1', 'Three tasks are in flight. Noor has the Linear service, Kai has the composer focus and Theo is free to review. Nothing is blocked yet.', 42, 0),
@@ -1212,9 +1212,9 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     ...answer('rl-t5', 'Kai opened PR #162 for the composer focus.', 12, 4),
     ask('rl-u6', 'Ask Theo to review #161 and #162', 5),
     ...answer('rl-u6', 'Theo is reviewing both PRs.', 14, 5),
-    tuCard('rl-t7', 6, [row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Rowan asks when a brief is unclear', [ev('review', 'Approved PR #161', true)]), kai([ev('turn', 'Finished a turn')])]),
+    tuCard('rl-t7', 6, [row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Kernel asks when a brief is unclear', [ev('review', 'Approved PR #161', true)]), kai([ev('turn', 'Finished a turn')])]),
     ...answer('rl-t7', 'Theo approved #161. #162 is still in review.', 18, 6),
-    tuCard('rl-t8', 8, [row('ws-163', 'noor', 'Noor', "Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])]),
+    tuCard('rl-t8', 8, [row('ws-163', 'noor', 'Noor', "Linear service, contracts and Kernel's issue link", [ev('pr.merged', 'Merged PR #150')])]),
     { kind: 'result', id: 'rl-t8-r', ts: at(20, 9), durationMs: 4 * 60_000 + 9_000, ok: true },
     tuCard('rl-t9', 14, [kai([ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
     ...answer('rl-t9', 'Nothing in Kai\'s code failed. Vercel\'s build rate limit is the only failure on PR #162.', 10, 15),
@@ -1223,7 +1223,7 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     ask('rl-u11', 'What can I merge?', 30),
     ...answer('rl-u11', 'Two PRs are ready to merge, #162 from Kai and #161 from Noor. #158 waits for Theo\'s review. Merge from the PRs tab, or tell me which one and I will.', 12, 31)
   ]
-  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', items, {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', items, {}, { model: 'claude-opus-5-5', effort: 'xhigh', plan: false })
   const { approvals: _none, ...rest } = s
   const issue = (key: string, title: string): Partial<Workspace> => ({ title, source: { kind: 'issue', id: key, title } })
   const tab = (id: string, title: string, m: number): Chat => ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'xhigh', plan: false, threadId: 't-lead', createdAt: at(9, m) })
@@ -1235,9 +1235,9 @@ const railLead = (f: Fixture): Partial<Fixture> => {
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
       tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 'New chats focus the composer, and ⌘L focuses it') }),
-      tuWork('ws-176', 'noor', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 'Rowan asks when a brief is unclear') }),
+      tuWork('ws-176', 'noor', 'kernel-176-kernel-asks', 161, { prHead: 'h161', reviews: [tuVerdict('ws-review-161', 161, 'h161')], ...issue('KERNEL-176', 'Kernel asks when a brief is unclear') }),
       tuWork('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
-      tuWork('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', "Linear service, contracts and Rowan's issue link") })
+      tuWork('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', "Linear service, contracts and Kernel's issue link") })
     ],
     prs: { 'ws-182': tuInfo('ws-182', 162, 'h162'), 'ws-176': tuInfo('ws-176', 161, 'h161') }
   }
@@ -1247,16 +1247,16 @@ const railLead = (f: Fixture): Partial<Fixture> => {
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
 const groupedThread = (id: string, title: string, m: number): Thread => ({ id, roomId: ids.roomA, title, createdAt: at(9, m) })
-/** Each chat with Rowan's own workspace (KERNEL-405). The export chat's is the seed's Lead workspace. */
+/** Each chat with Kernel's own workspace (KERNEL-405). The export chat's is the seed's Lead workspace. */
 const CHAT_WS: Record<string, string> = { [GROUPED.export]: ids.lead, [GROUPED.table]: 'ws-chat-table', [GROUPED.login]: 'ws-chat-login', [GROUPED.demo]: 'ws-chat-demo', [GROUPED.csv]: 'ws-chat-csv' }
 /** A tab of the Lead chat `threadId`, in that chat's workspace. */
 const leadTab = (id: string, threadId: string, title: string, m: number, over: Partial<Chat> = {}): Chat =>
   ({ id, workspaceId: CHAT_WS[threadId] ?? ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: at(9, m), ...over })
 const chatSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-/** A chat with Rowan's own worktree on `rowan/<a few words>` (KERNEL-405). Archived with its chat. */
+/** A chat with Kernel's own worktree on `kernel/<a few words>` (KERNEL-405). Archived with its chat. */
 const chatWorkspace = (t: Thread, port: number, over: Partial<Workspace> = {}): Workspace => ({
-  id: CHAT_WS[t.id] ?? `ws-chat-${t.id}`, roomId: ids.roomA, name: chatSlug(t.title), branch: `rowan/${chatSlug(t.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/rowan-${chatSlug(t.title)}`,
-  mode: 'worktree', agentId: 'rowan', lead: true, threadId: t.id, port, status: t.closedAt ? 'archived' : 'ready', prState: 'none', createdAt: t.createdAt, ...(t.closedAt ? { archivedAt: t.closedAt } : {}), ...over
+  id: CHAT_WS[t.id] ?? `ws-chat-${t.id}`, roomId: ids.roomA, name: chatSlug(t.title), branch: `kernel/${chatSlug(t.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/kernel-${chatSlug(t.title)}`,
+  mode: 'worktree', agentId: 'kernel-lead', lead: true, threadId: t.id, port, status: t.closedAt ? 'archived' : 'ready', prState: 'none', createdAt: t.createdAt, ...(t.closedAt ? { archivedAt: t.closedAt } : {}), ...over
 })
 /** A workspace the Lead's chat `threadId` handed off, from its first tab. */
 const handedOff = (id: string, name: string, task: string, agentId: string, port: number, over: Partial<Workspace> = {}): Workspace =>
@@ -1267,14 +1267,14 @@ const T15_STEPS = [
   { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
 ]
 
-/** The first tab of the Export chat: the plan Rowan wrote and you approved, then the hand-off. */
+/** The first tab of the Export chat: the plan Kernel wrote and you approved, then the hand-off. */
 const exportItems = (): ChatItem[] => [
   userMsg('g1', 'Add PDF export to invoices. Spec first.'),
   { kind: 'thinking', id: 'g1-th', ts: at(10, 8), text: 'Renderer, button, tests and review can run in parallel.' },
   tool('g1-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
   tool('g1-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
   { kind: 'text', id: 'g1-tx', ts: at(10, 9), text: 'I split PDF export into four tasks that can run in parallel.' },
-  { kind: 'approval', id: 'approval-ap-plan-rowan', ts: at(10, 12), approvalId: 'ap-plan-rowan' },
+  { kind: 'approval', id: 'approval-ap-plan-kernel', ts: at(10, 12), approvalId: 'ap-plan-kernel' },
   { kind: 'text', id: 'g1-done', ts: at(10, 13), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
 ]
 
@@ -1295,7 +1295,7 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     groupedThread(T.export, 'Export invoices as PDF', 5), groupedThread(T.table, 'Invoice table and empty states', 8),
     groupedThread(T.login, 'Client portal login', 10), groupedThread(T.demo, 'Seed realistic demo data', 12)
   ]
-  const plan: Approval = { ...pending('plan', 'rowan', { workspaceId: ids.lead, chatId: ids.leadChat, title: 'Plan for T-15', steps: T15_STEPS }), status: 'allowed', createdAt: at(10, 12) }
+  const plan: Approval = { ...pending('plan', 'kernel-lead', { workspaceId: ids.lead, chatId: ids.leadChat, title: 'Plan for T-15', steps: T15_STEPS }), status: 'allowed', createdAt: at(10, 12) }
   const tab = o.tab ?? ids.leadChat
   const handed: Workspace[] = [
     handedOff('ws-pdf-renderer', 'invoice-pdf-renderer', 't-15a', 'noor', 4320, { stat: { files: 3, added: 188, removed: 0 } }),
@@ -1360,7 +1360,7 @@ function sidebarPlanChat(f: Fixture): Partial<Fixture> {
 
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
-  const plan = leadPlan(f, { agentId: 'rowan' })
+  const plan = leadPlan(f, { agentId: 'kernel-lead' })
   const g = grouped(f, { chats: (c) => c.filter((x) => x.threadId !== GROUPED.export && x.threadId !== GROUPED.demo), threads: (t) => t.filter((x) => x.id !== GROUPED.demo) })
   const lead = plan.workspaces!.find((w) => w.id === ids.lead)!
   return {
@@ -1374,7 +1374,7 @@ function leadWaiting(f: Fixture): Partial<Fixture> {
   }
 }
 
-/** Rowan, mid-turn `ago` seconds in, as the running tabs of the Grouped shots show it. */
+/** Kernel, mid-turn `ago` seconds in, as the running tabs of the Grouped shots show it. */
 const groupedTurn = (id: string, ago: number, ask: string, thought: string, tools: ChatItem[], reply?: string): ChatItem[] => [
   { ...userMsg(id, ask), ts: Date.now() - ago * 1000 }, { kind: 'thinking', id: `${id}-th`, ts: at(10, 28), text: thought }, ...tools, ...(reply ? [{ kind: 'text' as const, id: `${id}-tx`, ts: at(10, 29), text: reply }] : [])
 ]
@@ -1391,15 +1391,15 @@ export const scriptTrust: ScriptTrust = {
 /** Lumi's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
 const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
 
-/** Rowan's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
+/** Kernel's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
 const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) => scene((f) => ({
-  ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
+  ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'kernel-lead', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
     userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
     { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
     tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
     { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
   ], {
-    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
+    approvals: [pending('agent', 'kernel-lead', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
       '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
     ].join('\n') } }), ...f.approvals]
   }, { plan: false, model: 'claude-opus-5-5' }),
@@ -1552,7 +1552,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
-  // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Rowan's chat with Team updates listed, and the chat at its
+  // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
   // end with the right panel open, where the rail takes the side padding. The scroll and the hover are local to the transcript and the rail, so scripts/shots.ts does them.
   ChatRail: railScene(),
   ChatRailOpen: railScene(),
@@ -1705,12 +1705,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { label: 'Separate config folder per account', description: 'Full usage, plan and email, and the normal browser login. But Kernel has to keep MCP servers, plugins, skills and history in sync across folders, which is more code and can break when Claude Code updates.' }
     ]
     const question = 'Which way should extra Claude accounts work?'
-    return scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Extra Claude accounts', [
+    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Extra Claude accounts', [
       userMsg('ql1', 'Can I add a second Claude account to Kernel, for my team plan next to my Max one?'),
       { kind: 'thinking', id: 'ql-th', ts: at(10, 28), text: 'Two ways to do it. They differ in what Kernel can show and how much it has to keep in sync.' },
       tool('ql-t1', 'Read how sessions pick their account', 'rg -n "CLAUDE_CONFIG_DIR|oauthToken" src/main', { name: 'Read' })
     ], {
-      approvals: [pending('question', 'rowan', { workspaceId: ids.lead, title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+      approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     }, { model: 'claude-opus-5-5' })
   }),
   // A sign-in link in the question and in an option's description wraps inside the card, and the AskUserQuestion call has no row of its own above it (KERNEL-591).
@@ -1734,11 +1734,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const question = 'Save these scripts to .kernel/settings.local.toml?'
     const options = [{ label: 'Save', description: 'Write them to .kernel/settings.local.toml, on this Mac only' }, { label: 'Cancel', description: 'Write nothing' }]
     const detail = 'Setup script\npnpm install\ncp "$KERNEL_ROOT_PATH/.env" .env\n\nRun script\npnpm dev --port $KERNEL_PORT\n\nRun script "storybook"\npnpm storybook -p $((KERNEL_PORT + 1))\n\nRun mode\nOne at a time'
-    return scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Room scripts', [
+    return scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Room scripts', [
       userMsg('qs1', 'Here is our conductor.json, set this room up the same way.'),
       tool('qs-t1', 'Read package.json', 'cat package.json', { name: 'Read' })
     ], {
-      approvals: [pending('question', 'rowan', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+      approvals: [pending('question', 'kernel-lead', { workspaceId: ids.lead, title: question, detail, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
     }, { model: 'claude-opus-5-5' })
   }),
   WorkspaceQuestionSteps:scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
@@ -1818,12 +1818,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     ui: open
   })),
-  // Rowan's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
+  // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
-  WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
+  WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
-  // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Rowan's chat, which starts with it
+  // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Kernel's chat, which starts with it
   // folded to its tab bar. A teammate's can fold too, and its handle lights like the sidebar's edge. A new chat waiting on setup opens the bottom on Setup even when it was folded.
   PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
   PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
@@ -1866,7 +1866,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     [{ type: 'pr.queue', roomId: ids.roomA, queue: { ids: [MERGE_A.id, MERGE_B.id], current: MERGE_A.id } }])),
   LeadPrsMergeAllStopped: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'conflict' }, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
     [{ type: 'pr.queue', roomId: ids.roomA, result: { merged: [331], stopped: { workspaceId: MERGE_B.id, prNumber: 330, reason: 'It has merge conflicts.' } } }])),
-  // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
+  // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
   // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
@@ -1928,7 +1928,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Hovering the login row shows its card, which names that tab and the question (KERNEL-339), four minutes into the wait.
   GroupedRowStatus: scene((f) => {
     const g = grouped(f)
-    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: CHAT_WS[GROUPED.login], chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
+    const ask: Approval = { ...pending('question', 'kernel-lead', { workspaceId: CHAT_WS[GROUPED.login], chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
     return { ...g, approvals: [ask, ...(g.approvals ?? [])] }
   }),
   // The last tab of a chat that is still running asks first, since closing it archives the chat and its two workspaces (KERNEL-405).
@@ -1953,13 +1953,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     })
     return { ...g, workspaces: g.workspaces!.map((w) => (w.threadId === GROUPED.table ? { ...w, status: 'archived' as const, archivedAt: at(10, 50) } : w)) }
   }),
-  // A room with no open chat (KERNEL-365): New chat with Rowan, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
+  // A room with no open chat (KERNEL-365): New chat with Kernel, with no workspace before the first message, and no chat row (KERNEL-366, KERNEL-405).
   // The workspaces the archived chats handed off stay as unowned rows when Archive a chat's workspaces is off.
   // The line under the title says what the room is doing, and Up next lists the tracker's Todo issues, urgent first.
   LeadNoChats: scene(leadNoChats),
   // New branch from main opened: the remote's branches with the default checked. The menu is the composer's own, so the shot opens it (scripts/shots.ts).
   LeadNoChatsBranch: scene(leadNoChats),
-  // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
+  // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedHtml: sharedTab('sh-html'),
@@ -2044,7 +2044,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
-  // KERNEL-685: a room with no setup script. The Setup tab offers Kernel's suggestion, Ask Rowan and Add manually.
+  // KERNEL-685: a room with no setup script. The Setup tab offers Kernel's suggestion, Ask Kernel and Add manually.
   WorkspaceSetupAddConductor: scene((f) => ({
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
@@ -2150,7 +2150,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
-  /** A brief Rowan handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
+  /** A brief Kernel handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
   WorkspaceQueuedMerge: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
     const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' })

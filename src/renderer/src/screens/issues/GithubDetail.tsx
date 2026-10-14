@@ -15,7 +15,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
   const [failed, setFailed] = useState<string | null>(null)
   const [busy, run] = useBusy<'plan'>()
   const workspaces = useStore((s) => s.workspaces)
-  const lead = useStore((s) => s.agents[room.id]?.find((a) => a.lead)?.name) || 'Rowan'
+  const lead = useStore((s) => s.agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
 
   // The description and comments come from `github.issue`. The list already has the rest, so the header shows at once.
   useEffect(() => {

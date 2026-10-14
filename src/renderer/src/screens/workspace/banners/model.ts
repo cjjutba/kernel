@@ -60,9 +60,9 @@ export interface BannerInput {
   setupCode?: number | null
   /** The workspace is the Lead's. The near-limit hold doesn't apply to it, so it has no banner for it (KERNEL-224). */
   isLead?: boolean
-  /** The Lead's name, for "Rowan can still answer you". */
+  /** The Lead's name, for "Kernel can still answer you". */
   leadName?: string
-  /** A chat with Rowan with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
+  /** A Lead chat with nothing held for setup: setup waiting or failed doesn't hold it, so the composer stays open (KERNEL-490). */
   skipsSetup?: boolean
   /** The limit banners the user closed, by `limitBannerKey`. Only the near-limit, 80% and switch-account banners look here (KERNEL-595). */
   dismissed?: ReadonlySet<string>
@@ -155,7 +155,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
   }
 
-  // A chat with Rowan that isn't held keeps answering while setup waits or after it failed (KERNEL-490).
+  // A Lead chat that isn't held keeps answering while setup waits or after it failed (KERNEL-490).
   const without = `${name} keeps answering without it.`
 
   // KERNEL-209 holds the workspace until the user trusts the room's scripts. Its brief waits in the queue, so the composer stays open.
@@ -256,7 +256,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
   const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? near : undefined
   if (held?.resetsAt && !closed('nearLimit', held.resetsAt)) return {
     id: 'nearLimit', kind: 'limit', title: `Close to your ${named(held.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
-    sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Rowan'} can still answer you.`,
+    sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Kernel'} can still answer you.`,
     actions: usageAction, blocks: false, dismissKey: limitBannerKey('nearLimit', held.resetsAt)
   }
 

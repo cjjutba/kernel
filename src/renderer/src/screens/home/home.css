@@ -42,7 +42,7 @@
 .hm-ask:focus-within { border-color: var(--line-4); }
 .hm-ask textarea { resize: none; border: 0; outline: none; background: transparent; padding: 0; font-size: 14px; line-height: 20px; color: var(--ink-2); }
 .hm-lead { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 9px 0 6px; border-radius: var(--r-sm); border: 1px solid var(--line-3); font-size: 12.5px; }
-.hm-lead-av { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--ink); color: var(--on-ink); font-size: 8px; font-weight: 600; }
+.hm-lead-av { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; color: var(--ink); }
 .hm-send { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 0; background: var(--surface-3); color: var(--ink-2); }
 .hm-send:not(:disabled) { background: var(--ink); color: var(--on-ink); }
 .hm-send:disabled { cursor: default; }

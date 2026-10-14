@@ -39,7 +39,7 @@ function openShared(workspaceId: string, sharedId: string) {
   actions.ui.openShared(workspaceId, sharedId)
 }
 
-/** The room has no open chat with Rowan: open the newest, then the file's tab, now that it is on screen. With none open there is nowhere to show it. */
+/** The room has no open Lead chat: open the newest, then the file's tab, now that it is on screen. With none open there is nowhere to show it. */
 async function openSharedInLead(roomId: string, sharedId: string) {
   const ws = await openLead(roomId)
   if (ws) actions.ui.openShared(ws.id, sharedId)

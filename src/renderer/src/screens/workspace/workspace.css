@@ -17,7 +17,7 @@
 .ws-title-btn { display: flex; min-width: 0; padding: 3px 6px; border: 0; border-radius: var(--r-xs); background: transparent; color: var(--ink); font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
 .ws-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ws-title-btn:hover { background: var(--hover); }
-/* What Rowan's workspace and a current-branch workspace follow. A label, not a branch to copy. */
+/* What the Lead's workspace and a current-branch workspace follow. A label, not a branch to copy. */
 .ws-label { flex-shrink: 4; min-width: 0; font-size: 12px; }
 .header .icon-btn, .ws-aside-head .icon-btn { flex-shrink: 0; }
 .ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: var(--r-xs); background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: 11.5px; }
@@ -402,9 +402,9 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
-/* New chat with Rowan's composer, 640px wide. */
+/* New chat's composer, 640px wide. */
 .chat-empty-box { width: 100%; max-width: 640px; margin-top: 34px; text-align: left; }
-/* New chat with Rowan sits a third of the way down, so Up next has room under the composer: the space above is about half the space below. */
+/* New chat sits a third of the way down, so Up next has room under the composer: the space above is about half the space below. */
 .chat-empty.lead-new { justify-content: flex-start; gap: 0; padding: 0 24px; }
 .chat-empty.lead-new::before { content: ''; flex: 0.55 1 0; min-height: 32px; }
 .chat-empty.lead-new::after { content: ''; flex: 1 1 0; min-height: 24px; }

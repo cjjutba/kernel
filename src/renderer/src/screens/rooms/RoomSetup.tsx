@@ -1,10 +1,10 @@
 import { useEffect, useId, useState } from 'react'
 import type { AgentDef, TeamPatch } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
+import { KERNEL_REVIEWER, NO_REVIEWER, reviewerChoice } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, CodeBlock, Icon, Select, Spinner, useBusy } from '../../ui'
+import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
 import { warningText } from '../agent/model'
 import { getDraft } from './draft'
 import { ReviewerPicker } from './ReviewerPicker'
@@ -40,15 +40,13 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const teamConfig = useStore((s) => (roomId ? s.roomSettings[roomId]?.team : undefined))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'warn' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
-  // A warning never stops the room opening, but it stops Brief Rowan right away, so the user sees it (KERNEL-437).
+  // A warning never stops the room opening, but it stops Brief Kernel right away, so the user sees it (KERNEL-437).
   const warned = steps?.filter((s) => s.state === 'warn').length ?? 0
   const seated = steps?.find((s) => s.id === 'agents')
   const team = agents.filter((a) => !a.retired)
   const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
   const warnings = team.flatMap((a) => (a.warnings ?? []).map((w) => `${a.name}: ${lower(warningText(w))}`))
-  const leadNow = team.find((a) => a.lead)?.id ?? KERNEL_LEAD
   const reviewerNow = reviewerChoice(team, teamConfig)
-  const [lead, setLead] = useState<string>()
   const [reviewer, setReviewer] = useState<string>()
   // `[team] reviewer = "none"` is in the repo's file, not in the agent list, so the team waits for the read before it shows a Reviewer.
   const [configRead, setConfigRead] = useState(false)
@@ -56,21 +54,19 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const [busy, run] = useBusy()
   const reviewerLabel = useId()
   const files = team.filter((a) => !a.builtIn)
-  const leadPick = lead ?? leadNow
-  const reviewers = files.filter((a) => a.id !== leadPick && reviews(a))
-  const reviewerPick = (reviewer ?? reviewerNow) === leadPick ? KERNEL_REVIEWER : reviewer ?? reviewerNow
+  const reviewers = files.filter((a) => !a.lead && reviews(a))
+  const reviewerPick = reviewer ?? reviewerNow
   // The team the repo brought is saved as checked, and only what changed goes to settings.toml (KERNEL-397).
   const open = () => run('open', async () => {
     if (!roomId) return
     if (review) {
       const patch: TeamPatch = {}
-      if (lead && lead !== leadNow) patch.lead = lead
       if (reviewerPick !== reviewerNow) patch.reviewer = reviewerPick
       try { await call('agents.setTeam', { roomId, team: patch, from: 'setup' }) } catch (e) { actions.ui.toast({ title: 'Could not change the team', sub: cleanError(e) }); return }
     }
     await openRoom(roomId)
   })
-  // "Brief Rowan right away" in New room: when setup finishes cleanly, land in Rowan's chat (D-104). A team the repo brought
+  // "Brief Kernel right away" in New room: when setup finishes cleanly, land in the Lead's chat (D-104). A team the repo brought
   // with something to look at waits for Open the room.
   const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
   useEffect(() => { if (finished && !failed && !warned && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, warned, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -84,10 +80,9 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
     if (!roomId) return
     try { await call('rooms.pushCheck', { roomId, recheck: true }) } catch (e) { actions.ui.toast({ title: 'Could not check push access', sub: cleanError(e) }) }
   })
-  const leadName = team.find((a) => a.lead)?.name ?? 'Rowan'
   const status = finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.`
-    : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. ${leadName} is waiting for a brief.`
-      : finished ? `Done. ${leadName} is waiting for a brief.`
+    : finished && warned ? `${warned} ${warned === 1 ? 'thing needs' : 'things need'} your attention. Tell Kernel what to build.`
+      : finished ? 'Done. Tell Kernel what to build.'
         : 'You can leave this screen. Kernel keeps going.'
   const noReviewerAgent = !reviewers.length
   const reviewerNote = reviewerPick === NO_REVIEWER ? 'No reviewer. No code review runs by itself.'
@@ -137,11 +132,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             <section className="rs-team" aria-labelledby="rs-team">
               <div className="rs-team-head">
                 <h2 id="rs-team">Your team</h2>
-                <p>This repo brought its own agents. Check who leads and who reviews. The room's Agents page in Settings changes it later.</p>
-              </div>
-              <div className="rs-team-row">
-                <span className="rs-team-text"><span className="rs-team-label">Lead</span><span>Plans with you and hands out tasks</span></span>
-                <Select label="Lead" value={lead ?? leadNow} disabled={busy !== null} onChange={setLead} options={[...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Rowan, from Kernel' }]} />
+                <p>This repo brought its own agents. Check who reviews. The room's Agents page in Settings changes it later.</p>
               </div>
               <div className="rs-team-row">
                 <span className="rs-team-text"><span id={reviewerLabel} className="rs-team-label">Reviewer</span><span data-gap={reviewerPick === KERNEL_REVIEWER && noReviewerAgent ? '' : undefined}>{reviewerNote}</span></span>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Room } from '@shared/types'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
+import { KernelMark } from '../../icons'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
 import { openNewRoom } from './draft'
@@ -36,7 +37,7 @@ function RoomRow({ room }: { room: Room }) {
         <span className="mono ellipsis">{sourceOf(room)}</span>
       </span>
       <span className="row" style={{ gap: 8 }}>
-        <span className="rm-team" aria-hidden="true">{agents.slice(0, 5).map((a) => <span key={a.id}>{initial(a)}</span>)}</span>
+        <span className="rm-team" aria-hidden="true">{agents.slice(0, 5).map((a) => <span key={a.id}>{a.builtIn === 'lead' ? <KernelMark size={12} /> : initial(a)}</span>)}</span>
         <span className="rm-count">{agents.length} {agents.length === 1 ? 'agent' : 'agents'}</span>
       </span>
       <span>

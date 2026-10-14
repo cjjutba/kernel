@@ -211,7 +211,7 @@ export function describeGithub(f: GithubFilter, query: string, where: string): {
   return { where, fits: [f.mine ? 'Mine' : '', f.label ?? '', f.milestone ?? '', q ? `"${q}"` : ''].filter(Boolean) }
 }
 
-/** Plan with Rowan's first message for a GitHub issue, the same as Linear's: the issue chip, its description and how to hand it off. */
+/** Plan with Kernel's first message for a GitHub issue, the same as Linear's: the issue chip, its description and how to hand it off. */
 export function githubPlanParts(issue: GithubIssueDetail): ChatPart[] {
   const description = issue.body.trim() || 'The issue has no description.'
   return [

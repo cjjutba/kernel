@@ -5,7 +5,7 @@ import { kindFile, latestOf, sinceShort, useOpenShared, useSharer } from './shar
 import './shared.css'
 
 /**
- * The files shared in a workspace, newest first. A chat with Rowan lists its own and those of the teammates that chat handed work to
+ * The files shared in a workspace, newest first. A Lead chat lists its own and those of the teammates that chat handed work to
  * (KERNEL-511). The Lead workspace from before KERNEL-405 has no chat of its own and lists the whole room. Used by the count on the
  * panel's tab as well.
  */
