@@ -124,7 +124,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       // New chat opens this when the issue it starts from has findings (KERNEL-500): Start anyway sends the held chat, Cancel brings the box back.
       if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={() => startHeld(modal.held)} onCancel={() => backToNewChat(modal.held)} />
-      if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} chatId={modal.chatId} />
+      if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} chatId={modal.chatId} draftKey={modal.draftKey} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }

@@ -97,7 +97,7 @@ export type Modal =
    * and none means the app's mode in Settings, Permissions. `chatId` is a chat that picked Bypass permissions in its composer: only
    * that chat's own mode is set, and Settings stays as it is (KERNEL-456).
    */
-  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string }
+  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string; /** New chat's box, whose draft keeps the pick until the chat starts. */ draftKey?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
   /** Set up this account: the checklist of the MCP servers that need the user on one account (KERNEL-661). */
