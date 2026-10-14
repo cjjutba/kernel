@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { setUp, tempRepo } from './helpers'
 import { exec, git, run } from '../src/main/services/exec'
 import { createWorktree, fastForward, snapshotBaseline } from '../src/main/services/worktrees'
-import { clock, listCheckpoints, previewRevert, revertTo, snapshot, snapshotWithFiles } from '../src/main/services/checkpoints'
+import { clock, listCheckpoints, previewRevert, revertTo, snapshot, snapshotWithFiles, worktreeTree } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
 import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
 import { revertNote } from '../src/main/features/checkpoints'
@@ -180,35 +180,36 @@ describe('checkpoints', () => {
   })
 })
 
-describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
-  /**
-   * A room cloned from a bare remote, with a worktree on its own branch from origin/main. `land` pushes a commit to main from
-   * another clone, as a merged PR does; `fetch` is Kernel's fetch in the room.
-   */
-  async function remoteRoom(files: Record<string, string>) {
-    const repo = await tempRepo(files)
-    const bare = await mkdtemp(join(tmpdir(), 'kernel-bare-'))
-    await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
-    await git(repo, 'remote', 'add', 'origin', bare)
-    await git(repo, 'push', '-q', '-u', 'origin', 'main')
-    const other = await mkdtemp(join(tmpdir(), 'kernel-other-'))
-    await run('git', ['clone', '-q', bare, other])
-    await git(other, 'config', 'user.email', 'o@t.dev')
-    await git(other, 'config', 'user.name', 'Other')
-    async function land(change: Record<string, string | null>) {
-      for (const [f, c] of Object.entries(change)) {
-        if (c === null) await rm(join(other, f))
-        else { await mkdir(dirname(join(other, f)), { recursive: true }); await writeFile(join(other, f), c) }
-      }
-      await git(other, 'add', '-A')
-      await git(other, 'commit', '-q', '-m', 'Merged PR')
-      await git(other, 'push', '-q', 'origin', 'main')
+/**
+ * A room cloned from a bare remote, with a worktree on its own branch from origin/main. `land` pushes a commit to main from
+ * another clone, as a merged PR does; `fetch` is Kernel's fetch in the room.
+ */
+async function remoteRoom(files: Record<string, string>) {
+  const repo = await tempRepo(files)
+  const bare = await mkdtemp(join(tmpdir(), 'kernel-bare-'))
+  await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
+  await git(repo, 'remote', 'add', 'origin', bare)
+  await git(repo, 'push', '-q', '-u', 'origin', 'main')
+  const other = await mkdtemp(join(tmpdir(), 'kernel-other-'))
+  await run('git', ['clone', '-q', bare, other])
+  await git(other, 'config', 'user.email', 'o@t.dev')
+  await git(other, 'config', 'user.name', 'Other')
+  async function land(change: Record<string, string | null>) {
+    for (const [f, c] of Object.entries(change)) {
+      if (c === null) await rm(join(other, f))
+      else { await mkdir(dirname(join(other, f)), { recursive: true }); await writeFile(join(other, f), c) }
     }
-    const fetch = () => git(repo, 'fetch', '-q', 'origin')
-    const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-${Date.now()}`), branch: 'kernel/x', baseRef: 'origin/main' })
-    const ws = (id: string) => ({ id, name: 'x', path, baseRef: 'origin/main' })
-    return { repo, path, land, fetch, ws }
+    await git(other, 'add', '-A')
+    await git(other, 'commit', '-q', '-m', 'Merged PR')
+    await git(other, 'push', '-q', 'origin', 'main')
   }
+  const fetch = () => git(repo, 'fetch', '-q', 'origin')
+  const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-${Date.now()}`), branch: 'kernel/x', baseRef: 'origin/main' })
+  const ws = (id: string) => ({ id, name: 'x', path, baseRef: 'origin/main' })
+  return { repo, path, land, fetch, ws }
+}
+
+describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   const message = (dir: string, ref: string) => git(dir, 'show', '-s', '--format=%B', ref)
 
   it('saves no files for a turn that edited nothing after Kernel fast-forwarded the worktree onto main', async () => {
@@ -400,6 +401,85 @@ describe('what a revert would do (KERNEL-764)', () => {
     await git(dir, 'push', '-q', 'origin', 'main')
     expect(await previewRevert(ws, '1')).toMatchObject({ commitsAhead: 1, pushed: true })
     await expect(previewRevert(ws, '9')).rejects.toThrow('no longer exists')
+  })
+})
+
+describe('a revert keeps what arrived from the base (KERNEL-797)', () => {
+  const ten = Array.from({ length: 10 }, (_, i) => `${i + 1}\n`)
+  /**
+   * A checkpoint with a file of the agent's, then a commit of the agent's that also edits a.ts, then two merged PRs on main that
+   * change, add and delete files, and `steps` to catch up with them.
+   */
+  async function caughtUp(id: string, steps: string[][]) {
+    const { path, land, ws } = await remoteRoom({ 'a.ts': 'a\n', 'm.ts': 'm\n', 'gone.ts': 'g\n' })
+    const w = ws(id)
+    await snapshot(w, { chatId: 'c', title: 'Go', start: true })
+    await writeFile(join(path, 'own.ts'), 'own\n')
+    const target = await snapshot(w, { chatId: 'c', title: 'Own' })
+    await writeFile(join(path, 'a.ts'), 'a\nlater\n')
+    await git(path, 'add', '-A')
+    await git(path, 'commit', '-q', '-m', 'Own and later')
+    await land({ 'm.ts': 'm2\n', 'gone.ts': null })
+    await land({ 'n.ts': 'n\n' })
+    for (const step of steps) await git(path, ...step)
+    return { path, w, target }
+  }
+
+  it.each([
+    // The rebased copy of the agent's commit is the only one.
+    ['rebase', [['fetch', '-q', 'origin'], ['rebase', '-q', 'origin/main']], 1],
+    // The agent's commit and the merge commit; main's two stay out.
+    ['merge', [['fetch', '-q', 'origin'], ['merge', '-q', '--no-edit', 'origin/main']], 2]
+  ])('undoes only the agent\'s later edits after a %s of main, and counts only its commits', async (how, steps, commits) => {
+    const { path, w, target } = await caughtUp(`ws-797-${how}`, steps as string[][])
+
+    const preview = await previewRevert(w, target.id)
+    expect(preview).toMatchObject({ files: [{ path: 'a.ts', status: 'M', added: 0, removed: 1 }], commitsAhead: commits, pushed: false, conflicts: [] })
+    await git(path, 'push', '-q', 'origin', 'HEAD:kernel/x')
+    expect(await previewRevert(w, target.id)).toMatchObject({ commitsAhead: commits, pushed: true })
+
+    const r = await revertTo(w, target.id)
+    expect([...r.restored, ...r.removed]).toEqual(['a.ts'])
+    expect(await read(path, 'a.ts')).toBe('a\n')
+    expect(await read(path, 'own.ts')).toBe('own\n')
+    expect(await read(path, 'm.ts')).toBe('m2\n')
+    expect(await read(path, 'n.ts')).toBe('n\n')
+    expect(await exists(path, 'gone.ts')).toBe(false)
+  })
+
+  it('keeps the checkpoint\'s content of a file main changed too, and lists it in conflicts', async () => {
+    const { path, land, ws } = await remoteRoom({ 'a.ts': ten.join(''), 'm.ts': 'm\n' })
+    const w = ws('ws-797-both')
+    await snapshot(w, { chatId: 'c', title: 'Go', start: true })
+    const mine = [...ten.slice(0, 9), 'ten\n'].join('')
+    await writeFile(join(path, 'a.ts'), mine)
+    const target = await snapshot(w, { chatId: 'c', title: 'Ten' })
+    await writeFile(join(path, 'a.ts'), mine + 'later\n')
+    await git(path, 'commit', '-q', '-am', 'Ten and later')
+    await land({ 'a.ts': ['one\n', ...ten.slice(1)].join(''), 'm.ts': 'm2\n' })
+    await git(path, 'pull', '-q', '--rebase', 'origin', 'main')
+
+    expect(await previewRevert(w, target.id)).toMatchObject({ files: [{ path: 'a.ts', status: 'M', added: 1, removed: 2 }], conflicts: ['a.ts'] })
+    await revertTo(w, target.id)
+    expect(await read(path, 'a.ts')).toBe(mine)
+    expect(await read(path, 'm.ts')).toBe('m2\n')
+  })
+
+  it('writes the checkpoint whole when the base never moved, as before', async () => {
+    const { path, ws } = await remoteRoom({ 'a.ts': 'a\n', 'b.ts': 'b\n' })
+    const w = ws('ws-797-still')
+    await snapshot(w, { chatId: 'c', title: 'Go', start: true })
+    await writeFile(join(path, 'a.ts'), 'a\nmine\n')
+    await writeFile(join(path, 'own.ts'), 'own\n')
+    const target = await snapshot(w, { chatId: 'c', title: 'Mine' })
+    await git(path, 'add', '-A')
+    await git(path, 'commit', '-q', '-m', 'Mine')
+    await writeFile(join(path, 'a.ts'), 'later\n')
+    await rm(join(path, 'b.ts'))
+
+    expect(await previewRevert(w, target.id)).toMatchObject({ stat: { files: 2 }, commitsAhead: 1, conflicts: [] })
+    await revertTo(w, target.id)
+    expect(await worktreeTree(path)).toBe((await git(path, 'rev-parse', `${target.ref}^{tree}`)).trim())
   })
 })
 
