@@ -67,7 +67,7 @@ describe('a ready PR GitHub blocks (KERNEL-401)', () => {
   it('reads open, as the header does, not ready to merge', () => {
     const ws = (o: Partial<Workspace>) => ({ id: 'w', status: 'ready', prState: 'ready', ...o }) as Workspace
     const idle = { waiting: [], running: false }
-    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'prReady', tone: 'add', label: 'Ready to merge' })
     expect(workspaceGlyph(ws({ prBlocked: 'behind' }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
   })
 })
@@ -80,15 +80,15 @@ describe('a ready PR its review holds back (KERNEL-608)', () => {
 
   it('reads blockers found while any kind of review found them on the head commit, as the header and the PRs tab do', () => {
     const blocked = ws({ reviews: [verdict({ lens: 'code', verdict: 'approved', blockers: undefined }), verdict({})] })
-    expect(workspaceGlyph(blocked, idle)).toEqual({ icon: 'pr', tone: 'del', label: 'Blockers found' })
-    expect(workspaceGlyph({ ...blocked, prState: 'open' }, idle)).toEqual({ icon: 'pr', tone: 'del', label: 'Blockers found' })
+    expect(workspaceGlyph(blocked, idle)).toEqual({ icon: 'prChanges', tone: 'del', label: 'Blockers found' })
+    expect(workspaceGlyph({ ...blocked, prState: 'open' }, idle)).toEqual({ icon: 'prChanges', tone: 'del', label: 'Blockers found' })
     // GitHub's own block still reads open first, as the header has it.
     expect(workspaceGlyph({ ...blocked, prBlocked: 'review' }, idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
   })
 
   it('reads ready to merge once the blockers are on an earlier commit, or on another PR', () => {
-    expect(workspaceGlyph(ws({ reviews: [verdict({ sha: 'a' })] }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
-    expect(workspaceGlyph(ws({ reviews: [verdict({ prNumber: 6 })] }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({ reviews: [verdict({ sha: 'a' })] }), idle)).toEqual({ icon: 'prReady', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({ reviews: [verdict({ prNumber: 6 })] }), idle)).toEqual({ icon: 'prReady', tone: 'add', label: 'Ready to merge' })
   })
 
   it('reads open, not ready to merge, while the review rounds ran out with blockers left on the last round', () => {
@@ -109,7 +109,7 @@ describe('a PR action pending (KERNEL-520)', () => {
   it("spins in the action's word from the press, before the PR state moves, and reads the PR again when it ends", () => {
     expect(workspaceGlyph(ws({}), { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
     expect(workspaceGlyph(ws({ prState: 'draft' }), { ...idle, pending: 'ready' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Marking ready' })
-    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'prReady', tone: 'add', label: 'Ready to merge' })
   })
 
   it('waits behind what needs you and what is working, and never covers a merged PR', () => {
