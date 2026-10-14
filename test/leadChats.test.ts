@@ -890,6 +890,25 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect((await h['chats.create']({ workspaceId: first.workspaceId, threadId: icons.threadId })).threadId).toBe(first.threadId)
   })
 
+  it('lead.start with a mode runs the first turn in it, and without one leaves the mode to the room and app (KERNEL-776)', async () => {
+    const { k, room } = await setup()
+    const h = k.handlers()
+    // Bypass waits on Claude Code's policy, read in the background, which allows it here.
+    k.permissions.readPolicy = async () => ({})
+    // As the composer's picker does, a mode comes with plan off, since plan mode wins over the chat's own mode.
+    const bypass = await h['lead.start']({ roomId: room.id, prompt: 'Ship it', mode: 'bypassPermissions', plan: false })
+    // Set before the held first message goes, so the turn it starts reads it.
+    expect(k.sessions.queued(bypass.id)).toHaveLength(1)
+    expect(k.store.chat(bypass.id)?.mode).toBe('bypassPermissions')
+    await new Promise((r) => setTimeout(r, 10))
+    expect(k.sessions.runMode(bypass.id)).toMatchObject({ mode: 'bypassPermissions', picked: 'bypassPermissions', pickedIn: 'chat' })
+    const plain = await h['lead.start']({ roomId: room.id, prompt: 'Plan it', plan: false })
+    expect(k.store.chat(plain.id)?.mode).toBeUndefined()
+    expect(k.sessions.runMode(plain.id).pickedIn).not.toBe('chat')
+    await setUp(k, bypass.id)
+    await setUp(k, plain.id)
+  })
+
   it('keeps a fork of a Lead tab in its Lead chat, and leaves a workspace chat out of Lead chats', async () => {
     const { k, room, first } = await setup()
     const h = k.handlers()
