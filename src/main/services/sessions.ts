@@ -134,11 +134,11 @@ export interface SessionDeps {
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
   /**
-   * What a Codex chat runs (KERNEL-406): the executable, the active account's CODEX_HOME and, on an API key account, its key
-   * (KERNEL-523), the personality, and Kernel's own tools with their instructions, which Codex gets as dynamic tools. Without
+   * What a Codex chat runs (KERNEL-406): the executable, the CODEX_HOME of `account`, the one the chat runs on (KERNEL-843),
+   * and on an API key account its key (KERNEL-523), the personality, and Kernel's own tools with their instructions, which Codex gets as dynamic tools. Without
    * it a Codex chat can't start.
    */
-  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; apiKey?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
+  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat, account?: string) => { bin?: string; home?: string; apiKey?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
   /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** The room's `[mcp.aliases]`, which the agent file's tools line reads through (KERNEL-464). */
@@ -161,13 +161,18 @@ export interface SessionDeps {
    * `wants` is the mode the chat asks for, so a read only starts when it matters. Without it, Bypass is allowed and Auto isn't.
    */
   availability?: (chat: Chat, ws: Workspace, wants: RunMode) => ChatAvailability
-  /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
-  accountFor?: (provider: Provider) => string | undefined
   /**
-   * What a Claude chat's process adds to its environment for the active account: its folder as CLAUDE_CONFIG_DIR, readied
-   * first (KERNEL-567), a legacy token, or its API key (KERNEL-406, KERNEL-523).
+   * The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). With `chat`, the account that chat's
+   * next turn runs on, which can be the one holding its cache rather than the one in use (`Placement.accountFor`, KERNEL-843).
    */
-  claudeEnv?: () => Record<string, string>
+  accountFor?: (provider: Provider, chat?: Chat) => string | undefined
+  /**
+   * What a Claude process adds to its environment for `account`, undefined for the CLI's own login: an added login's folder as
+   * CLAUDE_CONFIG_DIR, readied first (KERNEL-567), a legacy token, or its API key (KERNEL-406, KERNEL-523, KERNEL-843).
+   */
+  claudeEnv?: (account: string | undefined) => Record<string, string>
+  /** A turn of the chat is about to start, on whichever account (KERNEL-843). */
+  startedOn?: (chat: Chat) => void
   /** The accounts `usage()` asks when its caller names none: every one the providers can read, live processes only (KERNEL-567). */
   usageReads?: () => UsageRead[]
   /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
@@ -451,13 +456,17 @@ export class Sessions {
 
   /**
    * The provider's account changed (KERNEL-406). A process runs on the account it started with, so an idle one ends now and
-   * a busy one when its turn ends. The next message resumes the conversation on the account that is active then. One a
-   * usage limit cut off ends now even with background tasks: on that account they can't do anything.
+   * a busy one when its turn ends. The next message resumes the conversation on the account its chat runs on then. One a
+   * usage limit cut off ends now even with background tasks: on that account they can't do anything. With `moved`, only the
+   * processes of chats whose account changed end, and with `account` only those on that account, undefined for the CLI's
+   * own login (KERNEL-843).
    */
-  restartProvider(provider: Provider) {
+  restartProvider(provider: Provider, o: { moved?: boolean; account?: string } = {}) {
     for (const [id, live] of [...this.live]) {
       const chat = this.d.store.chat(id)
       if (!chat || chatProvider(chat) !== provider) continue
+      if (o.moved && live.account === this.d.accountFor?.(provider, chat)) continue
+      if ('account' in o && live.account !== o.account) continue
       if (live.running || (live.tasks.size && this.cutOff.get(id) !== 'limit')) this.stale.add(id)
       else this.end(id, live)
     }
@@ -606,7 +615,7 @@ export class Sessions {
   private async readCommands(cwd: string): Promise<BuiltinCommand[]> {
     const live = [...this.live.values()].find((l) => !l.runner.closed && l.runner instanceof ClaudeRunner)
     if (live) return (live.runner as ClaudeRunner).commandList()
-    return claudeCommands(cwd, { env: this.d.claudeEnv?.() ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
+    return claudeCommands(cwd, { env: this.d.claudeEnv?.(this.d.accountFor?.('claude')) ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
   }
 
   /**
@@ -617,7 +626,7 @@ export class Sessions {
     const account = this.d.accountFor?.('claude')
     const live = [...this.live.values()].find((l) => !l.runner.closed && l.runner instanceof ClaudeRunner && l.account === account)
     if (live) return (live.runner as ClaudeRunner).models()
-    return claudeModels(cwd, { env: this.d.claudeEnv?.() ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
+    return claudeModels(cwd, { env: this.d.claudeEnv?.(account) ?? {}, bin: claudeExecutable(this.d.settings().providers?.claude) })
   }
 
   /**
@@ -888,9 +897,9 @@ export class Sessions {
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
     // An idle process kept on another account, for its background tasks, ends here. The turn resumes the conversation on
-    // the account in use, the one `carryOn` checked for a limit, and the note says so.
+    // the account the chat runs on now, the one `carryOn` checked for a limit, and the note says so.
     const kept = this.live.get(chat.id)
-    if (kept && !kept.running && kept.account !== this.d.accountFor?.(chatProvider(chat))) this.end(chat.id, kept)
+    if (kept && !kept.running && kept.account !== this.d.accountFor?.(chatProvider(chat), chat)) this.end(chat.id, kept)
     chat = this.noteAccount(chat)
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
@@ -924,14 +933,15 @@ export class Sessions {
 
   /**
    * The turn about to start runs on another account than the chat's last one, as after a switch (KERNEL-568). The turn runs
-   * in the chat's live process when it has one, else on the account its provider runs on now. Once the turn ends, a note says
+   * in the chat's live process when it has one, else on the account `accountFor` gives the chat (KERNEL-843). Once the turn ends, a note says
    * where it moved and what that read (`moveNote`, KERNEL-842). A move before that turn ended still counts from the account
    * the chat left. A chat's first turn says nothing.
    */
   private noteAccount(chat: Chat): Chat {
     const live = this.live.get(chat.id)
     const provider = chatProvider(chat)
-    const on = (live ? live.account : this.d.accountFor?.(provider)) ?? 'cli'
+    const on = (live ? live.account : this.d.accountFor?.(provider, chat)) ?? 'cli'
+    this.d.startedOn?.(chat)
     if (chat.ranOn === on) return chat
     if (chat.ranOn && !this.moves.has(chat.id)) this.moves.set(chat.id, chat.ranOn)
     const next = { ...chat, ranOn: on }
@@ -1066,17 +1076,17 @@ export class Sessions {
 
   /**
    * A known usage limit stops this chat: one on the whole account, or on the chat's model. Only the windows of its provider,
-   * on the account that provider runs on now, count (KERNEL-406), or on `live`'s account when given.
+   * on the account the chat runs on now, count (KERNEL-406, KERNEL-843), or on `live`'s account when given.
    */
   private limitHolds(chat: Chat, live?: Pick<Live, 'account'>) {
     const limits = this.limitsFor(chat, live)
     return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
   }
 
-  /** The usage windows that count for a chat: its own provider's, on the account in use (KERNEL-406), or on `live`'s account. */
+  /** The usage windows that count for a chat: its own provider's, on the account it runs on (KERNEL-406, KERNEL-843), or on `live`'s account. */
   private limitsFor(chat: Chat, live?: Pick<Live, 'account'>) {
     const provider = chatProvider(chat)
-    const account = live ? live.account : this.d.accountFor?.(provider)
+    const account = live ? live.account : this.d.accountFor?.(provider, chat)
     return [...this.limits.values()].filter((l) => limitProvider(l) === provider && l.accountId === account)
   }
 
@@ -1408,20 +1418,20 @@ export class Sessions {
   private start(chat: Chat, ws: Workspace): Live {
     const agent = this.d.agentFor(ws, chat)
     const root = this.d.store.room(ws.roomId)?.path
-    const account = this.d.accountFor?.(chatProvider(chat))
+    const account = this.d.accountFor?.(chatProvider(chat), chat)
     const { mode, bypass } = this.modes(chat, ws)
     const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
     if (chatProvider(chat) === 'codex') {
-      const c = this.d.codexFor?.(ws, agent, chat)
+      const c = this.d.codexFor?.(ws, agent, chat, account)
       live.threadBypass = mode === 'bypassPermissions'
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), bypass: live.threadBypass })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.(account) ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()

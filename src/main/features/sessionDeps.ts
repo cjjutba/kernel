@@ -26,7 +26,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
     },
     roleFor: (ws, agent) => k.team.roleFor(ws, agent),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
-    codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), apiKey: k.providers.apiKey('codex'), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
+    // The chat's account's home and key, which can be another than the one in use (KERNEL-843). Codex's own login is ~/.codex.
+    codexFor: (ws, agent, chat, account) => ({ bin: k.providers.binary('codex').path, home: account ? k.providers.codexHome(account) : undefined, apiKey: account ? k.providers.apiKey('codex', account) : undefined, personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
     accessFor: (ws) => { const room = k.store.room(ws.roomId); return room ? agentAccessInRoom(room.path, ws.agentId) : undefined },
@@ -97,8 +98,10 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
       k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
     },
-    accountFor: (provider) => k.providers.active(provider),
-    claudeEnv: () => k.providers.claudeEnv(),
+    accountFor: (provider, chat) => k.placement.accountFor(provider, chat),
+    // `cli` is the CLI's own login, as CLI_ACCOUNT in features/providers.ts.
+    claudeEnv: (account) => k.providers.claudeEnv(account ?? 'cli'),
+    startedOn: (chat) => k.placement.startedOn(chat.id),
     usageReads: () => k.providers.usageReads(),
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),

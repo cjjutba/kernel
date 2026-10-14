@@ -220,8 +220,8 @@ describe('Claude API key accounts (KERNEL-523)', () => {
     expect(k.providers.claudeEnv()).toEqual({})
     await h['accounts.switch']({ provider: 'claude', accountId: added.id })
     expect(k.providers.claudeEnv()).toEqual({ ANTHROPIC_API_KEY: CLAUDE_KEY })
-    const deps = (k.sessions as unknown as { d: { claudeEnv: () => Record<string, string>; authOf: (p: string, id?: string) => string } }).d
-    expect(deps.claudeEnv()).toEqual({ ANTHROPIC_API_KEY: CLAUDE_KEY })
+    const deps = (k.sessions as unknown as { d: { claudeEnv: (account?: string) => Record<string, string>; accountFor: (p: 'claude') => string | undefined; authOf: (p: string, id?: string) => string } }).d
+    expect(deps.claudeEnv(deps.accountFor('claude'))).toEqual({ ANTHROPIC_API_KEY: CLAUDE_KEY })
     expect([deps.authOf('claude', added.id), deps.authOf('claude', undefined)]).toEqual(['apiKey', 'subscription'])
     expect(await k.providers.status('claude')).toMatchObject({ signedIn: true, loginMethod: 'API key' })
     await k.stop()
@@ -339,6 +339,40 @@ describe('Codex API key accounts (KERNEL-523)', () => {
     expect(existsSync(acctHome)).toBe(false)
     expect(JSON.parse(await readFile(join(dataDir, 'api-keys.json'), 'utf8'))).toEqual({})
     await k.stop()
+  })
+})
+
+describe('Codex chats keep the account that holds their cache (KERNEL-843)', () => {
+  it('keeps an idle chat in its home after a Keep switch, starts a new chat in the new one, and Move all resumes the thread in another home', async () => {
+    const { k, h } = await kernel()
+    const { repo } = await chats(k)
+    k.store.saveChat({ ...k.store.chat('codex')!, id: 'codex2', createdAt: 2 })
+    const cwd = await realpath(repo)
+    const started = async () => (await fake.messages()).filter((m) => 'started' in m && m.cwd === cwd).map((m) => m.started)
+    const turn = async (id: string) => {
+      await k.sessions.send(id, [{ type: 'text', text: 'hi' }])
+      await until(() => k.store.chat(id)?.sessionId && !k.sessions.isRunning(id))
+    }
+    await turn('codex')
+    const key = await h['accounts.addKey']({ provider: 'codex', label: 'Billing', key: OPENAI_KEY })
+    const keyHome = k.providers.codexHome(key.id)
+    await h['accounts.switch']({ provider: 'codex', accountId: key.id })
+    // The chat that ran on Codex's own login takes its next turn in the process it has, and a new chat starts on Billing.
+    await turn('codex')
+    await turn('codex2')
+    expect(await started()).toEqual([null, keyHome])
+    expect([k.store.chat('codex')?.ranOn, k.store.chat('codex2')?.ranOn]).toEqual(['cli', key.id])
+    expect((await h['accounts.list'](undefined)).filter((a) => a.provider === 'codex').map((a) => [a.label, a.chats])).toEqual([['cj@example.com', 1], ['Billing', 1]])
+    // Move all back: only the chat on Billing has a process to end, and its thread resumes in ~/.codex.
+    await h['accounts.switch']({ provider: 'codex', accountId: 'cli', move: 'all' })
+    await turn('codex')
+    expect(await started()).toEqual([null, keyHome])
+    await turn('codex2')
+    expect(await started()).toEqual([null, keyHome, null])
+    const resumed = (await fake.messages()).filter((m) => m.method === 'thread/resume').map((m) => m.params.threadId)
+    expect(resumed).toEqual([k.store.chat('codex2')?.sessionId])
+    expect(k.store.chat('codex2')?.ranOn).toBe('cli')
+    await k.stop({ budgetMs: 0 })
   })
 })
 

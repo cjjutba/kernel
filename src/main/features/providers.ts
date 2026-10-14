@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpAccountServer, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpAccountServer, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchMove, type SwitchReason } from '@shared/types'
 import { limitProvider } from '@shared/providers'
 import { switchChoices } from '@shared/usage'
 import { joinLabels } from '@shared/waits'
@@ -283,6 +283,25 @@ export class Providers extends Feature {
   /** The account a provider runs on now. Undefined is the CLI's own login. */
   active(provider: Provider): string | undefined { return this.load()[provider].active }
 
+  /** The account is in Kernel: the CLI's own login (`cli`) always is, an added one until it is removed (KERNEL-843). */
+  has(provider: Provider, accountId: string): boolean { return accountId === CLI_ACCOUNT || !!this.stored(provider, accountId) }
+
+  /**
+   * Whether the account is signed in, as Kernel last read it, with no read now (KERNEL-843). The CLI's own login until a read
+   * found it signed out, an added login likewise, and a token or key account while it has one no session refused.
+   */
+  signedInNow(provider: Provider, accountId: string): boolean {
+    if (accountId === CLI_ACCOUNT) return this.load()[provider].cli?.signedIn !== false
+    const a = this.stored(provider, accountId)
+    return !!a && this.storedSignedIn(provider, a)
+  }
+
+  private storedSignedIn(provider: Provider, a: StoredAccount): boolean {
+    if (a.auth === 'apiKey') return this.keySignedIn(a.id)
+    if (provider === 'codex') return a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
+    return a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id)
+  }
+
   /** The providers a room's agents run on, by their picks. A room Kernel hasn't read yet counts every role's. */
   usedIn(roomId: string): Provider[] {
     const agents = this.k.team.agentsSync(roomId)
@@ -544,8 +563,11 @@ export class Providers extends Feature {
       const saved = file[provider].cli
       const cliActive = !file[provider].active
       const twin = cli.signedIn ? this.twinOfCli(provider, { email: cli.email, orgId: saved?.orgId }) : undefined
+      // The CLI's own login's chats count on its twin's row (KERNEL-843).
+      const counts = this.k.placement.chatsPerAccount(provider)
+      const chats = (id: string) => (counts.get(id) ?? 0) + (twin?.id === id ? counts.get(CLI_ACCOUNT) ?? 0 : 0)
       const extras = (id: string) => {
-        const e = this.extras(provider, id)
+        const e = { ...this.extras(provider, id), ...(chats(id) ? { chats: chats(id) } : {}) }
         if (!twin || !e.sameOrg) return e
         const { sameOrg, ...rest } = e
         const peers = [...new Set(sameOrg.map((x) => (x === CLI_ACCOUNT ? twin.id : x)))].filter((x) => x !== id)
@@ -556,9 +578,7 @@ export class Providers extends Feature {
         const key = a.auth === 'apiKey'
         const legacy = provider === 'claude' && !key && !a.home
         const also = a === twin
-        const signedIn = (also && cliActive) || (key ? this.keySignedIn(a.id) : legacy ? this.tokenSignedIn(a.id)
-          : provider === 'claude' ? a.signedIn !== false && !this.moved(a)
-            : a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json')))
+        const signedIn = (also && cliActive) || this.storedSignedIn(provider, a)
         out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, ...(also ? { alsoCli: true as const } : {}), auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id || (also && cliActive), signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}), ...extras(a.id) })
       }
     }
@@ -787,11 +807,10 @@ export class Providers extends Feature {
       await this.save()
     }
     const active = this.active(provider) === id
-    if (active) {
-      // Idle processes on the old key end, and the next sign-in check lifts the hold its refusal put on.
-      this.sessions.restartProvider(provider)
-      if (provider === 'claude') await this.k.account.accountChanged()
-    }
+    // Idle processes on the old key end, chats kept on the account included (KERNEL-843), and the next sign-in check lifts
+    // the hold its refusal put on.
+    if (old) this.sessions.restartProvider(provider, { account: id })
+    if (active && provider === 'claude') await this.k.account.accountChanged()
     void this.pushAccounts()
     return { id, provider, label, cli: false, auth: 'apiKey', active, signedIn: true }
   }
@@ -865,14 +884,16 @@ export class Providers extends Feature {
   }
 
   /**
-   * Use: the provider runs on this account from its next turn. A running turn finishes on the account it started on, and
-   * idle processes end now (`restartProvider`). A limit on the account switched to holds its chats; one on the old account
+   * Use: the provider runs on this account from its next turn. With `accounts.keepChatsOnAccount` on, `move` says which
+   * chats: `keep`, the default, sends only new chats here and each chat stays on the account that holds its cache while that
+   * account can take it (`Placement.accountFor`), and `all` sends every chat (KERNEL-843). A running turn finishes on the
+   * account it started on, and idle processes of chats whose account changed end now (`restartProvider`). A limit on the account switched to holds its chats; one on the old account
    * no longer does. `reason` says who switched (KERNEL-568), and a switch to another account pushes `accountSwitched` (KERNEL-694). From the limit banner or by Kernel at a limit, the account it
    * left had hit a window: the chats' next turns say so, and its reset sends a notification. `from` is the account it
    * left, the one in use by default. Agents that start on a model the account doesn't offer are named in the Inbox and on
    * its row (`warnMissing`, KERNEL-616).
    */
-  async switchTo(provider: Provider, accountId: string, o: { reason?: SwitchReason; from?: string } = {}): Promise<AccountProfile[]> {
+  async switchTo(provider: Provider, accountId: string, o: { reason?: SwitchReason; from?: string; move?: SwitchMove } = {}): Promise<AccountProfile[]> {
     const file = this.load()
     const next = accountId === CLI_ACCOUNT ? undefined : file[provider].accounts.find((a) => a.id === accountId)?.id
     if (accountId !== CLI_ACCOUNT && !next) throw new Error('That account is no longer in Kernel.')
@@ -883,13 +904,15 @@ export class Providers extends Feature {
     if (provider === 'codex' && next) await this.linkCodexHome(this.codexHome(next)!)
     file[provider].active = next
     await this.save()
+    const keep = this.k.placement.keeps()
+    if (keep && o.move === 'all') this.k.placement.placeAll(provider, to)
     if (to !== from) this.switches.set(provider, { to, from, ...(hit ? { limit: hit.type } : {}) })
     this.k.account.switched(provider, next, hit)
     // Chats held for the old account's Keychain prompt run on the new one (KERNEL-618).
     if (provider === 'claude') this.k.account.keychainDone()
     if (provider === 'codex') this.codexModels = undefined
     this.k.team.forgetOffers(provider)
-    this.sessions.restartProvider(provider)
+    this.sessions.restartProvider(provider, keep ? { moved: true } : {})
     this.k.account.applyLimits(this.store.meta<RateLimit[]>('limits') ?? [])
     // The account menu shows the new account, and the plan defaults follow its plan (KERNEL-225).
     if (provider === 'claude') await this.k.account.accountChanged()
@@ -959,11 +982,9 @@ export class Providers extends Feature {
    */
   private spares(provider: Provider, limits: RateLimit[], now: number): string[] {
     const file = this.load()[provider]
-    const signedIn = (a: StoredAccount) => (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-      : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
     const active = file.active ?? CLI_ACCOUNT
     const inUse = file.active ? this.stored(provider, file.active) : file.cli
-    const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: signedIn(a), login: a }))]
+    const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: this.storedSignedIn(provider, a), login: a }))]
       .filter((a) => a.id === active || !sameLogin(inUse, a.login))
       .map(({ login: _, ...a }) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
     return switchChoices(provider, accounts, limits, now).room.map((a) => a.id)
@@ -1019,6 +1040,8 @@ export class Providers extends Feature {
     if (file[provider].active === accountId) await this.switchTo(provider, CLI_ACCOUNT)
     file[provider].accounts = file[provider].accounts.filter((x) => x.id !== accountId)
     await this.save()
+    // Chats it held move to the account in use, and their idle processes end before its folder goes (KERNEL-843).
+    this.sessions.restartProvider(provider, { account: accountId })
     await Promise.allSettled([...(this.reading.get(accountId) ?? [])])
     if (key) await this.saveKey(accountId, undefined)
     else if (provider === 'claude') await this.saveToken(accountId, undefined)
@@ -1116,11 +1139,9 @@ export class Providers extends Feature {
     const bin = this.binary('claude').path
     if (bin && old && old !== home) void logoutClaude(bin, old).catch(() => undefined)
     this.step({ provider: 'claude', step: 'done' })
-    if (this.active('claude') === id) {
-      // Idle processes on the old token end, so the next turn runs on the login.
-      this.sessions.restartProvider('claude')
-      await this.k.account.accountChanged()
-    }
+    // Idle processes on the old token end, so the next turn runs on the login, chats kept on the account included (KERNEL-843).
+    this.sessions.restartProvider('claude', { account: id })
+    if (this.active('claude') === id) await this.k.account.accountChanged()
   }
 
   /**
@@ -1494,7 +1515,7 @@ export class Providers extends Feature {
       'accounts.addKey': async (req) => this.addKey(req.provider, req),
       'accounts.code': async ({ provider, code }) => { this.sendCode(provider, code); return { ok: true as const } },
       'accounts.cancelAdd': async ({ provider }) => { this.cancelAdd(provider); return { ok: true as const } },
-      'accounts.switch': async ({ provider, accountId, reason }) => this.switchTo(provider, accountId, { reason }),
+      'accounts.switch': async ({ provider, accountId, reason, move }) => this.switchTo(provider, accountId, { reason, move }),
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
       'accounts.remove': async ({ provider, accountId }) => this.remove(provider, accountId),
       'accounts.rename': async ({ provider, accountId, label }) => this.rename(provider, accountId, label),
