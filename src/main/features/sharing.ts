@@ -72,7 +72,7 @@ export class Sharing extends Feature {
     const ws = this.mustWs(file.workspaceId)
     const was = chatId ? this.store.chat(chatId) : undefined
     const open = was && !was.closed && was.kind !== 'terminal' && was.workspaceId === ws.id ? was : undefined
-    // A file a chat with Rowan shared goes back to that chat while it is open, else to the newest open chat (KERNEL-405).
+    // A file a Lead chat shared goes back to that chat while it is open, else to the newest open chat (KERNEL-405).
     if (this.isLeadWorkspace(ws)) return (ws.status !== 'archived' && (open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal'))) || this.k.lead.leadChat(ws.roomId)
     const agent = (await this.k.team.agents(ws.roomId)).find((a) => a.id === ws.agentId)
     const name = agent?.name ?? ws.agentId

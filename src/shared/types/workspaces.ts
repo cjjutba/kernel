@@ -43,7 +43,7 @@ export interface Workspace {
   mode: WorkspaceMode
   agentId: string
   /**
-   * One of the Lead's own workspaces (KERNEL-353). Since KERNEL-405 each chat with Rowan has one, with the chat in `threadId`.
+   * One of the Lead's own workspaces (KERNEL-353). Since KERNEL-405 each Lead chat has one, with the chat in `threadId`.
    * One with no `threadId` is the shared workspace every chat lived in before. Read it through `isLeadChatWorkspace`.
    */
   lead?: true
@@ -59,18 +59,18 @@ export interface Workspace {
   /** The user's words that approved the hand-off with plan mode off, quoted from their message by the Lead (KERNEL-678). */
   goAhead?: string
   /**
-   * The chat with Rowan this workspace belongs to: the one that handed it off, kept after that tab closes (KERNEL-337), or, on a
+   * The Lead chat this workspace belongs to: the one that handed it off, kept after that tab closes (KERNEL-337), or, on a
    * `lead` workspace, the chat it hosts (KERNEL-405).
    */
   threadId?: string
   /**
-   * What of a new chat with Rowan's worktree still takes its name from the chat's first title, once (KERNEL-424): `branch` until
+   * What of a new Lead chat's worktree still takes its name from the chat's first title, once (KERNEL-424): `branch` until
    * that title arrives and names the branch, then `folder` until the folder moves to match, which waits for the chat to be idle.
    * Unset once both are named, and on chats from before, which keep their branch and folder.
    */
   naming?: 'branch' | 'folder'
   /**
-   * A new chat with Rowan whose worktree Kernel hasn't made yet (KERNEL-542). `lead.start` answers once the records exist, with
+   * A new Lead chat whose worktree Kernel hasn't made yet (KERNEL-542). `lead.start` answers once the records exist, with
    * `branch` and `path` picked, and Kernel fetches and makes the worktree after. Nothing reads `path` meanwhile. The branch,
    * folder and `baseRef` can still change: a name someone took meanwhile gets a suffix, and the base is read again after the
    * fetch. `error` is why making it failed, git's reason as git says it: the workspace is `failed`, the first message still

@@ -121,7 +121,7 @@ export class Chats extends Feature {
       const last = this.titleChecked.get(chat.id) ?? 0
       if (turnEnded || Date.now() - last >= 3000) {
         this.titleChecked.set(chat.id, Date.now())
-        // A chat with Rowan whose folder moved keeps its transcript in the old folder's project, which only a search of every
+        // A Lead chat whose folder moved keeps its transcript in the old folder's project, which only a search of every
         // project finds (KERNEL-424).
         const info = await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined) ?? await this.k.sessionInfo(chat.sessionId).catch(() => undefined)
         const title = info?.customTitle?.trim().slice(0, 60)
@@ -215,7 +215,7 @@ export class Chats extends Feature {
 
   /**
    * The tab leaves the strip, its transcript stays. A big terminal's process ends. Closing the last open tab of a chat with
-   * Rowan archives the chat with its workspace, the way its row's Archive does, and the window asks first when that would stop
+   * The Lead archives the chat with its workspace, the way its row's Archive does, and the window asks first when that would stop
    * something (KERNEL-405). In a teammate's workspace the last open tab is replaced by a fresh chat. The shared Lead workspace
    * from before is left with none, since only the user starts a chat with the Lead (KERNEL-365).
    */
@@ -296,7 +296,7 @@ export class Chats extends Feature {
       }
       if (chat.sessionId && (!itemId || lastTurnId)) sessionId = await this.k.providers.forkCodex(chat.sessionId, ws.path, lastTurnId)
     } else if (chat.sessionId && (!itemId || upTo)) {
-      // A chat with Rowan whose folder moved keeps its transcript in the old folder's project, so the SDK finds it only when it
+      // A Lead chat whose folder moved keeps its transcript in the old folder's project, so the SDK finds it only when it
       // searches every project (KERNEL-424).
       const o = { upToMessageId: upTo, title: `Fork of ${chat.title}` }
       sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, ...o }).catch((e) => (notFound(e) ? this.k.forkSession(chat.sessionId!, o) : Promise.reject(e)))).sessionId
@@ -312,7 +312,7 @@ export class Chats extends Feature {
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
-    // A chat with Rowan's folder isn't there until its worktree is made. The shell starts on the first keystroke or resize after (KERNEL-542).
+    // A Lead chat's folder isn't there until its worktree is made. The shell starts on the first keystroke or resize after (KERNEL-542).
     const wsId = id.startsWith('shell:') ? id.slice('shell:'.length) : this.store.chat(id)?.workspaceId
     if (wsId && this.store.workspace(wsId)?.worktreePending) return
     this.ptys.start(id, { ...this.ptyOptions(id), ...size })

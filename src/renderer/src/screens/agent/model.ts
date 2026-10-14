@@ -52,5 +52,6 @@ export function warningText(w: AgentWarning): string {
     case 'looks-like-subagent': return 'Written as a subagent with no pull request workflow, so it starts as a helper.'
     case 'model-unavailable': return 'Pins a model you’re not signed in for.'
     case 'model-unknown': return 'Pins a model Kernel doesn’t recognize.'
+    case 'kernel-name': return 'Its name is Kernel, the Lead\u2019s, so it shows as Kernel (agent).'
   }
 }
