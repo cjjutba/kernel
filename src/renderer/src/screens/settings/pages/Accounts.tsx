@@ -129,7 +129,7 @@ export function Accounts({ s }: { s: AppSettings }) {
   const row = (a: AccountProfile, third: string | undefined) => {
     const k = keyOf(a)
     const view = accountRow(a, usage, now)
-    const { cells } = rowCells(a, usage, now)
+    const { cells } = rowCells(a, usage, now, third)
     const { blocked, at } = blockedUntil(a, usage, now)
     const out = !a.signedIn
     const key = a.auth === 'apiKey'
@@ -145,7 +145,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       if (view.sub && a.plan) details.push({ k: 'Sign-in', v: view.sub })
       if (five?.reset) details.push({ k: '5-hour', v: `Resets ${five.reset}` })
       if (week?.reset) details.push({ k: 'Weekly', v: `Resets ${week.reset}` })
-      if (model && third) details.push({ k: third, v: `Its own weekly limit${model.reset ? `, resets ${model.reset}` : ''}` })
+      if (model && !model.absent && third) details.push({ k: third, v: `Its own weekly limit${model.reset ? `, resets ${model.reset}` : ''}` })
       if (view.asOf) details.push({ k: 'Usage', v: view.asOf })
       if (a.signedIn && !a.keychainWait && (!!needs(a) || !!signInAll.of(a.provider, a.id).run)) {
         details.push({
