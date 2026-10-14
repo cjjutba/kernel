@@ -846,6 +846,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     if (pinned.current) followNow()
   }
   const toEnd = () => {
+    cancelAnimationFrame(aiming.current)
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
     // Already at the end, no scroll runs and none lands, so nothing would end the glide.
     gliding.current = smooth && !!scroller.current && distFromEnd(flat(scroller.current)) > 0
@@ -861,7 +862,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     return () => window.removeEventListener(PLAN_APPROVE_EVENT, onApprove)
   }, [chat.id])
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
+  const jumping = useCallback((on: boolean) => { if (on) cancelAnimationFrame(aiming.current); gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
   const rowBoxes = (): RowBox[] => {
     const el = scroller.current
@@ -938,7 +939,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const step = () => {
       const el = scroller.current
       const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-      if (!el || !mark || anchored.current !== id || byHand.current) { release(); return }
+      if (!el || !mark || anchored.current !== id || byHand.current || pinned.current) { release(); return }
       padReply()
       const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       if (goal !== aimed) {
