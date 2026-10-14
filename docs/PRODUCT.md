@@ -40,7 +40,7 @@ Developers who already use Claude Code and want several agents working on one re
 
 ## v1 scope
 
-Everything on the canvas, including the light theme, code signing, notarization and auto-update. See `docs/SCREENS.md`.
+The light theme, code signing, notarization and auto-update, along with every screen in the app.
 
 The isometric floor and the Board were removed (KERNEL-606). Kernel has no screen for either.
 

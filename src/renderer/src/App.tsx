@@ -78,7 +78,7 @@ const SettingsNav = settingsNav.Screen
 /** Routes drawn full window, without the sidebar column, like Welcome.png and Setup*.png. Settings keeps the column and swaps its list (KERNEL-509). */
 const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'devUi'
 
-/** One branch per screen family. Each family's component lives in screens/<family>/, owned by its lane (docs/SCREENS.md). */
+/** One branch per screen family. Each family's component lives in screens/<family>/, owned by its lane. */
 function Screen({ route }: { route: Route }): ReactNode {
   switch (route.name) {
     case 'onboarding':

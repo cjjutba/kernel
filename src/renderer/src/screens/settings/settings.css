@@ -251,7 +251,7 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 /* Add a starter agent (KERNEL-642): the menu hangs from its button, at the right of the section heading. */
 .set-starters { position: relative; display: inline-flex; }
 
-/* The settings kit (KERNEL-680, design/settings-redesign): breadcrumb titles, section heads with a count and a scope badge, child rows on
+/* The settings kit (KERNEL-680): breadcrumb titles, section heads with a count and a scope badge, child rows on
    a guide line, rows whose actions show on hover, status lines, tables and tag lists. */
 .set-head h1 { display: flex; align-items: center; gap: 10px; line-height: 1.2; }
 .set-head h1 > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

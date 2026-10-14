@@ -10,8 +10,7 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 - `pnpm test` runs the full suite on Electron's Node (engine tests use real git repos in temp folders). CI runs it on every PR, so run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fails, see D-013
 - `pnpm typecheck` checks main, preload and renderer
 - `pnpm build` builds all three bundles
-- `pnpm shots <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
-- `pnpm shots:compare <Screen> [...]` writes `shots/compare/<Screen>.png`, the shot on the left and `design/screens/<Screen>.png` on the right
+- `pnpm shots <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture, `--no-build` reuses the last build
 - `KERNEL_FIXTURES=<Screen> pnpm dev` runs the app on one fixture (`fixtures/`), with no kernel, database or sessions
 - `KERNEL_HEADLESS=1` keeps the window hidden, with no Dock icon and no focus. Set it whenever a script launches the app (Playwright's `_electron`, `electron .`). Check your work with `pnpm shots`, not `pnpm dev` or computer use: a visible window steals keyboard focus from whatever CJ is typing in
 
@@ -21,8 +20,7 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 - `src/preload/` the `window.kernel` bridge
 - `src/shared/` contracts used by every process: `types/` (one file per area, all exported from `types/index.ts`, so `@shared/types` imports everything), `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
-- `design/screens/` one PNG per canvas screen (the target). `design/canvas/` the canvas markup with exact values
-- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-140), SCREENS (screen to issue map), ROADMAP. `docs/decisions/` holds newer decisions, one file each
+- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-140), ROADMAP. `docs/decisions/` holds newer decisions, one file each
 - `test/` vitest suites
 
 ## How to work an issue
@@ -30,13 +28,13 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do an issue, use `/issue KERNEL-N` or follow these steps:
 
 1. Fetch the issue with the Linear MCP and move it to In Progress. In a Kernel workspace, stay on the branch Kernel created. Otherwise name the branch `<type>/<key>-<a few words>`, with `fix` for the Bug label and `feat` otherwise, 60 characters at most (`fix/kernel-267-review-cant-start-reviewed-branch`).
-2. Open every PNG listed under Screens. Open the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value.
+2. Read the screenshots or mocks in the issue or brief. They are the spec for the task.
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
-4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds, next to its related screens and not at the end of the file.
-5. Verify: `pnpm test:changed`, `pnpm typecheck`, then `pnpm shots <Screen> ...` and `pnpm shots:compare <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice. The PR's Test check runs the full suite, so don't run `pnpm test` yourself unless you are reproducing a CI failure or changed the test setup.
+4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by screen name, for each screen the issue builds, next to its related screens and not at the end of the file.
+5. Verify: `pnpm test:changed`, `pnpm typecheck`, then `pnpm shots <Screen> ...` for each changed screen. Look at the shots, fix differences that a person would notice, and share the shot. The PR's Test check runs the full suite, so don't run `pnpm test` yourself unless you are reproducing a CI failure or changed the test setup.
 6. Write the release-note fragment (see Release notes below).
 7. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
-8. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review.
+8. Comment a short summary on the issue (what changed, screenshots shared, anything left over) and move it to In Review.
 
 ## Release notes
 
@@ -61,9 +59,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 
 ## Rules
 
-- The PNGs are the spec. Do not invent layouts, copy or colors. When the PNG and DESIGN.md disagree, the PNG wins and you note it in the PR.
-- `design/redesign/` (KERNEL-274) is the spec for the surfaces its README lists: the workspace panel, PR states, plan mode, Team update and the new chat state. There it replaces the `design/screens/` PNGs. Its "Not built" list is not spec.
-- `design/settings-redesign/` (KERNEL-680) is the spec for every Settings page and room page. There it replaces the `design/screens/Settings*.png` PNGs.
+- A screenshot or mock in the brief is the spec for that task. Without one, match the current app and `DESIGN.md`. Check your work with `pnpm shots` and share the shot.
 - Follow `DESIGN.md`: monochrome, no status dots, purple only for merged, hairlines instead of shadows, one modal shell, tokens only (no hex values in screen code).
 - Statuses come from real events only, never timers. Fixtures are for screenshots and tests.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.
@@ -74,7 +70,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - Don't add code to `src/main/kernel.ts`. A feature's state, logic and IPC channels go in its file under `src/main/features/`, a reaction to a finished turn in `features/sessionDeps.ts`, and a reaction to a push event in `listen` in `features/wiring.ts`. A feature imports `kernel.ts` and other features only as types and reaches them through its `k`, as `this.k.prs.mergePr(...)` (KERNEL-324). New code and new tests call the feature, not a Kernel method, and Kernel gets no new forwarding methods (KERNEL-331). `test/featureBoundaries.test.ts` fails when `kernel.ts` passes 450 lines.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
-- Lists that several PRs add to (`docs/SCREENS.md` rows, the screen lists in `build.py`, `noCanvas`, fixtures) keep one entry per line. No doc states a count that every PR would have to change, and tests derive counts from the files.
+- Lists that several PRs add to (fixtures) keep one entry per line. No doc states a count that every PR would have to change, and tests derive counts from the files.
 - Never run `git pull` in the main checkout, the folder where `main` is checked out (the first line of `git worktree list`). That goes for Rowan and every chat. CJ runs Kernel from that folder with `pnpm dev`. A pull reloads the window onto code the running app doesn't have, and the restart that fixes it interrupts every agent. Anything else that rewrites its files does the same, so don't run `git checkout`, `git switch`, `git merge` or `git reset` there either. To see what landed on main, run `git fetch origin` and read `origin/main`. To bring a branch up to date, rebase it onto `origin/main` in its own worktree. CJ pulls main when no agent is running.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 

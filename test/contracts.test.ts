@@ -1,5 +1,4 @@
 /// <reference path="../src/preload/index.d.ts" />
-import { readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -174,23 +173,6 @@ describe('IPC contract', () => {
     const after = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: null } } })
     expect(after.pr).toEqual({})
     expect(after.sources).toEqual({ 'workspace.remote': 'override' })
-  })
-})
-
-describe('docs/SCREENS.md', () => {
-  const rows = readFileSync('docs/SCREENS.md', 'utf8').split('\n')
-    .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
-    .filter((c) => c.length === 8 && c[0] !== 'Screen' && !c[0].startsWith('---'))
-
-  it('lists every PNG in design/screens and every settings board fixture once, each with a route and a component file', () => {
-    // KERNEL-680: a Settings fixture drawn on the settings canvas has its row with the board's PNG instead.
-    const boards = Object.keys(JSON.parse(readFileSync('design/settings-redesign/boards.json', 'utf8')))
-    const pngs = [...readdirSync('design/screens').filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)), ...boards]
-    expect(rows.map((r) => r[0]).sort()).toEqual(pngs.sort())
-    for (const [screen, , , , , , route, component] of rows) {
-      expect(route, screen).not.toBe('')
-      expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
-    }
   })
 })
 
