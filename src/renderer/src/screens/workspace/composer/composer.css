@@ -39,9 +39,9 @@
 
 .composer-inner { display: flex; flex-direction: column; gap: 10px; }
 .cmp-box { position: relative; }
-/* A chip sits in the line like a word (draft.tsx). It is 2px shorter than the 24px line and centered on it, so a line with a chip is as tall as plain text. The side margin is about a space. */
-.cmp-input .cmp-chip { margin: 0 4px; vertical-align: middle; white-space: nowrap; cursor: default; }
-.cmp-chip { gap: 6px; height: 22px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
+/* A chip sits in the line like a word (draft.tsx). It is 2px shorter than the 24px line and pinned to the top of it with a 1px margin, which centers it without "middle" adding sub-pixels to the line, so a line with a chip is as tall as plain text. The side margin is about a space. */
+.cmp-input .cmp-chip { height: 22px; margin: 1px 4px 0; vertical-align: top; white-space: nowrap; cursor: default; }
+.cmp-chip { gap: 6px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
 .chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
