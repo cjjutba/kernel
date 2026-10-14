@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { actions, apply, getState } from '../src/renderer/src/store'
 import type { ActivityEvent } from '../src/shared/types'
 
-const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'lumi', 'noor', 'rowan', 'theo']
+const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'noor', 'rowan', 'theo', 'wren']
 const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'rowan' ? 'lead: true\n' : ''}---\nYou are ${id}.`
 
 describe('rooms.lastActivity (KERNEL-104)', () => {
@@ -27,13 +27,13 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
       const t = Date.now() + 10_000
       const once: Record<string, number> = { theo: t + 50, noor: t + 40, rowan: t + 60, kai: t + 30, ivy: t + 20 }
       for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', roomId: room.id, agentId, text: 'did something', ts })
-      bus.activity({ kind: 'note', roomId: other.id, agentId: 'lumi', text: 'worked in another room', ts: t + 5000 })
+      bus.activity({ kind: 'note', roomId: other.id, agentId: 'wren', text: 'worked in another room', ts: t + 5000 })
       for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'eli', text: 'ran a tool', ts: t + 100 + i })
       bus.activity({ kind: 'room.paused', roomId: room.id, actor: 'you', text: 'paused', ts: t + 9000 })
 
       const last = await h['rooms.lastActivity']({ roomId: room.id })
       expect(last).toEqual({ ...once, eli: t + 349 })
-      expect(last.lumi).toBeUndefined()
+      expect(last.wren).toBeUndefined()
       expect(last['eli-opus']).toBeUndefined()
 
       const window = await h['activity.recent']({ roomId: room.id, limit: 200 })
@@ -58,8 +58,8 @@ describe('store lastActivity', () => {
   it('keeps a newer pushed time over an older loaded one, and leaves other rooms alone', () => {
     apply({ type: 'activity', event: ev('ivy', 900, 'r-race') })
     const before = getState().lastActivity
-    actions.activity.setLast('r-race', { ivy: 800, lumi: 700 })
-    expect(getState().lastActivity['r-race']).toEqual({ ivy: 900, lumi: 700 })
+    actions.activity.setLast('r-race', { ivy: 800, wren: 700 })
+    expect(getState().lastActivity['r-race']).toEqual({ ivy: 900, wren: 700 })
     expect(getState().lastActivity['r-last']).toBe(before['r-last'])
     apply({ type: 'activity', event: { ...ev('ivy', 1000), roomId: undefined } })
     expect(getState().lastActivity['r-race'].ivy).toBe(900)

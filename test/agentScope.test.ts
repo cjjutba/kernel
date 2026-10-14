@@ -62,14 +62,14 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const { k, h, repo, remote, home, room, opened } = await boot()
     const before = k.store.workspaces(room.id).length
 
-    const lumi = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Lumi' })
-    const mine = await h['agents.create']({ roomId: room.id, draft: lumi })
-    expect(mine).toMatchObject({ id: 'lumi', origin: 'personal', file: join(home, '.claude', 'agents', 'lumi.md') })
+    const wren = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Wren' })
+    const mine = await h['agents.create']({ roomId: room.id, draft: wren })
+    expect(mine).toMatchObject({ id: 'wren', origin: 'personal', file: join(home, '.claude', 'agents', 'wren.md') })
     expect(mine.pr).toBeUndefined()
-    expect(await readFile(join(home, '.claude', 'agents', 'lumi.md'), 'utf8')).toBe(lumi.text)
+    expect(await readFile(join(home, '.claude', 'agents', 'wren.md'), 'utf8')).toBe(wren.text)
     expect(k.store.workspaces(room.id)).toHaveLength(before)
     // A name the repo has is taken, so the user's own file would never be read in this room.
-    await expect(h['agents.create']({ roomId: room.id, draft: { ...lumi, id: 'kai', text: lumi.text.replace('name: lumi', 'name: kai') } })).rejects.toThrow(/already on the team/)
+    await expect(h['agents.create']({ roomId: room.id, draft: { ...wren, id: 'kai', text: wren.text.replace('name: wren', 'name: kai') } })).rejects.toThrow(/already on the team/)
     await clean(repo)
 
     const ivy = await h['agents.draft']({ roomId: room.id, description: 'QA. Runs the tests before review.', name: 'Ivy' })
@@ -83,7 +83,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     expect((await git(remote, 'diff', '--name-only', 'main', ws.branch)).trim()).toBe('.claude/agents/ivy.md')
     // Ivy joins once the PR merges. Until then she isn't on the team, and nothing of hers is in the checkout or ~/.claude/agents.
     expect(ids(await k.team.agents(room.id))).not.toContain('ivy')
-    expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['lumi.md'])
+    expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['wren.md'])
     await clean(repo)
   })
 
@@ -155,9 +155,9 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const { k, h, repo, remote, room } = await boot({ '.kernel/settings.toml': '[team]\nroster = ["kai"]\n', '.claude/agents/ivy.md': IVY })
     expect(ids(await k.team.agents(room.id))).not.toContain('ivy')
 
-    const lumi = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Lumi' })
-    await h['agents.create']({ roomId: room.id, draft: lumi })
-    expect(ids(await k.team.agents(room.id))).toContain('lumi')
+    const wren = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Wren' })
+    await h['agents.create']({ roomId: room.id, draft: wren })
+    expect(ids(await k.team.agents(room.id))).toContain('wren')
     await clean(repo)
 
     const nia = await h['agents.draft']({ roomId: room.id, description: 'Docs writer. Keeps the README current.', name: 'Nia' })
@@ -171,7 +171,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     await h['agents.setTeam']({ roomId: room.id, team: { roster: ['kai', 'ivy'] } })
     const team = ids(await k.team.agents(room.id))
     expect(team).toContain('ivy')
-    expect(team).not.toContain('lumi')
+    expect(team).not.toContain('wren')
   })
 
   it('restores a file the team retired: to ~/.claude/agents for me, or in a pull request for the team', async () => {
@@ -252,12 +252,12 @@ describe('who an agent change is for (KERNEL-466)', () => {
     })
 
     // Rowan proposes no one: the card starts on Just for me.
-    let asked = call({ id: 'lumi', description: 'Designer. Checks screens.', prompt: 'You are Lumi.' })
+    let asked = call({ id: 'wren', description: 'Designer. Checks screens.', prompt: 'You are Wren.' })
     let pending = await card()
-    expect(pending.agentFile).toMatchObject({ path: '~/.claude/agents/lumi.md', scope: 'me' })
+    expect(pending.agentFile).toMatchObject({ path: '~/.claude/agents/wren.md', scope: 'me' })
     k.approvals.decide(pending.id, { behavior: 'allow' })
     const saved = await asked
-    expect(saved.startsWith(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}, just for the user on this Mac. Lumi joins the team`)).toBe(true)
+    expect(saved.startsWith(`Saved ${join(home, '.claude', 'agents', 'wren.md')}, just for the user on this Mac. Wren joins the team`)).toBe(true)
 
     // Rowan proposes the team, and the user keeps it for themselves.
     asked = call({ id: 'nia', description: 'Docs writer.', prompt: 'You are Nia.', scope: 'team' })
@@ -272,7 +272,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const text = await asked
     expect(text).toMatch(/^Opened PR #7 \(https:\/\/github\.com\/o\/r\/pull\/7\) that adds \.claude\/agents\/ivy\.md, from workspace \S+\. ivy joins the team once it merges\.$/)
     expect(opened.map((o) => o.title)).toEqual(['Add Ivy to the team'])
-    expect((await readdir(join(home, '.claude', 'agents'))).sort()).toEqual(['lumi.md', 'nia.md'])
+    expect((await readdir(join(home, '.claude', 'agents'))).sort()).toEqual(['nia.md', 'wren.md'])
     await clean(repo)
   })
 })

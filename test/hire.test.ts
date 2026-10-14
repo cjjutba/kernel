@@ -51,17 +51,17 @@ describe('create_agent', () => {
   it("gives a hire with no tools line its role's tools, so a Designer can open PRs, and says it takes tasks", async () => {
     const reach: AgentReach = { reach: ['figma'], blocked: [{ name: 'claude.ai Linear', why: 'needs-auth' }] }
     const h = hireTool({ answer: { behavior: 'allow' }, reach, team: (a) => [agent(a.id, { role: 'Designer', tools: a.tools, member: true })] })
-    const r = await h.run({ id: 'lumi', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Lumi.', role: 'Designer' })
+    const r = await h.run({ id: 'wren', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Wren.', role: 'Designer' })
     expect(h.card()!.text).toContain(PR_TOOLS)
     // The card shows what the file would reach, so the user sees it before approving (WorkspaceHireServers.png).
     expect(h.card()!.servers).toEqual(reach)
     expect(h.saved[0].tools).toEqual(['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'])
     expect(r).toEqual({
       isError: false,
-      text: 'Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins the team and takes tasks. MCP servers Lumi can reach: figma. Lumi can\'t use a server its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. Don\'t hand Lumi work that needs it until the user fixes that.'
+      text: 'Saved /repo/.claude/agents/wren.md, just for the user on this Mac. Wren joins the team and takes tasks. MCP servers Wren can reach: figma. Wren can\'t use a server its file names. claude.ai Linear needs the user to sign in with /mcp in Claude Code. Don\'t hand Wren work that needs it until the user fixes that.'
     })
     // Once for the card, and again after the save, waiting for the room's first check.
-    expect(h.reach.mock.calls.map((c) => [c[0].id, c[1]])).toEqual([['lumi', undefined], ['lumi', { wait: true }]])
+    expect(h.reach.mock.calls.map((c) => [c[0].id, c[1]])).toEqual([['wren', undefined], ['wren', { wait: true }]])
   })
 
   it('reads the role, else the id and description, for the defaults, and treats an empty tools list as none', async () => {
@@ -75,9 +75,9 @@ describe('create_agent', () => {
 
   it("keeps a tools line the Lead wrote, and says a hire that can't open a PR is a helper and how to change that", async () => {
     const h = hireTool({ answer: { behavior: 'allow' }, reach: { reach: [], blocked: [] }, team: (a) => [agent(a.id, { tools: a.tools, member: false })] })
-    const r = await h.run({ id: 'lumi', description: 'Designer.', prompt: 'x', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'] })
+    const r = await h.run({ id: 'wren', description: 'Designer.', prompt: 'x', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'] })
     expect(h.saved[0].tools).toEqual(['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'])
-    expect(r.text).toBe("Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on Lumi's profile in Team. Lumi can reach no MCP servers besides Kernel's own.")
+    expect(r.text).toBe("Saved /repo/.claude/agents/wren.md, just for the user on this Mac. Wren joins as a helper and doesn't take tasks. To open a PR, its tools need Bash, and Edit or Write. The user can add them on Wren's profile in Team. Wren can reach no MCP servers besides Kernel's own.")
   })
 
   it('says when the hire reviews, or is a helper the room made one, and names every server it lacks', async () => {
@@ -92,7 +92,7 @@ describe('create_agent', () => {
 
   it('saves nothing when the user says no', async () => {
     const h = hireTool({ answer: { behavior: 'deny' }, reach: { reach: [], blocked: [] } })
-    expect((await h.run({ id: 'lumi', description: 'Designer.', prompt: 'x' })).text).toBe('The user did not approve this agent.')
+    expect((await h.run({ id: 'wren', description: 'Designer.', prompt: 'x' })).text).toBe('The user did not approve this agent.')
     expect(h.saved).toEqual([])
   })
 
@@ -100,10 +100,10 @@ describe('create_agent', () => {
   it('shows the card and saves the agent when a Codex Lead calls it by its old name, hire_agent', async () => {
     const h = hireTool({ answer: { behavior: 'allow' }, team: (a) => [agent(a.id, { tools: a.tools, member: true })] })
     expect(h.tools.map((t) => t.name)).not.toContain('hire_agent')
-    const r = await callTool(h.tools, 'kernel_hire_agent', { id: 'lumi', description: 'Designer.', prompt: 'You are Lumi.' })
-    expect(h.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'agent', title: 'Add lumi to the team' }), undefined)
-    expect(h.saved.map((a) => a.id)).toEqual(['lumi'])
-    expect(r).toEqual({ success: true, contentItems: [{ type: 'inputText', text: 'Saved /repo/.claude/agents/lumi.md, just for the user on this Mac. Lumi joins the team and takes tasks.' }] })
+    const r = await callTool(h.tools, 'kernel_hire_agent', { id: 'wren', description: 'Designer.', prompt: 'You are Wren.' })
+    expect(h.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'agent', title: 'Add wren to the team' }), undefined)
+    expect(h.saved.map((a) => a.id)).toEqual(['wren'])
+    expect(r).toEqual({ success: true, contentItems: [{ type: 'inputText', text: 'Saved /repo/.claude/agents/wren.md, just for the user on this Mac. Wren joins the team and takes tasks.' }] })
     expect(await callTool(h.tools, 'kernel_fire_agent', {})).toEqual({ success: false, contentItems: [{ type: 'inputText', text: 'Kernel has no tool called kernel_fire_agent.' }] })
   })
 })
@@ -169,11 +169,11 @@ describe('creating an agent in a real room', () => {
     expect(k.store.workspaces()).toHaveLength(before)
 
     // Just for the user by default, so the file goes to ~/.claude/agents (KERNEL-466).
-    expect(await run({ id: 'lumi', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Lumi. Open a PR with your fixes.' }))
-      .toBe(`Saved ${join(home, '.claude', 'agents', 'lumi.md')}, just for the user on this Mac. Lumi joins the team and takes tasks. Lumi can reach no MCP servers besides Kernel's own.`)
-    expect(await readFile(join(home, '.claude', 'agents', 'lumi.md'), 'utf8')).toContain(PR_TOOLS)
-    expect((await k.team.agents(room.id)).find((a) => a.id === 'lumi')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
-    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nlumi: Lumi, Designer. Designer. Checks every screen against DESIGN.md.')
+    expect(await run({ id: 'wren', description: 'Designer. Checks every screen against DESIGN.md.', prompt: 'You are Wren. Open a PR with your fixes.' }))
+      .toBe(`Saved ${join(home, '.claude', 'agents', 'wren.md')}, just for the user on this Mac. Wren joins the team and takes tasks. Wren can reach no MCP servers besides Kernel's own.`)
+    expect(await readFile(join(home, '.claude', 'agents', 'wren.md'), 'utf8')).toContain(PR_TOOLS)
+    expect((await k.team.agents(room.id)).find((a) => a.id === 'wren')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
+    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nwren: Wren, Designer. Designer. Checks every screen against DESIGN.md.')
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
     expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(

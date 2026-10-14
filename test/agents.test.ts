@@ -25,10 +25,10 @@ async function watchesLive(): Promise<() => Promise<void>> {
 
 describe('agents', () => {
   it('parses frontmatter including folded lines and lists', () => {
-    const { meta, body } = parseFrontmatter('---\nname: lumi\ndescription: Designer. Checks every screen\n  against DESIGN.md.\ntools: Read, Grep\n---\nYou are Lumi.')
+    const { meta, body } = parseFrontmatter('---\nname: wren\ndescription: Designer. Checks every screen\n  against DESIGN.md.\ntools: Read, Grep\n---\nYou are Wren.')
     expect(meta.description).toBe('Designer. Checks every screen against DESIGN.md.')
     expect(meta.tools).toBe('Read, Grep')
-    expect(body).toBe('You are Lumi.')
+    expect(body).toBe('You are Wren.')
   })
   it('derives display name, role and lead', () => {
     const a = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit\n---\nBody')
@@ -157,16 +157,16 @@ describe('agents', () => {
     await expect(updateAgent(repo, 'nobody', {})).rejects.toThrow(/not in/)
   })
   it('drafts a file from a description and creates it once', async () => {
-    const d = draftAgent({ description: 'a designer who checks every screen against DESIGN.md', name: 'Lumi', model: 'opus' })
-    expect(d).toMatchObject({ id: 'lumi', name: 'Lumi', model: 'opus', file: '.claude/agents/lumi.md' })
-    expect(d.text).toContain('name: lumi')
+    const d = draftAgent({ description: 'a designer who checks every screen against DESIGN.md', name: 'Wren', model: 'opus' })
+    expect(d).toMatchObject({ id: 'wren', name: 'Wren', model: 'opus', file: '.claude/agents/wren.md' })
+    expect(d.text).toContain('name: wren')
     expect(d.text).toContain('role: Designer')
     expect(draftAgent({ description: 'Reviews security in every diff' }).id).toBe('reviewer')
     expect(() => draftAgent({ description: '   ' })).toThrow(/Describe/)
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     const made = await createAgent(repo, d)
-    expect(made).toMatchObject({ id: 'lumi', role: 'Designer', model: 'opus' })
-    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['lumi'])
+    expect(made).toMatchObject({ id: 'wren', role: 'Designer', model: 'opus' })
+    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['wren'])
     await expect(createAgent(repo, d)).rejects.toThrow(/already on the team/)
     await expect(createAgent(repo, { ...d, text: '---\nname: Bad Name\ndescription: x\n---\nbody' })).rejects.toThrow(/lowercase/)
     await expect(createAgent(repo, { ...d, text: '---\nname: ok\n---\nbody' })).rejects.toThrow(/description/)

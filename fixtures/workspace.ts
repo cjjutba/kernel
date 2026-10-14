@@ -1388,22 +1388,22 @@ export const scriptTrust: ScriptTrust = {
   installScripts: [{ name: 'postinstall', command: 'node scripts/postinstall.js' }, { name: 'prepare', command: 'husky install' }]
 }
 
-/** Lumi's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
+/** Wren's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
 const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
 
-/** Rowan's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
+/** Rowan's chat with the hire card for wren.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
 const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) => scene((f) => ({
   ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
     userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
     { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
     tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
-    { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
+    { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Wren joins the team.' }
   ], {
-    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
-      '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
+    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add wren to the team', agentFile: { path: '.claude/agents/wren.md', ...(servers ? { servers } : {}), ...(scope ? { scope } : {}), text: [
+      '---', 'name: wren', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
     ].join('\n') } }), ...f.approvals]
   }, { plan: false, model: 'claude-opus-5-5' }),
-  changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
+  changes: { [ids.lead]: [{ path: '.claude/agents/wren.md', status: 'A', added: 28, removed: 0 }] }
 }))
 
 /**
@@ -1986,7 +1986,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceHire: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)']),
   // KERNEL-502: the hire card says where the agent goes. No scope on the approval means just the user, so WorkspaceHire shows that line.
   WorkspaceHireTeam: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)'], undefined, 'team'),
-  // The servers row on the hire card (KERNEL-484). The PNG draws Lumi with Figma reached and Linear needing sign-in. The other states are
+  // The servers row on the hire card (KERNEL-484). The PNG draws Wren with Figma reached and Linear needing sign-in. The other states are
   // the ones the engine reports (`AgentReach.blocked`), one fixture each, for screenshots only.
   WorkspaceHireServers: hireScene(hireTools(['figma', 'linear']), { reach: ['figma'], blocked: [{ name: 'linear', why: 'needs-auth' }] }),
   WorkspaceHireServersReached: hireScene(hireTools(['figma', 'linear']), { reach: ['figma', 'linear'], blocked: [] }),

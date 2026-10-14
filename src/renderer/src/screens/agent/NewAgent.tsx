@@ -83,7 +83,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
             {PRESETS.map((p) => <Pill key={p.label} onClick={() => { setDescription(p.description); if (!name.trim()) setName(p.label) }}>{p.label}</Pill>)}
           </div>
           <div className="na-two">
-            <label className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Name</span><input className="input" value={name} placeholder="Lumi" onChange={(e) => setName(e.target.value)} /></label>
+            <label className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Name</span><input className="input" value={name} placeholder="Wren" onChange={(e) => setName(e.target.value)} /></label>
             <div className="col" style={{ gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Model</span><SegmentedControl label="Model" value={model} onChange={setModel} options={MODEL_CHOICES} /></div>
           </div>
         </form>

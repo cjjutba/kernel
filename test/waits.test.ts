@@ -833,12 +833,12 @@ describe('waits, the rules', () => {
   })
 
   it('names work with no PR or issue by its title, and by the teammate alone when it has none', () => {
-    expect(waitLabel(ws('a', { prState: 'none', title: 'Thinking rows' }), 'Lumi')).toBe('"Thinking rows" by Lumi')
-    expect(waitLabel(ws('a', { prState: 'none', title: '  ' }), 'Lumi')).toBe("Lumi's work")
-    expect(waitLabel(ws('a', { prState: 'none' }), 'Lumi')).toBe("Lumi's work")
+    expect(waitLabel(ws('a', { prState: 'none', title: 'Thinking rows' }), 'Wren')).toBe('"Thinking rows" by Wren')
+    expect(waitLabel(ws('a', { prState: 'none', title: '  ' }), 'Wren')).toBe("Wren's work")
+    expect(waitLabel(ws('a', { prState: 'none' }), 'Wren')).toBe("Wren's work")
     // A PR number or an issue still says more than the title does.
-    expect(waitLabel(ws('a', { title: 'Thinking rows', prNumber: 164 }), 'Lumi')).toBe('PR #164 by Lumi')
-    expect(waitLabel(ws('a', { prState: 'none', title: 'Thinking rows', source: { kind: 'issue', id: 'KERNEL-12', title: 'Rows' } }), 'Lumi')).toBe('KERNEL-12 by Lumi')
+    expect(waitLabel(ws('a', { title: 'Thinking rows', prNumber: 164 }), 'Wren')).toBe('PR #164 by Wren')
+    expect(waitLabel(ws('a', { prState: 'none', title: 'Thinking rows', source: { kind: 'issue', id: 'KERNEL-12', title: 'Rows' } }), 'Wren')).toBe('KERNEL-12 by Wren')
   })
 
   it('counts a target as merged only by its PR state, and as broken once it can never merge', () => {
