@@ -824,7 +824,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const toEnd = () => {
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
     // Already at the end, no scroll runs and none lands, so nothing would end the glide.
-    gliding.current = smooth && !!scroller.current && distFromEnd(scroller.current) > 0
+    gliding.current = smooth && !!scroller.current && distFromEnd(flat(scroller.current)) > 0
     byHand.current = false
     pin(true)
     end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
