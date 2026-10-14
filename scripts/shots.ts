@@ -541,6 +541,13 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
   WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Edited']),
+  WorkspaceTurnFoldedOpen: openEveryRow,
+  WorkspaceTurnFoldedCopy: async (page) => {
+    await page.locator('.trow-btn', { hasText: 'I will build the table first' }).focus()
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('Tab')
+    await page.waitForTimeout(300)
+  },
   WorkspaceStepCardBash: openEveryRow,
   WorkspaceStepCardMcp: openEveryRow,
   WorkspaceStepCardCodexDiff: openEveryRow,

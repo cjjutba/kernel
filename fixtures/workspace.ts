@@ -395,6 +395,19 @@ const narrated = (id: string, end: ChatItem[]): ChatItem[] => [
   ...end
 ]
 const invoiceFiles: ChangedFile[] = [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 }, { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 }]
+/** A finished turn with two in-between messages and real thinking between its calls (KERNEL-840): one fold, then the reply. */
+const foldedMessages: ChatItem[] = [
+  tableItems[0],
+  { kind: 'thinking', id: 'fm-th1', ts: at(10, 28), text: 'The table needs sorting by date and amount. The empty state can wait until the rows render.' },
+  tool('fm-t1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', ts: at(10, 28) }),
+  { kind: 'text', id: 'fm-x1', ts: at(10, 28), text: '**I will build the table first**, then the empty state and the tests.\n\nThe plan lists three states:\n\n- loading\n- empty\n- error' },
+  tool('fm-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', ts: at(10, 29) }),
+  { kind: 'thinking', id: 'fm-th2', ts: at(10, 29), text: 'Sorting works on the client. The empty state needs its own component.' },
+  { kind: 'text', id: 'fm-x2', ts: at(10, 29), text: 'The table sorts now. Moving on to the empty state.' },
+  tool('fm-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), input: { command: 'pnpm vitest run invoices' } }),
+  { kind: 'text', id: 'fm-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' },
+  { kind: 'result', id: 'fm-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }
+]
 const runningNarrated = (): ChatItem[] => narrated('rn', [tool('rn-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run invoices' } })]).map((i) => (i.kind === 'user' ? { ...i, ts: Date.now() - 74_000 } : i))
 const endsOnText = narrated('et', [{ kind: 'text', id: 'et-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' }, { kind: 'result', id: 'et-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
 const endsOnTool = narrated('eo', [tool('eo-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) }), { kind: 'result', id: 'eo-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
@@ -1853,6 +1866,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: runningNarrated() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  /** A finished turn with in-between messages and thinking: one fold, then the reply (KERNEL-840). The second shot has the message and thinking rows opened. */
+  WorkspaceTurnFolded: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceTurnFoldedOpen: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  /** The same fold read by keyboard: a message row opened with Enter and its Copy reached with Tab (KERNEL-840). */
+  WorkspaceTurnFoldedCopy: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
   })),
   WorkspaceTurnEndsOnText: scene(() => ({
     items: { [ids.tableChat]: endsOnText },
