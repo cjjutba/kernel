@@ -11,7 +11,7 @@ export type ThreadBlock =
    * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
    * and when, and the reply's actions (KERNEL-346).
    */
-  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string }
+  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string; checkpointId?: string }
   /** Kernel's message right after a quit or crash note, folded into that note's line: the line says what happened, opening it shows the message. */
   | { kind: 'relaunch'; id: string; note: Extract<ChatItem, { kind: 'note' }>; message: Extract<ChatItem, { kind: 'user' }> }
   /** A turn that ended badly. `output` is what the last failed tool printed. */
@@ -77,7 +77,7 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
     const reply = rest[rest.length - 1]
     if (reply?.kind === 'text') {
       for (const item of rest.slice(0, -1)) blocks.push({ kind: 'item', item })
-      blocks.push({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta })
+      blocks.push({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) })
     } else {
       for (const item of rest) blocks.push({ kind: 'item', item })
       if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })

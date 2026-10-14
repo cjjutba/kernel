@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -981,6 +981,38 @@ const checkpoints: Checkpoint[] = ([
   ref: `refs/kernel/checkpoints/${ids.table}/${id}`, current: id === '4', ...(id === '0' ? { start: true } : {})
 }))
 
+/** KERNEL-766: the invoice table's chat with its checkpoints linked to the turns, and a later turn that is the current one. */
+const revertItems: ChatItem[] = [
+  ...tableItems.map((i): ChatItem => (i.kind === 'user' && i.id === 'u1' ? { ...i, checkpointId: '0' } : i.kind === 'result' && i.id === 'r1' ? { ...i, checkpointId: '3' } : i)),
+  { kind: 'user', id: 'u2', ts: at(10, 34), parts: [{ type: 'text', text: 'Also sort by status.' }] },
+  { kind: 'text', id: 'x2', ts: at(10, 35), text: 'Status sorts now, after amount.' },
+  { kind: 'result', id: 'r2', ts: at(10, 35), durationMs: 41_000, ok: true, checkpointId: '4', files: [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 9, removed: 1 }] }
+]
+const revertPreviews: Record<string, CheckpointPreview> = {
+  '3': {
+    files: [
+      { path: 'src/app/invoices/table.tsx', status: 'M', added: 20, removed: 212 },
+      { path: 'src/app/invoices/empty-state.tsx', status: 'D', added: 0, removed: 64 },
+      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
+      { path: 'tests/invoices.spec.ts', status: 'D', added: 9, removed: 118 }
+    ],
+    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false
+  },
+  '2': {
+    files: [
+      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
+      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
+    ],
+    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true
+  }
+}
+const revertScene = (ui: Partial<Fixture['ui']>) => scene(() => ({
+  items: { [ids.tableChat]: revertItems },
+  checkpoints: { [ids.table]: checkpoints },
+  checkpointPreviews: { [ids.table]: revertPreviews },
+  ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, ...ui }
+}))
+
 const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.table]: { tab, files: [] as string[], diffs: [] as string[] } } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
   ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
@@ -1620,6 +1652,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   // The "..." menu under Kai's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
   WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
+  // KERNEL-766: revert from the turn. Kai's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
+  // and the same confirm for an earlier checkpoint adds the line about the commits made since.
+  WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
+  ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
+  ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
   // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
   // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
   TurnFiles: turnFilesScene([
