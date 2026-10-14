@@ -7,7 +7,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { claudeAgents } from '../src/main/services/pluginAgents'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // The stub's `supportedAgents` answers with Claude Code's list of agents, as in ownAgents.test.ts (KERNEL-463).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => {
@@ -35,7 +35,7 @@ async function boot() {
   for (const [f, text] of Object.entries(HOME(home))) { await mkdir(dirname(join(home, f)), { recursive: true }); await writeFile(join(home, f), text) }
   // A folder named like an agent file, which Kernel can't read.
   await mkdir(join(home, '.claude', 'agents', 'broken.md'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home, claudeAgents })
   onTestFinished(() => k.stop())
   await k.start()

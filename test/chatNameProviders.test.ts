@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import type { SessionDeps } from '../src/main/services/sessions'
 import { askTitle, CODEX_TITLE_MODEL } from '../src/main/services/titles'
 import { fakeCodex } from './helpers/fakeCodex'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // Which account names a chat (KERNEL-624): Haiku on the active Claude account, else Codex's small model on the active Codex
 // account, whatever the chat runs on. Codex is the fake app-server, and the SDK's query answers what `sdk.answer` holds.
@@ -61,7 +61,7 @@ async function fakeClaudeCli(): Promise<string> {
 async function setup(provider: 'claude' | 'codex' = 'codex') {
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home, cipher, fetch: keyApi })
   await k.start()
   await k.providers.setPath('codex', { path: fake.bin })

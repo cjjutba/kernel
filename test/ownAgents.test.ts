@@ -12,7 +12,7 @@ import { LEAD_SHARING_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/servic
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { claudeAgents } from '../src/main/services/pluginAgents'
 import { git } from '../src/main/services/exec'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // A Lead chat's held first message goes out through the real send once its setup passes (KERNEL-405). The stub's
 // `supportedAgents` answers with `sdk.agents`, and each query's options are kept, for plugin agents (KERNEL-463).
@@ -39,7 +39,7 @@ async function boot(files: Record<string, string> = AGENTS, o: { home?: (home: s
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   for (const [f, text] of Object.entries(o.home?.(home) ?? {})) { await mkdir(dirname(join(home, f)), { recursive: true }); await writeFile(join(home, f), text) }
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true } }))
   const k = new Kernel({ dataDir, home, starterDir: STARTERS, claudeAgents: o.claudeAgents })
   onTestFinished(() => k.stop())
   await k.start()

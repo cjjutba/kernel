@@ -11,7 +11,7 @@ import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { applySettingsPatch, autoMergeInRoom, DEFAULT_SETTINGS, loadAppSettings, sharedMergeOf } from '../src/main/services/settings'
 import { decide, LeadUpdates, type TeamEvent } from '../src/main/services/leadUpdates'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-556: Kernel merges a PR every review approved by itself, once the user turns auto-merge on for themselves.
 
@@ -33,7 +33,7 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   const repo = await tempRepo({ ...AGENTS, ...o.main })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.app ?? ON) }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.app ?? ON) }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))

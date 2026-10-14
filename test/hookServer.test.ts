@@ -9,11 +9,12 @@ import { startHookServer } from '../src/main/services/hookServer'
 import { withKernelHooks } from '../src/main/services/hooksInstaller'
 import { Approvals } from '../src/main/services/approvals'
 import { bus } from '../src/main/bus'
+import { freePort } from './helpers'
 import { hookCommand } from '@shared/hookEntry'
 import type { Approval } from '@shared/types'
 import type { Store } from '../src/main/db'
 
-const port = 17420 + Math.floor(Math.random() * 500)
+const port = await freePort()
 // Enough of the store for approvals to report how they ended.
 const saved = new Map<string, Approval>()
 const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()], approval: (id: string) => saved.get(id) } as unknown as Store)

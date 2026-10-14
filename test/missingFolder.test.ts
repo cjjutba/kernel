@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // KERNEL-291: a worktree workspace whose folder was deleted outside Kernel says so, and archives and restores.
 
@@ -21,7 +21,7 @@ const REPO = {
 async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   return { dataDir, home }
 }
 

@@ -11,7 +11,7 @@ import { parse as parseToml } from 'smol-toml'
 import { readSetupEnv, setupEnvPath } from '../src/main/services/env'
 import { defaultRepoSettings } from '../src/main/services/rooms'
 import { workspaceSlug } from '../src/shared/kernelVars'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // KERNEL-405: setup hands variables to the workspace through $KERNEL_ENV, like GitHub Actions' $GITHUB_ENV.
 
@@ -49,7 +49,7 @@ async function roomWith(setup: string) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
   await k.start()

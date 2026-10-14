@@ -11,7 +11,7 @@ import { git } from '../src/main/services/exec'
 import { Sessions } from '../src/main/services/sessions'
 import { LEAD_RULE, LEAD_SHARING_RULE } from '../src/main/services/handoff'
 import { bytesMatch, claimOf, imageSize, MAX_VERSIONS, outsideRefs, sizeLabel, textOf, titleOf } from '../src/main/services/sharedFiles'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-302: any agent shares a file with share_file. Kernel checks it, keeps each version in its data folder, puts a card
 // in the chat and tells the Lead.
@@ -39,7 +39,7 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.sharing === undefined ? {} : { experimental: { sharing: o.sharing } }) }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.sharing === undefined ? {} : { experimental: { sharing: o.sharing } }) }))
   const revealed: string[] = []
   const make = async () => {
     const k = new Kernel({ dataDir, home, reveal: (p) => revealed.push(p), ...(o.opened ? { openFile: async (p: string) => { o.opened!.push(p) } } : {}), ...(o.capture ? { capture: { thumbnail: o.capture } } : {}) })

@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { freePort, tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { Ptys } from '../src/main/services/pty'
@@ -13,11 +12,6 @@ import type { ChatItem } from '../src/shared/types'
 import type { PushEvent } from '../src/shared/ipc'
 
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
-
-// Other test files pick a random hook port in 18000..18899 and run beside this one. A clash leaves one hook server unbound, and the hooks below land on the other file's Kernel, so ask the OS for a port nobody picked.
-const freePort = () => new Promise<number>((resolve, reject) => {
-  const s = createServer().once('error', reject).listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)) })
-})
 
 describe('ptys', () => {
   it('runs a real shell in the folder, takes input, and ends when killed', async () => {

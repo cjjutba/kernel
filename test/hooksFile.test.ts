@@ -9,6 +9,7 @@ import { hasKernelHooks, HooksFileError, installedEvents, installHooks, KERNEL_H
 import { DEFAULT_SETTINGS, runHookPort } from '../src/main/services/settings'
 import { hookCommand } from '@shared/hookEntry'
 import { run } from '../src/main/services/exec'
+import { freePort } from './helpers'
 
 // One fs call can be made to fail with a given code, the way a full or read-only disk would. Every other call is real.
 const fail = vi.hoisted(() => ({ next: null as null | { call: 'writeFile' | 'rename'; code: string } }))
@@ -200,7 +201,7 @@ describe("what Claude Code's settings do to hooks (KERNEL-461)", () => {
 describe('Check hooks says why the hooks cannot run (KERNEL-461)', () => {
   async function boot(policy: (file: string) => Promise<HooksPolicy> = async () => ({ managedHooks: {} })) {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const port = 18000 + Math.floor(Math.random() * 800)
+    const port = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
     const { dir, file } = await temp({})
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile: file })
@@ -322,7 +323,7 @@ describe('the installed app and Kernel Dev side by side (KERNEL-675)', () => {
 
   async function startDev(settings: object, hooksWereShared: boolean) {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const port = 18000 + Math.floor(Math.random() * 800)
+    const port = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
     const { file } = await temp(settings)
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile: file, build: 'dev', hooksWereShared })
@@ -359,7 +360,7 @@ describe('a dev run started inside a workspace (KERNEL-679)', () => {
   /** A workspace run on a settings file with both builds' entries, Kernel Dev's out of date, and hooks turned off by the user. */
   async function startRun() {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const port = 18000 + Math.floor(Math.random() * 800)
+    const port = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
     const { file } = await temp({ disableAllHooks: true, ...withKernelHooks(withKernelHooks({}, 7420, 300, token), 7431, 120, devToken, 'dev') })
     const before = await readFile(file)

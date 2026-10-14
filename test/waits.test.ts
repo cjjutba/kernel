@@ -14,7 +14,7 @@ import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp
 import { mergedReading, resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
 import { saveLinearToken } from '../src/main/services/integrations'
 import { saveRepoSettings } from '../src/main/services/settings'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
 
@@ -74,7 +74,7 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   // A room with a Linear token and team uses Linear (KERNEL-462).
   if (o.fetch) await saveRepoSettings(repo, { linear: { team: 'KERNEL' } })

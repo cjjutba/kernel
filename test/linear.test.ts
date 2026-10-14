@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { Cipher } from '../src/main/services/env'
@@ -299,7 +299,7 @@ describe('Linear in the kernel', () => {
     const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     if (o.token) await saveLinearToken(dataDir, o.token, o.plain ? undefined : o.cipher)
     const l = linear(answer)
     const k = new Kernel({ dataDir, home, fetch: l.fetch, cipher: o.cipher })

@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
-import { tempRepo, trustRoom, setUp } from './helpers'
+import { tempRepo, trustRoom, setUp, freePort } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
@@ -404,7 +404,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
   const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const room = await k.addRoom(repo)
@@ -418,7 +418,7 @@ describe('kernel recovery paths', () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const room = await k.addRoom(repo)

@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { agentList, kernelTools, NO_TEAMMATES, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { LEAD_RULE } from '../src/main/services/handoff'
 import { callTool } from '../src/main/services/providers/codex/tools'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-476: a new agent that should open pull requests gets Edit and Write, and create_agent says where it landed and
 // which MCP servers it can reach. The SDK is scripted so the room's MCP check lists `servers` and no Claude Code starts.
@@ -141,7 +141,7 @@ describe('creating an agent in a real room', () => {
     const repo = await tempRepo({ 'README.md': '# app\n', '.mcp.json': JSON.stringify({ mcpServers: { figma: {}, neon: {} } }), '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     onTestFinished(() => k.stop())
     await k.start()

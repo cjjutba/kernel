@@ -7,7 +7,7 @@ import type { RoomSetupStep } from '../src/shared/types'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { findConflicts, scanInstructions } from '../src/main/services/instructionConflicts'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 const opts = { branches: ['main', 'dev'], base: 'origin/main' }
@@ -21,7 +21,7 @@ const NESTED = ['Rebase onto `origin/main` before you open a PR.', '', 'Stack PR
 async function kernel() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   return k

@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
 import { decide, type ReviewState, type TeamEvent } from '../src/main/services/leadUpdates'
 import { kernelTools, NO_OVERRULE, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-732: the user, or the Lead on the user's quoted words, overrules the reviews' blockers on a PR's head commit.
 
@@ -24,7 +24,7 @@ async function setup(app: object = {}) {
   const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
