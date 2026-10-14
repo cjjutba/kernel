@@ -907,7 +907,7 @@ export class Providers extends Feature {
     const keep = this.k.placement.keeps()
     if (keep && o.move === 'all') this.k.placement.placeAll(provider, to)
     if (to !== from) this.switches.set(provider, { to, from, ...(hit ? { limit: hit.type } : {}) })
-    this.k.account.switched(provider, next, hit)
+    this.k.account.switched(provider, next, hit, o.reason)
     // Chats held for the old account's Keychain prompt run on the new one (KERNEL-618).
     if (provider === 'claude') this.k.account.keychainDone()
     if (provider === 'codex') this.codexModels = undefined

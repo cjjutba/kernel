@@ -57,6 +57,7 @@ import { Providers } from './features/providers'
 import { Permissions } from './features/permissions'
 import { OpenItems } from './features/openItems'
 import { Placement } from './features/placement'
+import { Moves } from './features/moves'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -136,6 +137,7 @@ export class Kernel {
   readonly permissions = new Permissions(this)
   readonly openItems = new OpenItems(this)
   readonly placement = new Placement(this)
+  readonly moves = new Moves(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -297,7 +299,7 @@ export class Kernel {
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
       this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers(), this.openItems.handlers(),
-      this.placement.handlers())
+      this.placement.handlers(), this.moves.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)

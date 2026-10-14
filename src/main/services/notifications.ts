@@ -173,15 +173,18 @@ export class Notifications {
   /**
    * A row in Inbox > Updates that asks nothing of the user, such as the weekly usage warning (KERNEL-220), and a macOS banner
    * while the app is in the background. The feature that sends it has its own switch, so Settings > Notifications' per-kind
-   * switches don't apply, and quiet hours and the sound setting still do. One row per `id`: a second call with it changes nothing.
+   * switches don't apply, and quiet hours and the sound setting still do. One row per `id`: a second call with it changes nothing,
+   * unless `replace`, which updates the row in place, as a room's list of chats waiting on the user does (KERNEL-844). A row
+   * that comes to need the user again is unread and alerts again.
    */
-  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body'>>): Notification {
+  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body' | 'roomId' | 'workspaceId' | 'needsYou' | 'resolved'>>, o: { replace?: boolean } = {}): Notification {
     const made: Notification = { kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n }
     if (this.detached) return made
     const had = this.d.store.notification(n.id)
-    if (had) return had
-    const row = this.save(made)
-    this.alert(row, 'usage')
+    if (had && !o.replace) return had
+    const again = !!n.needsYou && !had?.needsYou
+    const row = this.save(had ? { ...had, resolved: undefined, ...n, read: had.read && !again } : made)
+    if (!had || again) this.alert(row, 'usage')
     return row
   }
 

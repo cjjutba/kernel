@@ -113,8 +113,8 @@ export interface RunnerHost {
    * call's, and the chat's size in tokens after its last call when the provider says.
    */
   turnUsage(u: TurnUsage): void
-  /** The running turn ended. */
-  turnEnded(t: { id: string; ok: boolean; durationMs?: number; error?: string }): void
+  /** The running turn ended. `tooLong`: the chat no longer fits the model's context window, so the turn never ran (KERNEL-844). */
+  turnEnded(t: { id: string; ok: boolean; durationMs?: number; error?: string; tooLong?: true }): void
   /** The provider's guess at the user's next message, after a turn ended (Claude's prompt suggestions, KERNEL-530). */
   suggested(text: string): void
   /** The session this process resumed is gone. True when Sessions moved the turn to a fresh session. */

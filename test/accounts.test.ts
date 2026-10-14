@@ -10,6 +10,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { KernelOptions } from '../src/main/features/options'
 import { sessionEnv } from '../src/main/services/providers/claude'
+import { TOO_LONG_NOTE } from '../src/main/services/sessions'
 import { USAGE_AFTER_TURN_MS } from '../src/main/features/providers'
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { credentialsItem } from '../src/main/services/providers/claudeHome'
@@ -922,7 +923,9 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
       await until(() => k.providers.active('claude') === ids.Personal)
       expect(read).toEqual([ids.Side, ids.Personal])
       expect(k.store.notifications().filter((n) => n.id.startsWith('n-models-'))).toEqual([])
-      // Personal hits its limit too, and only Side has room: Kernel moves there and says who can't run.
+      // Personal hits its limit too, and only Side has room: Kernel moves there and says who can't run. The switch to Personal
+      // was over 30 minutes ago, so Kernel still switches by itself (KERNEL-844).
+      ;(k.account as unknown as { selfSwitched: Map<string, { at: number }> }).selfSwitched.get('claude')!.at -= 31 * 60_000
       sdk.usage[folder('Personal')] = 100
       reject(k, { accountId: ids.Personal })
       await until(() => k.providers.active('claude') === ids.Side)
@@ -1979,6 +1982,131 @@ describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => 
     const picked = await h['chats.moveChoice']({ chatId: 'big', choice: 'keep' })
     expect(picked.moveChoice).toEqual({ choice: 'keep', at: expect.any(Number) })
     expect(k.store.chat('big')?.moveChoice?.choice).toBe('keep')
+    await k.stop({ budgetMs: 0 })
+  })
+})
+
+describe('long chats that move accounts, on Codex, and the guards against using up every account (KERNEL-844)', () => {
+  const S = (ms: number) => Math.round(ms / 1000)
+  const MIN = 60_000
+
+  /**
+   * A Kernel whose Codex has its own login, Work, and Personal and Side added, with Work in use, and a room whose agents run
+   * on Claude. `ran` runs a turn of a Codex chat and waits for it to end. `long` gives a chat a last turn on the account it
+   * ran on, of `context` tokens, `ago` before now. `log` is where each turn ran and where each summary ran, by home: null for
+   * Work, `personal` or `side`.
+   */
+  async function setUp() {
+    const t = await kernel()
+    const h = t.k.handlers()
+    const ids: Record<string, string> = {}
+    for (const name of ['Personal', 'Side']) {
+      process.env.FAKE_CODEX_LOGIN_EMAIL = `${name.toLowerCase()}@example.com`
+      ids[name] = (await h['accounts.add']({ provider: 'codex' })).id
+      await h['accounts.rename']({ provider: 'codex', accountId: ids[name], label: name })
+    }
+    await h['accounts.rename']({ provider: 'codex', accountId: 'cli', label: 'Work' })
+    await quiet()
+    const repo = await tempRepo()
+    const room = await t.k.addRoom(repo)
+    t.k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    const homes = new Map<string | null, string>([[null, 'work'], ...Object.entries(ids).map(([name, id]) => [t.k.providers.codexHome(id)!, name.toLowerCase()] as [string, string])])
+    const chat = (id: string) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'low', plan: false, createdAt: 2 })
+    const idle = (id: string) => until(() => !t.k.sessions.isRunning(id) && !t.k.sessions.queued(id).length)
+    const ran = async (id: string, text: string) => { const r = await t.k.sessions.send(id, [{ type: 'text', text }]); await idle(id); return r }
+    const long = (id: string, context: number, ago = 0) => {
+      const c = t.k.store.chat(id)!
+      t.k.store.saveChat({ ...c, lastTurn: { at: Date.now() - ago, account: c.ranOn ?? 'cli', model: c.model, context, input: 0, cacheRead: context, cacheWrite: 0 } })
+    }
+    const log = async () => (await fake.messages()).flatMap((m) => ('turnOn' in m ? [`${homes.get(m.turnOn)}: ${m.text}`] : 'compactedOn' in m ? [`${homes.get(m.compactedOn)}: compact`] : []))
+    const moveAll = (to: string) => h['accounts.switch']({ provider: 'codex', accountId: to, move: 'all' })
+    const notes = (id: string) => t.k.store.items(id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+    /** A window of Codex's on `accountId`, as a session reports it: Work's unless it says otherwise. */
+    const window = (l: Partial<RateLimit> = {}) => (t.k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }).mergeLimits([{ type: 'five_hour', provider: 'codex', status: 'rejected', utilization: 1, resetsAt: S(Date.now() + 3600_000), ...l }])
+    return { ...t, h, ids, room, chat, ran, idle, long, log, moveAll, notes, window }
+  }
+
+  it('summarizes on the old account while its cache is warm, on the new one once it is cold, and continues or asks as Settings, Account says', async () => {
+    const { k, h, ids, room, chat, ran, idle, long, log, moveAll, notes } = await setUp()
+    for (const id of ['warm', 'cold', 'on', 'asked']) { chat(id); await ran(id, `start ${id}`) }
+    long('warm', 120_000)
+    // Codex keeps a cache 5 minutes.
+    for (const id of ['cold', 'on', 'asked']) long(id, 120_000, 10 * MIN)
+    await moveAll(ids.Personal)
+    await ran('warm', 'next warm')
+    await ran('cold', 'next cold')
+    expect((await log()).slice(4)).toEqual(['work: compact', 'personal: next warm', 'personal: compact', 'personal: next cold'])
+    expect(notes('warm')).toEqual(['Kernel is summarizing this chat on Work before it moves to Personal, so the move reads the summary rather than the whole chat.', 'Compacted the conversation.', 'Moved to Personal'])
+
+    await k.config.setSettings({ accounts: { longChatMove: { codex: 'continue' } } })
+    await ran('on', 'next on')
+    expect((await log()).slice(8)).toEqual(['personal: next on'])
+
+    await k.config.setSettings({ accounts: { longChatMove: { codex: 'ask' } } })
+    await k.sessions.send('asked', [{ type: 'text', text: 'next asked' }])
+    expect(await k.sessions.send('asked', [{ type: 'text', text: 'and this' }])).toEqual({ queued: true, why: 'move' })
+    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ needsYou: true, title: 'asked waits to move to another account' })
+    expect((await log()).slice(9)).toEqual([])
+    await h['chats.moveChoice']({ chatId: 'asked', choice: 'continue' })
+    await idle('asked')
+    expect((await log()).slice(9)).toEqual(['personal: next asked', 'personal: and this'])
+    expect(k.store.notification(`n-move-ask-${room.id}`)?.needsYou).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('stops switching by itself when an account it switched to fills within 30 minutes, says so once, and still lets the user switch', async () => {
+    const { k, h, ids, window } = await setUp()
+    await k.config.setSettings({ accounts: { switchAtLimit: { codex: true } } })
+    process.env.FAKE_CODEX_USED = JSON.stringify({ '': 100, [k.providers.codexHome(ids.Personal)!]: 20, [k.providers.codexHome(ids.Side)!]: 30 })
+    window()
+    await until(() => k.providers.active('codex') === ids.Personal)
+    window({ accountId: ids.Personal })
+    window({ accountId: ids.Personal, type: 'seven_day' })
+    await new Promise((r) => setTimeout(r, 300))
+    expect(k.providers.active('codex')).toBe(ids.Personal)
+    const stopped = k.store.notifications().filter((n) => n.id.startsWith('n-switch-chain-'))
+    expect(stopped).toHaveLength(1)
+    expect(stopped[0].title).toBe('Personal filled within 1 minute of the switch, so Kernel stopped moving between accounts')
+    // One grouped item for the switch Kernel made.
+    expect(k.store.notifications().filter((n) => n.id.startsWith('n-auto-switch-codex-')).map((n) => n.title)).toEqual(['Kernel switched Codex to Personal'])
+    await h['accounts.switch']({ provider: 'codex', accountId: ids.Side })
+    expect(k.providers.active('codex')).toBe(ids.Side)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('summarizes a thread too long for its model and sends the message again, once', async () => {
+    const { k, chat, ran, log, notes } = await setUp()
+    chat('a')
+    await ran('a', 'hi')
+    const tooLong = JSON.stringify([{ complete: 'failed', error: { message: 'The conversation is too long for this model.', codexErrorInfo: 'contextWindowExceeded' } }])
+    await ran('a', tooLong)
+    expect((await log()).slice(1)).toEqual([`work: ${tooLong}`, 'work: compact', `work: ${tooLong}`])
+    expect(notes('a')).toContain(TOO_LONG_NOTE)
+    expect(k.store.items('a').filter((i) => i.kind === 'result').map((i) => i.kind === 'result' && i.ok)).toEqual([true, false])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('switches ahead of the limit, so new chats start on the next account, and summarizes idle long chats on the old one while their cache is warm', async () => {
+    const { k, ids, chat, ran, long, log, window } = await setUp()
+    for (const id of ['big', 'small', 'stale']) { chat(id); await ran(id, `start ${id}`) }
+    long('big', 300_000)
+    long('small', 10_000)
+    long('stale', 200_000, 10 * MIN)
+    await k.config.setSettings({ accounts: { switchAtLimit: { codex: true } } })
+    window({ status: 'allowed', utilization: 0.92 })
+    await until(() => k.providers.active('codex') === ids.Personal)
+    await until(async () => (await log()).includes('work: compact'))
+    await until(() => !k.sessions.isRunning('big'))
+    // Only the long chat with a warm cache was summarized, on Work.
+    expect((await log()).slice(3)).toEqual(['work: compact'])
+    expect(k.store.chat('big')?.lastTurn).toMatchObject({ account: 'cli', context: 2_000 })
+    const switched = k.store.notifications().find((n) => n.id.startsWith('n-auto-switch-codex-'))
+    expect(switched).toMatchObject({ title: 'Kernel switched Codex to Personal', sub: 'Work is close to its usage limit' })
+    expect(switched?.body).toBe('Work is close to its usage limit, so new chats start on Personal. 2 long chats move at their next turn, and Kernel summarizes each one first: big (300k tokens) and stale (200k tokens).')
+    // A new chat starts on Personal.
+    chat('new')
+    await ran('new', 'hello')
+    expect((await log()).at(-1)).toBe('personal: hello')
     await k.stop({ budgetMs: 0 })
   })
 })

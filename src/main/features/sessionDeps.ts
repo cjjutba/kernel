@@ -106,6 +106,9 @@ export function sessionDeps(k: Kernel): SessionDeps {
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     moveNote: (chat, from) => k.placement.moved(chat, from),
+    movePlan: (chat, to) => k.moves.plan(chat, to),
+    onMoveHold: (chat, held) => k.moves.held(chat, held),
+    coldSize: (chat) => k.placement.coldSize(chat),
     emailOf: (provider, accountId) => k.providers.emailOf(provider, accountId),
     turnNote: (chat) => k.checkpoints.turnNote(chat.id),
     onFailure: (failure, _ws, provider, account) => {

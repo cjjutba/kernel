@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtemp, symlink } from 'node:fs/promises'
+import { chmod, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, Workspace } from '@shared/types'
+import type { AgentDef, Chat, LastTurn, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { NO_PROMPTS } from '../src/main/services/exec'
 import { bashVerdict, matchesRoomRule, roomRule } from '../src/main/services/bashGuard'
-import { IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
+import { COMPACT_INSTRUCTIONS, IDLE_STOP_MS, LIMIT_LIFTED, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, TOO_LONG_NOTE, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
 import { Kernel } from '../src/main/kernel'
@@ -20,21 +20,28 @@ import { tempRepo } from './helpers'
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // An abort ends the stream with an error, as the real one does when Kernel stops the process. A `late` session keeps its
 // stream open after the abort until `end()`, as a process does while it exits. `end()` is the process exiting on its own.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void; end: () => void; late: boolean }[] }))
-vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: ({ options }: { options: Options }) => {
+// `sent` is the text of each message Kernel sent the process, in order.
+const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void; end: () => void; late: boolean; sent: string[] }[] }))
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
+  ...await original<object>(),
+  query: ({ prompt, options }: { prompt?: unknown; options: Options }) => {
     const items: unknown[] = []
     const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
     let ended = false
     const call = {
-      options, late: false,
+      options, late: false, sent: [] as string[],
       feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
       end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) }
     }
     signal?.addEventListener('abort', () => { if (!call.late) for (const w of waiters.splice(0)) w.reject(aborted()) })
     sdk.calls.push(call)
+    if (prompt && typeof prompt === 'object' && Symbol.asyncIterator in prompt) {
+      void (async () => {
+        for await (const m of prompt as AsyncIterable<{ message?: { content?: { type: string; text?: string }[] } }>) call.sent.push((m.message?.content ?? []).flatMap((b) => (b.type === 'text' && b.text ? [b.text] : [])).join('\n'))
+      })().catch(() => undefined)
+    }
     return {
       [Symbol.asyncIterator]: () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
@@ -1013,4 +1020,239 @@ describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", 
     expect(await gone(sleep)).toBe(true)
   })
 
+})
+
+describe('long chats that move accounts, on Claude (KERNEL-844)', () => {
+  afterEach(() => { bus.removeAllListeners('push'); sdk.calls = [] })
+  const flush = () => new Promise((r) => setTimeout(r, 20))
+  const MIN = 60_000
+  const COMPACT = `/compact ${COMPACT_INSTRUCTIONS}`
+  const KEY = 'sk-ant-api03-' + 'Ky3_'.repeat(20)
+  const cipher = { encrypt: (t: string) => `enc:${[...t].reverse().join('')}`, decrypt: (d: string) => [...d.slice(4)].reverse().join('') }
+
+  async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {
+    const end = Date.now() + ms
+    for (;;) {
+      const v = await check()
+      if (v) return v as NonNullable<T>
+      if (Date.now() > end) throw new Error('timed out waiting')
+      await new Promise((r) => setTimeout(r, 20))
+    }
+  }
+
+  /**
+   * A Kernel whose Claude has Work and Side, two subscription logins, and Key, an API key account, with Work in use, and the
+   * chats `ids` in one workspace. Each process says which account it started on. `run` sends a message and answers every
+   * message Kernel sends any process until nothing runs, with a result `answer` picks, and returns what each process was
+   * sent, as `account: text`. `long` gives a chat a last turn on Work of `context` tokens, `ago` before now.
+   */
+  async function setUp(ids = ['a']) {
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    const bin = join(await mkdtemp(join(tmpdir(), 'kernel-bin-')), 'claude')
+    await writeFile(bin, `#!/bin/sh\ncase "$1" in --version) echo "2.1.292 (Claude Code)";; auth) echo '{"loggedIn":true,"email":"cj@example.com","subscriptionType":"max"}';; esac\n`)
+    await chmod(bin, 0o755)
+    const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home, cipher, fetch: (async () => new Response('{}')) as typeof fetch })
+    await k.start()
+    k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    await k.providers.setPath('claude', { path: bin })
+    const p = k.providers as unknown as { load: () => { claude: { accounts: object[] } }; save: () => Promise<void> }
+    for (const [id, label] of [['work', 'Work'], ['side', 'Side']]) p.load().claude.accounts.push({ id, label, home: k.providers.claudeHome(id), signedIn: true, createdAt: 1 })
+    await p.save()
+    const h = k.handlers()
+    const key = (await h['accounts.addKey']({ provider: 'claude', label: 'Key', key: KEY })).id
+    vi.spyOn(k.providers, 'claudeEnv').mockImplementation((id): Record<string, string> => (id === key ? { ANTHROPIC_API_KEY: KEY, ACCOUNT: 'key' } : { ACCOUNT: id ?? 'cli' }))
+    await h['accounts.switch']({ provider: 'claude', accountId: 'work' })
+    const repo = await tempRepo()
+    const room = await k.addRoom(repo)
+    k.store.saveWorkspace({ id: 'ws', roomId: room.id, name: 'w', branch: 'b', baseRef: 'main', path: repo, mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    for (const id of ids) k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } satisfies Chat)
+    const answered = new Map<(typeof sdk.calls)[number], number>()
+    const sent: string[] = []
+    type Answer = (text: string, n: number) => Record<string, unknown> | undefined
+    const ok: Answer = () => ({ subtype: 'success', usage: { input_tokens: 3_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 10 } })
+    /** Answers every message sent so far, then again, until nothing runs. An answer of undefined leaves the message unanswered. */
+    const settle = async (answer: Answer = ok) => {
+      for (let quiet = 0; quiet < 3;) {
+        await flush()
+        let fed = false
+        for (const call of sdk.calls) {
+          const done = answered.get(call) ?? 0
+          if (call.sent.length <= done || call.options.abortController?.signal.aborted) continue
+          if (!done) call.feed({ type: 'system', subtype: 'init', session_id: `session-${sdk.calls.indexOf(call)}`, apiKeySource: call.options.env?.ANTHROPIC_API_KEY ? 'ANTHROPIC_API_KEY' : 'none' })
+          const text = call.sent[done]
+          sent.push(`${call.options.env?.ACCOUNT}: ${text === COMPACT ? '/compact' : text}`)
+          answered.set(call, done + 1)
+          const r = answer(text, done)
+          if (r) call.feed({ type: 'result', uuid: `r-${sdk.calls.indexOf(call)}-${done}`, duration_ms: 5, ...r })
+          fed = true
+        }
+        quiet = fed ? 0 : quiet + 1
+      }
+    }
+    const run = async (chatId: string, text: string, answer?: Answer) => {
+      sent.length = 0
+      const r = await k.sessions.send(chatId, [{ type: 'text', text }])
+      await settle(answer)
+      return { ...r, sent: [...sent] }
+    }
+    const long = (chatId: string, context: number, ago = 0) => {
+      const chat = k.store.chat(chatId)!
+      const lastTurn: LastTurn = { at: Date.now() - ago, account: chat.ranOn ?? 'work', model: chat.model, context, input: 0, cacheRead: context, cacheWrite: 0 }
+      k.store.saveChat({ ...chat, lastTurn })
+    }
+    const notes = (chatId: string) => k.store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+    const moveAll = (to: string) => h['accounts.switch']({ provider: 'claude', accountId: to, move: 'all' })
+    return { k, h, key, room, run, settle, sent, long, notes, moveAll }
+  }
+
+  it('summarizes a long chat on the account it leaves while its cache there is warm, then moves it', async () => {
+    const { k, run, long, notes, moveAll } = await setUp()
+    await run('a', 'Start')
+    long('a', 120_000)
+    await moveAll('side')
+    expect((await run('a', 'Next')).sent).toEqual(['work: /compact', 'side: Next'])
+    expect(k.store.chat('a')?.ranOn).toBe('side')
+    expect(notes('a')).toEqual(['Kernel is summarizing this chat on Work before it moves to Side, so the move reads the summary rather than the whole chat.', 'Moved to Side and re-read 3k tokens'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('summarizes on the new account when the cache on the old one has gone cold, and continues or asks as Settings, Account says', async () => {
+    const { k, h, room, run, long, notes, moveAll } = await setUp(['a', 'b', 'c'])
+    for (const id of ['a', 'b', 'c']) { await run(id, 'Start'); long(id, 120_000, 2 * 60 * MIN) }
+    await moveAll('side')
+    expect((await run('a', 'Next')).sent).toEqual(['side: /compact', 'side: Next'])
+    expect(notes('a')[0]).toBe('Kernel is summarizing this chat as it moves to Side, so later turns there read the summary rather than the whole chat.')
+
+    await k.config.setSettings({ accounts: { longChatMove: { claude: 'continue' } } })
+    expect((await run('b', 'Next')).sent).toEqual(['side: Next'])
+
+    await k.config.setSettings({ accounts: { longChatMove: { claude: 'ask' } } })
+    expect(await run('c', 'Next')).toMatchObject({ queued: false, sent: [] })
+    expect(k.sessions.queueReason('c')).toBe('move')
+    // What the user sends meanwhile waits behind it.
+    expect(await k.sessions.send('c', [{ type: 'text', text: 'And this' }])).toEqual({ queued: true, why: 'move' })
+    expect(k.sessions.queued('c').map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Next' }], [{ type: 'text', text: 'And this' }]])
+    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ title: 'c waits to move to another account', needsYou: true, roomId: room.id })
+    await h['chats.moveChoice']({ chatId: 'c', choice: 'summarize' })
+    // `run` with no message: what the choice released.
+    expect((await run('c', 'Last')).sent).toEqual(['side: /compact', 'side: Next', 'side: And this', 'side: Last'])
+    expect(k.store.notification(`n-move-ask-${room.id}`)).toMatchObject({ needsYou: false })
+    expect(k.store.chat('c')?.moveChoice).toBeUndefined()
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('keeps a chat the user chose to keep on its account while that account can run it', async () => {
+    const { k, h, run, long, moveAll } = await setUp()
+    await k.config.setSettings({ accounts: { longChatMove: { claude: 'ask' } } })
+    await run('a', 'Start')
+    long('a', 120_000)
+    await moveAll('side')
+    await run('a', 'Next')
+    expect(k.sessions.queueReason('a')).toBe('move')
+    await h['chats.moveChoice']({ chatId: 'a', choice: 'keep' })
+    expect((await run('a', 'Again')).sent).toEqual(['work: Next', 'work: Again'])
+    // Work at its limit can't run it, so it moves after all, and asks again.
+    long('a', 120_000)
+    ;(k.sessions as unknown as { mergeLimits: (l: object[]) => void }).mergeLimits([{ type: 'five_hour', status: 'rejected', utilization: 1, accountId: 'work', resetsAt: Math.round(Date.now() / 1000) + 3600 }])
+    await run('a', 'Later')
+    expect(k.sessions.queueReason('a')).toBe('move')
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("always asks before a long chat moves onto an API key, and always summarizes one that doesn't fit the new window", async () => {
+    const { k, key, run, long, moveAll } = await setUp(['a', 'b'])
+    for (const id of ['a', 'b']) await run(id, 'Start')
+    long('a', 120_000)
+    await moveAll(key)
+    await run('a', 'Next')
+    expect(k.sessions.queueReason('a')).toBe('move')
+    k.sessions.stop('a')
+    // Haiku's window is 200k, so a 250k chat is summarized whatever Settings, Account says.
+    await k.config.setSettings({ accounts: { longChatMove: { claude: 'continue' } } })
+    await moveAll('side')
+    long('b', 250_000)
+    k.store.saveChat({ ...k.store.chat('b')!, model: 'claude-haiku-4-5-20251001' })
+    // The last turn ran on Sonnet, so nothing on Work is cached for Haiku: the summary runs on Side.
+    expect((await run('b', 'Next')).sent).toEqual(['side: /compact', 'side: Next'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('moves a chat switched twice before its next turn once, to where it goes last', async () => {
+    const { k, key, run, long, notes, moveAll } = await setUp()
+    await run('a', 'Start')
+    long('a', 120_000)
+    await moveAll('side')
+    await moveAll(key)
+    await moveAll('side')
+    expect((await run('a', 'Next')).sent).toEqual(['work: /compact', 'side: Next'])
+    expect(notes('a').filter((n) => n.startsWith('Moved'))).toEqual(['Moved to Side and re-read 3k tokens'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('finishes a summary a switch lands in, and moves the chat to where it goes now without a second one', async () => {
+    const { k, key, run, settle, sent, long, moveAll } = await setUp()
+    await run('a', 'Start')
+    long('a', 120_000)
+    await moveAll('side')
+    // The summary on Work runs, unanswered, while the provider moves on to Key.
+    await run('a', 'Next', (text) => (text === COMPACT ? undefined : { subtype: 'success' }))
+    expect(k.sessions.isRunning('a')).toBe(true)
+    await moveAll(key)
+    const compacting = sdk.calls.find((c) => c.sent.includes(COMPACT))!
+    expect(compacting.options.abortController?.signal.aborted).toBe(false)
+    compacting.feed({ type: 'result', subtype: 'success', uuid: 'r-compact', duration_ms: 5, usage: { input_tokens: 3_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 10 } })
+    sent.length = 0
+    await settle()
+    // Summarized, the chat is short, so the move to Key needs no answer and no second summary.
+    expect(sent).toEqual(['key: Next'])
+    expect(sdk.calls.filter((c) => c.sent.includes(COMPACT))).toHaveLength(1)
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('summarizes a chat too long for its model and sends the message again, once', async () => {
+    const { k, run, notes } = await setUp()
+    await run('a', 'Start')
+    const tooLong = { subtype: 'success', is_error: true, terminal_reason: 'prompt_too_long', result: 'Prompt is too long' }
+    expect((await run('a', 'Next', (text, n) => (text === 'Next' && n === 1 ? tooLong : { subtype: 'success' }))).sent).toEqual(['work: Next', 'work: /compact', 'work: Next'])
+    expect(notes('a')).toContain(TOO_LONG_NOTE)
+    expect(k.store.items('a').filter((i) => i.kind === 'user').map((i) => i.kind === 'user' && i.parts)).toEqual([[{ type: 'text', text: 'Start' }], [{ type: 'text', text: 'Next' }]])
+    // Too long again after the summary: the turn ends as it came.
+    expect((await run('a', 'More', (text) => (text === 'More' ? tooLong : { subtype: 'success' }))).sent).toEqual(['work: More', 'work: /compact', 'work: More'])
+    expect(k.sessions.isRunning('a')).toBe(false)
+    await k.stop({ budgetMs: 0 })
+  })
+})
+
+describe('cold re-reads start two at a time (KERNEL-844)', () => {
+  afterEach(() => { sdk.calls = [] })
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const lead: AgentDef = { ...noor, id: 'lead', name: 'Lead', lead: true }
+
+  it('holds the third cold chat, starts the smallest waiting one first, and never holds the Lead', async () => {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-cold-')), 'kernel.db'))
+    const sizes: Record<string, number> = { big: 300_000, mid: 200_000, small: 50_000, tiny: 40_000, lead: 500_000 }
+    for (const id of Object.keys(sizes)) {
+      store.saveWorkspace({ id, roomId: 'room', name: id, branch: id, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: id === 'lead' ? 'lead' : 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+      store.saveChat({ id, workspaceId: id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, ranOn: 'work', createdAt: 1 })
+    }
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'lead' ? lead : noor), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      accountFor: () => 'side', coldSize: (chat) => sizes[chat.id]
+    })
+    const started = () => sdk.calls.map((c) => c.options.cwd)
+    const end = async (id: string) => { sdk.calls.find((c) => c.options.cwd === `/tmp/${id}`)!.feed({ type: 'result', subtype: 'success', uuid: `r-${id}`, duration_ms: 5 }); await flush() }
+    for (const id of ['big', 'mid', 'small', 'tiny']) await sessions.send(id, [{ type: 'text', text: 'Go on' }])
+    expect(await sessions.send('lead', [{ type: 'text', text: 'Go on' }])).toEqual({ queued: false })
+    await flush()
+    expect(started()).toEqual(['/tmp/big', '/tmp/mid', '/tmp/lead'])
+    expect([sessions.queueReason('small'), sessions.queueReason('tiny')]).toEqual(['capacity', 'capacity'])
+    await end('big')
+    expect(started().at(-1)).toBe('/tmp/tiny')
+    await end('lead')
+    expect(started()).toHaveLength(4)
+    await end('mid')
+    expect(started().at(-1)).toBe('/tmp/small')
+  })
 })

@@ -424,7 +424,7 @@ export class ClaudeRunner implements Runner {
         this.calls = {}
         if (msg.subtype !== 'success' && this.resume && msg.errors?.includes(`${SESSION_GONE}${this.resume}`) && host.sessionGone()) return
         if (msg.usage) host.turnUsage({ ...counts(msg.usage), ...(calls.first ? { first: counts(calls.first) } : {}), ...(calls.last ? { context: contextOf(calls.last) } : {}) })
-        host.turnEnded({ id: msg.uuid, ok, durationMs: msg.duration_ms, error: ok ? undefined : msg.subtype })
+        host.turnEnded({ id: msg.uuid, ok, durationMs: msg.duration_ms, error: ok ? undefined : msg.subtype, ...(msg.terminal_reason === 'prompt_too_long' ? { tooLong: true as const } : {}) })
         return
       }
       // Comes after the turn's result, so the stream is still read once the turn ends.
