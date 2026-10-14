@@ -97,6 +97,10 @@ export interface TeamEvent {
   blocked?: PrBlocked
   /** `pr.merged` by Kernel itself, and why auto-merge allowed it (KERNEL-556): `why` for the Lead, `card` for the card. */
   auto?: AutoMerged
+  /** `question`: what the teammate asked the Lead with ask_lead, and the answers it offered (KERNEL-747). */
+  question?: { text: string; options?: string[] }
+  /** `handoff.proposed`: the agent the teammate proposed for part of its work, by id and name, the task and why (KERNEL-747). */
+  proposal?: { agentId: string; agent: string; task: string; why: string }
 }
 
 /** Why Kernel merged a PR by itself (`autoMergeWhy`, KERNEL-556). */
@@ -155,6 +159,14 @@ const BLOCKER_MAX = 300
 /** What a teammate says it needs from the PR it waits for, kept this long (KERNEL-262). */
 const WHY_MAX = 300
 
+/** A question or a proposed hand-off is kept this long, and each of a question's options this long (KERNEL-747). */
+const ASK_MAX = 1500
+const OPTION_MAX = 200
+const OPTIONS_MAX = 6
+
+/** The card's words for a question or a proposed task, cut short so the row stays one or two lines. */
+const CARD_MAX = 140
+
 /** A crash event for a teammate Kernel's own quit or crash cut off, which carries on at the next launch (KERNEL-215). */
 const relaunched = (e: TeamEvent) => e.kind === 'crash' && !!e.resumed && (e.reason === QUIT_REASON || e.reason === CRASH_REASON)
 
@@ -195,6 +207,17 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
     case 'wait.rebase_missing': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged and Kernel asked ${name} to rebase onto ${e.wait?.onto ?? 'it'}, but the turn ended with ${name}'s branch still missing it.`
+    case 'question': {
+      const q = e.question
+      if (!q) return `Asked you a question. ${name} ended the turn and waits for your answer.`
+      const options = q.options?.length ? `\n  Options: ${q.options.map((o) => `"${o}"`).join(', ')}.` : ''
+      return `Asked you: "${q.text}"${options}\n  ${name} ended the turn and waits for your answer.`
+    }
+    case 'handoff.proposed': {
+      const p = e.proposal
+      if (!p) return 'Proposed handing part of the work to another teammate.'
+      return `Proposed handing a task to ${p.agent} (${p.agentId}): "${p.task}". Why: ${p.why} ${name} carries on with the rest.`
+    }
     case 'shared': {
       const f = e.shared
       return f ? `Shared "${f.title}" v${f.version} (${KIND_LABEL[f.kind]}, ${f.source}, id ${f.sharedId}). The user can open it from this update.` : 'Shared a file.'
@@ -241,6 +264,8 @@ function cardText(e: TeamEvent, held = false): string {
     case 'wait.broken': return `${upper(e.wait?.label ?? 'the PR it waited for')} ${e.wait?.gone ?? 'closed'} without merging`
     case 'wait.rebase_missing': return `Didn't rebase onto ${e.wait?.label ?? 'the PR it waited for'}`
     case 'shared': return e.shared ? `Shared "${e.shared.title}"` : 'Shared a file'
+    case 'question': return e.question ? `Asks: ${capText(e.question.text, CARD_MAX)}` : 'Asked a question'
+    case 'handoff.proposed': return e.proposal ? `Proposes ${e.proposal.agent} for: ${capText(e.proposal.task, CARD_MAX)}` : 'Proposed a hand-off'
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review'
@@ -592,6 +617,26 @@ export class LeadUpdates {
   shared(ws: Workspace, file: SharedFile, version: SharedVersion) {
     if (this.d.isLead(ws)) return
     this.add(ws, { kind: 'shared', shared: { sharedId: file.id, version: version.n, title: file.title, kind: file.kind, source: file.source } })
+  }
+
+  /**
+   * A teammate asked the Lead with ask_lead (KERNEL-747). It ends its turn right after, so the question waits for that turn
+   * to end, the way a wait it set does, and both wake the Lead once, together.
+   */
+  asked(ws: Workspace, text: string, options?: string[]) {
+    if (this.d.isLead(ws)) return
+    this.waitTurns.add(ws.id)
+    const kept = options?.map((o) => capText(o.trim(), OPTION_MAX)).filter(Boolean).slice(0, OPTIONS_MAX)
+    this.add(ws, { kind: 'question', question: { text: capText(text.trim(), ASK_MAX), ...(kept?.length ? { options: kept } : {}) } })
+  }
+
+  /**
+   * A teammate proposed handing part of its work to another agent with propose_handoff (KERNEL-747). The teammate carries on,
+   * so it doesn't wait for the turn: the Lead can take it to the user while the work goes on. Kernel never creates the workspace.
+   */
+  proposed(ws: Workspace, p: { agentId: string; agent: string; task: string; why: string }) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, { kind: 'handoff.proposed', proposal: { ...p, task: capText(p.task.trim(), ASK_MAX), why: capText(p.why.trim(), ASK_MAX) } })
   }
 
   /** A reviewer's submit_review from the chat `chatId` (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
@@ -1089,6 +1134,13 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
       case 'wait.released': break
+      case 'question':
+        wake(`Answer ${name}'s question with message_agent ${at}: from the approved plan if it covers it, otherwise ask the user with ask_user first. ${name} waits until you do.`)
+        break
+      // Only the user can approve new work, so the Lead proposes it as it would its own hand-off (KERNEL-747).
+      case 'handoff.proposed':
+        wake(`${name} proposes handing "${e.proposal?.task ?? 'a task'}" to ${e.proposal?.agent ?? 'another teammate'}. Propose it to the user and ask for a go-ahead. Call create_workspace for it only on a go-ahead that approves it.`)
+        break
       case 'pr.merged':
         // Kernel merged it by itself, so the user hears it from the Lead, even once the work is archived (KERNEL-556).
         if (e.auto) wake(autoMergedTodo(pr, ws.prUrl), true)
@@ -1132,8 +1184,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
         // An unblock that rides along says nothing for the turn, so it doesn't count (KERNEL-401).
         if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && ((x.kind.startsWith('pr.') && x.kind !== 'pr.unblocked') || x.kind === 'review'))) break
-        // The turn ended by waiting for another PR. Its wait line already wakes the Lead, once (KERNEL-262).
-        if (b.events.some((x) => x.kind === 'wait.started' && !x.wait?.told)) break
+        // The turn ended by waiting for another PR, or by asking the Lead. That line already wakes the Lead, once (KERNEL-262, KERNEL-747).
+        if (b.events.some((x) => (x.kind === 'wait.started' && !x.wait?.told) || x.kind === 'question')) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
         break
       default: break
