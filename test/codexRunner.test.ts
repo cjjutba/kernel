@@ -14,7 +14,7 @@ import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/servi
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
-import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 
@@ -364,14 +364,31 @@ describe('permission modes on Codex (KERNEL-447)', () => {
     expect(off.of('note').map((n) => n.text)).toEqual([NETWORK_OFF, NETWORK_OFF])
   })
 
-  it.fails('refuses a file change under a reference folder in every mode, as Claude does (KERNEL-743, fix tracked in KERNEL-790)', async () => {
-    const t = track(await setup({ mode: 'bypassPermissions', references: ['/tmp/client-a-api'] }))
-    await t.sessions.send('chat', [{ type: 'text', text: script(
-      { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
-      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } }
-    ) }])
-    await t.idle()
-    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
+  it('refuses a file change under a reference folder in every mode, as Claude does, and names the folders in its instructions (KERNEL-790)', async () => {
+    const change = (id: string, ...paths: string[]) => [
+      { notify: 'item/started', params: { item: { type: 'fileChange', id, changes: paths.map((path) => ({ path, kind: { type: 'update', move_path: null }, diff: '+x' })), status: 'inProgress' } } },
+      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1 } }
+    ]
+    for (const mode of ['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const) {
+      const t = track(await setup({ mode, availability: autoWorks, references: ['/tmp/client-a-api'] }))
+      await t.sessions.send('chat', [{ type: 'text', text: script(
+        { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
+        { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } },
+        // Only the second file is under the reference folder.
+        ...change('f2', 'src/app.ts', '/tmp/client-a-api/package.json')
+      ) }])
+      await t.idle()
+      expect(await t.answers('item/fileChange/requestApproval'), mode).toEqual([{ decision: 'decline' }, { decision: 'decline' }])
+      expect(t.of('note').map((n) => n.text), mode).toEqual([REFERENCE_READ_ONLY, REFERENCE_READ_ONLY])
+      expect(t.store.approvals({}), mode).toEqual([])
+      if (mode === 'default') expect((await t.sent('thread/start'))[0].params.developerInstructions).toContain('- /tmp/client-a-api')
+    }
+
+    // Changes anywhere else go on as before.
+    const other = track(await setup({ mode: 'acceptEdits', references: ['/tmp/client-a-api'] }))
+    await other.sessions.send('chat', [{ type: 'text', text: script(...change('f1', 'src/app.ts', '/tmp/client-a-api-v2/x.ts')) }])
+    await other.idle()
+    expect(await other.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
   })
 
   it('in Bypass permissions accepts file changes outside the workspace and grants more permissions, and still asks its questions', async () => {
