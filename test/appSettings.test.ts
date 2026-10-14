@@ -343,16 +343,16 @@ describe('agents working at once', () => {
   async function setup(agentLimit: number, leads: string[] = []) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
     for (const id of ['a', 'b', 'c', ...leads]) {
-      const ws: Workspace = { id: `ws-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'rowan' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+      const ws: Workspace = { id: `ws-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'kernel' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       const chat: Chat = { id, workspaceId: ws.id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
       store.saveWorkspace(ws)
       store.saveChat(chat)
     }
     const settings = { ...DEFAULT_SETTINGS('/home/cj'), models: { ...DEFAULT_SETTINGS('/home/cj').models, agentLimit } }
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'rowan' ? rowan : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
     return { sessions, settings }
   }
-  const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
+  const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
   const text = (t: string) => [{ type: 'text' as const, text: t }]
   const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
 
@@ -403,7 +403,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
       .toEqual(['pro', 'pro', 'max', 'max', 'max', 'team', 'enterprise', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown'])
   })
 
-  it('gives a fresh Pro install Sonnet for Rowan and the reviewer, medium effort, two teammates and no auto review', async () => {
+  it('gives a fresh Pro install Sonnet for Kernel and the reviewer, medium effort, two teammates and no auto review', async () => {
     const { saved, resolved } = await loadAppSettings(await fileOf(), '/home/cj', 'pro')
     expect(saved).toEqual({})
     expect(resolved.models.roles).toEqual({
@@ -659,7 +659,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   it('runs Kernel and the reviewer on the plan-resolved models, and an agent file with a model still wins', async () => {
     const repo = await tempRepo({
       'README.md': '# x\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\nrole: Frontend\n---\nYou are Kai.',
       '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\nmodel: opus\n---\nYou are Noor.'

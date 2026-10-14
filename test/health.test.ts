@@ -398,7 +398,7 @@ describe('archive and discard', () => {
 async function kernel(files: Record<string, string> = {}, o: { settings?: object; options?: Partial<ConstructorParameters<typeof Kernel>[0]> } = {}) {
   const repo = await tempRepo({
     'README.md': '# client\n',
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.',
     ...files
   })
@@ -415,7 +415,7 @@ async function kernel(files: Record<string, string> = {}, o: { settings?: object
 describe('kernel recovery paths', () => {
   /** A Kernel on a temp repo that can quit and start again on the same data, as the app does (KERNEL-128). */
   async function restartable(files: Record<string, string>) {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.', ...files })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -432,7 +432,7 @@ describe('kernel recovery paths', () => {
   it('keeps a held brief, and the Lead\'s message behind it, across a restart, and Run again sends them in order (KERNEL-128)', async () => {
     const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
-    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     expect(ws.status).toBe('failed')
@@ -444,7 +444,7 @@ describe('kernel recovery paths', () => {
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k2.retrySetup(ws.id)).status).toBe('ready')
-    // Nothing of Kai's is held any more, so nothing comes back after another restart. Rowan's chat never waited for its setup (KERNEL-490).
+    // Nothing of Kai's is held any more, so nothing comes back after another restart. Kernel's chat never waited for its setup (KERNEL-490).
     expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([])
     sdk.calls[sdk.calls.length - 1].feed(result('r1'))
     await flush()
@@ -457,7 +457,7 @@ describe('kernel recovery paths', () => {
   it('marks a workspace that waits for nothing ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
     const { k, room } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
-    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
@@ -475,7 +475,7 @@ describe('kernel recovery paths', () => {
   it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
     const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
-    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const other = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
@@ -522,9 +522,9 @@ describe('kernel recovery paths', () => {
   it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
-    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
-    // Rowan's turn waits on create_workspace, so its result tells Rowan.
+    // Kernel's turn waits on create_workspace, so its result tells Kernel.
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => id === lead.id
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
@@ -543,7 +543,7 @@ describe('kernel recovery paths', () => {
   it("doesn't tell the Lead setup failed when the user archived the workspace during Run again (KERNEL-126)", async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 1 && false)"\n' })
     const lead = await k.leadChat(room.id)
-    // Rowan's own chat runs the same setup, which fails the same way (KERNEL-405).
+    // Kernel's own chat runs the same setup, which fails the same way (KERNEL-405).
     await setUp(k, lead.id, 'failed')
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)

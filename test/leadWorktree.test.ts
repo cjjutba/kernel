@@ -12,7 +12,7 @@ import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { setUp, tempRepo, trustRoom } from './helpers'
 
-// KERNEL-405: each chat with Rowan is its own workspace, with its own worktree, branch, ports and setup. It replaces KERNEL-355's
+// KERNEL-405: each chat with Kernel is its own workspace, with its own worktree, branch, ports and setup. It replaces KERNEL-355's
 // one Lead worktree per room, and KERNEL-181's sync now runs per chat.
 
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any }[] }))
@@ -30,7 +30,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 const REPO = {
   'README.md': '# client\n',
   '.gitignore': '.env.local\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 }
 
@@ -79,7 +79,7 @@ async function pushElsewhere(bare: string, file: string, branch = 'main') {
   return sha(other, 'HEAD')
 }
 
-describe('a workspace per chat with Rowan (KERNEL-405)', () => {
+describe('a workspace per chat with Kernel (KERNEL-405)', () => {
   it('fetches, then makes a worktree on kernel/<slug> from the latest origin/main, and sends the first message once it exists', async () => {
     const { repo, bare } = await withOrigin()
     const where = await dirs()
@@ -183,7 +183,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     expect(ws.branch).toBe('plans/kernel-release-notes')
   })
 
-  it('keeps Rowan on the checkout in a repo with no commit yet, with no setup', async () => {
+  it('keeps Kernel on the checkout in a repo with no commit yet, with no setup', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'kernel-'))
     await run('git', ['init', '-q', '-b', 'main', repo])
     for (const [f, c] of Object.entries(REPO)) { await mkdir(join(repo, f, '..'), { recursive: true }); await writeFile(join(repo, f), c) }
@@ -195,7 +195,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     await vi.waitFor(() => expect(callIn(repo)).toHaveLength(1))
   })
 
-  it("runs Rowan in its worktree with the checkout's project config, and tells it its branch and that the checkout isn't its", async () => {
+  it("runs Kernel in its worktree with the checkout's project config, and tells it its branch and that the checkout isn't its", async () => {
     const repo = await tempRepo(REPO)
     const k = await boot(await dirs())
     const room = await k.addRoom(repo)
@@ -224,7 +224,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     expect(k.env.envFor(ws)).toMatchObject({ FROM_COPY: '1', KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: repo })
   })
 
-  it('refuses Fork into new workspace for a chat with Rowan, and lets Create PR run on its branch', async () => {
+  it('refuses Fork into new workspace for a chat with Kernel, and lets Create PR run on its branch', async () => {
     const repo = await tempRepo(REPO)
     const k = await boot(await dirs())
     const room = await k.addRoom(repo)
@@ -235,7 +235,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
   })
 })
 
-// KERNEL-490: Rowan's first message waits only when Wait for setup is on and a setup script runs on create. A teammate's brief
+// KERNEL-490: Kernel's first message waits only when Wait for setup is on and a setup script runs on create. A teammate's brief
 // always waits.
 describe('what waits for setup (KERNEL-490)', () => {
   const SETUP = { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 1 && echo set up"\n' }
@@ -251,7 +251,7 @@ describe('what waits for setup (KERNEL-490)', () => {
   }
 
   /**
-   * Rowan's message went out once the worktree existed, without waiting for setup, so the chat isn't empty and shows the turn,
+   * Kernel's message went out once the worktree existed, without waiting for setup, so the chat isn't empty and shows the turn,
    * not the "Running setup" line (KERNEL-542).
    */
   const sentAtOnce = async (k: Kernel, chat: Chat) => {
@@ -261,7 +261,7 @@ describe('what waits for setup (KERNEL-490)', () => {
     await vi.waitFor(() => expect(callIn(k.store.workspace(chat.workspaceId)!.path)).toHaveLength(1))
   }
 
-  it("sends Rowan's first message at once by default, while the setup script runs", async () => {
+  it("sends Kernel's first message at once by default, while the setup script runs", async () => {
     const { k, room: r } = await room(SETUP)
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     await sentAtOnce(k, chat)
@@ -418,7 +418,7 @@ async function landOnMain(repo: string, file: string, n = 1) {
   await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
 }
 
-/** A room with an origin and two chats with Rowan, set up and idle. Sends are recorded, not run. */
+/** A room with an origin and two chats with Kernel, set up and idle. Sends are recorded, not run. */
 async function syncedRoom() {
   const { repo, bare } = await withOrigin()
   const k = await boot(await dirs())
@@ -478,8 +478,8 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
   it('moves nothing when tracked files have changes or the chat has commits of its own, and logs each once per sha', async () => {
     const { k, repo, room, wa, wb } = await syncedRoom()
     const was = await sha(wa.path, 'HEAD')
-    await writeFile(join(wa.path, 'README.md'), '# edited by Rowan\n')
-    await writeFile(join(wb.path, 'rowan.txt'), 'Rowan committed\n')
+    await writeFile(join(wa.path, 'README.md'), '# edited by Kernel\n')
+    await writeFile(join(wb.path, 'kernel.txt'), 'Kernel committed\n')
     await run('git', ['-C', wb.path, 'add', '-A'])
     await run('git', ['-C', wb.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'own'])
     const own = await sha(wb.path, 'HEAD')

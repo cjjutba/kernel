@@ -114,7 +114,7 @@ describe('questions to the user', () => {
     expect(store.items('chat').find((i) => i.kind === 'approval')).toMatchObject({ approvalId: pending.id })
   })
 
-  it('hands the MCP builder the chat that is running, so Rowan\'s cards land there', async () => {
+  it('hands the MCP builder the chat that is running, so Kernel\'s cards land there', async () => {
     const seen: string[] = []
     const { chat } = await setup('acceptEdits', { mcpFor: (_ws, _agent, c) => { seen.push(c.id); return undefined } })
     expect(seen).toEqual([chat.id])
@@ -622,7 +622,7 @@ describe('prompt suggestions (KERNEL-530)', () => {
 
 describe('Approve and hand off (KERNEL-67)', () => {
   // The kernel repo's own Lead, which only plans and says nothing about create_workspace.
-  const rowan: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Rowan, the lead for building Kernel itself. You plan, you don't write feature code." }
+  const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Kernel, the lead for building Kernel itself. You plan, you don't write feature code." }
   const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
 
   const hooksFor = (options: Options, event: 'PostToolUse' | 'Stop', matcher?: string) => options.hooks![event]!.filter((m) => m.matcher === matcher).flatMap((m) => m.hooks)
@@ -642,8 +642,8 @@ describe('Approve and hand off (KERNEL-67)', () => {
   }
 
   it("adds Kernel's hand-off rule to a Lead whose own file only plans, and to no one else", async () => {
-    const lead = (await setup('acceptEdits', { agent: rowan })).options.systemPrompt as { append: string }
-    expect(lead.append).toContain(rowan.prompt)
+    const lead = (await setup('acceptEdits', { agent: kernel })).options.systemPrompt as { append: string }
+    expect(lead.append).toContain(kernel.prompt)
     expect(lead.append).toContain(LEAD_RULE)
     expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
     // KERNEL-129: what the rule asks of the Lead beyond the hand-off.
@@ -653,7 +653,7 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 
   it('tells the Lead to hand off right after the approval, then reminds it once if it tries to stop first', async () => {
-    const s = await setup('acceptEdits', { agent: rowan })
+    const s = await setup('acceptEdits', { agent: kernel })
     expect(await contexts(s.options, 'Stop')).toEqual([])
     await approvePlan(s)
     const [note] = await contexts(s.options, 'PostToolUse', 'ExitPlanMode')
@@ -679,28 +679,28 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 
   it('stops holding the Lead once it has created a workspace', async () => {
-    const s = await setup('acceptEdits', { agent: rowan })
+    const s = await setup('acceptEdits', { agent: kernel })
     await approvePlan(s)
     s.sessions.handoffs.done('chat') // what create_workspace does
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
   it('drops the reminder when the user stops the turn', async () => {
-    const s = await setup('acceptEdits', { agent: rowan })
+    const s = await setup('acceptEdits', { agent: kernel })
     await approvePlan(s)
     await s.sessions.interrupt('chat')
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
   it('drops the reminder when the user sends something else, even while it waits in the queue', async () => {
-    const s = await setup('acceptEdits', { agent: rowan })
+    const s = await setup('acceptEdits', { agent: kernel })
     await approvePlan(s)
     expect(await s.sessions.send('chat', [{ type: 'text', text: 'Hold off, post it to Linear instead' }])).toEqual({ queued: true, why: 'running' })
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
   it('takes a Kernel post into an idle chat without cancelling a pending hand-off, and refuses one while running (KERNEL-72)', async () => {
-    const s = await setup('acceptEdits', { agent: rowan })
+    const s = await setup('acceptEdits', { agent: kernel })
     s.sessions.handoffs.approved('chat')
     expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }])).toBe(false)
     s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
@@ -999,7 +999,7 @@ describe('asking from inside a hook (KERNEL-446)', () => {
 })
 
 describe('who sent a message (KERNEL-116)', () => {
-  const lead: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+  const lead: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
   const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
   const HEADER = 'Team update from Kernel, not from the user.'
   const users = (s: Awaited<ReturnType<typeof setup>>) => s.store.items('chat').filter((i: ChatItem): i is Extract<ChatItem, { kind: 'user' }> => i.kind === 'user')
@@ -1135,7 +1135,7 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(users(s).at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
     expect(s.sessions.kernelTurn('chat')).toBe(false)
     await finish(s, 'r2')
-    // Rowan's message, then a restart after a crash: the restarted turn is still Rowan's.
+    // Kernel's message, then a restart after a crash: the restarted turn is still Kernel's.
     await s.sessions.send('chat', [{ type: 'text', text: 'Use EmptyState' }], { from: 'lead' })
     await finish(s, 'r3')
     await s.sessions.restart('chat')
@@ -1800,7 +1800,7 @@ describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
 })
 
 describe('holding teammates near a usage limit (KERNEL-220)', () => {
-  const rowan: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+  const kernel: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
   const text = (t: string) => [{ type: 'text' as const, text: t }]
   const result = (id: string) => ({ type: 'result', subtype: 'success', is_error: false, uuid: id, duration_ms: 1, result: '', session_id: 's' })
   const secs = (ms: number) => Math.round(ms / 1000)
@@ -1812,8 +1812,8 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
 
   /** A teammate chat that finished a turn, and the Lead's chat in another workspace. Near-limit holds are on. */
   async function room(usage: AppSettings['usage'] = { pauseNearLimit: true, warnBeforeWeekly: true }) {
-    const s = await setup('acceptEdits', { usage, agentFor: (ws) => (ws.id === 'wsLead' ? rowan : undefined) })
-    s.store.saveWorkspace({ id: 'wsLead', roomId: 'room', name: 'lead', branch: 'HEAD', baseRef: 'main', path: '/tmp/wsLead', mode: 'worktree', agentId: 'rowan', lead: true, port: 4302, status: 'ready', prState: 'none', createdAt: 3 })
+    const s = await setup('acceptEdits', { usage, agentFor: (ws) => (ws.id === 'wsLead' ? kernel : undefined) })
+    s.store.saveWorkspace({ id: 'wsLead', roomId: 'room', name: 'lead', branch: 'HEAD', baseRef: 'main', path: '/tmp/wsLead', mode: 'worktree', agentId: 'kernel', lead: true, port: 4302, status: 'ready', prState: 'none', createdAt: 3 })
     s.store.saveChat({ ...s.chat, id: 'leadChat', workspaceId: 'wsLead', title: 'Lead' })
     s.call.feed(result('r1'))
     await flush()
@@ -1833,7 +1833,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
     expect(await s.sessions.send('chat', text('Next task'))).toEqual({ queued: true, why: 'limit' })
     expect(s.sessions.queueReason('chat')).toBe('limit')
     expect(s.sessions.isRunning('chat')).toBe(false)
-    // The Lead's chats are never held, so Rowan can still answer the user.
+    // The Lead's chats are never held, so Kernel can still answer the user.
     expect(await s.sessions.send('leadChat', text('Plan it'))).toEqual({ queued: false })
     expect(s.sessions.isRunning('leadChat')).toBe(true)
     expect(sdk.calls).toHaveLength(before + 1)
@@ -2022,7 +2022,7 @@ describe('holding teammates near a usage limit (KERNEL-220)', () => {
     expect(runningNow()).toContain('c3')
   })
 
-  it('tells the Lead why a hand-off waits (the tools word it for Rowan)', async () => {
+  it('tells the Lead why a hand-off waits (the tools word it for Kernel)', async () => {
     const { queuedNote } = await import('../src/main/services/kernelMcp')
     expect(queuedNote('limit', { name: 'Kai', brief: true })).toBe("Usage is close to the limit, so Kai hasn't started. The brief goes out when it resets or usage drops.")
     expect(queuedNote('limit', { name: 'Kai' })).toBe('Usage is close to the limit, so the message goes out when it resets or usage drops.')
@@ -2633,7 +2633,7 @@ describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
   })
 
   it("moves a team update to a Lead chat whose session is gone, and it stays Kernel's turn", async () => {
-    const lead: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+    const lead: AgentDef = { id: 'kernel', file: '.claude/agents/kernel.md', name: 'Kernel', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Kernel.' }
     const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
     const s = await setup('acceptEdits', { agent: lead })
     s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })

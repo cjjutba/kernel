@@ -52,7 +52,7 @@ async function until<T>(read: () => T | undefined | false): Promise<T> {
 async function kernel() {
   const repo = await tempRepo({
     'README.md': '# client\n',
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -265,9 +265,9 @@ describe('plan cards outlive a restart', () => {
     const leadWs = await setUp(k, lead.id)
     await k.sessions.configure(lead.id, { plan: true })
     await k.sessions.send(lead.id, text('Plan the invoice table'))
-    callIn(leadWs.path)!.feed({ type: 'system', subtype: 'init', session_id: 'rowan-session', apiKeySource: 'none' })
-    const rowan = (await k.team.agents(room.id)).find((a) => a.lead)!
-    const tool = kernelTools(k.lead.leadToolDeps(room.id, rowan, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
+    callIn(leadWs.path)!.feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
+    const leadAgent = (await k.team.agents(room.id)).find((a) => a.lead)!
+    const tool = kernelTools(k.lead.leadToolDeps(room.id, leadAgent, k.store.chat(lead.id)!)).find((t) => t.name === 'request_plan_approval')!
     const asked = tool.handler({ title: 'Invoice table', plan: PLAN, steps: ['Build the table · Kai'] } as never, {})
     const card = await until(() => plans(k, lead).find((a) => a.planFile))
     await k.stop()

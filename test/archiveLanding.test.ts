@@ -19,9 +19,9 @@ const { archiveByHand, restoredFromHistory } = await import('../src/renderer/src
 const room = (id: string): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1 }) as Room
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
   ({ id, roomId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
-const chat = (id: string, threadId: string, over: Partial<Workspace> = {}) => ws(id, { lead: true, threadId, agentId: 'rowan', ...over })
+const chat = (id: string, threadId: string, over: Partial<Workspace> = {}) => ws(id, { lead: true, threadId, agentId: 'kernel', ...over })
 const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, roomId: 'r1', title: id, createdAt: 1, ...over }) as Thread
-const rowan = { id: 'rowan', lead: true } as AgentDef
+const kernel = { id: 'kernel', lead: true } as AgentDef
 const kai = { id: 'kai', name: 'Kai' } as AgentDef
 const theo = { id: 'theo', name: 'Theo' } as AgentDef
 
@@ -38,14 +38,14 @@ const archived = (id: string): PushEvent => ({ type: 'workspace', workspace: { .
 beforeEach(() => {
   fail = undefined
   setState({
-    rooms: [room('r1')], agents: { r1: [rowan, kai, theo] }, workspaces: world(),
+    rooms: [room('r1')], agents: { r1: [kernel, kai, theo] }, workspaces: world(),
     threads: { t1: thread('t1', { createdAt: 1 }), t2: thread('t2', { createdAt: 2 }) }, chats: {}
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, modal: null, toasts: [] } }))
 })
 
 describe("the room's front door (KERNEL-596)", () => {
-  it('is New chat with Rowan whatever chats are open, where roomHome would pick the top chat', () => {
+  it('is New chat with Kernel whatever chats are open, where roomHome would pick the top chat', () => {
     expect(roomHome('r1', getState())).toEqual(at('newer'))
     expect(frontDoor('r1', getState())).toEqual(door)
   })
@@ -113,7 +113,7 @@ describe('the route follows the archived status (KERNEL-596)', () => {
   afterEach(() => { stop(); mark(); for (const w of world()) restoredFromHistory(w.id) })
 
   it.each([
-    ['a chat with Rowan', 'newer'],
+    ['a chat with Kernel', 'newer'],
     ['a workspace it handed off', 'handed'],
     ['a plain workspace', 'plain'],
     ['a workspace whose PR merged', 'merged'],

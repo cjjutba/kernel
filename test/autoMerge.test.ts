@@ -280,7 +280,7 @@ describe('the settings', () => {
   })
 })
 
-describe('what Rowan hears', () => {
+describe('what Kernel hears', () => {
   const open: LeadUpdates[] = []
   afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
   const ws = (prState: Workspace['prState']) => ({ id: 'w1', roomId: 'r', name: 'w1', agentId: 'kai', prState, prNumber: 54, prUrl: 'https://github.com/o/shop/pull/54', status: 'ready' }) as Workspace
@@ -298,7 +298,7 @@ describe('what Rowan hears', () => {
     ])
   })
 
-  it('tells Rowan to pass on a merge Kernel made by itself, with the link, even once the work is archived', () => {
+  it('tells Kernel to pass on a merge Kernel made by itself, with the link, even once the work is archived', () => {
     const out = decide({ ws: { ...ws('merged'), status: 'archived' }, name: 'Kai', events: [ev('pr.merged', { auto })] }, { allMerged: () => false })
     expect(out.todo).toEqual(['Tell the user Kernel merged PR #54 automatically and why, in a line or two, with its link https://github.com/o/shop/pull/54.'])
   })
@@ -331,7 +331,7 @@ describe('what Rowan hears', () => {
     await vi.waitFor(() => expect(posts).toHaveLength(1))
   })
 
-  it('says "Merged automatically" and why on the card, and in the text Rowan reads', async () => {
+  it('says "Merged automatically" and why on the card, and in the text Kernel reads', async () => {
     const { store, u, posts } = await lead()
     u.autoMerging('w1', auto)
     store.saveWorkspace({ ...store.workspace('w1')!, prState: 'merged' })

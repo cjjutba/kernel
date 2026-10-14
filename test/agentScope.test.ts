@@ -14,14 +14,14 @@ import { tempRepo } from './helpers'
 // KERNEL-466: a hire, an edit, a retire and a restore are for the user on this Mac, or for the team in a pull request. Either
 // way the room's own checkout is never left with an agent file Kernel wrote, changed or moved.
 
-const ROWAN = '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Rowan.\n'
+const KERNEL = '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Kernel.\n'
 const KAI = '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit, Write, Bash, Grep, Glob\ncolor: blue\n---\nYou are Kai.\n'
 const IVY = '---\nname: ivy\ndescription: QA. Runs the tests before review.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Ivy.\n'
 const URL = 'https://github.com/o/r/pull/7'
 
 /** A room whose repo has a remote, and a code host that pushes there and says PR #7 opened. */
 async function boot(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/kai.md': KAI, ...files })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/kai.md': KAI, ...files })
   const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
   await run('git', ['init', '-q', '--bare', '-b', 'main', remote])
   await git(repo, 'remote', 'add', 'origin', remote)
@@ -251,7 +251,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
       return a!
     })
 
-    // Rowan proposes no one: the card starts on Just for me.
+    // Kernel proposes no one: the card starts on Just for me.
     let asked = call({ id: 'wren', description: 'Designer. Checks screens.', prompt: 'You are Wren.' })
     let pending = await card()
     expect(pending.agentFile).toMatchObject({ path: '~/.claude/agents/wren.md', scope: 'me' })
@@ -259,14 +259,14 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const saved = await asked
     expect(saved.startsWith(`Saved ${join(home, '.claude', 'agents', 'wren.md')}, just for the user on this Mac. Wren joins the team`)).toBe(true)
 
-    // Rowan proposes the team, and the user keeps it for themselves.
+    // Kernel proposes the team, and the user keeps it for themselves.
     asked = call({ id: 'nia', description: 'Docs writer.', prompt: 'You are Nia.', scope: 'team' })
     pending = await card()
     expect(pending.agentFile).toMatchObject({ path: '.claude/agents/nia.md', scope: 'team' })
     k.approvals.decide(pending.id, { behavior: 'allow', scope: 'me' })
     expect(await asked).toMatch(/^Saved .*nia\.md, just for the user on this Mac\./)
 
-    // And the other way round: the user sends Rowan's personal hire to the team.
+    // And the other way round: the user sends Kernel's personal hire to the team.
     asked = call({ id: 'ivy', description: 'QA. Runs the tests.', prompt: 'You are Ivy.' })
     k.approvals.decide((await card()).id, { behavior: 'allow', scope: 'team' })
     const text = await asked

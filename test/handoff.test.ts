@@ -18,7 +18,7 @@ import { toCodexInput } from '../src/main/services/providers/codex/runner'
 import { toUserMessage } from '../src/main/services/providers/claude'
 import { capRefusal, kernelTools, LEAD_INSTRUCTIONS, NO_GO_AHEAD, NO_PLAN, PLAN_MODE_OFF, quotesUser, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
@@ -46,7 +46,7 @@ const PLAN = '# Symlink node_modules\n\nWorktrees reinstall every package. Link 
 
 /** request_plan_approval in a real Kernel's Lead chat, and the room's plan approvals. */
 async function realLead() {
-  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.' })
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -91,7 +91,7 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
 
 describe("create_workspace stops at the room's open teammate workspaces (KERNEL-220)", () => {
   const ws = (n: number, extra: Partial<Workspace> = {}) => Array.from({ length: n }, (_, i) => ({ id: `w${i}-${extra.status ?? extra.prState ?? extra.reviewOf ?? 'open'}`, name: `w${i}`, branch: `feat/w${i}`, agentId: 'noor', status: 'ready', prState: 'none', ...extra }) as Workspace)
-  const rowan = { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true } as AgentDef
+  const kernel = { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true } as AgentDef
   const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
   const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
   const APP = "Archive one, or the user can raise Agents working at once in Settings, Models and effort, or set this room's own limit in Settings, app, Agents."
@@ -100,7 +100,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   function tools(workspaces: Workspace[], cap?: number, own = false) {
     const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'noor' }) as Workspace)
     const deps = {
-      roomId: 'room', lead: rowan, agents: async () => [rowan, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
+      roomId: 'room', lead: kernel, agents: async () => [kernel, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
       askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: async () => ({ cap, own, room: 'app' }) })
     } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
@@ -132,7 +132,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
   })
 
   it("counts open build workspaces only: reviews, archived, merged, closed and the Lead's own don't count", async () => {
-    const others = [...ws(4, { reviewOf: 'w0-open' }), ...ws(1, { status: 'archived' }), ...ws(1, { prState: 'merged' }), ...ws(1, { prState: 'closed' }), ...ws(1, { agentId: 'rowan', lead: true })]
+    const others = [...ws(4, { reviewOf: 'w0-open' }), ...ws(1, { status: 'archived' }), ...ws(1, { prState: 'merged' }), ...ws(1, { prState: 'closed' }), ...ws(1, { agentId: 'kernel', lead: true })]
     const t = tools([...ws(2), ...others], 3)
     expect((await t.run()).isError).toBe(false)
     // One more build workspace in any state that is still open reaches the limit.
@@ -149,7 +149,7 @@ describe("create_workspace stops at the room's open teammate workspaces (KERNEL-
     const reviewer = { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false } as AgentDef
     const workspaces = ws(3)
     const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'theo' }) as Workspace)
-    const deps = { roomId: 'room', lead: rowan, agents: async () => [rowan, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, room: 'app' }) } as unknown as KernelToolDeps
+    const deps = { roomId: 'room', lead: kernel, agents: async () => [kernel, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: async () => ({ cap: 3, own: false, room: 'app' }) } as unknown as KernelToolDeps
     const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const r = await create.handler({ agent: 'theo', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
     expect((r as { isError?: boolean }).isError).toBeFalsy()
@@ -400,6 +400,7 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(UPDATE_HEADER).toBe('Team update, not from the user.')
     expect(starter).toMatch(/^---\nname: kernel\n/)
     expect(starter.split('---\n')[2]).toMatch(/^You are Kernel/)
+    // Rowan is kept on purpose: the starter must not carry the old persona name.
     expect(starter).not.toMatch(/rowan/i)
   })
 })
@@ -625,7 +626,7 @@ describe('Handoffs', () => {
 
 describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   const team = [
-    { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true },
+    { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true },
     { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
     { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false },
     { id: 'theo-2', name: 'Theo', role: 'Reviewer', lead: false },
@@ -688,14 +689,14 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
 
   it('refuses to hand a task to the Lead', async () => {
     const t = tools()
-    expect(await t.create('Rowan')).toEqual({ isError: true, text: 'Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.' })
+    expect(await t.create('Kernel')).toEqual({ isError: true, text: 'Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.' })
     expect(t.asked).toEqual([])
   })
 })
 
 describe('create_workspace with review_of (KERNEL-130)', () => {
   const team = [
-    { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true },
+    { id: 'kernel', name: 'Kernel', role: 'Lead', lead: true },
     { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
     { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false }
   ] as AgentDef[]
@@ -723,7 +724,7 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
   })
 
   it('refuses unknown or archived work, the Lead\'s own, a review of a review, and a second open review by the same reviewer', async () => {
-    const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'rowan', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'theo', reviewOf: 'w1' }), ws('main', { mode: 'current' }), ws('done', { prState: 'merged' })])
+    const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'kernel', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'theo', reviewOf: 'w1' }), ws('main', { mode: 'current' }), ws('done', { prState: 'merged' })])
     expect(await t.review('nope')).toEqual({ isError: true, text: 'Not created: there is no workspace nope in this room to review. Call list_workspaces for the ids.' })
     expect(await t.review('gone')).toEqual({ isError: true, text: 'Not created: gone is archived. Ask the user to restore it from History first.' })
     expect(await t.review('lead')).toEqual({ isError: true, text: 'Not created: that is your own workspace.' })

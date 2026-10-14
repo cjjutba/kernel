@@ -24,7 +24,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => {
 
 const AGENTS = {
   'README.md': '# shop\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Kai.',
   // Can edit by its tools line, which a review chat overrides.
   '.claude/agents/wren.md': '---\nname: wren\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Wren, and you look at screens.'

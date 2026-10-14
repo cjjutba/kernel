@@ -266,7 +266,7 @@ describe('the Release note check', () => {
     if (!r.ok) expect(missingMessage(r)).toContain('Add .changes/unreleased/kernel-70-fix-pr-refresh.md')
   })
 
-  it.each(['src/renderer/src/App.tsx', 'docs/starter-agents/rowan.md', 'build/entitlements.mac.plist', 'electron-builder.yml', 'scripts/release.sh'])(
+  it.each(['src/renderer/src/App.tsx', 'docs/starter-agents/kernel.md', 'build/entitlements.mac.plist', 'electron-builder.yml', 'scripts/release.sh'])(
     'counts %s as an app file',
     (path) => expect(pr([['M', path]]).ok).toBe(false)
   )

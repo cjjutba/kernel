@@ -9,7 +9,7 @@ import { kernelTools } from '../src/main/services/kernelMcp'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-299: a review the Lead started with base_ref set to the reviewed branch, instead of review_of, is still a review,
@@ -17,7 +17,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 
 const REPO = {
   'README.md': '# client\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\nrole: Frontend\n---\nYou are Kai. Open a PR for each task.',
   '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
 }
@@ -42,9 +42,9 @@ async function setup() {
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const room = await k.addRoom(repo)
   const lead = await k.leadChat(room.id)
-  const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
+  const kernel = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+  const create = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
   /** create_workspace as the Lead calls it; the id of the new workspace, or the refusal. */
   const handOff = async (args: Record<string, string>) => {
     const out = await create.handler(args as never, {})

@@ -50,7 +50,7 @@ export async function trustRoom(k: Kernel, roomId: string) {
 }
 
 /**
- * Waits until a workspace has finished setting up: a new chat with Rowan, a restore or a fork sets up in the background
+ * Waits until a workspace has finished setting up: a new chat with Kernel, a restore or a fork sets up in the background
  * (KERNEL-405). Takes the workspace's id or one of its chats. Returns the workspace as it is then.
  */
 export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 'trust' | 'settled' = 'ready') {

@@ -192,7 +192,7 @@ describe('GitHub issues (KERNEL-471)', () => {
     expect(describeGithub({ mine: false }, '', 'acme/app').fits).toEqual([])
   })
 
-  it('plans with Rowan the way Linear does: the issue chip, then its description and how to hand it off', () => {
+  it('plans with Kernel the way Linear does: the issue chip, then its description and how to hand it off', () => {
     const issue: GithubIssueDetail = { ...list[2], url: 'https://github.com/acme/app/issues/31', body: ' Clients want a PDF. ', comments: [] }
     expect(githubPlanParts(issue)).toEqual([
       { type: 'issue', name: '#31', title: 'Issue 31', url: issue.url, source: 'github' },

@@ -35,7 +35,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 }
 
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
-const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
+const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
 async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
   const fake = await fakeCodex()
@@ -602,7 +602,7 @@ describe('plan mode on Codex (KERNEL-406)', () => {
   })
 
   it("asks once when the Lead already asked with request_plan_approval in the same turn", async () => {
-    const t = track(await setup({ agent: rowan, chat: { plan: true } }))
+    const t = track(await setup({ agent: kernel, chat: { plan: true } }))
     await t.sessions.send('chat', [{ type: 'text', text: script(
       ...item({ type: 'dynamicToolCall', id: 'd1', namespace: null, tool: 'kernel_request_plan_approval', arguments: {}, status: 'completed', contentItems: [{ type: 'inputText', text: 'approved' }], success: true }),
       { notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Hand off' } } }
@@ -625,7 +625,7 @@ describe('plan mode on Codex (KERNEL-406)', () => {
   })
 
   it("has the Lead hand off after Approve, and reminds it once when a turn ends with nothing handed off", async () => {
-    const t = track(await setup({ agent: rowan, chat: { plan: true } }))
+    const t = track(await setup({ agent: kernel, chat: { plan: true } }))
     await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
     const card = await t.pending()
     t.approvals.decide(card.id, { behavior: 'allow' })
@@ -716,22 +716,22 @@ describe('a card whose turn or process is gone, on Codex (KERNEL-563)', () => {
     ['ask_user', { question: 'Raise the workspace limit to 8?' }],
     ['request_plan_approval', { title: 'T-1 Export invoices', plan: '1. Export them as PDF', steps: ['Export invoices · Noor'] }],
     ['create_agent', { id: 'scribe', description: 'Writes the docs', prompt: 'You write the docs.' }]
-  ] as const)("ends Rowan's %s card on Stop through the tool call's signal (KERNEL-496)", async (name, args) => {
+  ] as const)("ends Kernel's %s card on Stop through the tool call's signal (KERNEL-496)", async (name, args) => {
     const signals: (AbortSignal | undefined)[] = []
     const ref: { t?: Awaited<ReturnType<typeof setup>> } = {}
     // Kernel's own Lead tools, whose card waits on the call's signal as the Lead's askUser does.
     const deps: Partial<KernelToolDeps> = {
-      roomId: 'room', lead: rowan, chatId: 'chat', agents: async () => [], workspaces: () => [], planMode: () => true,
+      roomId: 'room', lead: kernel, chatId: 'chat', agents: async () => [], workspaces: () => [], planMode: () => true,
       askUser: async (o, signal) => {
         signals.push(signal)
         if (signal?.aborted) return null
-        const { approval, decision } = ref.t!.approvals.request({ kind: o.kind, source: 'sdk', roomId: 'room', workspaceId: 'ws', chatId: 'chat', agentId: 'rowan', title: o.title }, { signal })
+        const { approval, decision } = ref.t!.approvals.request({ kind: o.kind, source: 'sdk', roomId: 'room', workspaceId: 'ws', chatId: 'chat', agentId: 'kernel', title: o.title }, { signal })
         ref.t!.sessions.placeApproval('chat', approval.id)
         return decision
       }
     }
     const lead = kernelTools(deps as KernelToolDeps)
-    const t = (ref.t = track(await setup({ agent: rowan, tools: lead })))
+    const t = (ref.t = track(await setup({ agent: kernel, tools: lead })))
     await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/tool/call', params: { threadId: '$thread', turnId: '$turn', callId: 'd1', namespace: null, tool: `kernel_${name}`, arguments: args } }, reply) }])
     const card = await t.pending()
     await t.sessions.interrupt('chat')

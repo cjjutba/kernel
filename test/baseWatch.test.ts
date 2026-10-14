@@ -24,7 +24,7 @@ const REPO = {
   'README.md': '# client\n',
   'src/a.ts': 'one\ntwo\nthree\n',
   'src/b.ts': 'alpha\nbeta\ngamma\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 }
 

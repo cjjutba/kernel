@@ -36,7 +36,7 @@ const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000003000000020806000
 const HTML = '<!doctype html><html><head><title>Checkout mockup</title><style>body{margin:0}</style></head><body><h1>Pay</h1></body></html>'
 
 async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: SharedFile, v: number) => Promise<Buffer | null> } = {}) {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.sharing === undefined ? {} : { experimental: { sharing: o.sharing } }) }))

@@ -8,16 +8,16 @@ import { run } from '../src/main/services/exec'
 import { snapshot } from '../src/main/services/checkpoints'
 import type { Workspace } from '@shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-333: Delete in History forgets archived workspaces with their branches, checkpoints and Claude Code transcripts.
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
+const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, '.claude/agents/rowan.md': ROWAN })
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, '.claude/agents/kernel.md': KERNEL })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))

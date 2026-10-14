@@ -7,14 +7,14 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-131: review workspaces go once the work they reviewed merges or closes, through archive_workspace's checks.
 
 const REPO = {
   'README.md': '# client\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
   '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
 }

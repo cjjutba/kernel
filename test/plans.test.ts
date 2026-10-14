@@ -9,7 +9,7 @@ import { attachedImages, attachmentNote, imagePart, planName, saveAttachments, s
 import { Kernel } from '../src/main/kernel'
 import type { Approval, ChatPart } from '@shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // D-092: plan-mode plans are saved as files a later chat can build from, and git never sees them.
@@ -162,7 +162,7 @@ describe("the user's images the Lead passes on (KERNEL-658)", () => {
 
 describe('a plan change request with images, through approvals.decide', () => {
   async function kernel() {
-    const repo = await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))

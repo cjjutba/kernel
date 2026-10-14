@@ -13,7 +13,7 @@ import { bus } from '../src/main/bus'
 import { setUp, tempRepo, trustRoom } from './helpers'
 import { run as git } from '../src/main/services/exec'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-105: with several chats open with the Lead, each workspace reports to the chat that handed it off.
@@ -32,7 +32,7 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
 
 const REPO = {
   'README.md': '# client\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai. Open a PR for each task.'
 }
 
@@ -56,20 +56,20 @@ async function setup(files: Record<string, string> = {}) {
   k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
   const room = await k.addRoom(repo)
   await trustRoom(k, room.id)
-  // Each chat with Rowan has its own workspace (KERNEL-405). Both are set up before the test talks to them.
+  // Each chat with Kernel has its own workspace (KERNEL-405). Both are set up before the test talks to them.
   const named = async (title: string) => {
     const c = await k.lead.newLeadChat(room.id, { prompt: '' })
-    // A room whose setup fails fails Rowan's chats too. The tests talk to their tools, which don't wait for it.
+    // A room whose setup fails fails Kernel's chats too. The tests talk to their tools, which don't wait for it.
     await setUp(k, c.id, 'settled')
     k.store.saveThread({ ...k.store.thread(c.threadId!)!, title })
     return k.store.saveChat({ ...k.store.chat(c.id)!, title })
   }
   const first = await named('Lead')
   const icons = await named('Chat icons sizing')
-  const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
+  const kernel = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   /** `extra` is what the MCP server passes a handler, as the call's abort signal. */
   const run = async (chat: Chat, name: string, args: Record<string, unknown>, extra: { signal?: AbortSignal } = {}) => {
-    k.lead['leadTools'](room.id, rowan, chat)
+    k.lead['leadTools'](room.id, kernel, chat)
     // These chats are about tabs, so their hand-offs skip the go-ahead check, which handoff.test.ts covers (KERNEL-678).
     const tool = kernelTools({ ...wired!, userSaid: undefined }).find((t) => t.name === name)!
     const r = await tool.handler(args as never, extra)
@@ -85,7 +85,7 @@ async function setup(files: Record<string, string> = {}) {
     if (!ws) throw new Error('That chat no longer exists.')
     return k.handlers()['chats.create']({ workspaceId: ws.id })
   }
-  return { k, room, first, icons, call, run, byTitle, target, tab, named, sent, answer, where, rowan }
+  return { k, room, first, icons, call, run, byTitle, target, tab, named, sent, answer, where, kernel }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -103,7 +103,7 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
   it("links the plan step and board task from the calling chat's plan, not a newer plan from another chat", async () => {
     const { k, room, first, icons, call, byTitle } = await setup()
     const plan = (id: string, chat: Chat, createdAt: number) => k.store.saveApproval({
-      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'rowan', title: id,
+      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id,
       steps: [{ title: `${id} step`, agentId: 'kai' }], status: 'allowed', createdAt
     } as Approval)
     k.tasks.fromPlan(plan('icons-plan', icons, Date.now() - 1000))
@@ -212,7 +212,7 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     expect(lead.lead).toBe(true)
     // A worktree handed to the Lead when its agent retired is the Lead agent's too, and isn't the Lead's workspace.
     const handed = await old.workspaces.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
-    old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'rowan' })
+    old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'kernel' })
     // As if this database came from a version before the mark existed, when the Lead worked on the main checkout.
     for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
     old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
@@ -585,7 +585,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     return { ...t, ws, ask, spend }
   }
 
-  it('lets three requests from Kernel-started turns through, refuses the fourth, and starts over when the user writes to Rowan', async () => {
+  it('lets three requests from Kernel-started turns through, refuses the fourth, and starts over when the user writes to Kernel', async () => {
     const { k, first, ask, spend, sent } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
@@ -666,7 +666,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   })
 
   it('keeps the counts across a restart', async () => {
-    const { k, first, ws, spend, where, rowan, room } = await guarded()
+    const { k, first, ws, spend, where, kernel, room } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
     await k.stop()
@@ -675,7 +675,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     onTestFinished(() => k2.stop())
     k2.sessions.send = async () => ({ queued: false })
     k2.sessions.kernelTurn = (id) => id === first.id
-    k2.lead['leadTools'](room.id, rowan, first)
+    k2.lead['leadTools'](room.id, kernel, first)
     const tool = kernelTools(wired!).find((t) => t.name === 'message_agent')!
     const r = await tool.handler({ workspace_id: ws.id, ...ASK } as never, {})
     expect((r as { isError?: boolean }).isError).toBe(true)
@@ -786,7 +786,7 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
   })
 })
 
-// KERNEL-496: the user writes in the message box instead of answering Rowan's card. Kernel interrupts the turn, Claude Code
+// KERNEL-496: the user writes in the message box instead of answering Kernel's card. Kernel interrupts the turn, Claude Code
 // cancels the tool call, and its abort signal ends the card.
 describe("a card whose turn stopped before the user answered (KERNEL-496)", () => {
   const asks = [
@@ -837,7 +837,7 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
 
 describe('Lead tabs (KERNEL-145)', () => {
   it("opens a tab in its chat's workspace, past a busy tab, and gives it the Lead tools (KERNEL-405)", async () => {
-    const { k, first, icons, tab, rowan } = await setup()
+    const { k, first, icons, tab, kernel } = await setup()
     k.sessions.isRunning = (id: string) => id === icons.id
     const a = await tab(icons.threadId)
     const b = await tab(icons.threadId)
@@ -846,7 +846,7 @@ describe('Lead tabs (KERNEL-145)', () => {
     expect([a, b].map((c) => k.store.chat(c.id)!.threadId)).toEqual([icons.threadId, icons.threadId])
     // Each tab gets the Lead's kernel server, bound to that tab.
     const ws = k.store.workspace(icons.workspaceId)!
-    expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.id)!)).toHaveProperty('kernel')
+    expect(k.sessions['d'].mcpFor(ws, kernel, k.store.chat(b.id)!)).toHaveProperty('kernel')
     expect(wired!.chatId).toBe(b.id)
   })
 
@@ -922,7 +922,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     await k.chats.closeChat(icons.id)
     expect(k.lead.chatWorkspaces(room.id)).toEqual([])
     expect(k.store.threads(room.id).map((t) => t.id)).toEqual([first.threadId, icons.threadId])
-    // Restore opens the chat again, and it sets up before Rowan goes on.
+    // Restore opens the chat again, and it sets up before Kernel goes on.
     const back = await k.restoreWorkspace(first.workspaceId)
     expect(back.status).toBe('setup')
     expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
@@ -990,7 +990,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     const sibling = await tab(first.threadId)
     const elsewhere = await tab()
     const plan = (id: string, chat: Chat, createdAt: number, status: Approval['status'] = 'allowed') => k.store.saveApproval({
-      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'rowan', title: id, detail: `${id} text`,
+      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'kernel', title: id, detail: `${id} text`,
       steps: [{ title: `${id} step`, agentId: 'kai' }], status, createdAt
     } as Approval)
     const now = Date.now()
@@ -1078,7 +1078,7 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
   })
 })
 
-describe('the sidebar order of chats with Rowan (KERNEL-498)', () => {
+describe('the sidebar order of chats with Kernel (KERNEL-498)', () => {
   it("records the user's sends in any tab of a chat, and not Team updates, an answered question or a message to a teammate", async () => {
     const { k, first, icons, call, byTitle, tab, answer } = await setup()
     const sentAt = (c: Chat) => k.store.thread(c.threadId!)!.lastSentAt
@@ -1102,7 +1102,7 @@ describe('the sidebar order of chats with Rowan (KERNEL-498)', () => {
     k.leadUpdates['timers'].clear()
     k.leadUpdates.flushAll()
     await vi.waitFor(() => expect(posts).toEqual([first.id]))
-    // Answering Rowan's question.
+    // Answering Kernel's question.
     const asking = call(first, 'ask_user', { question: 'Skip the snapshot test?' })
     const pending = await vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
     k.approvals.decide(pending.id, { behavior: 'answer', text: 'Update the snapshot' })

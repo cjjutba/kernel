@@ -332,7 +332,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
     for (const args of [['init', '-q', '-b', 'main', repo], ['-C', repo, 'config', 'user.email', 't@t.dev'], ['-C', repo, 'config', 'user.name', 'Test']]) await exec('git', args)
     await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
     await writeFile(join(repo, 'README.md'), '# lead move\n')
-    await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), '---\nname: rowan\ndescription: Lead.\nlead: true\nmodel: sonnet\n---\nYou are Rowan. Answer in one short line.')
+    await writeFile(join(repo, '.claude', 'agents', 'kernel.md'), '---\nname: kernel\ndescription: Lead.\nlead: true\nmodel: sonnet\n---\nYou are Kernel. Answer in one short line.')
     await exec('git', ['-C', repo, 'add', '-A'])
     await exec('git', ['-C', repo, 'commit', '-q', '-m', 'init'])
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
@@ -345,7 +345,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
     try {
       const room = await k.addRoom(repo)
       // The Lead as it was before the move: one shared workspace on the checkout, with a chat in it.
-      const made = k.store.saveWorkspace({ id: 'old-lead', roomId: room.id, name: 'lead', branch: 'main', baseRef: 'main', path: repo, mode: 'current', agentId: 'rowan', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: Date.now() })
+      const made = k.store.saveWorkspace({ id: 'old-lead', roomId: room.id, name: 'lead', branch: 'main', baseRef: 'main', path: repo, mode: 'current', agentId: 'kernel', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: Date.now() })
       k.store.saveThread({ id: 'kumquat', roomId: room.id, title: 'Kumquat', createdAt: Date.now() })
       const chat = k.store.saveChat({ id: 'kumquat-tab', workspaceId: made.id, title: 'Kumquat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, threadId: 'kumquat', createdAt: Date.now() })
       k.store.saveMeta('leadChatsMoved', false)
@@ -362,7 +362,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
       await k.start()
       const moved = k.store.workspace(k.store.chat(chat.id)!.workspaceId)!
       evidence.after = { mode: moved.mode, path: moved.path, branch: moved.branch, baseRef: moved.baseRef }
-      expect(moved).toMatchObject({ mode: 'worktree', branch: 'rowan/kumquat', baseRef: 'main', lead: true, threadId: 'kumquat' })
+      expect(moved).toMatchObject({ mode: 'worktree', branch: 'kernel/kumquat', baseRef: 'main', lead: true, threadId: 'kumquat' })
       expect(k.store.workspace(made.id)?.status).toBe('archived')
       await waitFor('setup', () => k.store.workspace(moved.id)?.status === 'ready')
       const from = items().length

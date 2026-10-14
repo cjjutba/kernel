@@ -11,7 +11,7 @@ import { saveLinearToken, storedLinearToken } from '../src/main/services/integra
 import { getIssue, getScope, issueFilter, listIssues, moveToStarted, nextIssues, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 interface Call { query: string; variables: Record<string, unknown>; auth: string }
@@ -52,7 +52,7 @@ const detail = {
   ...node, description: 'Build the Issues screen.\n\n## Acceptance\n\n* It lists issues.',
   comments: { nodes: [
     { id: 'c2', body: 'Second', createdAt: '2026-10-09T12:00:00.000Z', user: null },
-    { id: 'c1', body: 'First', createdAt: '2026-10-09T11:00:00.000Z', user: { name: 'Rowan' } }
+    { id: 'c1', body: 'First', createdAt: '2026-10-09T11:00:00.000Z', user: { name: 'Kernel' } }
   ] }
 }
 
@@ -118,7 +118,7 @@ describe('Linear queries', () => {
     expect(l.calls[0].variables).toEqual({ id: 'KERNEL-83' })
     expect(l.calls[0].query).toContain('comments(first: 50)')
     expect(out).toEqual({ ...mapped, description: detail.description, comments: [
-      { id: 'c1', body: 'First', author: 'Rowan', createdAt: '2026-10-09T11:00:00.000Z' },
+      { id: 'c1', body: 'First', author: 'Kernel', createdAt: '2026-10-09T11:00:00.000Z' },
       { id: 'c2', body: 'Second', createdAt: '2026-10-09T12:00:00.000Z' }
     ], blockedBy: [] })
   })
@@ -284,19 +284,19 @@ describe('the saved Linear token (KERNEL-445)', () => {
 })
 
 describe('Linear in the kernel', () => {
-  const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
+  const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
   const NOOR = '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.'
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 
   /**
-   * A Kernel on a temp repo with Rowan and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
+   * A Kernel on a temp repo with Kernel and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
    * `plain` saves the token the way Kernel did before KERNEL-445; `cipher` is the Kernel's Keychain. The room names its
    * Linear team, so with a token its tracker is Linear (KERNEL-462).
    */
   async function kernel(answer: (c: Call) => unknown, o: { token?: string; plain?: boolean; cipher?: Cipher } = { token: 'lin_stored' }) {
     vi.stubEnv('LINEAR_API_KEY', '')
-    const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/noor.md': NOOR })
+    const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -334,7 +334,7 @@ describe('Linear in the kernel', () => {
     expect(calls[0].auth).toBe('lin_env')
   })
 
-  /** The Lead's create_workspace, run against the kernel as Rowan's chat would. */
+  /** The Lead's create_workspace, run against the kernel as Kernel's chat would. */
   async function createWorkspace(k: Kernel, roomId: string, args: Record<string, string>) {
     const lead = (await k.agents(roomId)).find((a) => a.lead) as AgentDef
     const chat = await k.leadChat(roomId)
@@ -446,7 +446,7 @@ describe('Linear in the kernel', () => {
     expect(none.calls).toEqual([])
   })
 
-  it('Plan with Rowan starts a fresh Lead chat in plan mode, briefed with the issue', async () => {
+  it('Plan with Kernel starts a fresh Lead chat in plan mode, briefed with the issue', async () => {
     const { k, room, sent } = await kernel(answer)
     const before = await k.leadChat(room.id)
     const out = await k.handlers()['linear.plan']({ id: 'KERNEL-83', roomId: room.id })

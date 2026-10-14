@@ -8,7 +8,7 @@ import { run } from '../src/main/services/exec'
 import { kernelTools, MERGE_NOT_ASKED, MERGE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { tempRepo } from './helpers'
 
-// KERNEL-352: Rowan merges ready PRs when the user asks, once Settings, Pull requests allows it.
+// KERNEL-352: Kernel merges ready PRs when the user asks, once Settings, Pull requests allows it.
 
 // A scripted SDK, as in waits.test.ts: a turn runs until the test feeds its result.
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[] }))
@@ -47,7 +47,7 @@ function leadTools(list: Workspace[], o: { on?: boolean; userTurn?: boolean; blo
     return w
   })
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
+    roomId: 'room', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [{ id: 'theo', name: 'Theo' } as AgentDef], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace: async () => undefined, refreshPr, isRunning: () => false, unsaved: async () => false,
     mergeWorkspace, leadMerge: () => o.on ?? true, userTurn: () => o.userTurn ?? true
@@ -137,7 +137,7 @@ describe('merge_workspace (KERNEL-352)', () => {
 
   it('handles a mixed batch one id at a time, one line each', async () => {
     const t = leadTools([
-      ws('first', { prNumber: 1, prTitle: 'One' }), ws('lead', { agentId: 'rowan', mode: 'current', lead: true, prState: 'none' }), ws('blocked', { prNumber: 3 }),
+      ws('first', { prNumber: 1, prTitle: 'One' }), ws('lead', { agentId: 'kernel', mode: 'current', lead: true, prState: 'none' }), ws('blocked', { prNumber: 3 }),
       ws('done', { prState: 'merged', prNumber: 4 }), ws('gone', { status: 'archived', prNumber: 5 }), ws('review', { agentId: 'theo', reviewOf: 'last', prState: 'none' }), ws('last', { prNumber: 6, prTitle: 'Six' })
     ], { blocked: { blocked: 'Could not read the pull request from GitHub.' } })
     expect(await t.merge(['first', 'lead', 'missing', 'blocked', 'done', 'gone', 'review', 'first'])).toBe([
@@ -155,12 +155,12 @@ describe('merge_workspace (KERNEL-352)', () => {
 })
 
 /**
- * A started Kernel on a repo with a bare origin and a fake GitHub, Rowan as Lead, Kai and Noor. A merge lands a commit on
+ * A started Kernel on a repo with a bare origin and a fake GitHub, Kernel as Lead, Kai and Noor. A merge lands a commit on
  * origin's main and marks the PR merged, as GitHub does.
  */
 async function kernelRoom() {
   const agent = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': agent('rowan', 'lead: true\n'), '.claude/agents/kai.md': agent('kai'), '.claude/agents/noor.md': agent('noor') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': agent('kernel', 'lead: true\n'), '.claude/agents/kai.md': agent('kai'), '.claude/agents/noor.md': agent('noor') })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
   await run('git', ['clone', '-q', '--bare', repo, origin])
   await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -180,8 +180,8 @@ async function kernelRoom() {
   onTestFinished(() => k.stop())
   const room = await k.addRoom(repo)
   const lead = await k.leadChat(room.id)
-  const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-  const tool = kernelTools(k.lead.leadToolDeps(room.id, rowan, lead)).find((t) => t.name === 'merge_workspace')!
+  const kernel = (await k.agents(room.id)).find((a) => a.lead)!
+  const tool = kernelTools(k.lead.leadToolDeps(room.id, kernel, lead)).find((t) => t.name === 'merge_workspace')!
   const merge = async (ids: string[]) => ((await tool.handler({ workspace_ids: ids } as never, {})).content[0] as { text: string }).text
   /** Noor's workspace with PR `number` open and green. */
   const target = async (number: number, title: string) => {

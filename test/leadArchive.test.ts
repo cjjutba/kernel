@@ -11,7 +11,7 @@ import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
 import { setUp, tempRepo, trustRoom } from './helpers'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // Keeps the deps the Kernel hands the Lead's server, so the wiring test can call the same tools.
@@ -42,7 +42,7 @@ function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<
   })
   const handedOff = vi.fn()
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
+    roomId: 'room', lead: { id: 'kernel', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace, refreshPr, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
   }
@@ -71,13 +71,13 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 
   it("skips the Lead's own workspace", async () => {
-    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', lead: true, prState: 'none' })])
+    const t = leadTools([ws('lead', { agentId: 'kernel', mode: 'current', lead: true, prState: 'none' })])
     expect(await t.archive(['lead'])).toBe('Skipped lead: it is your own workspace.')
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
   })
 
   it('archives a worktree workspace handed to the Lead when its agent retired', async () => {
-    const t = leadTools([ws('inherited', { agentId: 'rowan' })])
+    const t = leadTools([ws('inherited', { agentId: 'kernel' })])
     expect(await t.archive(['inherited'])).toBe('Archived inherited.')
   })
 
@@ -125,14 +125,14 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 
   it("does not refresh the Lead's own workspace, a running one or a closed PR", async () => {
-    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', lead: true, prState: 'open' }), ws('busy', { prState: 'open' }), ws('merged')], { running: ['busy'] })
+    const t = leadTools([ws('lead', { agentId: 'kernel', mode: 'current', lead: true, prState: 'open' }), ws('busy', { prState: 'open' }), ws('merged')], { running: ['busy'] })
     expect(await t.archive(['lead', 'busy', 'merged'])).toBe('Skipped lead: it is your own workspace.\nSkipped busy: its agent is still working.\nArchived merged.')
     expect(t.refreshPr).not.toHaveBeenCalled()
   })
 
   it('handles a mixed list one id at a time, and a failed archive does not stop the rest', async () => {
     const t = leadTools([
-      ws('first'), ws('lead', { agentId: 'rowan', mode: 'current', lead: true }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('dirty'), ws('last', { prState: 'none' })
+      ws('first'), ws('lead', { agentId: 'kernel', mode: 'current', lead: true }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('dirty'), ws('last', { prState: 'none' })
     ], { running: ['busy'], unsaved: { dirty: 'dirty' }, failing: { broken: 'The folder is locked.' } })
     expect(await t.archive(['first', 'lead', 'missing', 'broken', 'open-pr', 'busy', 'dirty', 'last', 'first'])).toBe([
       'Archived first.',
@@ -149,11 +149,11 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 })
 
-/** A started Kernel over a temp repo with Rowan as Lead and Kai, plus any `files`. Sessions never start a real turn. */
+/** A started Kernel over a temp repo with Kernel as Lead and Kai, plus any `files`. Sessions never start a real turn. */
 async function kernelRoom(files: Record<string, string> = {}) {
   const repo = await tempRepo({
     'README.md': '# client\n',
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
     ...files
   })
@@ -349,13 +349,13 @@ describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
   })
 })
 
-describe('archiving a chat with Rowan (KERNEL-405)', () => {
-  /** A room whose archive script logs each workspace it runs in, with Rowan's chat and a teammate it handed off. */
+describe('archiving a chat with Kernel (KERNEL-405)', () => {
+  /** A room whose archive script logs each workspace it runs in, with Kernel's chat and a teammate it handed off. */
   async function chatWithWork(workspace: Record<string, unknown> = {}) {
     const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'archived.txt')
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.',
       '.kernel/settings.toml': `[scripts]\narchive = "echo $KERNEL_WORKSPACE_NAME >> ${log}"\n`
     })
@@ -404,7 +404,7 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
     expect(k.store.workspace(kai.id)).toMatchObject({ status: 'ready', threadId: chat.threadId })
   })
 
-  it("deletes Rowan's branch when it has no commits of its own, whatever Delete branch on archive says, and keeps one with commits", async () => {
+  it("deletes Kernel's branch when it has no commits of its own, whatever Delete branch on archive says, and keeps one with commits", async () => {
     const { k, repo, room, chat, own } = await chatWithWork()
     await k.lead.archiveLeadChat(chat.threadId!)
     await k.archive.cleanedUp(own.id)
@@ -451,7 +451,7 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
     expect((await k.handlers()['lead.open']({ roomId: own.roomId }))?.id).toBe(own.id)
   })
 
-  it('never archives a chat with Rowan when its PR merges, and Delete removes the chat with its workspace', async () => {
+  it('never archives a chat with Kernel when its PR merges, and Delete removes the chat with its workspace', async () => {
     const { k, chat, own, dataDir } = await chatWithWork()
     k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prNumber: 7, prState: 'merged' })
     await k.autoArchive.archiveMerged(own.id)

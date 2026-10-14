@@ -14,7 +14,7 @@ import { issueTaken, keyInBranch, keyInText } from '../src/main/services/issueTa
 import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
 import type { AgentDef, ChatPart, IssueTaken } from '../src/shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 /** While `on`, every `git fetch` times out, the way exec reports it when its timer kills git (KERNEL-179). */
@@ -93,7 +93,7 @@ describe('searchIssues', () => {
 
 describe('createWorkspace from a source', () => {
   it('names the branch from the Linear id, stores the source and sends attachments', async () => {
-    const repo = await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -115,7 +115,7 @@ describe('createWorkspace from a source', () => {
 describe('a workspace from a GitHub issue (KERNEL-462)', () => {
   afterEach(() => { vi.unstubAllEnvs() })
   const team = {
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor. Open a PR for each task.'
   }
   const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
@@ -134,7 +134,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     return { k, room: repo ? k.store.saveRoom({ ...added, repo }) : added }
   }
 
-  it("names the branch from the issue's number and labels when Rowan hands it off, and records GitHub as its tracker", async () => {
+  it("names the branch from the issue's number and labels when Kernel hands it off, and records GitHub as its tracker", async () => {
     const gh = await fakeGh({ view: crash })
     const { k, room } = await kernel('acme/app')
     const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
@@ -172,7 +172,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       { number: 52, title: 'Fix saving on slow disks', url: 'https://github.com/acme/app/pull/52', headRefName: 'mchen/save', body: 'Fixes #41' },
       { number: 53, title: 'Export rework', url: 'https://github.com/acme/app/pull/53', headRefName: 'feat/410-export', body: 'See #410' }
     ]
-    /** A GitHub room whose origin is `remote`, fetched, and Rowan's create_workspace in it. */
+    /** A GitHub room whose origin is `remote`, fetched, and Kernel's create_workspace in it. */
     async function room(remote: string) {
       const { k, room } = await kernel('acme/app')
       await git(room.path, 'remote', 'add', 'origin', remote)
@@ -196,7 +196,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
       const taken = { findings: [{ kind: 'branch', ref: 'origin/fix/41-crash-on-save' }, { kind: 'pr', number: 52, title: 'Fix saving on slow disks', url: prs[0].url }, { kind: 'assignee', name: 'mchen' }], notes: [] }
       // New workspace reads the same, for ConfirmIssueTaken.png.
       expect(await k.handlers()['issues.taken']({ roomId: r.id, issue: '41' })).toEqual(taken)
-      // Named as Rowan passed it, as the refusal for a task already handed off does.
+      // Named as Kernel passed it, as the refusal for a task already handed off does.
       expect(await create({})).toEqual({ isError: true, text: takenWarning('41', taken as IssueTaken) })
       expect(takenWarning('41', taken as IssueTaken)).toContain('Kernel found the branch origin/fix/41-crash-on-save, the open PR #52 (Fix saving on slow disks) and mchen assigned to it.')
       expect(k.store.workspaces(r.id).filter((w) => w.agentId === 'noor')).toEqual([])
@@ -284,7 +284,7 @@ describe('what says someone else is on an issue (KERNEL-479)', () => {
 })
 
 describe('the base a workspace starts from', () => {
-  const lead = { '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' }
+  const lead = { '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' }
   const masterRepo = async () => { const repo = await tempRepo(lead); await git(repo, 'branch', '-m', 'main', 'master'); return repo }
   const cloneOf = async (remote: string) => {
     const dir = join(await mkdtemp(join(tmpdir(), 'kernel-clone-')), 'repo')
@@ -589,7 +589,7 @@ describe('New chat message (KERNEL-147)', () => {
   })
 
   it('lead.start sends a chip-only message as exactly its parts, once', async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     // The message waits for the chat's worktree, then goes while setup runs (KERNEL-405, KERNEL-542).
@@ -628,7 +628,7 @@ describe('the New workspace modal starts a chat on its own picks (KERNEL-544)', 
       onPush: () => () => undefined,
       call: async (channel: string, req: unknown) => {
         calls.push({ channel, req })
-        if (channel === 'lead.start') { if (state.fail) throw new Error('Rowan is busy'); return chat }
+        if (channel === 'lead.start') { if (state.fail) throw new Error('Kernel is busy'); return chat }
         if (channel === 'workspaces.list') return []
         return null
       }
@@ -655,7 +655,7 @@ describe('the New workspace modal starts a chat on its own picks (KERNEL-544)', 
     drafts.saveDraft(drafts.NEW_CHAT_DRAFT, words('fix the login'), '')
     drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
     state.fail = true
-    expect(await send()).toBe('Rowan is busy')
+    expect(await send()).toBe('Kernel is busy')
     expect(drafts.loadDraft(drafts.NEW_CHAT_DRAFT)).toEqual(words('fix the login'))
     expect(drafts.loadPicks(drafts.NEW_CHAT_DRAFT)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
   })

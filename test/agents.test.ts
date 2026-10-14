@@ -34,7 +34,7 @@ describe('agents', () => {
     const a = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit\n---\nBody')
     expect(a).toMatchObject({ id: 'kai', name: 'Kai', role: 'Frontend', model: 'sonnet', tools: ['Read', 'Edit'], lead: false })
     // Only the file marks the Lead: lead: true, or a role that says Lead. A description that does isn't enough (KERNEL-397).
-    const r = agentFromFile('/r/.claude/agents/rowan.md', '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\n---\n')
+    const r = agentFromFile('/r/.claude/agents/kernel.md', '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\n---\n')
     expect(r).toMatchObject({ role: 'Lead', lead: false })
     expect(agentFromFile('/r/a.md', '---\nname: a\ndescription: x\nrole: Tech Lead\n---\n').lead).toBe(true)
     expect(agentFromFile('/r/b.md', '---\nname: b\ndescription: x\nrole: Lead\nlead: false\n---\n').lead).toBe(false)
@@ -127,11 +127,11 @@ describe('agents', () => {
   it('round-trips, loads lead first, and retires out of the loaded folder', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
-    await saveAgent(repo, { id: 'rowan', description: 'Lead.', prompt: 'You are Rowan.', lead: true, role: 'Lead' })
+    await saveAgent(repo, { id: 'kernel', description: 'Lead.', prompt: 'You are Kernel.', lead: true, role: 'Lead' })
     const list = await loadAgents(repo)
-    expect(list.map((a) => a.id)).toEqual(['rowan', 'kai'])
+    expect(list.map((a) => a.id)).toEqual(['kernel', 'kai'])
     await retireAgent(repo, 'kai')
-    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['rowan'])
+    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['kernel'])
     expect(await readdir(join(repo, '.claude', 'retired-agents'))).toEqual(['kai.md'])
   })
   it('renders a file Claude Code can read', () => {

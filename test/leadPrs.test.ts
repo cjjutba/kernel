@@ -5,12 +5,12 @@ import { leadPrs, reviewLine } from '../src/renderer/src/screens/workspace/pr/le
 // The Lead's PRs tab: which workspaces it lists, which come first, and what each row says (KERNEL-354).
 
 const rules = { requireGreen: false, requireReviewer: true }
-const agents = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai' }, { id: 'theo', name: 'Theo' }] as AgentDef[]
+const agents = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai' }, { id: 'theo', name: 'Theo' }] as AgentDef[]
 const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 1, prHead: 'h', ...o }) as Workspace
 const verdict = (verdict: 'approved' | 'blockers', o: object = {}) => ({ workspaceId: 'rev', agentId: 'theo', verdict, summary: '', sha: 'h', prNumber: 1, ts: 1, ...o })
 // A PR as GitHub reads it, typed in full so a field the merge rule needs can't go missing (KERNEL-394).
 const info = (workspaceId: string, o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId, number: 1, url: '', title: '', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: 'h', ...o })
-const list = (workspaces: Workspace[], prs: Record<string, PrInfo> = {}) => leadPrs(workspaces, { leadId: 'rowan', roomId: 'room', prs, rules, agents })
+const list = (workspaces: Workspace[], prs: Record<string, PrInfo> = {}) => leadPrs(workspaces, { leadId: 'kernel', roomId: 'room', prs, rules, agents })
 const ids = (workspaces: Workspace[]) => list(workspaces).map((r) => r.ws.id)
 
 describe("which workspaces the Lead's tab lists", () => {
@@ -23,7 +23,7 @@ describe("which workspaces the Lead's tab lists", () => {
   it('leaves out reviews, archived workspaces, other rooms, workspaces with no PR number and the Lead', () => {
     expect(ids([
       ws('review', { reviewOf: 'a' }), ws('archived', { status: 'archived' }), ws('other', { roomId: 'elsewhere' }),
-      ws('no-pr', { prNumber: undefined }), ws('lead', { lead: true, agentId: 'rowan' }), ws('kept')
+      ws('no-pr', { prNumber: undefined }), ws('lead', { lead: true, agentId: 'kernel' }), ws('kept')
     ])).toEqual(['kept'])
   })
 })
@@ -44,10 +44,10 @@ describe('the order', () => {
 
   it('waits for the PR when green checks are required and GitHub has not been asked yet', () => {
     const strict = { requireGreen: true, requireReviewer: false }
-    const [unread] = leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: {}, rules: strict, agents })
+    const [unread] = leadPrs([ws('a')], { leadId: 'kernel', roomId: 'room', prs: {}, rules: strict, agents })
     expect(unread.ready).toBe(false)
     const green = info('a', { checks: [{ name: 'lint', state: 'pass' }] })
-    expect(leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: { a: green }, rules: strict, agents })[0].ready).toBe(true)
+    expect(leadPrs([ws('a')], { leadId: 'kernel', roomId: 'room', prs: { a: green }, rules: strict, agents })[0].ready).toBe(true)
   })
 })
 

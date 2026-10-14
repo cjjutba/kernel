@@ -353,7 +353,7 @@ describe('room pause and team templates', () => {
     const k = await kernel()
     const h = k.handlers()
     const a = await k.addRoom(await tempRepo()), b = await k.addRoom(await tempRepo()), c = await k.addRoom(await tempRepo())
-    // The templates seat starter files, Theo among them, and Kernel's own Rowan leads (KERNEL-397, KERNEL-553).
+    // The templates seat starter files, Theo among them, and Kernel's own Kernel leads (KERNEL-397, KERNEL-553).
     const team = await h['agents.seed']({ roomId: a.id, template: { kind: 'starter' } })
     expect(team.map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'kernel-lead', 'noor', 'theo'])
     expect(team.find((x) => x.id === 'theo')).toMatchObject({ reviewer: true, member: false, file: join(a.path, '.claude', 'agents', 'theo.md') })
@@ -367,7 +367,7 @@ describe('room pause and team templates', () => {
 
   it('keeps needs, blocked and offline through a pause and a resume', async () => {
     const k = await kernel()
-    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nNoor.' }))
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nNoor.' }))
     await k.agents(room.id)
     const seen: Record<string, string> = {}
     const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
@@ -385,7 +385,7 @@ describe('room pause and team templates', () => {
 
   it('gives an agent whose running chat is in plan mode planning on resume, not working', async () => {
     const k = await kernel()
-    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
     await k.agents(room.id)
     const chat = await k.leadChat(room.id)
     await setUp(k, chat.id)
@@ -406,7 +406,7 @@ describe('room pause and team templates', () => {
   it('restarts a chat through the channel', async () => {
     const k = await kernel()
     const h = k.handlers()
-    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
     const chat = await k.leadChat(room.id)
     await setUp(k, chat.id)
     const before = sdk.calls.length
@@ -419,7 +419,7 @@ describe('room pause and team templates', () => {
 
 describe('switched-off skills and MCP servers (KERNEL-226)', () => {
   const agents = {
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou lead.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.',
     '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
   }

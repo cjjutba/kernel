@@ -10,14 +10,14 @@ import { askLeadPrompt } from '../src/main/features/setup'
 import { LEAD_RULE } from '../src/main/services/handoff'
 import { tempRepo } from './helpers'
 
-// KERNEL-683: Rowan saves a room's scripts only after the user presses Save on a card that shows them as saved, and Ask
-// Rowan starts the chat that proposes them.
+// KERNEL-683: Kernel saves a room's scripts only after the user presses Save on a card that shows them as saved, and Ask
+// Kernel starts the chat that proposes them.
 
-const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.\n'
+const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.\n'
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou are Kai.\n'
 
 async function boot(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/kai.md': KAI, ...files })
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/kai.md': KAI, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))

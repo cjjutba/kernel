@@ -114,12 +114,12 @@ describe('a plan that needs an agent the team lacks', () => {
   it('lists members in full and 30 plugin helpers as one line of names', () => {
     const helpers = Array.from({ length: 30 }, (_, i) => agent(`plug-${i}`, { name: `Plug ${i}`, origin: 'plugin', member: false, description: 'A plugin agent with a long description. '.repeat(5) }))
     const team = [
-      agent('rowan', { role: 'Lead', lead: true, description: 'Plans.' }), agent('noor', { role: 'Backend', member: true, description: 'Builds the API.' }),
+      agent('kernel', { role: 'Lead', lead: true, description: 'Plans.' }), agent('noor', { role: 'Backend', member: true, description: 'Builds the API.' }),
       agent('theo', { role: 'Reviewer', reviewer: true, member: false, description: 'Reviews PRs.' }), ...helpers
     ]
     const lines = agentList(team).split('\n')
     expect(lines).toEqual([
-      'rowan: Rowan, Lead (the Lead, you). Plans.',
+      'kernel: Kernel, Lead (the Lead, you). Plans.',
       'noor: Noor, Backend. Builds the API.',
       'theo: Theo, Reviewer (reviews PRs). Reviews PRs.',
       `Helpers, which don't take tasks: ${helpers.map((a) => a.name).join(', ')}.`
@@ -138,7 +138,7 @@ describe('a plan that needs an agent the team lacks', () => {
 
 describe('creating an agent in a real room', () => {
   it("writes a Designer that takes tasks, and lists the servers it reaches after the room's first check", async () => {
-    const repo = await tempRepo({ 'README.md': '# app\n', '.mcp.json': JSON.stringify({ mcpServers: { figma: {}, neon: {} } }), '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ 'README.md': '# app\n', '.mcp.json': JSON.stringify({ mcpServers: { figma: {}, neon: {} } }), '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))

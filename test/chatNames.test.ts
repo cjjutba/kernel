@@ -8,7 +8,7 @@ import type { SessionDeps } from '../src/main/services/sessions'
 import { cleanTitle, titleText } from '../src/main/services/titles'
 import type { Chat, ChatItem, Workspace } from '../src/shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 const settle = () => new Promise((r) => setTimeout(r, 60))
@@ -16,7 +16,7 @@ const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); wh
 
 const AGENTS = {
   'README.md': '# x\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 }
 

@@ -13,15 +13,15 @@ import { tempRepo } from './helpers'
 // The repo is a temp one, and it never writes to ~/.claude/settings.json.
 
 // The kernel repo's own Lead, which says nothing about create_workspace, moved to Sonnet.
-const ROWAN = `---
-name: rowan
+const KERNEL = `---
+name: kernel
 description: Lead. Plans sprint work, splits issues that are too big, and keeps Linear honest.
 model: sonnet
 role: Lead
 lead: true
 tools: Read, Grep, Glob, Bash, mcp__linear
 ---
-You are Rowan, the lead for building this project. You plan, you don't write feature code.
+You are Kernel, the lead for building this project. You plan, you don't write feature code.
 - Read the README before planning.
 - Break work so each piece fits one PR and stays inside one lane's files.
 `
@@ -36,7 +36,7 @@ You build the engine. Reply in one sentence and stop.
 
 describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
   it('a plan-only Lead creates a workspace after Approve and hand off', { timeout: 600_000 }, async () => {
-    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/noor.md': NOOR })
+    const repo = await tempRepo({ 'README.md': '# demo\n', '.claude/agents/kernel.md': KERNEL, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
@@ -64,7 +64,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
       // createWorkspace's own "started <name>" line comes first; the Lead's pick is the "assigned ... to" line (kernelMcp.ts).
       const created = await waitFor('a workspace from the Lead', () => activity.find((a) => a.kind === 'workspace.created' && a.roomId === room.id && a.data?.assignee), 300_000)
       const said = k.store.items(chatId).flatMap((i) => (i.kind === 'text' ? [i.text.slice(0, 200)] : []))
-      console.log(`[live] ${created.text} ${created.object}. Stop reminders: ${reminders}. Rowan's last words: ${JSON.stringify(said.slice(-2))}`)
+      console.log(`[live] ${created.text} ${created.object}. Stop reminders: ${reminders}. Kernel's last words: ${JSON.stringify(said.slice(-2))}`)
       expect(created.data?.assignee).toBe('noor')
     } finally {
       bus.off('activity', onActivity)

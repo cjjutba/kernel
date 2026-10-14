@@ -17,7 +17,7 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
     '.gitignore': 'node_modules/\n.env*\n!.env.example\n',
     '.env.example': 'KEY=\n',
     'apps/web/index.ts': '',
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
   })
   if (o.modules ?? true) {
@@ -154,7 +154,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
   it("says in the workspace's setup output which entry was refused", async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))

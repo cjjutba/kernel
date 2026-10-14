@@ -39,7 +39,7 @@ const ANCHOR: SharedAnchor = {
 const IMAGE = { dataUrl: 'data:image/png;base64,iVBORw0KGgo=', width: 320, height: 200 }
 
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/noor.md': AGENT('noor') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/noor.md': AGENT('noor') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: true } }))
