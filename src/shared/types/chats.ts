@@ -256,6 +256,8 @@ export type TeamEventKind =
   // A turn Kernel started to rebase onto a merge ended without the merge in the branch (KERNEL-691).
   | 'wait.rebase_missing'
   | 'shared'
+  // A teammate asked the Lead with ask_lead, or proposed handing part of its work to another agent with propose_handoff (KERNEL-747).
+  | 'question' | 'handoff.proposed'
 
 /**
  * One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead.
