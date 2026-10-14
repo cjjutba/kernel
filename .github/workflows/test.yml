@@ -7,6 +7,14 @@ name: Test
 # per account, so PRs don't queue for a runner. The files named *.mac.test.ts need the Mac (zsh, the Mac build of Codex), so
 # they run in their own macOS job, on every PR and every push to main. They take seconds, so there is no affected-files gate:
 # one would only delay that job until the Ubuntu run had said which tests are affected.
+#
+# Cache: the install is the slowest step of a small PR, so each job restores node_modules instead of installing. The key is
+# runner OS, architecture, Node and pnpm version, and a hash of pnpm-lock.yaml, package.json, pnpm-workspace.yaml and
+# scripts/sqlite-node.ts (the inputs of the postinstall script). Native builds are only ever restored into the OS,
+# architecture and Node version they were built for. Typecheck installs without scripts and has its own key prefix, so
+# it never hands the test jobs a node_modules without native builds. A miss installs normally, so the postinstall script
+# runs, and saves the cache. A hit skips the install and the postinstall script, which is right because nothing it reads
+# changed. The pnpm store cache of setup-node is off: its key is the lockfile hash too, so it missed whenever this one did.
 on:
   pull_request:
   push:
@@ -34,10 +42,33 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: pnpm
 
-      # No install scripts: tsc doesn't need the native modules rebuilt for Electron.
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # The version of Node setup-node resolved, so a new patch release misses the cache instead of serving the old build.
+      - name: Read the Node and pnpm versions
+        id: ver
+        run: echo "key=$(node -v)-pnpm$(pnpm -v)" >> "$GITHUB_OUTPUT"
+
+      # node_modules with the native builds and the Electron download. See the Cache section at the top of this file.
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: typecheck-${{ runner.os }}-${{ runner.arch }}-node${{ steps.ver.outputs.key }}-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml', 'scripts/sqlite-node.ts') }}
+
+      # No install scripts: tsc doesn't need the native modules rebuilt for Electron. Its own key prefix, because
+      # this node_modules has no native builds and the test jobs must never restore it.
+      - name: Install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Saved right after the install, so a failing test run doesn't throw the install away.
+      - name: Save node_modules
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ steps.modules.outputs.cache-primary-key }}
 
       - run: pnpm typecheck
 
@@ -62,10 +93,33 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: pnpm
 
-      # The postinstall script rebuilds better-sqlite3 and node-pty for Electron.
-      - run: pnpm install --frozen-lockfile
+      # The version of Node setup-node resolved, so a new patch release misses the cache instead of serving the old build.
+      - name: Read the Node and pnpm versions
+        id: ver
+        run: echo "key=$(node -v)-pnpm$(pnpm -v)" >> "$GITHUB_OUTPUT"
+
+      # node_modules with the native builds and the Electron download. See the Cache section at the top of this file.
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: vitest-${{ runner.os }}-${{ runner.arch }}-node${{ steps.ver.outputs.key }}-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml', 'scripts/sqlite-node.ts') }}
+
+      # The postinstall script rebuilds better-sqlite3 and node-pty for Electron, then better-sqlite3 for Node (KERNEL-735),
+      # and downloads Electron. It runs on every miss.
+      - name: Install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Saved right after the install, so a failing test run doesn't throw the install away.
+      - name: Save node_modules
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ steps.modules.outputs.cache-primary-key }}
 
       # A PR runs the tests its changes affect, compared with where it left main. The merge base, not HEAD^1, so a
       # re-run after main moved compares the same commits. Anything that changes how every test runs runs them all.
@@ -135,9 +189,32 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
-          cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+      # The version of Node setup-node resolved, so a new patch release misses the cache instead of serving the old build.
+      - name: Read the Node and pnpm versions
+        id: ver
+        run: echo "key=$(node -v)-pnpm$(pnpm -v)" >> "$GITHUB_OUTPUT"
+
+      # node_modules with the native builds and the Electron download. See the Cache section at the top of this file.
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: vitest-mac-${{ runner.os }}-${{ runner.arch }}-node${{ steps.ver.outputs.key }}-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml', 'scripts/sqlite-node.ts') }}
+
+      # Same postinstall as the Ubuntu job. Its own key prefix and the runner OS keep the builds apart.
+      - name: Install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Saved right after the install, so a failing test run doesn't throw the install away.
+      - name: Save node_modules
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ steps.modules.outputs.cache-primary-key }}
 
       - name: Run the macOS-only tests
         run: pnpm exec vitest run mac.test.ts --reporter=default --reporter=json --outputFile.json=vitest-result.json
@@ -151,8 +228,10 @@ jobs:
           files=$(node -e "const r=require('./vitest-result.json');console.log(r.testResults.filter(t=>t.status==='failed').map(t=>t.name.replace(process.cwd()+'/','')).join(','))")
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
-  # The one check branch protection requires. It passes only when every job it needs passes, and it runs even when one
-  # of them fails or is skipped, so the check always reports.
+  # The one check branch protection requires. It passes only when every job it needs succeeded, and it runs even when one
+  # of them fails, is cancelled or is skipped, so the check always reports.
+  # A skipped job fails the gate. To allow a skip on purpose, put an `if` on that job and accept "skipped" for it in the
+  # script below, for that job only, e.g. `if (name === 'vitest-mac' && result === 'skipped') continue;`.
   test:
     name: Test
     needs: [typecheck, vitest, vitest-mac]
@@ -160,16 +239,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      RESULTS: ${{ join(needs.*.result, ' ') }}
+      RESULTS: ${{ toJSON(needs) }}
     steps:
       - run: |
-          echo "typecheck: ${{ needs.typecheck.result }}"
-          echo "vitest: ${{ needs.vitest.result }}"
-          echo "vitest-mac: ${{ needs.vitest-mac.result }}"
-          # A job may be skipped on purpose. Failed, cancelled and never-ran jobs fail the check.
-          for r in $RESULTS; do
-            [ "$r" = "success" ] || [ "$r" = "skipped" ] || exit 1
-          done
+          echo "$RESULTS" | node -e "
+            const needs = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            let bad = 0;
+            for (const [name, { result }] of Object.entries(needs)) {
+              console.log(name + ': ' + result);
+              if (result !== 'success') bad = 1;
+            }
+            process.exit(bad);
+          "
 
   # A red main is easy to see: one open issue while it is red, updated by each failing run, closed on the next green run.
   main-red:
