@@ -1597,7 +1597,8 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
   })
   // Just started, it has handed nothing off, so the room shows no PR yet. Opened, it has Kai's PRs the frame lists.
   const own = g.workspaces!.map((w) => (w.id === ids.lead ? { ...w, title } : w)).filter((w) => opened || (!w.leadChatId && !w.prNumber))
-  return { ...g, workspaces: own, ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
+  const kept = new Set(own.map((w) => w.id))
+  return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
 }
 
 export const workspaceFixtures: Record<string, Fixture> = {
