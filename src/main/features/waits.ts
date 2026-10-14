@@ -76,8 +76,11 @@ export class Waits extends Feature {
     }
   }
 
-  /** One release per workspace at a time, as with archives. `now` starts a held brief without waiting for the merge. */
-  releaseWait(id: string, o: { now?: boolean } = {}): Promise<void> {
+  /**
+   * One release per workspace at a time, as with archives. `now` starts a held brief without waiting for the merge, and
+   * `keep` (Send now) leaves the teammate waiting on what hasn't merged, so Kernel asks it to rebase then (KERNEL-689).
+   */
+  releaseWait(id: string, o: { now?: boolean; keep?: boolean } = {}): Promise<void> {
     const running = this.waitReleases.get(id)
     if (running) return running
     const next = this.releaseNow(id, o).finally(() => this.waitReleases.delete(id))
@@ -85,20 +88,23 @@ export class Waits extends Feature {
     return next
   }
 
-  private async releaseNow(id: string, o: { now?: boolean }) {
+  private async releaseNow(id: string, o: { now?: boolean; keep?: boolean }) {
     const ws = this.mustWs(id)
     let wait = ws.waitsFor
     // Setup running or failed: the brief goes when setup passes, which looks at the wait again.
     if (!wait || ws.status !== 'ready' || wait.releasing) return
     // Started early: what merged already is still a merge to start from. Only the rest is skipped.
     let now = !!o.now
+    // What a teammate started early still waits for: it hears when that merges.
+    let left: string[] = []
     if (now) {
       const all = this.store.workspaces(ws.roomId)
       const merged = wait.on.filter((t) => isMerged(all.find((w) => w.id === t)))
+      if (o.keep && wait.held) left = wait.on.filter((t) => !merged.includes(t))
       if (merged.length) {
         const rest = wait.on.filter((t) => !merged.includes(t))
         const skipped = { ...ws, waitsFor: { ...wait, on: rest } }
-        if (rest.length) this.note(id, `Started without waiting for ${this.waitLabelOf(skipped)}.`, undefined, this.waitRefsOf(skipped))
+        if (rest.length) this.note(id, this.earlyNote(skipped, left), undefined, this.waitRefsOf(skipped))
         wait = this.updateWs(id, { waitsFor: { ...wait, on: merged } }).waitsFor!
         now = false
       }
@@ -130,7 +136,7 @@ export class Waits extends Feature {
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
-    if (now) this.note(id, `Started without waiting for ${label}.`, undefined, refs)
+    if (now) this.note(id, this.earlyNote(current, left), undefined, refs)
     else {
       if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
       const it = refs.length > 1 ? 'them' : 'it'
@@ -138,7 +144,14 @@ export class Waits extends Feature {
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
-    await this.k.setup.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor })
+    await this.k.setup.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor, ...(left.length ? { left } : {}) })
+  }
+
+  /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to rebase when the brief went with the wait kept. */
+  private earlyNote(skipped: Workspace, left: string[]) {
+    const label = this.waitLabelOf(skipped)
+    if (!left.length) return `Started without waiting for ${label}.`
+    return `Started without waiting for ${label}. Kernel asks ${this.nameOf(skipped)} to rebase once ${left.length > 1 ? 'they merge' : 'it merges'}.`
   }
 
   /** The Lead or the user ends a wait before its merge: a held brief goes now, with whatever merged already under it. */

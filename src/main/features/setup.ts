@@ -147,7 +147,7 @@ export class Setup extends Feature {
    * shows a waiting workspace whose brief went out. Run again's tail and a released wait share it. A setup that fails
    * here leaves the workspace failed, with no wait, so Run again works as it always has.
    */
-  async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor; note?: string } = {}): Promise<Workspace> {
+  async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor; left?: string[]; note?: string } = {}): Promise<Workspace> {
     const repo = o.setup && this.settings.scripts.setupOnCreate ? await loadRepoSettings(room.path) : undefined
     const script = repo?.scripts.setup
     // The setup text changed while the brief waited and nobody trusted it yet: the brief keeps waiting, for trust now,
@@ -161,10 +161,12 @@ export class Setup extends Feature {
         return failed
       }
     }
-    // The wait this release ends goes. One set while the brief was on its way stays, for a teammate that has now started.
+    // The wait this release ends goes, but for `left`, what a brief sent early still waits for (KERNEL-689). One set while
+    // the brief was on its way stays. Either way the teammate has now started.
     const settle = () => {
       const w = this.mustWs(ws.id).waitsFor
-      if (w) this.updateWs(ws.id, { waitsFor: o.released && w.on.join() === o.released.on.join() ? undefined : { on: w.on, held: false } })
+      const ended = o.released && w?.on.join() === o.released.on.join()
+      if (w) this.updateWs(ws.id, { waitsFor: !ended ? { on: w.on, held: false } : o.left?.length ? { on: o.left, held: false } : undefined })
     }
     if (!chat) { settle(); return this.updateWs(ws.id, { status: 'ready' }) }
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
