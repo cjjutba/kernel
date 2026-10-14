@@ -160,7 +160,7 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
  * over the one the last poll saw. Blockers on the head commit, from any kind of review, hold the merge whatever the settings
  * say (KERNEL-497, KERNEL-549). With "require Reviewer approval" on, every required kind of review that looked at the PR
  * needs to have approved its head commit, and so does every required kind Kernel's automatic review plans for that commit,
- * from the ready event on, before any of them reports (KERNEL-717). A PR no review looked at or is planned for merges as
+ * from the ready event on, before any of them reports (KERNEL-717). A planned kind overruled on that head waits for nothing (KERNEL-732). A PR no review looked at or is planned for merges as
  * before. `override` is a person's Merge anyway: it
  * skips the review and optional checks still running, and nothing else. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
  */
@@ -184,7 +184,7 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   if (!rules.requireReviewer) return undefined
   const planned = plannedReviews(ws, head)
   if (planned === 'pending') return 'The review of the latest commit is starting. Merging waits for every required review (Settings, Pull requests).'
-  const waiting = REVIEW_KINDS.map((k) => k.id).filter((k) => s.waiting.includes(k) || (planned.includes(k) && !s.approved.includes(k)))
+  const waiting = REVIEW_KINDS.map((k) => k.id).filter((k) => s.waiting.includes(k) || (planned.includes(k) && !s.approved.includes(k) && !s.overruled.includes(k)))
   if (!waiting.length) return undefined
   return `${reviewsText(waiting)} ${waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
 }

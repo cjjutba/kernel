@@ -234,6 +234,13 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
     expect(mergeBlock(ws({ reviewRound: round({ optional: ['security'] }), reviews: [code('approved')] }), info(), both, name)).toBeUndefined()
   })
 
+  it('never waits for a kind whose blockers on the head were overruled (KERNEL-732)', () => {
+    const overruled = { head: B, kinds: ['security' as const], by: 'user' as const, ts: 3 }
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved'), security('blockers')], overruled }), info(), both, name)).toBeUndefined()
+    // An overrule of an older head leaves the planned kind waiting.
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved')], overruled: { ...overruled, head: A } }), info(), both, name)).toContain("The security review hasn't approved")
+  })
+
   it('changes nothing with the approval switch off, or with a round of another PR', () => {
     expect(mergeBlock(ws({ reviewPending: B, reviewRound: round() }), info(), { requireGreen: true, requireReviewer: false }, name)).toBeUndefined()
     expect(mergeBlock(ws({ reviewRound: round({ prNumber: 7 }) }), info(), both, name)).toBeUndefined()
