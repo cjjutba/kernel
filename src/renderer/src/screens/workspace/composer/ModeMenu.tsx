@@ -25,7 +25,7 @@ export function ModeMenu({ anchorRef, provider, availability, shown, onPick, onC
     ;(list.find((el) => el.getAttribute('aria-checked') === 'true') ?? list[0])?.focus({ preventScroll: true })
     const trigger = anchorRef.current?.querySelector<HTMLElement>('button')
     // Closing from the keyboard would leave focus on the page's body, so it goes back to the dropdown. A press elsewhere keeps its own.
-    return () => { if (!document.activeElement || document.activeElement === document.body) trigger?.focus({ preventScroll: true }) }
+    return () => { if (!document.querySelector('[aria-modal="true"]') && (!document.activeElement || document.activeElement === document.body)) trigger?.focus({ preventScroll: true }) }
   }, [])
 
   const onKey = (e: KeyboardEvent) => {

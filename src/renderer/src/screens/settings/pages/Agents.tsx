@@ -7,9 +7,9 @@ import { Button, Icon, SegmentedControl } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings, useSettings } from '../useSettings'
 import { RowMenu } from './RowMenu'
-import { cleanDescription, pluginOf } from './agentRows'
+import { agentRole, cleanDescription, pluginOf, shownRole } from './agentRows'
 
-const matches = (a: AgentDef, q: string) => !q || `${a.name} ${a.role} ${cleanDescription(a.description)}`.toLowerCase().includes(q)
+const matches = (a: AgentDef, q: string) => !q || `${a.name} ${agentRole(a)} ${cleanDescription(a.description)}`.toLowerCase().includes(q)
 
 /** Settings > Agents (AgentsPage.dc.html, KERNEL-641, KERNEL-680): the agents that join every room, with no room needed. A change on disk reaches this list as a push. */
 export function Agents() {
@@ -37,7 +37,7 @@ export function Agents() {
   ].map((g) => ({ ...g, shown: g.agents.filter((a) => matches(a, q)) })).filter((g) => (q ? g.shown.length : g.key === 'personal' || g.shown.length))
 
   const row = (a: AgentDef, verb: 'Edit' | 'View') => {
-    const role = a.role.trim() && a.role.trim().toLowerCase() !== a.name.trim().toLowerCase() ? a.role.trim() : ''
+    const role = shownRole(a)
     const desc = cleanDescription(a.description)
     return (
       <div key={a.id} className="set-row set-hoverable ag-agent">

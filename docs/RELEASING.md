@@ -70,6 +70,17 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
 
 When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`. Vercel deploys only from main (KERNEL-233), so a release that merges while Vercel is rate limited deploys on the next push to main after the limit resets, and the release file is still in that diff because the step compares with the last successful deployment.
 
+## Testing an update between two signed builds
+
+`pnpm update:e2e` proves that one signed Kernel build updates to the next, which no unit test can (KERNEL-715). Run it before tagging a release, and after any change to `src/main/updater.ts`, the signing setup in `electron-builder.yml` or the update feed.
+
+It builds HEAD twice with Developer ID signing and no notarization, at `<version>-e2e.1` and `<version>-e2e.2`, into `dist/e2e-1` and `dist/e2e-2`. Each build takes a few minutes, mostly signing. It copies build 1 into a temp folder under `~/Applications` (so the outside-Applications block doesn't apply) and serves build 2's zip, blockmap and `latest-mac.yml` on `$KERNEL_PORT` (4560 when unset). Then it runs build 1 with `--kernel-update-test <feed> <temp data folder>` and expects `ready <version>-e2e.2`, and runs the same app again with `--kernel-update-test` and no feed and expects `version <version>-e2e.2`. Each launch is limited to 120 seconds. The temp app, the data folder and the server are removed when the script ends, pass or fail. `/Applications/Kernel.app` and `~/Library/Application Support/Kernel` are never touched.
+
+- `pnpm update:e2e --no-build` reuses the builds from the last run.
+- `pnpm update:e2e --bad-sha512` serves a feed with a wrong sha512. The update must be refused, so a working check exits 1 with a message that the update did not finish. Exit 0 would mean the update check is not verifying downloads.
+
+It needs the Developer ID certificate in the keychain, the same as `pnpm release`, and is not part of CI.
+
 ## When notarization is slow
 
 Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `pnpm release` again on the same tag.

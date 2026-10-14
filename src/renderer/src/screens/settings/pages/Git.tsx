@@ -52,7 +52,7 @@ export function Git({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Branch names">
         <Row setting="workspace.branchPattern" label="Workspaces" desc="Renamed from the task once work starts."><BranchPattern value={w.branchPattern} label="Workspace branch name pattern" /></Row>
-        <Row setting="workspace.leadBranchPattern" label="Lead chats" desc="Renamed from the chat title until pushed."><BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" /></Row>
+        <Row setting="workspace.leadBranchPattern" label="Chats with Kernel" desc="Renamed from the chat title until pushed."><BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Branch name pattern for chats with Kernel" /></Row>
       </Section>
       <Section title="Current branch">
         <Row setting="workspace.baselineCurrentBranch" label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>

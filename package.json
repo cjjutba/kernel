@@ -8,7 +8,7 @@
   "type": "module",
   "main": "out/main/index.js",
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=24"
   },
   "packageManager": "pnpm@12.3.4",
   "scripts": {
@@ -16,12 +16,13 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
-    "test:changed": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run --changed origin/main",
+    "test": "vitest run",
+    "test:changed": "vitest run --changed origin/main",
     "shots": "node scripts/shots.ts",
-    "postinstall": "electron-builder install-app-deps && install-electron",
+    "postinstall": "electron-builder install-app-deps && node scripts/sqlite-node.ts && install-electron",
     "dist:mac": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
     "release": "bash scripts/release.sh",
+    "update:e2e": "bash scripts/update-e2e.sh",
     "release:notes": "node scripts/release-notes.ts",
     "release:rollout": "node scripts/release-rollout.ts"
   },
