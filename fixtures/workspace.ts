@@ -1848,7 +1848,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: rowsOpenItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
   })),
-  /** The folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198). */
+  /** The folded list with a Thinking and an Edit row opened inside it (KERNEL-198). */
   WorkspaceRowsFolded: scene(() => ({
     items: { [ids.tableChat]: foldedRowsItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }

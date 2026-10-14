@@ -203,6 +203,23 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
     case 'WebSearch': return { ...say('search', 'Searching', 'Searched', ' the web'), object: str(i.query) }
     case 'Agent': case 'Task': return { ...say('run', 'Running', 'Ran', ' agent'), object: str(i.description) }
     case 'Skill': return { ...say('use', 'Using', 'Used', ' skill'), object: str(i.skill) ?? str(i.name) }
+    case 'ExitPlanMode': return say('finish', 'Finishing', 'Finished', ' the plan')
+    case 'EnterPlanMode': return say('start', 'Starting', 'Started', ' a plan')
+    case 'AskUserQuestion': return say('ask', 'Asking', 'Asked', ' a question')
+    case 'BashOutput': case 'TaskOutput': return say('read', 'Reading', 'Read', ' command output')
+    case 'KillShell': case 'TaskStop': return say('stop', 'Stopping', 'Stopped', ' a command')
+    case 'Monitor': return { ...say('watch', 'Watching', 'Watched', ' a command'), object: str(i.description) }
+    case 'TaskCreate': return { ...say('add', 'Adding', 'Added', ' a task'), object: str(i.subject) }
+    case 'TaskUpdate': return { ...say('update', 'Updating', 'Updated', ' a task'), object: str(i.subject) }
+    case 'TaskGet': case 'TaskList': return say('read', 'Reading', 'Read', ' tasks')
+    case 'ScheduleWakeup': return { ...say('schedule', 'Scheduling', 'Scheduled', ' a wake-up'), object: str(i.reason) }
+    case 'CronCreate': return say('schedule', 'Scheduling', 'Scheduled', ' a task')
+    case 'CronDelete': return say('cancel', 'Canceling', 'Canceled', ' a scheduled task')
+    case 'CronList': return say('list', 'Listing', 'Listed', ' scheduled tasks')
+    case 'EnterWorktree': return say('enter', 'Entering', 'Entered', ' a worktree')
+    case 'ExitWorktree': return say('leave', 'Leaving', 'Left', ' a worktree')
+    case 'PushNotification': return say('send', 'Sending', 'Sent', ' a notification')
+    case 'RemoteTrigger': return say('run', 'Running', 'Ran', ' a remote trigger')
     default: return undefined
   }
 }

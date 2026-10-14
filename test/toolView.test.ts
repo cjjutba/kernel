@@ -173,3 +173,27 @@ describe('toolTitle', () => {
     expect(toolTitle('ToolSearch')).toBe('ToolSearch')
   })
 })
+
+describe('built-in tools that are not file or shell calls (KERNEL-807)', () => {
+  const tenses = (name: string) => (['running', 'done', 'failed', 'denied', 'stopped'] as const).map((status) => {
+    const output = status === 'denied' ? "The user doesn't want to proceed with this tool use." : status === 'stopped' ? 'Stopped when Kernel quit' : undefined
+    return toolView(call(name, {}, { status: status === 'denied' || status === 'stopped' ? 'failed' : status, output })).verb
+  })
+
+  it('labels the plan, command output and stop tools in every tense', () => {
+    expect(tenses('ExitPlanMode')).toEqual(['Finishing the plan', 'Finished the plan', "Couldn't finish the plan", 'You denied finishing the plan', 'Stopped finishing the plan'])
+    expect(tenses('BashOutput')).toEqual(['Reading command output', 'Read command output', "Couldn't read command output", 'You denied reading command output', 'Stopped reading command output'])
+    expect(tenses('KillShell')).toEqual(['Stopping a command', 'Stopped a command', "Couldn't stop a command", 'You denied stopping a command', 'Stopped stopping a command'])
+  })
+
+  it('never reads a Claude Code built-in as an unknown tool', () => {
+    for (const name of ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion', 'BashOutput', 'KillShell', 'TaskOutput', 'TaskStop', 'Monitor', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList', 'ScheduleWakeup', 'CronCreate', 'CronDelete', 'CronList', 'EnterWorktree', 'ExitWorktree', 'PushNotification', 'RemoteTrigger']) {
+      expect(toolView(call(name)), name).toMatchObject({ unknown: undefined })
+    }
+  })
+
+  it('names the task or command a row is about', () => {
+    expect(toolView(call('TaskCreate', { subject: 'Wire up the toggle' }))).toMatchObject({ verb: 'Added a task', object: 'Wire up the toggle' })
+    expect(toolView(call('Monitor', { description: 'dev server logs' }))).toMatchObject({ verb: 'Watched a command', object: 'dev server logs' })
+  })
+})
