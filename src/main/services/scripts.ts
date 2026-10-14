@@ -19,8 +19,20 @@ const canBind = (p: number) => new Promise<boolean>((res) => {
   srv.listen(p, '127.0.0.1', () => srv.close(() => res(true)))
 })
 
-/** The first port of each block a workspace can get: 4300, 4310 and so on to 4800 (KERNEL-244). */
-export const BLOCK_STARTS = Array.from({ length: (4800 - 4300) / PORT_BLOCK + 1 }, (_, i) => 4300 + i * PORT_BLOCK)
+/** Ports in the block range that browsers refuse to load (SIP), so a preview on one could never open (KERNEL-830). */
+export const BROWSER_BLOCKED_PORTS = [5060, 5061]
+
+/**
+ * The first port of each block a workspace can get: 4300, 4310 and so on to 5990, short of 6000, which browsers refuse, and
+ * well below the hook ports. A block holding a port browsers refuse is left out (KERNEL-244, KERNEL-830).
+ */
+export const BLOCK_STARTS = Array.from({ length: (5990 - 4300) / PORT_BLOCK + 1 }, (_, i) => 4300 + i * PORT_BLOCK)
+  .filter((start) => !BROWSER_BLOCKED_PORTS.some((p) => p >= start && p < start + PORT_BLOCK))
+
+/** Every block is taken or has a port in use. `withPort` turns it into a message the user can act on (KERNEL-830). */
+export class NoFreePortBlock extends Error {
+  constructor() { super(`No free block of ports between ${BLOCK_STARTS[0]} and ${BLOCK_STARTS.at(-1)! + PORT_BLOCK - 1}`) }
+}
 
 /** Whether the blocks starting at `a` and `b` share a port. A legacy port that isn't a multiple of 10 still has a whole block. */
 export const blocksOverlap = (a: number, b: number) => Math.abs(a - b) < PORT_BLOCK
@@ -28,7 +40,7 @@ export const blocksOverlap = (a: number, b: number) => Math.abs(a - b) < PORT_BL
 /**
  * A free block of `PORT_BLOCK` ports for a workspace, as its first port ($KERNEL_PORT). `taken` is read again for each candidate,
  * and the port goes in `reserved` before the bind check awaits, so two calls in one turn never get the same block. The caller
- * drops it from `reserved` once the workspace that holds it is saved.
+ * drops it from `reserved` once the workspace that holds it is saved. Throws `NoFreePortBlock` when every block is taken.
  */
 export async function portBlock(taken: () => number[], reserved: Set<number>): Promise<number> {
   for (const start of BLOCK_STARTS) {
@@ -39,7 +51,7 @@ export async function portBlock(taken: () => number[], reserved: Set<number>): P
     if (free) return start
     reserved.delete(start)
   }
-  throw new Error('No free block of ports between 4300 and 4809')
+  throw new NoFreePortBlock()
 }
 
 /**
