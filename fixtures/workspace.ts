@@ -256,6 +256,15 @@ const runningItems = (): ChatItem[] => {
   ]
 }
 
+/** Ivy's turn with a long shell command in flight (WorkspaceRunningLongCommand). */
+const runningLongCommandItems = (): ChatItem[] => {
+  const command = "printf -- 'type: internal. A test of shared MCP sign-ins no longer leaking between rooms and the chats that open them' > .changes/unreleased/shared-mcp-sign-ins.md && git add -A && git commit -m 'test(mcp): shared sign-ins stay inside their room'"
+  return [
+    ...runningItems().slice(0, -1),
+    tool('rt4', 'Run a command', command, { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command } })
+  ]
+}
+
 /** A turn in progress with a long thinking row, a Bash call that printed output, an Edit and a Bash call still running. */
 const rowsOpenItems: ChatItem[] = [
   userMsg('ro-u', 'Add a sort to the invoice table and run the tests.'),
@@ -2036,6 +2045,22 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { path: 'tests/invoice-pdf.spec.ts', status: 'A', added: 96, removed: 0 },
       { path: 'tests/fixtures/invoices.ts', status: 'A', added: 42, removed: 0 }
     ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** A long command in flight: the step stays one row and the clock sits on its own row under it (KERNEL-823). */
+  WorkspaceRunningLongCommand: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningLongCommandItems() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** The moment between two steps: the last one is done and the next has not started, so only the clock row shows (KERNEL-823). */
+  WorkspaceRunningBetweenSteps: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'Snapshot tests' } : c)),
+    items: { [ids.tableChat]: runningItems().map((i) => (i.kind === 'tool' && i.status === 'running' ? { ...i, status: 'done' as const, durationMs: 6200 } : i)) },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
   })),

@@ -620,25 +620,26 @@ function Elapsed({ since }: { since: number }) {
   return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
 }
 
-/** The step in flight, under a running turn's folds: drawn like any other step, with the turn's clock at its end. */
+/** The step in flight, under a running turn's folds: drawn like any other step, with the turn's clock on its own row under it. */
 function LiveLine({ item, since }: { item: Extract<ThreadBlock, { kind: 'live' }>['item']; since: number }) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  const clock = <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
-  if (item.kind === 'tool') return <LiveTool item={item} clock={clock} />
-  return <div className="trow live-row"><StepLine icon="bulb" label="Thinking" meta={clock} /></div>
+  return (
+    <>
+      {item.kind === 'tool' ? <LiveTool item={item} /> : <div className="trow live-row"><StepLine icon="bulb" label="Thinking" /></div>}
+      <Elapsed since={since} />
+    </>
+  )
 }
 
-function LiveTool({ item, clock }: { item: Tool; clock: ReactNode }) {
+function LiveTool({ item }: { item: Tool }) {
   const { view, mark } = useToolLook(item)
-  if (view.hidden) return <div className="trow live-row"><StepLine icon="term" label="Working" meta={clock} /></div>
+  if (view.hidden) return <div className="trow live-row"><StepLine icon="term" label="Working" /></div>
   const preview = (view.object || view.dir) && (
     <>
       {view.object && <span className={view.mono ? 'step-cmd mono' : 'step-obj'}>{view.object}</span>}
       {view.dir && <span className="step-dir">{view.dir}</span>}
     </>
   )
-  return <div className="trow live-row"><StepLine icon="term" glyph={mark} label={view.verb} preview={preview} keep meta={clock} /></div>
+  return <div className="trow live-row"><StepLine icon="term" glyph={mark} label={view.verb} preview={preview} keep /></div>
 }
 
 /** One line across the thread where the chat switched between Hand off and Build here, so the transcript shows which turns could edit (KERNEL-780). */
