@@ -11,6 +11,7 @@ import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
 import { NoteText } from './NoteText'
 import { ApprovalCard } from './cards/ApprovalCard'
+import { PLAN_APPROVE_EVENT } from './cards/plan'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
@@ -822,11 +823,19 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }
   const toEnd = () => {
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-    gliding.current = smooth
+    // Already at the end, no scroll runs and none lands, so nothing would end the glide.
+    gliding.current = smooth && !!scroller.current && distFromEnd(flat(scroller.current)) > 0
     byHand.current = false
     pin(true)
     end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
   }
+  // Approving this chat's plan from its composer pins following again and glides to the end, which a plan taller than the chat left far above (KERNEL-789).
+  // An approval from Inbox or Home sends no event, so a reader here stays where they are.
+  useEffect(() => {
+    const onApprove = (e: Event) => { if ((e as CustomEvent<{ chatId?: string }>).detail?.chatId === chat.id) toEnd() }
+    window.addEventListener(PLAN_APPROVE_EVENT, onApprove)
+    return () => window.removeEventListener(PLAN_APPROVE_EVENT, onApprove)
+  }, [chat.id])
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
   const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.

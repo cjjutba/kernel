@@ -5,8 +5,8 @@ import { cleanError } from '../../api'
 import { IconButton, Menu, useBusy, type IconName } from '../../ui'
 
 /** What a failed action says. A channel that no lane has built yet rejects with "Not built yet: ...", which is fine to show as it is. */
-export async function attempt(title: string, fn: () => Promise<unknown>) {
-  try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
+export async function attempt(title: string, fn: () => Promise<unknown>): Promise<boolean> {
+  try { await fn(); return true } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }); return false }
 }
 
 /** Copies `text` and says "Copied" for 1.5s. Only a failure toasts. */

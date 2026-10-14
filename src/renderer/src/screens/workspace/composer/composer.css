@@ -213,6 +213,11 @@
 .cmp-planbar > * { position: relative; }
 .cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--plan) 2%, transparent) 25%, color-mix(in srgb, var(--plan) 7%, transparent) 38%, color-mix(in srgb, var(--plan) 12%, transparent) 50%, color-mix(in srgb, var(--plan) 7%, transparent) 62%, color-mix(in srgb, var(--plan) 2%, transparent) 75%, transparent 90%); transform: translateX(-100%); opacity: 0; animation: planbar-sweep 1.6s cubic-bezier(0.4, 0.1, 0.6, 0.9) var(--plan-dur) both; }
 @keyframes planbar-in { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 44px; opacity: 1; } }
+/* Closing is the opening in reverse over the same --plan-dur and --ease-plan. The glow fades with it, and the strip takes no clicks. */
+.cmp-planbar[data-closing] { pointer-events: none; animation: planbar-out var(--plan-dur) var(--ease-plan) both; }
+.cmp-planbar[data-closing]::before { animation: none; opacity: 0; }
+.cmp[data-plan='true']:has(> .cmp-planbar[data-closing])::before, .cmp[data-plan='true']:has(> .cmp-planbar[data-closing])::after { opacity: 0; animation: none; }
+@keyframes planbar-out { from { max-height: 44px; opacity: 1; } to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } }
 @keyframes planbar-sweep { 0% { transform: translateX(-100%); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
 .cmp-planbar .btn { height: 28px; }
 .cmp-planbar .btn.ghost { color: var(--ink-2); }
@@ -223,6 +228,7 @@
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
   .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
+  .cmp-planbar[data-closing] { display: none; }
 }
 
 /* context ring and its popover (KERNEL-96) */

@@ -155,12 +155,12 @@ A button that waits on the main process shows it is working until the call retur
   | Restore, revert, reset, switch account or program, sign in to a usage account | `wave-back` |
   | Everything else (save, create, open, copy, add, install, connect, export, move, compact, commit, link) | `ripple-out` |
 
-- In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
+- In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click. The plan strip's Approve is another: it closes the strip over --plan-dur instead of spinning, and ignores a second press while it closes (KERNEL-789).
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
 ## Motion
 
-- Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s.
+- Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over --plan-dur (0.5s), then one light crosses it over 1.6s. Approve closes it in reverse over the same length and easing while the chat scrolls smoothly to its end; reduced motion removes the strip and jumps. Send changes color in 0.16s.
 - Resize edge glow (KERNEL-419): fades in over 200ms ease-out after an 80ms delay and out over 120ms, growing from the middle. Reduced motion turns it on and off with no transition.
 - Toasts (toast-motion-and-swipe): a new toast's gap opens over 0.16s, then the toast rises 16px and fades in over 0.3s, ease-out. On timeout or its action it sinks 16px and fades over 0.2s, then its gap closes over 0.16s. A drag or a two-finger swipe moves it with your finger, locked to right or down after 6px and never left or up. Past 60px, or after a flick, it slides on out the way it went. Short of that it springs back.
 - Archive (KERNEL-579): archiving a chat or workspace is one short beat, played for the three cases below. Every curve is `ease-out`.

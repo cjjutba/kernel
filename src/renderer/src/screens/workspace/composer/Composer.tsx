@@ -13,7 +13,7 @@ import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../.
 import { useRoomSettings } from '../../settings/useSettings'
 import { Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { PlanBar } from '../cards/plan'
+import { PlanStrip } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
@@ -361,7 +361,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
         )}
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, style: { opacity: blocked ? 0.5 : 1 }, ...d.drop }}
-      top={plan && <PlanBar a={plan} />}
+      top={<PlanStrip plan={plan} />}
       input={<DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
