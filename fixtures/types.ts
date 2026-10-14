@@ -6,6 +6,9 @@ import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
 import type { PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
 
+/** What `pnpm shots <Screen> --motion` does: a click on a button by its accessible name, or key presses in Playwright's names (`Meta+Shift+Enter`). */
+export type MotionAction = { click: string } | { press: string[] }
+
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {
   rooms: Room[]
@@ -131,6 +134,8 @@ export interface Fixture {
   /** Usage data (KERNEL-397): whether this build could send, and what Settings, Privacy lists. Left out, it can't and lists nothing. */
   telemetry?: { canSend?: boolean; recent?: TelemetryRecord[] }
   ui: ForcedUi
+  /** `pnpm shots <Screen> --motion` runs `action` and captures frames for `ms`. `area` is a selector to crop to, else the whole window (KERNEL-831). */
+  motion?: { action: MotionAction; ms: number; area?: string }
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
    * script that prints a local URL here gets its `script.url` too, as in the engine (KERNEL-246).

@@ -13,6 +13,7 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 - `pnpm build` builds all three bundles. CI runs it as the `Build` job on every PR and every push to `main`, and the `Test` gate requires it
 - The full suite on macOS is the "Test on macOS" workflow (`test-mac.yml`): nightly on `main`, on every PR from a `release/**` branch, and by hand (`gh workflow run test-mac.yml --ref <branch>`). It isn't required on other PRs. A failing run opens a `ci-mac-red` issue that only a green run of it on `main` closes. `/release` won't merge a release PR without it green
 - `pnpm shots <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture, `--no-build` reuses the last build
+- `pnpm shots <Screen> --motion` runs the action a fixture declares in `motion` (a click or key presses) and saves `shots/<Screen>-motion.png`, a contact sheet with each frame's number and time, and `shots/<Screen>-motion.gif`. CSS animations are stepped by time, so two runs match. It needs ffmpeg for the GIF
 - `KERNEL_FIXTURES=<Screen> pnpm dev` runs the app on one fixture (`fixtures/`), with no kernel, database or sessions
 - `KERNEL_HEADLESS=1` keeps the window hidden, with no Dock icon and no focus. Set it whenever a script launches the app (Playwright's `_electron`, `electron .`). Check your work with `pnpm shots`, not `pnpm dev` or computer use: a visible window steals keyboard focus from whatever CJ is typing in
 

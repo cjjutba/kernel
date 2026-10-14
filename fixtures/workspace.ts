@@ -2185,6 +2185,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
+  WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
   WorkspacePlanApproved: scene(planApproved),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),

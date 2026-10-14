@@ -304,6 +304,8 @@ app.whenReady().then(async () => {
     console.error(`[kernel] no fixture named ${fixtureName}. Known: ${Object.keys(known).join(', ')}`)
     return app.exit(1)
   }
+  // `pnpm shots --motion` asks the app for what the fixture declares, since the script can't import the fixtures (KERNEL-831).
+  ;(globalThis as { kernelFixtureMotion?: unknown }).kernelFixtureMotion = fixture?.motion
   // A fixture's theme wins, as `pnpm shots --theme light` asks. A real run opens on what settings.json says.
   const fixtureLook = fixture && appearanceOf({ theme: fixtureTheme().theme ?? fixture.ui.theme })
   appearance = new WindowAppearance({ nativeTheme, window: mainWindow, initial: fixtureLook || readAppearance(join(app.getPath('userData'), 'settings.json')) })
