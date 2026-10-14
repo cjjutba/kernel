@@ -303,3 +303,12 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-tag-input { height: 26px; width: 220px; max-width: 100%; box-sizing: border-box; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-4); background: var(--input-bg); color: var(--ink); font-size: 12px; outline: none; user-select: text; }
 .set-tag-input.mono { font-family: var(--mono); }
 .set-sheet-text { min-height: 320px; max-height: 60vh; overflow: auto; white-space: pre-wrap; }
+
+.set-saves { margin: 6px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.set-save { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; line-height: 1.5; color: var(--muted); transition: opacity 0.3s ease-out; }
+.set-save[data-state="fading"] { opacity: 0; }
+.set-field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.set-field > .set-save { align-self: flex-end; }
+.set-field-inline { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.set-tags > .set-save { align-self: center; padding-left: 4px; }
+@media (prefers-reduced-motion: reduce) { .set-save { transition: none; } }

@@ -126,6 +126,15 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Saving in Settings
+
+- Every Settings page has one muted line under its title: "Changes save as you make them." (KERNEL-721).
+- Toggles, segments and dropdowns save on click and get no note and no toast. The control is the confirmation.
+- Text and number fields save when they lose focus. A note in muted text sits beside the field: "Saving" with a spinner while the call runs, then "Saved" with a check. It fades about 1.5s after main answers. The state comes from the save promise, never a timer.
+- When main corrects a number, the note says "Set to N, the most allowed" or "Set to N, the least allowed" and stays until the next edit.
+- A field with unsaved text saves when it unmounts. Escape inside a field cancels the edit and puts the saved value back.
+- A failed save rolls back, shows the "Could not save" toast and no Saved note.
+
 ## Busy buttons
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.

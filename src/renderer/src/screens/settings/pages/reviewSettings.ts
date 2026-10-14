@@ -56,9 +56,12 @@ export async function patchAlwaysReview(roomId: string, paths: string[]) {
   const before = getState().roomSettings[roomId]
   if (before) actions.settings.setRoom(roomId, { ...before, merge: { alwaysReview: cleanPaths(paths) } })
   try {
-    actions.settings.setRoom(roomId, await call('settings.setAlwaysReview', { roomId, paths }))
+    const saved = await call('settings.setAlwaysReview', { roomId, paths })
+    actions.settings.setRoom(roomId, saved)
+    return saved
   } catch (e) {
     if (before) actions.settings.setRoom(roomId, before)
     actions.ui.toast({ title: 'Could not save the always-review paths', sub: cleanError(e) })
+    return undefined
   }
 }

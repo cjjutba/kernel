@@ -16,7 +16,7 @@ export const INSTRUCTIONS: { key: keyof PrInstructions; label: string; file: str
  * sending `null`. Save sends the text, or `null` when it is the fallback.
  */
 export function InstructionSheet({ title, value, fallback, fallbackLabel = 'Use default', onSave, onClose }: {
-  title: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => Promise<void> | void; onClose: () => void
+  title: string; value: string; fallback: string; fallbackLabel?: string; onSave: (text: string | null) => Promise<unknown> | void; onClose: () => void
 }) {
   const [text, setText] = useState(value)
   const [busy, setBusy] = useState(false)

@@ -20,7 +20,7 @@ export function RoomPermissions({ roomId }: { roomId?: string }) {
   if (!room || !roomId) return <NoRoom />
   const current = room.permissionMode
   const save = async (patch: { allow: string[] } | { allowTools: string[] }) => {
-    try { actions.rooms.upsert(await call('rooms.update', { roomId, patch })) } catch (e) { actions.ui.toast({ title: 'Could not save the rule', sub: cleanError(e) }) }
+    try { actions.rooms.upsert(await call('rooms.update', { roomId, patch })); return true } catch (e) { actions.ui.toast({ title: 'Could not save the rule', sub: cleanError(e) }); return undefined }
   }
   const modes = PERMISSION_MODES.map((mode) => ({ value: mode, label: MODE_INFO[mode].label, disabled: unavailable(mode, availability).dim && mode !== current }))
   return (
@@ -31,8 +31,8 @@ export function RoomPermissions({ roomId }: { roomId?: string }) {
         </Row>
       </Section>
       <Section title="Always allowed" scope="mac" footnote={<>Never allow and protected branches apply in every room, from <SettingsLink to={{ page: 'permissions' }}>Settings, Permissions</SettingsLink>.</>}>
-        <Row label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => void save({ allow })} />} />
-        <Row label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => void save({ allowTools })} />} />
+        <Row label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => save({ allow })} />} />
+        <Row label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => save({ allowTools })} />} />
       </Section>
     </RoomPage>
   )

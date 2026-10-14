@@ -339,6 +339,15 @@ async function narrowWindow(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(400)
 }
 
+// SettingsPRsSaving, Saved and Clamped are Size limit typed and left (KERNEL-721). The note is local to the field. Saving holds main's answer back.
+async function leaveSizeLimit(page: Page, text: string) {
+  const field = page.getByRole('textbox', { name: 'Size limit' })
+  await field.fill(text)
+  await field.evaluate((el) => el.blur())
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   UsageFooterNarrow: narrowWindow,
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
@@ -385,6 +394,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceScrolledUp: scrollUp,
+  SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
+  SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
+  SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
+  SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
@@ -396,6 +409,7 @@ async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
   env.KERNEL_FIXTURES = name
+  if (name === 'SettingsPRsSaving') env.KERNEL_SLOW_SETTINGS = '1'
   env.KERNEL_HEADLESS = '1'
   if (theme) env.KERNEL_FIXTURE_THEME = theme
   // Electron's own cache and storage for this launch. Deleted after close, since Chromium writes to it until exit.
