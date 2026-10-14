@@ -3,7 +3,7 @@ import { bus } from '../bus'
 import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
-import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
+import { type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, prNote, resolveFile } from '../services/github'
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
@@ -382,7 +382,7 @@ export class Prs extends Feature {
     }
     if (info?.conflictsUnknown) throw new Error(`GitHub is still checking ${ws.prNumber ? `#${ws.prNumber}` : 'this pull request'} for conflicts. Try again in a moment.`)
     if (info) bus.push({ type: 'pr.info', info })
-    if (o.head && info?.head !== o.head) throw new Error('The pull request has new commits since Kernel checked it.')
+    if (o.head && info?.head !== o.head) throw new Error(HEAD_MOVED)
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name, { override: o.override })
     if (block) throw new Error(block)
@@ -391,13 +391,20 @@ export class Prs extends Feature {
     this.setPrState(ws, 'merging')
     let landed: { sha: string; base: string } | void
     try {
-      landed = await this.host(ws.roomId).merge(ws.path, ws.branch, method, { base: ws.baseRef, title: ws.prTitle ?? ws.title })
+      // GitHub merges only the head Kernel checked: the one auto-merge weighed, else the one the fresh read found (KERNEL-829).
+      const head = o.head ?? info?.head
+      landed = await this.host(ws.roomId).merge(ws.path, ws.branch, method, { base: ws.baseRef, title: ws.prTitle ?? ws.title, ...(head ? { head } : {}) })
       this.mergedWith.set(id, method)
       this.updateWs(id, { mergedWith: method })
     } catch (e) {
       this.k.codeHost.forgetMergeMethods(this.mustRoom(ws.roomId))
       this.merging.delete(id)
-      await this.k.refreshPr(id, { settle: true }).catch(() => undefined)
+      const after = await this.k.refreshPr(id, { settle: true }).catch(() => undefined)
+      // gh can fail or time out after GitHub merged: the read says what happened (KERNEL-829).
+      if (after?.prState === 'merged') {
+        this.mergedWith.set(id, method)
+        return this.updateWs(id, { mergedWith: method })
+      }
       throw e
     }
     this.merging.delete(id)
@@ -488,7 +495,8 @@ export class Prs extends Feature {
     } catch (e) {
       this.leadUpdates.autoMerging(id)
       const said = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
-      if (said.startsWith('GitHub is still checking ') && this.weighAgain(id, key)) return { refused: said }
+      // GitHub asks for another try when the base moved during the merge, as when another PR landed (KERNEL-829).
+      if ((said.startsWith('GitHub is still checking ') || said.includes('Base branch was modified')) && this.weighAgain(id, key)) return { refused: said }
       this.leadUpdates.autoMergeRefused(id, `The merge Kernel started failed. ${said}`)
       bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object: pr, warn: true })
       return { refused: said }

@@ -3,7 +3,7 @@
 .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
 /* The box sits recessed on the chat (KERNEL-322). Its children sit above the plan glow, which is
    its ::before, so they are positioned with no z-index: the model, + and context popovers still open past the box. */
-.cmp { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
+.cmp { --cmp-pad-top: 12px; position: relative; display: flex; flex-direction: column; gap: 6px; padding: var(--cmp-pad-top) 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
 .cmp > * { position: relative; }
 .cmp:focus-within { border-color: var(--line-4); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
@@ -219,27 +219,38 @@
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
-.cmp:has(> .cmp-planbar) { padding-top: 0; }
+/* The strip takes the box's top padding while it is there. The padding goes and comes back over the strip's own --plan-dur, so removing the strip moves nothing (KERNEL-833). */
+.cmp:has(> .cmp-planbar) { padding-top: 0; animation: cmp-pad-shut var(--plan-dur) var(--ease-plan) both; }
+.cmp:has(> .cmp-planbar[data-closing]) { animation: cmp-pad-open var(--plan-dur) var(--ease-plan) both; }
+@keyframes cmp-pad-shut { from { padding-top: var(--cmp-pad-top); } to { padding-top: 0; } }
+@keyframes cmp-pad-open { from { padding-top: 0; } to { padding-top: var(--cmp-pad-top); } }
+/* Once the strip has closed the placeholder and the mode chip fade to the box's own mode (KERNEL-833). Two names, so each close runs it again. */
+.cmp[data-swap='a'] .cmp-input[data-empty]::before, .cmp[data-swap='a'] .cmp-mode { animation: cmp-swap-a 160ms ease-out; }
+.cmp[data-swap='b'] .cmp-input[data-empty]::before, .cmp[data-swap='b'] .cmp-mode { animation: cmp-swap-b 160ms ease-out; }
+@keyframes cmp-swap-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cmp-swap-b { from { opacity: 0; } to { opacity: 1; } }
 /* It mounts when a plan arrives: it opens over --plan-dur, then one soft light crosses it over 1.6s, behind its buttons. Done by 2.1s. The sweep is an accent, so it keeps its own length like the breathing loop. */
 .cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
 .cmp-planbar > * { position: relative; }
 .cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 10%, color-mix(in srgb, var(--plan) 2%, transparent) 25%, color-mix(in srgb, var(--plan) 7%, transparent) 38%, color-mix(in srgb, var(--plan) 12%, transparent) 50%, color-mix(in srgb, var(--plan) 7%, transparent) 62%, color-mix(in srgb, var(--plan) 2%, transparent) 75%, transparent 90%); transform: translateX(-100%); opacity: 0; animation: planbar-sweep 1.6s cubic-bezier(0.4, 0.1, 0.6, 0.9) var(--plan-dur) both; }
-@keyframes planbar-in { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 44px; opacity: 1; } }
+@keyframes planbar-in { from { max-height: 0; opacity: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } to { max-height: 44px; opacity: 1; } }
 /* Closing is the opening in reverse over the same --plan-dur and --ease-plan. The glow fades with it, and the strip takes no clicks. */
 .cmp-planbar[data-closing] { pointer-events: none; animation: planbar-out var(--plan-dur) var(--ease-plan) both; }
 .cmp-planbar[data-closing]::before { animation: none; opacity: 0; }
 .cmp[data-plan='true']:has(> .cmp-planbar[data-closing])::before, .cmp[data-plan='true']:has(> .cmp-planbar[data-closing])::after { opacity: 0; animation: none; }
-@keyframes planbar-out { from { max-height: 44px; opacity: 1; } to { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } }
+/* Its margin and hairline are in the close, and so is the box's top padding above, so nothing is left to jump when it unmounts. */
+@keyframes planbar-out { from { max-height: 44px; opacity: 1; } to { max-height: 0; opacity: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } }
 @keyframes planbar-sweep { 0% { transform: translateX(-100%); opacity: 0; } 20% { opacity: 1; } 80% { opacity: 1; } 100% { transform: translateX(100%); opacity: 0; } }
 .cmp-planbar .btn { height: 28px; }
 .cmp-planbar .btn.ghost { color: var(--ink-2); }
 .cmp-planbar .btn.ghost:hover { color: var(--ink); }
 .cmp-planbar .btn.primary:not(:disabled) { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
 .cmp-planbar .btn.primary:not(:disabled):hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
+.cmp-planbar-ask { min-width: 0; margin-right: auto; font-size: 13px; color: var(--ink-2); }
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
-  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
+  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send, .cmp-input::before, .cmp-mode { animation: none !important; transition: none !important; }
   .cmp-planbar[data-closing] { display: none; }
 }
 

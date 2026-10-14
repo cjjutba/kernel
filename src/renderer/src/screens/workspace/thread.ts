@@ -15,12 +15,14 @@ export type Entry = { kind: 'item'; item: ChatItem } | { kind: 'run'; run: Run }
  * finished steps the same way, with the step in flight as a `live` line under them (KERNEL-784).
  */
 export type ThreadBlock =
-  | { kind: 'item'; item: ChatItem }
+  /** `actions` marks the last agent line of a stopped turn, or of one an app restart cut off: it carries the full actions where every other line only offers Copy (KERNEL-828). */
+  | { kind: 'item'; item: ChatItem; actions?: true }
   | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary }
   | { kind: 'run'; id: string; run: Run }
   | { kind: 'live'; id: string; item: Tool | Extract<ChatItem, { kind: 'thinking' }> }
   | { kind: 'files'; id: string; files: ChangedFile[] }
-  | { kind: 'meta'; id: string; text: string }
+  /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
+  | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
   /**
    * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
    * and when, and the reply's actions (KERNEL-346).
@@ -232,7 +234,8 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
  * Split items into turns at each user message. A turn that finished well (it has an ok `result`) shows
  * its reply, the files it changed and how long it took, and folds each stretch of steps before the reply into one group, with the
  * agent's messages, notes and approvals between them left as they are (KERNEL-800).
- * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line.
+ * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line. A turn that ends on a
+ * step instead puts the actions on the time's line (KERNEL-828). Every other agent line offers Copy alone.
  * A turn still running folds its finished steps (`running` says whether the chat's turn is). A stopped or failed one shows every item,
  * so nothing is hidden while it matters.
  */
@@ -249,8 +252,10 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     if (!result?.ok) {
       const stopped = turn.some((i) => i.kind === 'interrupted')
       const failedTool = [...turn].reverse().find((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool' && i.status === 'failed')
-      for (const item of turn) {
-        if (item.kind !== 'result') blocks.push({ kind: 'item', item })
+      // A stopped turn, or one with no result that nothing is running, offers its actions on its last message. A failed one has the error card's Retry.
+      const tail = stopped || !result ? turn.map((i) => i.kind).lastIndexOf('text') : -1
+      for (const [n, item] of turn.entries()) {
+        if (item.kind !== 'result') blocks.push(n === tail ? { kind: 'item', item, actions: true } : { kind: 'item', item })
         else if (stopped || item.ok) blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
         else blocks.push({ kind: 'error', id: item.id, message: item.error ?? 'The turn failed', output: failedTool?.output })
       }
@@ -274,7 +279,8 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     } else {
       for (const item of rest) blocks.push({ kind: 'item', item })
       if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })
-      blocks.push({ kind: 'meta', id: result.id, text: meta })
+      const copy = [...body].reverse().find((i): i is Extract<ChatItem, { kind: 'text' }> => i.kind === 'text')?.text
+      blocks.push({ kind: 'meta', id: result.id, text: meta, actions: { ...(copy ? { copy } : {}), files: !!result.files?.length, ...(result.checkpointId ? { checkpointId: result.checkpointId } : {}) } })
     }
     for (const item of after) blocks.push({ kind: 'item', item })
     turn = []

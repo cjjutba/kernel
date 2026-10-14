@@ -125,53 +125,154 @@ function PlanExpired({ a }: { a: Approval }) {
   )
 }
 
+/** What the strip hands the composer: the approval whose strip is mounted, which holds plan mode while it closes (KERNEL-833), and what pressed Approve. */
+export interface PlanStripState {
+  /** The plan whose strip is on screen, including while it closes. */
+  shown: Approval | undefined
+  /** The strip is closing: Approve was pressed, or its plan stopped waiting or was replaced. */
+  closing: boolean
+  /** "Plan approved" once the approval went through, for a screen reader. */
+  said: string
+  approve: () => void
+  closed: () => void
+}
+
 /**
- * Copy and Approve on top of the composer while a plan in this chat waits. ⌘⇧↵ approves from anywhere in the window.
- * The Lead's Approve also hands the plan to the team, as before.
- * Approve closes the strip at once, the opening animation in reverse, with no spinner (KERNEL-789). The composer keeps it
- * mounted through `closing` (the plan stopped waiting) until the animation ends, then `onClosed` removes it.
+ * The plan strip's state, held by the composer so the placeholder, the Plan chip and the glow can stay in plan mode until the strip has closed (KERNEL-833).
+ * The strip stays mounted after its plan stops waiting (approved here or in Inbox, denied, expired) until its close animation ends or is cancelled. A plan that
+ * arrives meanwhile waits for that. The approval call goes out at once, and a failed one opens the strip again, as a new strip if it had already gone.
+ * `onApproved` runs at the press, where the composer takes the focus the Approve button held.
  */
-export function PlanBar({ a, closing = false, onClosed }: { a: Approval; closing?: boolean; onClosed?: () => void }) {
-  const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
-  const [copied, copy] = useCopy(planCopyText(a, agents))
+export function usePlanStrip(plan: Approval | undefined, onApproved?: () => void): PlanStripState {
+  const [shown, setShown] = useState(plan)
   const [pressed, setPressed] = useState(false)
+  // The plan whose strip closed after Approve while the plan still waited (a slow approval), so it doesn't open again before the call fails.
+  const [gone, setGone] = useState<string | undefined>()
+  const [approved, setApproved] = useState<string | undefined>()
+  if (approved && plan && plan.id !== approved) setApproved(undefined)
+  if (shown && plan && plan.id === shown.id && plan !== shown) setShown(plan)
+  if (!shown && plan && plan.id !== gone) setShown(plan)
+  if (gone && plan?.id !== gone) setGone(undefined)
+  const closing = !!shown && (pressed || !plan || plan.id !== shown.id)
   // Drops a second press (or ⌘⇧↵) while the strip closes, the guard useBusy gave before (D-086). A ref, so two presses in one frame still count once.
   const sent = useRef(false)
+  const now = useRef({ shown, closing, plan, onApproved })
+  now.current = { shown, closing, plan, onApproved }
   const approve = () => {
-    if (sent.current) return
+    const { shown: a, closing: out, onApproved: after } = now.current
+    if (!a || out || sent.current) return
     sent.current = true
     setPressed(true)
     window.dispatchEvent(new CustomEvent(PLAN_APPROVE_EVENT, { detail: { chatId: a.chatId } }))
+    after?.()
     void attempt('Could not approve the plan', () => call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } })).then((ok) => {
-      if (!ok) { sent.current = false; setPressed(false) }
+      sent.current = false
+      if (ok) setApproved(a.id)
+      else { setPressed(false); setGone(undefined) }
     })
   }
-  // A plan that stopped waiting for another reason (decided in Inbox, denied, expired) is closing too, and can't be approved.
-  useEffect(() => { if (closing) sent.current = true }, [closing])
+  const closed = () => {
+    const { shown: a, plan: waiting } = now.current
+    if (!a) return
+    setPressed(false)
+    // Still waiting: the strip is gone and stays gone until the call fails or another plan comes.
+    if (waiting && waiting.id === a.id) setGone(a.id)
+    setShown(waiting && waiting.id !== a.id ? waiting : undefined)
+  }
+  return { shown, closing, said: approved ? 'Plan approved' : '', approve, closed }
+}
+
+/**
+ * Copy and Approve on top of the composer while a plan in this chat waits. ⌘⇧↵ approves from anywhere in the window.
+ * The Lead's Approve also hands the plan to the team, as before.
+ * Approve closes the strip at once, the opening animation in reverse, with no spinner (KERNEL-789): its margin and hairline go with it, and so does the
+ * composer's top padding (composer.css), so the box shrinks as one. With text in the box, Approve asks first (KERNEL-833): Send changes sends it as the
+ * plan's change request, and Approve approves and leaves it in the box.
+ */
+export function PlanBar({ a, closing, hasText, onApprove, onSendChanges, onBack, onClosed }: {
+  a: Approval
+  closing: boolean
+  hasText: boolean
+  onApprove: () => void
+  onSendChanges: () => void
+  /** Escape backed out of the question: the caret goes back to the box. */
+  onBack: () => void
+  onClosed: () => void
+}) {
+  const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
+  const [copied, copy] = useCopy(planCopyText(a, agents))
+  const [asked, setAsked] = useState(false)
+  const asking = asked && hasText && !closing
+  const group = useRef<HTMLDivElement>(null)
+  const press = () => {
+    if (closing) return
+    if (hasText && !asking) setAsked(true)
+    else { setAsked(false); onApprove() }
+  }
+  const latest = useRef(press)
+  latest.current = press
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' || !e.shiftKey || !(e.metaKey || e.ctrlKey) || e.isComposing) return
       e.preventDefault()
-      approve()
+      latest.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [a.id])
-  const out = closing || pressed
-  // Reduced motion has no close animation to wait for, so a strip whose plan stopped waiting goes at once.
-  useEffect(() => { if (closing && typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) onClosed?.() }, [closing])
+  }, [])
+  // The question takes the focus (on Send changes, the choice that loses nothing), and Escape backs out of it from anywhere.
+  useEffect(() => {
+    if (!asking) return
+    group.current?.querySelector<HTMLElement>('[data-ask-first]')?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      e.preventDefault()
+      setAsked(false)
+      onBack()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [asking])
+  // No close animation runs in a window nobody sees, or with reduced motion, so the strip goes at once. Elsewhere it goes when its animation ends or is cancelled.
+  useEffect(() => {
+    if (!closing) return
+    const gone = () => { if (document.hidden || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)) onClosed() }
+    gone()
+    document.addEventListener('visibilitychange', gone)
+    return () => document.removeEventListener('visibilitychange', gone)
+  }, [closing])
+  // React has no prop for animationcancel. A strip whose close is cancelled (display none, the element hidden) goes like one that ended. The reopen after a failed
+  // approval drops `data-closing` and so cancels this animation too, which the attribute check tells apart.
+  const away = useRef(onClosed)
+  away.current = onClosed
+  useEffect(() => {
+    const el = group.current
+    if (!el) return
+    const done = (e: Event) => { if (e.target === el && (e as AnimationEvent).animationName === 'planbar-out' && el.hasAttribute('data-closing')) away.current() }
+    el.addEventListener('animationend', done)
+    el.addEventListener('animationcancel', done)
+    return () => { el.removeEventListener('animationend', done); el.removeEventListener('animationcancel', done) }
+  }, [])
   return (
-    <div className="cmp-planbar" role="group" aria-label="Plan" data-closing={out || undefined} onAnimationEnd={(e) => { if (out && e.target === e.currentTarget && e.animationName === 'planbar-out') onClosed?.() }}>
-      <span className="grow" />
-      <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
-      <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
+    <div ref={group} className="cmp-planbar" role="group" aria-label="Plan" data-closing={closing || undefined}>
+      {asking ? (
+        <>
+          <span className="cmp-planbar-ask ellipsis">Approve without your changes?</span>
+          <Button variant="ghost" data-ask-first="" onClick={() => { setAsked(false); onSendChanges() }}>Send changes</Button>
+          <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" onClick={press}>Approve</Button>
+        </>
+      ) : (
+        <>
+          <span className="grow" />
+          <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
+          <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" onClick={press}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
+        </>
+      )}
     </div>
   )
 }
 
-/** The strip above the composer. It stays mounted after the plan stops waiting, until its close animation ends (KERNEL-789). */
-export function PlanStrip({ plan }: { plan: Approval | undefined }) {
-  const [strip, setStrip] = useState(plan)
-  if (plan && plan !== strip) setStrip(plan)
-  return strip ? <PlanBar key={strip.id} a={strip} closing={!plan} onClosed={() => setStrip(undefined)} /> : null
+/** The strip above the composer, from `usePlanStrip`. */
+export function PlanStrip({ strip, hasText, onSendChanges, onBack }: { strip: PlanStripState; hasText: boolean; onSendChanges: () => void; onBack: () => void }) {
+  return strip.shown ? <PlanBar key={strip.shown.id} a={strip.shown} closing={strip.closing} hasText={hasText} onApprove={strip.approve} onSendChanges={onSendChanges} onBack={onBack} onClosed={strip.closed} /> : null
 }

@@ -385,6 +385,23 @@ const longSteps = (): ChatItem[] => [
   tool('sl-live', 'Run the shots', 'pnpm shots --all', { status: 'running', durationMs: undefined, input: { command: 'pnpm shots --all' } })
 ]
 
+/** One turn of Kai's invoice work in each state (KERNEL-828): narration between calls, then how the turn ended. */
+const narrated = (id: string, end: ChatItem[]): ChatItem[] => [
+  tableItems[0],
+  tool(`${id}-t1`, 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', ts: at(10, 28) }),
+  { kind: 'text', id: `${id}-x1`, ts: at(10, 28), text: 'I will build the table first, then the empty state and the tests.' },
+  tool(`${id}-t2`, 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', ts: at(10, 29) }),
+  { kind: 'text', id: `${id}-x2`, ts: at(10, 29), text: 'The table sorts now. Moving on to the empty state.' },
+  ...end
+]
+const invoiceFiles: ChangedFile[] = [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 }, { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 }]
+const runningNarrated = (): ChatItem[] => narrated('rn', [tool('rn-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run invoices' } })]).map((i) => (i.kind === 'user' ? { ...i, ts: Date.now() - 74_000 } : i))
+const endsOnText = narrated('et', [{ kind: 'text', id: 'et-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' }, { kind: 'result', id: 'et-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
+const endsOnTool = narrated('eo', [tool('eo-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) }), { kind: 'result', id: 'eo-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
+const stoppedNarrated = narrated('st', [tool('st-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), status: 'failed' }), { kind: 'interrupted', id: 'st-i', ts: at(10, 30) }, { kind: 'result', id: 'st-r', ts: at(10, 30), durationMs: 95_000, ok: false }])
+const failedNarrated = narrated('fl', [tool('fl-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), status: 'failed', output: '2 failed (21)' }), { kind: 'result', id: 'fl-r', ts: at(10, 30), durationMs: 95_000, ok: false, error: 'The turn failed' }])
+const orphanedNarrated = narrated('or', [tool('or-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) })])
+
 /** The Lead's chat with `items`, and the turn running unless it is told otherwise. */
 const leadRunning = (f: Fixture, items: ChatItem[], running = true): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
@@ -1831,6 +1848,32 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: stepStates },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
+  /** Reply actions per turn state (KERNEL-828): Copy alone under in-between lines, and Retry only once the turn is over. */
+  WorkspaceTurnRunning: scene((f) => ({
+    items: { [ids.tableChat]: runningNarrated() },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  WorkspaceTurnEndsOnText: scene(() => ({
+    items: { [ids.tableChat]: endsOnText },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  WorkspaceTurnEndsOnTool: scene(() => ({
+    items: { [ids.tableChat]: endsOnTool },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  WorkspaceTurnStopped: scene(() => ({
+    items: { [ids.tableChat]: stoppedNarrated },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  WorkspaceTurnFailed: scene(() => ({
+    items: { [ids.tableChat]: failedNarrated },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  WorkspaceTurnOrphaned: scene(() => ({
+    items: { [ids.tableChat]: orphanedNarrated },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
@@ -2109,6 +2152,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })),
+  // KERNEL-834: the same card once the approval was allowed. The buttons have folded away and the result line stands in their place.
+  WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [{ ...pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), status: 'allowed' as const }, ...f.approvals]
+  })),
   // KERNEL-459: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex.
   WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
@@ -2139,6 +2191,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF', team: 'Kernel' }, ...describeTool('mcp__claude_ai_Linear__save_issue', { title: 'Export invoices as PDF', team: 'Kernel' }) }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
+  WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
   WorkspacePlanApproved: scene(planApproved),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
@@ -2147,6 +2200,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
+  WorkspacePlanApproveDraft: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),

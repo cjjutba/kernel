@@ -315,4 +315,32 @@ describe('workspace views', () => {
     expect(visibleRows(tree, new Set()).map((r) => r.entry.path)).toEqual(['src', 'README.md'])
     expect(visibleRows(tree, new Set(['src'])).map((r) => r.entry.path)).toEqual(['src', 'src/a.ts', 'README.md'])
   })
+
+  describe('reply actions per turn state (KERNEL-828)', () => {
+    const user = tableItems[0]
+    const text = (id: string): ChatItem => ({ kind: 'text', id, ts: 1, text: id })
+    const step = (id: string, status: 'done' | 'running' | 'failed' = 'done'): ChatItem => ({ kind: 'tool', id, ts: 1, toolUseId: id, name: 'Bash', label: 'Run', detail: 'ls', status, durationMs: 1 })
+    const result = (extra: Partial<Extract<ChatItem, { kind: 'result' }>> = {}): ChatItem => ({ kind: 'result', id: 'r', ts: 1, durationMs: 1000, ok: true, ...extra })
+    const withActions = (blocks: ReturnType<typeof buildThread>) => blocks.filter((b) => (b.kind === 'item' && b.actions) || (b.kind === 'meta' && b.actions) || b.kind === 'reply').map((b) => (b.kind === 'item' ? b.item.id : b.kind === 'reply' ? b.id : b.id))
+
+    it('offers no actions in a running turn', () => {
+      expect(withActions(buildThread([user, text('a'), step('t1'), text('b'), step('t2', 'running')], true))).toEqual([])
+    })
+
+    it('gives the actions to the reply when a finished turn ends on text, and to the time line when it ends on a step', () => {
+      expect(withActions(buildThread([user, text('a'), step('t1'), text('b'), result()]))).toEqual(['b'])
+      const blocks = buildThread([user, text('a'), step('t1'), result({ files: [{ path: 'a.ts', status: 'M', added: 1, removed: 0 }], checkpointId: 'c1' })])
+      expect(withActions(blocks)).toEqual(['r'])
+      const meta = blocks[blocks.length - 1]
+      expect(meta.kind === 'meta' && meta.actions).toEqual({ copy: 'a', files: true, checkpointId: 'c1' })
+      const bare = buildThread([user, step('t1'), result()]).at(-1)
+      expect(bare?.kind === 'meta' && bare.actions).toEqual({ files: false })
+    })
+
+    it('gives a stopped or cut-off turn the actions on its last message only, and a failed turn none', () => {
+      expect(withActions(buildThread([user, text('a'), step('t1'), text('b'), step('t2'), { kind: 'interrupted', id: 'i', ts: 1 }, result({ ok: false })]))).toEqual(['b'])
+      expect(withActions(buildThread([user, text('a'), step('t1'), text('b'), step('t2')]))).toEqual(['b'])
+      expect(withActions(buildThread([user, text('a'), step('t1', 'failed'), result({ ok: false, error: 'x' })]))).toEqual([])
+    })
+  })
 })

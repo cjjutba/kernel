@@ -1,14 +1,15 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { AgentDef, Approval, Decision, Overlap } from '@shared/types'
+import type { AgentDef, Approval, Overlap } from '@shared/types'
 import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { oneOf, useRemembered } from '../../remember'
-import { Button, Icon, Pill, Spinner, useBusy } from '../../ui'
+import { Button, Icon, Pill, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
+import { decideAtOnce, useFoldPhase, useHeldRows } from '../workspace/cards/decideFold'
 import { openRoom } from '../../lead'
 import { age, agentOf, allOverlaps, fileName, inboxItems, inTab, names, needsYou, type InboxItem, type InboxTab } from './model'
 import './inbox.css'
@@ -17,9 +18,6 @@ import { SidebarToggle } from '../../components/PanelToggles'
 const tabs: [InboxTab, string][] = [['all', 'All'], ['needs', 'Needs you'], ['updates', 'Updates']]
 
 const isTool = (a?: Approval) => !!a && a.kind === 'tool' && a.toolName !== 'ExitPlanMode'
-
-/** Answer from the detail pane. The same channel the workspace uses; the returned approval updates every list. */
-const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision })))
 
 function Letter({ item, agents }: { item: InboxItem; agents: ReturnType<typeof agentOf> }) {
   return <span className="ib-av" aria-hidden="true">{(agents?.name ?? 'Kernel')[0].toUpperCase()}</span>
@@ -66,7 +64,7 @@ function Detail({ item }: { item: InboxItem }) {
   const { n, approval: a } = item
   const agents = useStore((s) => s.agents)
   const ws = useStore((s) => s.workspaces.find((w) => w.id === (a?.workspaceId ?? n.workspaceId)))
-  const [busy, run] = useBusy<'deny' | 'always' | 'approve'>()
+  const phase = useFoldPhase(a?.id ?? '')
   const agent = agentOf(n, agents)
   const input = (a?.input ?? {}) as Record<string, unknown>
   const path = a?.toolName === 'Bash' ? '' : String(input.file_path ?? input.path ?? '')
@@ -86,19 +84,21 @@ function Detail({ item }: { item: InboxItem }) {
       <h2>{heading}</h2>
       {n.body && <p className="ib-body">{n.body}</p>}
       {item.overlap && <OverlapDetail overlap={item.overlap} />}
-      {a && pending && isTool(a) && (
+      {a && (pending || phase === 'folding') && isTool(a) && (
         <>
           {code && <div className="ib-code mono">{path ? <FileLabel path={path} /> : code}</div>}
           <dl className="ib-facts">
             {a.detail && <><dt>Why</dt><dd>{a.detail}</dd></>}
             {ws && <><dt>Workspace</dt><dd className="mono">{ws.branch}</dd></>}
           </dl>
-          <div className="ib-acts">
-            <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
-            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><Spinner label={null} pattern="pulse" />Allowing</> : 'Always allow in this room'}</button>
-            <span className="grow" />
-            <Button variant="primary" busy={busy === 'approve'} busyPattern="pulse" busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>Approve</Button>
-          </div>
+          {phase !== 'folded' && (
+            <div className={`ib-acts${phase ? ' decide-fold' : ''}`}>
+              <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
+              <button type="button" className="ib-link" onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow in this room</button>
+              <span className="grow" />
+              <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Approve</Button>
+            </div>
+          )}
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
@@ -114,7 +114,7 @@ function Detail({ item }: { item: InboxItem }) {
           <Button variant="primary" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'merge' ? 'Open PR' : 'Open workspace'}</Button>
         </div>
       )}
-      {!pending && (
+      {!pending && phase !== 'folding' && (
         <div className="ib-outcome">
           {result && <span>{result}</span>}
           {n.workspaceId && <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'finished' ? 'Review diff' : 'Open workspace'}</button>}
@@ -140,6 +140,7 @@ export function Inbox() {
   const detail = useRef<HTMLDivElement>(null)
   const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps), workspaces), [notifications, approvals, rooms, overlaps, workspaces])
   const list = all.filter((i) => inTab(i, tab))
+  const shownRows = useHeldRows(list, (i) => i.n.id, (i) => i.approval?.id)
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
   const count = (t: InboxTab) => all.filter((i) => inTab(i, t)).length
 
@@ -167,7 +168,7 @@ export function Inbox() {
         detail.current?.querySelector<HTMLElement>('button, input')?.focus()
       } else if ((e.key === 'a' || e.key === 'd') && cur?.approval?.status === 'pending' && cur.approval.kind !== 'question') {
         e.preventDefault()
-        void decide(cur.approval, e.key === 'a' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in Kernel.' })
+        decideAtOnce(cur.approval, e.key === 'a' ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in Kernel.' })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -188,8 +189,8 @@ export function Inbox() {
       </div>
       <div className="ib-body-wrap">
         <div className="ib-list" role="group" aria-label="Inbox items">
-          {list.map((i) => (
-            <button key={i.n.id} id={`ib-${i.n.id}`} type="button" className="ib-row" aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
+          {shownRows.map(({ item: i, held }) => (
+            <button key={i.n.id} id={`ib-${i.n.id}`} type="button" tabIndex={held ? -1 : undefined} className={`ib-row${held ? ' decide-fold' : ''}`} aria-current={i.n.id === cur?.n.id ? 'true' : undefined} data-unread={!i.n.read ? 'true' : undefined} onClick={() => open(i)}>
               <Letter item={i} agents={agentOf(i.n, agents)} />
               <span className="col grow" style={{ minWidth: 0 }}>
                 <span className="ib-title ellipsis">{i.n.title}</span>
@@ -200,7 +201,7 @@ export function Inbox() {
           ))}
         </div>
         <div className="ib-pane" ref={detail}>
-          {cur ? <Detail item={cur} /> : (
+          {cur ? <Detail key={cur.n.id} item={cur} /> : (
             <div className="ib-empty">
               <h2>You're all caught up</h2>
               <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>

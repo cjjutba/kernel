@@ -4,9 +4,10 @@
 //   pnpm shots --all                   every fixture
 //   pnpm shots --no-build Main         reuse the last build
 //   pnpm shots --theme light Main      capture in the light theme, saved as shots/<Screen>.light.png
+//   pnpm shots WorkspacePlanApprove --motion   run the fixture's `motion` action, save shots/<Screen>-motion.png (contact sheet) and -motion.gif
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +29,8 @@ const names = args.filter((a, i) => !a.startsWith('--') && (themeAt < 0 || i !==
 // Plain Node cannot import fixtures/index.ts (extensionless imports), so read the keys: one `  Name:` line per fixture.
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
 const allFixtures = () => [...fixtureNames()].sort()
+// A fixture with motion declares it on its own line (`Name: { ...scene(..), motion: { ... } },`), so `--motion --all` can pick them without launching every screen.
+const motionFixtures = () => readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):.*\bmotion: \{/gm)].map((m) => m[1])).sort()
 
 // Screens that need a click to reach the state in the shot, such as a chat row opened in place. That state is local to the
 // component, so a fixture can't set it.
@@ -135,6 +138,13 @@ async function pickFirstOption(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
+}
+
+// WorkspacePlanApproveDraft has text in the box, so pressing Approve asks "Approve without your changes?" in the strip (KERNEL-833). The question is local to the strip.
+async function askApprove(page: Page) {
+  await page.getByRole('button', { name: /^Approve/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(700)
 }
 
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
@@ -537,6 +547,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceKernelNoteOpen: openKernelNote,
   WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionStates: questionStates,
+  WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
@@ -571,6 +582,134 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   ChatRailLead: (page) => openRail(page, 'Kai, opened PR #162')
 }
 
+// Motion (KERNEL-831). A fixture's `motion` is an action and a length. CSS animations and transitions are paused as they start and
+// stepped by time with Animation.currentTime, so a frame doesn't depend on how fast the capture runs. A smooth scroll is the
+// compositor's, which can't be stepped: it runs in real time, and a frame in which a scroll offset moved is labelled "sampled".
+const FPS = 30
+type MotionAction = { click: string } | { press: string[] }
+type Motion = { action: MotionAction; ms: number; area?: string }
+interface Frame { n: number; ms: number; sampled: boolean; file: string }
+
+// Pauses every animation the moment it appears, so none runs before its first stepped frame. One that was already running (a
+// loop, a strip still opening) is settled first the way `animations: 'disabled'` does: a finite one finishes, a loop restarts.
+async function freezeAnimations(page: Page) {
+  await page.evaluate(() => {
+    type Tracked = { birth: number | null; done: boolean }
+    const tracked = new Map<Animation, Tracked>()
+    const w = window as unknown as { __motion: { tracked: Map<Animation, Tracked>; scroll: Map<Element, number> } }
+    w.__motion = { tracked, scroll: new Map() }
+    const take = () => {
+      for (const a of document.getAnimations()) {
+        if (tracked.has(a)) continue
+        a.pause()
+        tracked.set(a, { birth: null, done: false })
+      }
+    }
+    for (const a of document.getAnimations()) {
+      const end = a.effect?.getComputedTiming().endTime
+      if (typeof end === 'number' && Number.isFinite(end)) { a.finish(); tracked.set(a, { birth: 0, done: true }) }
+      else { a.currentTime = 0; a.pause(); tracked.set(a, { birth: 0, done: false }) }
+    }
+    const loop = () => { take(); requestAnimationFrame(loop) }
+    loop()
+  })
+}
+
+// Moves virtual time to `t`: animations found since the last step start now, each is set to its age, and one that has run its length
+// finishes, which fires its animationend and transitionend as a real run would. Then two frames for what those events render, and
+// again until nothing new appears. Returns whether a scroll offset moved since the last call.
+async function stepTo(page: Page, t: number): Promise<boolean> {
+  return page.evaluate(async (now) => {
+    type Tracked = { birth: number | null; done: boolean }
+    const m = (window as unknown as { __motion: { tracked: Map<Animation, Tracked>; scroll: Map<Element, number> } }).__motion
+    const frames = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    for (let pass = 0; pass < 4; pass++) {
+      let found = false
+      for (const a of document.getAnimations()) if (!m.tracked.has(a)) { a.pause(); m.tracked.set(a, { birth: null, done: false }) }
+      for (const [a, s] of m.tracked) {
+        if (s.done) continue
+        if (s.birth === null) { s.birth = now; found = true }
+        const age = now - s.birth
+        const end = a.effect?.getComputedTiming().endTime
+        if (typeof end === 'number' && Number.isFinite(end) && age >= end) { a.finish(); s.done = true; found = true }
+        else a.currentTime = age
+      }
+      await frames()
+      if (!found && document.getAnimations().every((a) => m.tracked.has(a))) break
+    }
+    let moved = false
+    for (const el of document.querySelectorAll('*')) {
+      if (el.scrollHeight <= el.clientHeight) continue
+      const before = m.scroll.get(el)
+      if (before !== undefined && before !== el.scrollTop) moved = true
+      m.scroll.set(el, el.scrollTop)
+    }
+    return moved
+  }, t)
+}
+
+async function runMotionAction(page: Page, action: MotionAction) {
+  if ('click' in action) await page.getByRole('button', { name: action.click, exact: true }).click()
+  else for (const key of action.press) await page.keyboard.press(key)
+}
+
+// The contact sheet is a page of its own in a hidden window of the same app: the frames in a grid, each with its number and time.
+async function contactSheet(app: ElectronApplication, dir: string, name: string, frames: Frame[], size: { w: number; h: number }, out: string) {
+  const cols = Math.min(4, Math.max(1, Math.round(1800 / size.w)))
+  const cellW = Math.min(size.w, Math.floor(1800 / cols))
+  const cells = frames.map((f) => `<figure><img src="${f.file}" width="${cellW}"><figcaption><b>${f.n}</b> ${f.ms} ms${f.sampled ? ' <i>sampled</i>' : ''}</figcaption></figure>`).join('')
+  writeFileSync(join(dir, 'sheet.html'), `<!doctype html><meta charset="utf-8"><style>
+    body{margin:0;padding:16px;background:#fff;color:#111;font:13px/1.3 ui-monospace,Menlo,monospace}
+    h1{font:600 14px/1 ui-monospace,Menlo,monospace;margin:0 0 12px}
+    main{display:grid;grid-template-columns:repeat(${cols},${cellW}px);gap:12px;width:max-content}
+    figure{margin:0}img{display:block;border:1px solid #ccc}figcaption{padding-top:4px}i{color:#a60}
+  </style><h1>${name} motion: ${frames.length} frames, ${FPS} per second</h1><main>${cells}</main>`)
+  const opened = app.waitForEvent('window')
+  await app.evaluate(({ BrowserWindow }, file) => { void new BrowserWindow({ show: false, width: 1900, height: 1000 }).loadFile(file) }, join(dir, 'sheet.html'))
+  const sheet = await opened
+  await sheet.waitForLoadState('load')
+  await sheet.waitForFunction(() => [...document.images].every((i) => i.complete))
+  await sheet.setViewportSize({ width: 1900, height: 1000 }).catch(() => undefined)
+  await sheet.screenshot({ path: out, fullPage: true })
+}
+
+function ffmpegPath(): string | undefined {
+  for (const bin of ['ffmpeg', '/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg']) if (spawnSync(bin, ['-version'], { stdio: 'ignore' }).status === 0) return bin
+  return undefined
+}
+
+async function captureMotion(page: Page, app: ElectronApplication, name: string, motion: Motion) {
+  const dir = mkdtempSync(join(tmpdir(), 'kernel-motion-'))
+  try {
+    await freezeAnimations(page)
+    // Frame 0 is the instant the action lands. Its async answers (a push from main, a render) arrive while animations are held.
+    await runMotionAction(page, motion.action)
+    await page.waitForTimeout(150)
+    const area = motion.area ? await page.locator(motion.area).first().boundingBox() : null
+    const pad = 24
+    const clip = area ? { x: Math.max(0, area.x - pad), y: Math.max(0, area.y - 120), width: Math.min(WIDTH, area.width + pad * 2), height: Math.min(HEIGHT, area.height + 120 + pad) } : { x: 0, y: 0, width: WIDTH, height: HEIGHT }
+    const frames: Frame[] = []
+    for (let i = 0; i * 1000 / FPS <= motion.ms; i++) {
+      const ms = Math.round(i * 1000 / FPS)
+      const sampled = await stepTo(page, ms)
+      const file = `f${String(i).padStart(3, '0')}.png`
+      await page.screenshot({ path: join(dir, file), clip, caret: 'hide' })
+      frames.push({ n: i, ms, sampled: i > 0 && sampled, file })
+    }
+    const sheetPath = join(shotsDir, `${name}-motion.png`)
+    await contactSheet(app, dir, name, frames, { w: clip.width, h: clip.height }, sheetPath)
+    console.log(`shots/${name}-motion.png (${frames.length} frames${frames.some((f) => f.sampled) ? `, ${frames.filter((f) => f.sampled).length} sampled` : ''})`)
+    const ffmpeg = ffmpegPath()
+    if (!ffmpeg) { console.log(`shots/${name}-motion.gif skipped: ffmpeg not found (brew install ffmpeg). The contact sheet is saved.`); return }
+    const gif = join(shotsDir, `${name}-motion.gif`)
+    const made = spawnSync(ffmpeg, ['-y', '-v', 'error', '-framerate', String(FPS), '-i', join(dir, 'f%03d.png'), '-vf', 'scale=min(iw\\,960):-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse', '-loop', '0', gif])
+    if (made.status === 0 && existsSync(gif)) console.log(`shots/${name}-motion.gif`)
+    else console.log(`shots/${name}-motion.gif failed: ${made.stderr?.toString().trim().split('\n')[0] ?? 'ffmpeg exited'}. The contact sheet is saved.`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
@@ -597,6 +736,12 @@ async function capture(name: string): Promise<boolean> {
     await page.waitForTimeout(500)
     await interactions[name]?.(page, app)
     await lazyLoaded()
+    if (flags.has('--motion')) {
+      const motion = (await app.evaluate(() => (globalThis as { kernelFixtureMotion?: unknown }).kernelFixtureMotion)) as Motion | undefined
+      if (!motion) throw new Error('this fixture has no motion to capture. Add `motion: { action, ms }` to it')
+      await captureMotion(page, app, name, motion)
+      return true
+    }
     // One-off animations finish and loops (the plan glow's breath, spinners) reset, so a shot is the same on every run.
     await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`), animations: 'disabled' })
     console.log(`shots/${name}${suffix}.png`)
@@ -612,7 +757,7 @@ async function capture(name: string): Promise<boolean> {
 }
 
 async function shots() {
-  const list = flags.has('--all') ? allFixtures() : names
+  const list = flags.has('--all') ? (flags.has('--motion') ? motionFixtures() : allFixtures()) : names
   if (!list.length) throw new Error('Name at least one screen, for example: pnpm shots Workspace Main')
   if (!flags.has('--no-build')) {
     const build = spawnSync('pnpm', ['exec', 'electron-vite', 'build'], { cwd: root, stdio: 'inherit' })
