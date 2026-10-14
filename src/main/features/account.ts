@@ -1,10 +1,11 @@
-import { PROVIDERS, type ClaudeAccount, type Provider, type RateLimit } from '@shared/types'
+import { MODELS, PROVIDERS, type ClaudeAccount, type Provider, type RateLimit } from '@shared/types'
 import { nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut } from '../services/account'
 import { exec } from '../services/exec'
-import { blockingLimit, NetworkMonitor } from '../services/health'
+import { blockingLimit, isRejected, NetworkMonitor, WINDOW_MODEL } from '../services/health'
+import type { LimitNews } from '../services/leadUpdates'
 import { planOf } from '../services/settings'
 import { LIMIT_NAME, limitKey } from '../services/providers/limits'
 import { limitProvider } from '@shared/providers'
@@ -19,8 +20,12 @@ const CODEX_AUTH = 'codex-auth'
 /** The reason Claude's chats wait while the account in use waits on a macOS Keychain prompt (KERNEL-618). */
 const KEYCHAIN = 'keychain'
 
-/** A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). */
-interface Move { at?: number; state: 'reading' | 'waiting' | 'done' }
+/**
+ * A rejection Kernel moves a provider off, and how far it got (`Account.moving`, KERNEL-568). `to` is the account it picked
+ * and `switched` that the switch went through. A move that waits says why and until when nothing has room, the earliest
+ * reset across the provider's accounts in seconds, for the Lead (KERNEL-777).
+ */
+interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number }
 
 /** How often every account's usage is read while any agent works (KERNEL-567). */
 const USAGE_EVERY_MS = 10 * 60_000
@@ -304,10 +309,56 @@ export class Account extends Feature {
     move.state = 'reading'
     void this.k.providers.spareFor(p, limits).catch(() => undefined).then((to) => {
       if (!still() || move.state !== 'reading') return
-      if (!to) { move.state = 'waiting'; return }
+      if (!to) {
+        this.moveWaits(p, move, limits, this.k.providers.spareAfterSignIn(p, limits) ? 'signIn' : 'full')
+        return
+      }
       move.state = 'done'
-      void this.k.providers.switchTo(p, to, { reason: 'limit' }).catch(() => undefined)
+      move.to = to
+      // A switch that fails, as on an account that needs a sign-in, leaves the provider where it was (KERNEL-777).
+      void this.k.providers.switchTo(p, to, { reason: 'limit' }).then(() => { move.switched = true }, () => { if (this.moving.get(key) === move) this.moveWaits(p, move, limits, 'signIn') })
     })
+  }
+
+  /**
+   * Nothing moves `p` off the limit for now: no account has room, or the one that does needs a sign-in or Keychain access.
+   * The Lead hears it once, with the earliest reset across the provider's accounts, for the teammates the limit cut off
+   * (KERNEL-777). A later reading that finds room still moves it.
+   */
+  private moveWaits(p: Provider, move: Move, limits: RateLimit[], why: 'full' | 'signIn') {
+    const mine = limits.filter((l) => limitProvider(l) === p)
+    const resets = [...new Set(mine.map((l) => l.accountId))].flatMap((id) => blockingLimit(mine.filter((l) => l.accountId === id))?.resetsAt ?? [])
+    move.state = 'waiting'
+    move.why = why
+    move.until = resets.length ? Math.min(...resets) : undefined
+    this.k.leadUpdates.limitStuck(p, { stuck: why, ...(move.until ? { resetsAt: move.until } : {}) })
+  }
+
+  /**
+   * What Kernel does about the usage limit that cut off a chat of `provider` running `model` on `account`, undefined for the
+   * CLI's own login, for the Lead's Team update (KERNEL-777). A switch is under way while "switch at a limit" is on and the
+   * move reads accounts or switches, or once the provider runs on another account. Otherwise the chat waits for the reset:
+   * the earliest across accounts when none has room, else the account's own.
+   */
+  limitNews(provider: Provider, account: string | undefined, model?: string): LimitNews {
+    const now = Date.now()
+    const mine = (this.store.meta<RateLimit[]>('limits') ?? []).filter((l) => limitProvider(l) === provider && l.accountId === account)
+    const hit = blockingLimit(mine, now)
+    // A limit on the chat's model alone, which no switch moves off (`limitedModels`).
+    const own = hit ? undefined : mine.find((l) => isRejected(l, now) && !!model && (l.model ?? WINDOW_MODEL[l.type]) === model)
+    const w = hit ?? own
+    const label = (id: string | undefined) => this.k.providers.label(provider, id)
+    const news: LimitNews = { provider, account: label(account), ...(w ? { window: LIMIT_NAME[w.type] } : {}), ...(w?.resetsAt ? { resetsAt: w.resetsAt } : {}) }
+    if (!hit) return { ...news, stuck: 'model', ...(model ? { model: MODELS.find((m) => m.id === model)?.label ?? model } : {}) }
+    const active = this.k.providers.active(provider)
+    if (active !== account) return { ...news, switching: { to: label(active) } }
+    if (!this.settings?.accounts?.switchAtLimit?.[provider]) return { ...news, stuck: 'off' }
+    const move = this.moving.get(limitKey(hit))
+    if (move?.state === 'reading') return { ...news, switching: {} }
+    if (move?.state === 'done' && !move.switched) return { ...news, switching: move.to ? { to: label(move.to) } : {} }
+    if (move?.state === 'waiting') return { ...news, stuck: move.why ?? 'full', ...(move.until ? { resetsAt: move.until } : {}) }
+    // The switch went through and the user moved back, with Undo on its notice (KERNEL-699), or no move started.
+    return { ...news, stuck: 'off' }
   }
 
   /**

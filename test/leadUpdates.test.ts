@@ -6,7 +6,8 @@ import type { PushEvent } from '../src/shared/ipc'
 import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedVersion, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { collapse, decide, LeadUpdates, NO_AUTO_REVIEW, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
+import { collapse, decide, LeadUpdates, NO_AUTO_REVIEW, type LimitNews, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
+import { resetPhrase } from '../src/shared/usage'
 import { UPDATE_HEADER } from '../src/main/services/handoff'
 import { capText } from '../src/main/services/text'
 import { Sessions } from '../src/main/services/sessions'
@@ -1577,5 +1578,93 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     u.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
     expect(s.posts).toHaveLength(1)
     expect(logged(s).at(-1)).toMatchObject({ heldBy: 'stopped' })
+  })
+})
+
+describe('a teammate a usage limit stopped (KERNEL-777)', () => {
+  const S = (ms: number) => Math.round(ms / 1000)
+  const limited = { ...done, ok: false, limit: true as const }
+  const L: LimitNews = { provider: 'claude', window: '5-hour limit', account: 'Account 3', resetsAt: S(Date.now() + 3600_000) }
+  /** When it resets, as the limit banner says it, without the "at " of a time later today. */
+  const until = (resetsAt: number) => resetPhrase(resetsAt, Date.now()).replace(/^at /, '')
+  const PAUSED = (at: number) => `Noor is paused until ${until(at)} because every account is at its limit. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`
+  const LIFTED = 'Noor is working again on Account 2. If you told the user it was paused, correct that in one line.'
+
+  it('stays quiet while Kernel moves the teammate to another account, and the next update says it carried on there', async () => {
+    const { u, s, pr, w1, nc } = await setup()
+    u.turnDone(w1, nc, limited, { ...L, switching: {} })
+    await wait()
+    expect(s.posts).toEqual([])
+    u.limitLifted(w1, { provider: 'claude', account: 'Account 2' })
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    const { body, todo } = parts(s.posts[0])
+    expect(body).toEqual([NOOR, '- Hit its 5-hour limit on Account 3. Kernel moved it to Account 2 and it carries on.', OPENED_54, '- Checks failed on PR #54.'])
+    expect(todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    expect(s.updates[0].rows[0].events[0]).toEqual({ kind: 'limit', text: 'Hit its 5-hour limit, now on Account 2', actionable: false })
+  })
+
+  it('wakes the Lead once with the earliest reset when no account has room, and once more when the teammate carries on', async () => {
+    const { u, s, w1, nc, restart } = await setup()
+    u.turnDone(w1, nc, limited, { ...L, switching: {} })
+    await wait()
+    expect(s.posts).toEqual([])
+    // Kernel read every account and none had room. The earliest reset across them is sooner than this account's.
+    const earliest = S(Date.now() + 1800_000)
+    u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).body).toEqual([NOOR, `- Hit its 5-hour limit on Account 3. Every account is at its limit, so it is paused until ${until(earliest)}.`])
+    expect(parts(s.posts[0]).todo).toEqual([`- ${PAUSED(earliest)}`])
+    // A second reading that still finds no room says nothing new.
+    u.limitStuck('claude', { stuck: 'full', resetsAt: earliest })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    // The Lead told the user it was paused, and that survives a restart.
+    const again = restart()
+    again.limitLifted(w1, { provider: 'claude', account: 'Account 2' })
+    await wait()
+    expect(s.posts).toHaveLength(2)
+    expect(parts(s.posts[1])).toMatchObject({ body: [NOOR, '- Working again on Account 2.'], todo: [`- ${LIFTED}`] })
+    expect(s.updates[1].rows[0].events).toEqual([{ kind: 'limit.lifted', text: 'Working again on Account 2', actionable: true }])
+    // Once corrected, a later carry-on rides along.
+    again.limitLifted(w1, { provider: 'claude', account: 'Account 2' })
+    await wait()
+    expect(s.posts).toHaveLength(2)
+  })
+
+  it('says nothing for a limit and its carry-on that wait together, as while the Lead itself is held by the limit', async () => {
+    const { u, s, w1, nc } = await setup()
+    s.hold = () => 'limit'
+    u.turnDone(w1, nc, limited, { ...L, stuck: 'full' })
+    await wait()
+    expect(s.posts).toEqual([])
+    u.limitLifted(w1, { provider: 'claude', account: 'Account 2' })
+    s.hold = undefined
+    u.flush('r')
+    expect(s.posts).toEqual([])
+  })
+
+  it('names the window and its reset day, and says so when the switch is off', async () => {
+    const { u, s, w1, nc } = await setup()
+    const weekly = S(Date.now() + 3 * 86_400_000)
+    u.turnDone(w1, nc, limited, { provider: 'claude', window: 'weekly limit', account: 'Account 3', resetsAt: weekly, stuck: 'off' })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(until(weekly)).toMatch(/^\w+day at /)
+    expect(parts(s.posts[0]).todo).toEqual([`- Noor is paused until ${until(weekly)} by its weekly limit on Account 3. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    expect(s.updates[0].rows[0].events).toEqual([{ kind: 'limit', text: `Paused by its weekly limit until ${until(weekly)}`, actionable: true }])
+  })
+
+  it('asks for a sign-in when the account with room needs one, and names the model on a limit of the model alone', () => {
+    const ws = { id: 'w1', status: 'ready', prState: 'none' } as Workspace
+    const todo = (limit: LimitNews) => decide({ ws, name: 'Noor', events: [{ n: 1, workspaceId: 'w1', kind: 'limit', limit }] }, { allMerged: () => false }).todo
+    expect(todo({ ...L, stuck: 'signIn' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} by its 5-hour limit on Account 3. Kernel can move Noor to another account once the user signs in to it or allows Keychain access there, so tell the user. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    expect(todo({ ...L, window: 'Opus limit', model: 'Opus 5.5', stuck: 'model' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} because Opus 5.5 is at its limit on Account 3. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    // A switch under way, and a limit the user's own message in the teammate's chat met, don't wake the Lead.
+    expect(todo({ ...L, switching: { to: 'Account 2' } })).toEqual([])
   })
 })

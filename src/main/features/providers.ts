@@ -956,6 +956,21 @@ export class Providers extends Feature {
    * shares that login's limits whatever its own windows say (KERNEL-701).
    */
   private spares(provider: Provider, limits: RateLimit[], now: number): string[] {
+    return switchChoices(provider, this.switchable(provider), limits, now).room.map((a) => a.id)
+  }
+
+  /**
+   * With no spare account, whether one would have room once the user signs in to it or allows its Keychain access, for the
+   * Lead's paused line (KERNEL-777).
+   */
+  spareAfterSignIn(provider: Provider, limits: RateLimit[], now = Date.now()): boolean {
+    const accounts = this.switchable(provider)
+    if (switchChoices(provider, accounts, limits, now).signedOut) return true
+    return switchChoices(provider, accounts.map((a) => ({ ...a, keychainWait: false })), limits, now).room.length > 0
+  }
+
+  /** The provider's accounts as `switchChoices` reads them for a switch at a limit: never an API key account, nor the login in use twice. */
+  private switchable(provider: Provider) {
     const file = this.load()[provider]
     const signedIn = (a: StoredAccount) => (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
       : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
@@ -964,7 +979,7 @@ export class Providers extends Feature {
     const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: signedIn(a), login: a }))]
       .filter((a) => a.id === active || !sameLogin(inUse, a.login))
       .map(({ login: _, ...a }) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
-    return switchChoices(provider, accounts, limits, now).room.map((a) => a.id)
+    return accounts
   }
 
   /**
