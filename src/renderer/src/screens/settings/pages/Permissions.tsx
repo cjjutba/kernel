@@ -71,7 +71,7 @@ export function Permissions({ s }: { s: AppSettings }) {
   const p = s.permissions
   const availability = useModeAvailability()
   const firstRoom = useStore((st) => st.rooms.find((r) => !r.hidden && !r.archived))
-  const save = (permissions: Partial<AppSettings['permissions']>) => void patchSettings({ permissions })
+  const save = (permissions: Partial<AppSettings['permissions']>) => patchSettings({ permissions })
   const timeouts = TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} sec` }]
   const rule = (label: string, desc: string, value: string[], key: 'alwaysAsk' | 'neverAllow' | 'protectedBranches', addLabel: string) => (
     <Row className="ag-rule" label={label} desc={desc} full={<TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />} />

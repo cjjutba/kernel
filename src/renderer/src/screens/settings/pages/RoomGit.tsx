@@ -79,7 +79,7 @@ function LeadPattern({ value, placeholder, save }: { value: string; placeholder:
     if (!next.includes('{slug}')) return setText(value)
     save(next)
   }
-  return <input className="set-inline" aria-label="Lead chat branch names" spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input className="set-inline set-boxed" aria-label="Lead chat branch names" spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }
 
 /** Settings > a room > Git (MorePage roomGit, KERNEL-680): the room's overrides of the app's Git defaults. Each Select starts with "Default (the app's value)", and Reset goes back to it. */

@@ -22,15 +22,16 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
    - Optional, for a release that touches the updater or signing: run `pnpm update:e2e` before tagging, detached with `nohup` like the release below, and show me its last lines. It must end with `passed`. Skip it if I say so.
    - `git tag -a v<version> -m "Kernel <version>"` on that merge commit, then `git push origin v<version>`.
    - Remind me to keep the Mac awake and on power: notarization usually takes a few minutes and sometimes much longer.
-   - Start the release detached so it outlives this command: `nohup caffeinate -i pnpm release > /tmp/kernel-release-<version>.log 2>&1 &`.
+   - Start the release detached so it outlives this command: `nohup caffeinate -i pnpm release > /tmp/kernel-release-<version>.log 2>&1 &`. It goes to 100% of installs. Add `--rollout <percent>` only when I ask for a staged rollout (docs/RELEASING.md, Staged rollout).
    - Read the log once. If it's still building or notarizing, say so and stop. When I ask, read it again. If it failed, show me the error and stop; docs/RELEASING.md says what to do.
 
-6. **Verify** once the log says `published`:
+6. **Verify** once the log says `published` and then `ok`, which means the live feed matched the zip. If it says `published` and then fails, show me the error and stop.
+   - `pnpm release:rollout --check <version> <percent>` runs the same check again, read-only.
    - `gh release view v<version> --repo cjjutba/kernel --json body,assets`: the body starts with the notes and ends with "Full list of changes", and the DMG, zip, blockmaps and `latest-mac.yml` are attached.
-   - `curl -sL https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`: `version: <version>`, the notes under `releaseNotes`, and a `minimumSystemVersion` line (22.0.0 while Kernel needs macOS 13).
+   - `curl -sL https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`: `version: <version>`, the notes under `releaseNotes`, a `minimumSystemVersion` line (22.0.0 while Kernel needs macOS 13) and the `stagingPercentage` I released at.
    - `curl -sIL https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg`: the redirect points at the `v<version>` asset.
    - `curl -s https://kernel.cjjutba.dev/changelog`: the page shows `<version>` as its own entry at the top, with the Latest badge. The site checks GitHub's latest release every 5 minutes, and the first visit after that refreshes the page, so it can take up to 5 minutes and a second request. If it isn't there yet, say so and stop; don't poll.
 
-7. **Update my installed copy.** Walk me through it: open the installed previous version, go to Settings, About and click Check for updates. When the footer shows Update ready, click it: What's new lists the new notes. Click Restart to update. After the restart, What's new opens once, titled "What's new in Kernel <x.y>", with the same notes. Ask me to confirm what I saw.
+7. **Update my installed copy.** Only at 100%: a partial rollout may leave my copy out, so below 100 skip this step and say the end-to-end update test (KERNEL-715) covers it. Walk me through it: open the installed previous version, go to Settings, About and click Check for updates. When the footer shows Update ready, click it: What's new lists the new notes. Click Restart to update. After the restart, What's new opens once, titled "What's new in Kernel <x.y>", with the same notes. Ask me to confirm what I saw.
 
-8. **Never move or delete a published tag or release.** Installed copies and the update feed already point at them. If a release turns out broken, the fix is the next patch version through this same routine.
+8. **Never move or delete a published tag or release.** Installed copies and the update feed already point at them. Re-uploading `latest-mac.yml` with `pnpm release:rollout <version> <percent>` is allowed, and only when I ask for it; it changes nothing else. If a release turns out broken, pause it with `pnpm release:rollout <version> 0` when I say so, and the fix is the next patch version through this same routine.

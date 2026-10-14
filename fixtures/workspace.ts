@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, IssueSummary, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -186,6 +186,11 @@ const withBlockers = (f: Fixture): Fixture => ({
     reviews: [{ workspaceId: 'ws-review-147', agentId: 'theo', verdict: 'blockers' as const, summary: 'Two blockers.', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }], sha: 'h147', prNumber: 147, ts: at(10, 38) }]
   } : w)),
   prs: Object.fromEntries(Object.entries(f.prs ?? {}).map(([id, info]) => [id, id === ids.table ? { ...info, head: 'h147' } : info]))
+})
+
+const withOverruled = (f: Fixture, o: Partial<Overrule> = {}): Fixture => ({
+  ...f,
+  workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, overruled: { head: 'h147', kinds: ['code' as const], by: 'user' as const, ts: at(10, 52), note: 'Retry is tracked in KERNEL-190', ...o } } : w))
 })
 
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
@@ -715,6 +720,7 @@ interface OpenPr {
   id: string; agentId: string; key: string; n: number; title: string; state: Workspace['prState']; stat: [number, number]
   /** Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head commit. None is not reviewed. */
   review?: 'approved' | 'stale' | 'blockers'
+  overruled?: true
 }
 
 /**
@@ -729,7 +735,8 @@ const prFields = (p: OpenPr): Partial<Workspace> => {
   const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
   return {
     title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
-    stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews
+    stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews,
+    ...(p.overruled && { overruled: { head: `h${p.n}`, kinds: ['code' as const], by: 'user' as const, ts: at(20, 40) } })
   }
 }
 
@@ -791,6 +798,8 @@ const LEAD_PRS_REPLY = "Two PRs are ready. #162 from Kai and #161 from Noor both
 
 /** Kai's download button PR with two blockers from Theo on its latest commit: GitHub calls it ready, and it still isn't (KERNEL-501). */
 const BLOCKERS_PR: OpenPr = { ...LEAD_PRS[5], state: 'ready' }
+
+const OVERRULED_PR: OpenPr = { ...BLOCKERS_PR, overruled: true }
 
 /** What the Lead's run script has printed, under the Run tab (PanelTabsOverflow). */
 const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
@@ -1621,6 +1630,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // No PNG draws an image in a diff tab (KERNEL-410). Git only says a binary file differs, so the tab shows the pictures: an added one as it is in the worktree, a changed one as Before and After.
   WorkspaceDiffImageAdded: imageDiffScene('A'),
   WorkspaceDiffImageModified: imageDiffScene('M'),
+  // KERNEL-739: an image in the All changes diff opens in its own tab, like a chat chip. scripts/shots.ts clicks the picture.
+  WorkspaceDiffImageInlineOpen: scene((f) => ({
+    changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status: 'A', added: 0, removed: 0 }] },
+    diffs: { ...f.diffs, [ids.table]: 'diff --git a/public/logo.png b/public/logo.png\nnew file mode 100644\nBinary files /dev/null and b/public/logo.png differ\n' },
+    images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter } } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
+  })),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
@@ -1856,6 +1872,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
+  LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
@@ -2088,6 +2105,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   PrReadyHidden: headerScene('ready', []),
   // Blockers on the latest commit: the band reads Blockers found in red, with a soft Merge anyway (KERNEL-501).
   PrBlockers: withBlockers(headerScene('ready', [], { panel: true })),
+  PrBlockersOverruled: withOverruled(withBlockers(headerScene('ready', [], { panel: true }))),
+  ConfirmOverrule: withBlockers(headerScene('ready', [], { panel: true })),
   PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
   // The capsule on a neutral band: soft Create PR with its icon and its own menu square, and a closed PR's Reopen (KERNEL-528).
   PrNoPrHidden: headerScene('none', []),

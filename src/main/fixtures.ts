@@ -269,6 +269,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),
     'pr.merge': async ({ workspaceId }) => workspace(workspaceId),
     'pr.mergeAll': async () => ({ merged: [] }),
+    'reviews.overrule': async ({ workspaceId }) => workspace(workspaceId),
     'pr.resolve': async () => ({ ok: true }),
     'pr.update': async () => ({ ok: true }),
     'pr.ready': async ({ workspaceId }) => workspace(workspaceId),
@@ -320,7 +321,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
     'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
-    'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
+    'settings.set': async ({ patch }) => {
+      if (process.env.KERNEL_SLOW_SETTINGS) await new Promise(() => undefined)
+      return (settings = applySettingsPatch(settings, patch))
+    },
     'settings.room': async ({ roomId }) => roomSettings(roomId),
     // Auto works on Claude and not on Codex, as on an account that runs it (KERNEL-447).
     'permissions.availability': async () => ({ claude: { auto: true, bypass: true }, codex: { auto: false, bypass: true, reason: CODEX_AUTO } }),

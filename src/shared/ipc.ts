@@ -296,6 +296,11 @@ export interface KernelApi {
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
   /** `override` is a person's Merge anyway past a reviewer's blockers. The Lead and Merge all never send it (KERNEL-497). */
   'pr.merge': { req: { workspaceId: string; override?: boolean }; res: Workspace }
+  /**
+   * Overrules the reviews' blockers on the PR's head commit, so Merge goes ahead without Merge anyway until a new commit
+   * (KERNEL-732). Refused when nothing blocks. `clear` takes the overrule back (Undo).
+   */
+  'reviews.overrule': { req: { workspaceId: string; note?: string; clear?: boolean }; res: Workspace }
   /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */

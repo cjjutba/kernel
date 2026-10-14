@@ -1,0 +1,5 @@
+**Every Settings page has one muted line under its title, "Changes save as you make them."** It answers the question CJ asked, whether Settings changes save, which nothing on screen did. It reverses KERNEL-680's rule that nothing goes under the title. The line is the same on every page, so it carries no per-page copy. KERNEL-721.
+
+**Text and number fields in Settings confirm a save with a note beside the field, not a toast.** The note says "Saving" with a spinner while main works, then "Saved" with a check, and fades about 1.5s after main answers. It follows the save promise, never a timer. When main clamps a number the note says "Set to N, the most allowed" or "the least allowed" and stays until the next edit. A failed save keeps the rollback and the "Could not save" toast and shows no note. Toggles, segments and dropdowns stay silent, since the control is the confirmation (DESIGN.md, toasts). KERNEL-721.
+
+**A Settings field saves what is typed when it unmounts, and Escape inside it puts the saved value back.** Leaving by Escape, a shortcut or Cmd+W no longer loses text. When two saves touch one key, only the newest answer lands. KERNEL-721.

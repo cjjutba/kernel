@@ -126,13 +126,22 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Saving in Settings
+
+- Every Settings page has one muted line under its title: "Changes save as you make them." (KERNEL-721).
+- Toggles, segments and dropdowns save on click and get no note and no toast. The control is the confirmation.
+- Text and number fields save when they lose focus. A note in muted text sits beside the field: "Saving" with a spinner while the call runs, then "Saved" with a check. It fades about 1.5s after main answers. The state comes from the save promise, never a timer.
+- When main corrects a number, the note says "Set to N, the most allowed" or "Set to N, the least allowed" and stays until the next edit.
+- A field with unsaved text saves when it unmounts. Escape inside a field cancels the edit and puts the saved value back.
+- A failed save rolls back, shows the "Could not save" toast and no Saved note.
+
 ## Busy buttons
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
 
-- The dot loader takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
+- The dot loader (one size, `faint` dots at 0.3 to 0.8 opacity) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
-- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color, so it never reads as a hole in the band (KERNEL-274).
+- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color at the same dim range, so it never reads as a hole in the band (KERNEL-274).
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
@@ -153,7 +162,7 @@ A button that waits on the main process shows it is working until the call retur
   - Overlap. Archiving again while a fold runs starts that row's fold at once. The destination row's fill fade that starts over another one jumps the earlier one to its end.
   - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears and the selected fill changes. The screen swaps at once either way.
 - Only opacity and transform loop, and nothing on a button loops.
-- Dot loader (KERNEL-714): `sm` is a 3x3 grid of 3px dots in 11px, each dot's opacity going 0.15 to 1 to 0.15 over 1.2s `ease-in-out`, delayed 0.1s per row plus column, so a wave crosses it diagonally. `lg` is a 5x5 grid in 32px: light runs clockwise round the 16 outer dots over 1.6s, 0.1s apart, the 8 inner dots sit at 0.12 and the center is empty. Dots take `--spin-ink`, default `ink-2`. Reduced motion stops both and leaves the dots graded.
+- Dot loader (KERNEL-714, KERNEL-740): one 3x3 grid sized in `em` (dots 0.23em, gap 0.08em, rounded to whole pixels), about 11px next to 12 to 13px text, so it follows the text beside it. Each dot's opacity goes 0.3 to 0.8 to 0.3 over 1.6s `ease-in-out`, delayed 0.12s per row plus column, so a slow shimmer crosses it diagonally. Dots take `--spin-ink`, default `faint`. Reduced motion stops it and leaves the dots graded from 0.8 to 0.4.
 - Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
 - Respect reduced motion: jump instead of walk, the dot loader holds still as a graded grid, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 

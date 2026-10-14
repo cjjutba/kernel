@@ -12,7 +12,7 @@ import { INSTRUCTIONS, InstructionSheet } from './InstructionSheet'
 
 type Pr = AppSettings['pr']
 const set = (patch: Partial<Pr>) => void patchSettings({ pr: patch })
-const setAuto = (patch: Partial<Pr['autoMerge']>) => void patchSettings({ pr: { autoMerge: patch } })
+const setAuto = (patch: Partial<Pr['autoMerge']>) => patchSettings({ pr: { autoMerge: patch } })
 
 /** The paths Kernel always sends to the user, in words. A path this doesn't know shows as written. */
 const BUILT_IN: Record<string, string> = {
@@ -41,7 +41,7 @@ export function PRs({ s }: { s: AppSettings }) {
           <Row label="Merge without asking me" desc="When reviews pass, checks are green and it’s under the size limit.">
             <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />
           </Row>
-          <Row label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines })} /></Row>
+          <Row label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines }).then((saved) => saved?.pr.autoMerge.maxLines)} /></Row>
           <Row label="Paths you always review" desc="Changes here always come to you. Locked ones are built in." full={
             <div className="sys-paths"><TagList label="Paths you always review" value={auto.alwaysReview} locked={ALWAYS_REVIEW.map((path) => BUILT_IN[path] ?? path)} mono={false} addLabel="Add path" placeholder="db/migrations/**" onChange={(alwaysReview) => setAuto({ alwaysReview })} /></div>
           } />

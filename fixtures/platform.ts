@@ -565,6 +565,11 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: the room's mode menu is open, over Use app default.
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
+  SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsClamped: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsSavedLight: settingsPage('prs', { settings: { ...prSettings, appearance: { ...prSettings.appearance, theme: 'light' } } }),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
   SettingsRoomSetupFiles: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),

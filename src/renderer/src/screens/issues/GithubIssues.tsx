@@ -148,7 +148,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
         </div>
       )}
 
-      {shown.kind === 'loading' && <div className="is-center"><Spinner size="lg" label="Loading issues" /></div>}
+      {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} />Loading issues</div>}
 
       {shown.kind === 'error' && (
         <div className="is-center">
