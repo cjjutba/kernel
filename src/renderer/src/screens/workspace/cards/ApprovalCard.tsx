@@ -11,7 +11,9 @@ import { attempt, useCopy } from '../MessageActions'
 import { decideAtOnce, useFoldPhase } from './decideFold'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
-import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, questionAnswer, type Picked } from './steps'
+import { answerItemId } from '@shared/approvalAnswer'
+import { questionAnswer } from '@shared/approvalAnswer'
+import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -266,12 +268,13 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
   )
 }
 
-function QuestionCard({ a, who, inChat }: { a: Approval; who: string; inChat?: boolean }) {
+function QuestionCard({ a, who, inChat, hasItem }: { a: Approval; who: string; inChat?: boolean; hasItem?: boolean }) {
   if (a.status === 'pending') return <QuestionSteps a={a} who={who} />
   // The answer is the user's bubble below the card, one line per answer. Outside a chat there is no bubble, so the card says it.
+  // The bubble is the chat's own answer row (KERNEL-838). The card draws it only for an older chat that has none.
   const text = questionAnswer(a)
   const card = (a.questions?.length ?? 0) > 1 ? <AnsweredQuestions who={who} questions={a.questions ?? []} /> : <AnsweredQuestion a={a} who={who} answered={!!text} />
-  return <>{card}{text && (inChat ? <AnswerBubble text={text} /> : <span className="done-line">{text.split('\n').join(' · ')}</span>)}</>
+  return <>{card}{text && (inChat ? (hasItem ? null : <AnswerBubble text={text} />) : <span className="done-line">{text.split('\n').join(' · ')}</span>)}</>
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */
@@ -414,8 +417,9 @@ export function ApprovalCard({ approval: a, inChat }: { approval: Approval; inCh
   const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
   const agent = agents.find((x) => x.id === a.agentId)
   const who = agent?.name ?? 'An agent'
+  const hasItem = useStore((s) => !!a.chatId && !!s.items[a.chatId]?.some((i) => i.id === answerItemId(a.id)))
   if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} lead={agent?.name ?? 'the Lead'} />
-  if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
-  if (a.kind === 'question') return <QuestionCard a={a} who={who} inChat={inChat} />
+  if (isPlanApproval(a)) return inChat ? <PlanInline a={a} agents={agents} hasItem={hasItem} /> : <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
+  if (a.kind === 'question') return <QuestionCard a={a} who={who} inChat={inChat} hasItem={hasItem} />
   return <PermCard a={a} who={who} />
 }

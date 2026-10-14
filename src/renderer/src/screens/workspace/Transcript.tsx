@@ -11,7 +11,6 @@ import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
 import { NoteText } from './NoteText'
 import { ApprovalCard } from './cards/ApprovalCard'
-import { PLAN_APPROVE_EVENT } from './cards/plan'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
@@ -169,7 +168,8 @@ function UserMessage({ item, workspaceId, onEdit }: { item: Extract<ChatItem, { 
       <div className="bubble">
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}
       </div>
-      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={[{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
+      {/* An answer to a card (KERNEL-838) is not a prompt the reader can edit, so it keeps Copy only. */}
+      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={item.approvalId ? [] : [{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]}
         more={more.length ? { menu: `reply:${item.id}`, items: more } : undefined} />
     </div>
   )
@@ -968,13 +968,6 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     }
     glideFrame.current = requestAnimationFrame(step)
   }
-  // Approving this chat's plan from its composer pins following again and glides to the end, which a plan taller than the chat left far above (KERNEL-789).
-  // An approval from Inbox or Home sends no event, so a reader here stays where they are.
-  useEffect(() => {
-    const onApprove = (e: Event) => { if ((e as CustomEvent<{ chatId?: string }>).detail?.chatId === chat.id) toEnd() }
-    window.addEventListener(PLAN_APPROVE_EVENT, onApprove)
-    return () => window.removeEventListener(PLAN_APPROVE_EVENT, onApprove)
-  }, [chat.id])
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
   const jumping = useCallback((on: boolean) => { if (on) { cancelAnimationFrame(aiming.current); cancelAnimationFrame(glideFrame.current); gliderOn.current = 0; glideId.current++ } gliding.current = on; if (on) { byHand.current = true; letGo.current?.(); dropAnchor() } }, [])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.

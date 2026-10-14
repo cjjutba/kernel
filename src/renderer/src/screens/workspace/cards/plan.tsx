@@ -7,7 +7,8 @@ import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { AnswerBubble } from './AnswerBubble'
-import { outcome, planAnswer, planSteps, planText } from './steps'
+import { planAnswer } from '@shared/approvalAnswer'
+import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
 // A plan in its chat, the way Conductor shows one (D-092): the transcript shows a "Propose plan" row and the plan as a
@@ -72,8 +73,8 @@ function LeadPlan({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   )
 }
 
-/** The plan in the transcript. No buttons to decide here: they sit on the composer while the plan waits (PlanBar). */
-export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
+/** The plan in the transcript. No buttons to decide here: they sit on the composer while the plan waits (PlanBar). A settled plan's answer is the chat's own user row (`hasItem`); the bubble here is the fallback for older chats. */
+export function PlanInline({ a, agents, hasItem }: { a: Approval; agents: AgentDef[]; hasItem?: boolean }) {
   const text = planText(a)
   const blocks = useMemo(() => parseBlocks(text), [text])
   const [copied, copy] = useCopy(planCopyText(a, agents))
@@ -90,7 +91,7 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
     const resize = new ResizeObserver(() => { if (el.offsetHeight <= scroller.clientHeight) el.scrollIntoView({ block: 'end' }) })
     resize.observe(scroller)
     const stop = setTimeout(() => resize.disconnect(), STRIP_OPENS_MS)
-    // Approving scrolls the chat to its end, so the plan stops keeping its own end in view while the strip closes.
+    // Approving stops the plan keeping its own end in view while the strip closes, so the answer anchors at the top undisturbed (KERNEL-838).
     const approving = () => resize.disconnect()
     window.addEventListener(PLAN_APPROVE_EVENT, approving)
     return () => { cancelAnimationFrame(frame); clearTimeout(stop); resize.disconnect(); window.removeEventListener(PLAN_APPROVE_EVENT, approving) }
@@ -109,7 +110,7 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
         {a.status === 'expired' && <PlanExpired a={a} />}
       </div>
-      {answer && <AnswerBubble text={answer} images={a.images} />}
+      {answer && !hasItem && <AnswerBubble text={answer} images={a.images} />}
     </>
   )
 }

@@ -102,21 +102,6 @@ export function outcome(a: Approval): string {
 /** Why a plan card expired, when it says (`expiredBy`). */
 const EXPIRED_BY: Record<NonNullable<Approval['expiredBy']>, string> = { replaced: 'Replaced by a newer plan', closed: 'Chat closed', archived: 'Workspace archived' }
 
-/** What the user's bubble says under a settled plan: "Approved", or the notes of Request changes. Nothing for an expired plan, which says why instead. */
-export function planAnswer(a: Pick<Approval, 'status' | 'answer'>): string | undefined {
-  if (a.status === 'allowed') return 'Approved'
-  if (a.status === 'denied' || a.status === 'answered') return a.answer?.trim() || 'Changes requested'
-  return undefined
-}
-
-/** What the user's bubble says under an answered question: one line per answer, in the order asked. Nothing when no answer was kept. */
-export function questionAnswer(a: Pick<Approval, 'status' | 'answer' | 'questions' | 'answers'>): string | undefined {
-  if (a.status !== 'answered') return undefined
-  const list = answeredList(a)
-  if (list) return list.map((r) => r.answer).join('\n')
-  return a.answer?.trim() || undefined
-}
-
 /** What one question holds while you step through them: the options ticked, and a typed answer when Something else is on. */
 export interface Picked { sel: string[]; other: boolean; text: string }
 

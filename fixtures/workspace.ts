@@ -730,6 +730,16 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/** The approved plan of a chat that has your answer as a message (KERNEL-838): Approved is the chat's own user row, so the plan card draws no bubble of its own. */
+const planApprovedItem = (f: Fixture): Partial<Fixture> => {
+  const s = planApproved(f)
+  const id = s.approvals?.[0]?.id ?? ''
+  const answer: ChatItem = { kind: 'user', id: `answer-${id}`, ts: at(10, 30), parts: [{ type: 'text', text: 'Approved' }], approvalId: id }
+  const list = s.items?.[ids.leadChat] ?? []
+  const at1 = list.findIndex((i) => i.id === 'pl-go')
+  return { ...s, items: { [ids.leadChat]: at1 < 0 ? [...list, answer] : [...list.slice(0, at1), answer, ...list.slice(at1)] } }
+}
+
 /** Kernel's plan after you asked for changes: your notes are the bubble. The Kernel message that carried them after a restart names the approval and stays hidden. */
 const planChanges = (f: Fixture): Partial<Fixture> => {
   const s = planWaiting(f)
@@ -2223,7 +2233,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApprove: { ...scene(planWaiting), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
-  WorkspacePlanApproved: scene(planApproved),
+  WorkspacePlanApproved: scene(planApproved), // an older chat: no answer row, so the plan card draws the bubble
+  WorkspacePlanApprovedItem: scene(planApprovedItem),
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
@@ -2336,6 +2347,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [{ ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
   })),
+  // The same with your answer as the chat's own message (KERNEL-838): the card draws no bubble of its own.
+  WorkspaceQuestionAnsweredItem: scene((f) => {
+    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+      userMsg('q1a', 'Build T-15b from the approved plan.', true),
+      ...folded('q1', 6, 0)
+    ], {
+      approvals: [{ ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: [DOWNLOAD_QUESTIONS[0]] }), status: 'answered', answer: 'Yes, invoice-009.pdf' }, ...f.approvals]
+    })
+    const chatId = Object.keys(s.items ?? {})[0]
+    const id = s.approvals?.[0]?.id ?? ''
+    const answer: ChatItem = { kind: 'user', id: `answer-${id}`, ts: at(10, 30), parts: [{ type: 'text', text: 'Yes, invoice-009.pdf' }], approvalId: id }
+    return { ...s, items: { ...s.items, [chatId]: [...(s.items?.[chatId] ?? []), answer] } }
+  }),
   // Kernel's own message is one note line that opens to its full text with Copy, and after a quit it folds into the quit note's line.
   WorkspaceKernelNote: kernelNote,
   WorkspaceKernelNoteOpen: kernelNote, // the same, opened by scripts/shots.ts
