@@ -29,7 +29,10 @@ describe('command palette', () => {
     // Typing searches the longer list, one ranked group.
     const found = visibleItems(inWs.items, inWs.more, 'appear')
     expect(found).toHaveLength(1)
-    expect(found[0].list.map((i) => i.label)).toEqual(['Settings: Appearance'])
+    // The page comes first, then its settings, which open the page on their row (KERNEL-727).
+    const labels = found[0].list.map((i) => i.label)
+    expect(labels[0]).toBe('Settings: Appearance')
+    expect(found[0].list.find((i) => i.label === 'Settings: Appearance, Reduce motion')).toBeDefined()
   })
 
   it('offers a big terminal tab that names the preset, and only while the big terminal is on', () => {

@@ -151,7 +151,7 @@ function WorkspaceScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | n
     const first = value.split('\n').find((l) => l.trim())
     const offer = first || !rs ? undefined : found.find((s) => s.patch.scripts?.[kind]?.trim())
     return (
-      <Row setting={kind === 'setup' ? 'scripts.setup' : undefined} label={label} desc={SCRIPT_HELP[kind].desc} {...roomValue(rs, `scripts.${kind}`, () => void patchRoomSettings(roomId, { scripts: { [kind]: null } }))}
+      <Row id={`script-${kind}`} setting={kind === 'setup' ? 'scripts.setup' : undefined} label={label} desc={SCRIPT_HELP[kind].desc} {...roomValue(rs, `scripts.${kind}`, () => void patchRoomSettings(roomId, { scripts: { [kind]: null } }))}
         full={offer && <SuggestionLine roomId={roomId} kind={kind} suggestion={offer} script={offer.patch.scripts![kind]!.trim()} />}>
         <span className={['set-value', 'rm-script-line', !first && 'rm-unset'].filter(Boolean).join(' ')}>{first ?? 'Not set'}</span>
         <Button aria-label={`${first ? 'Edit' : 'Add'} the ${label.toLowerCase()} script`} onClick={() => setEditing(kind)}>{first ? 'Edit' : 'Add'}</Button>
@@ -165,7 +165,7 @@ function WorkspaceScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | n
       <Section title="Workspace scripts">
         {row('setup', 'Setup')}
         {row('archive', 'Archive')}
-        <Row setting="workspace.leadWaitForSetup" label="Wait for setup before the first message" {...roomValue(rs, 'workspace.leadWaitForSetup', () => void patchRoomSettings(roomId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
+        <Row id="wait-for-setup" setting="workspace.leadWaitForSetup" label="Wait for setup before the first message" {...roomValue(rs, 'workspace.leadWaitForSetup', () => void patchRoomSettings(roomId, { workspace: { leadWaitForSetup: null } }), { to: { page: 'git' }, label: 'Settings, Git' })}>
           <Toggle label="Wait for setup before the first message" checked={wait ?? appWait ?? false} onChange={(v) => void patchRoomSettings(roomId, { workspace: { leadWaitForSetup: v } })} />
         </Row>
       </Section>
@@ -199,7 +199,7 @@ function SetupPage({ roomId, room, rs }: { roomId: string; room: Room; rs: RoomS
     <RoomPage room={room} rs={rs} title="Setup and scripts">
       {production.hints.length > 0 && <ProductionBanner hints={production.hints} onSkip={skip} onKeep={keep} />}
       <Section title="Files to copy" footnote={<><code>*</code> and <code>**</code> don’t match dot files. A pattern only reaches inside an ignored folder when it names that folder, like <code>certs/*.pem</code>.</>}>
-        <Row setting="files.copy" label="Gitignored files" desc={previewDesc(room, copy, files, failed)} {...roomValue(rs, 'files.copy', () => void save({ copy: null }))}
+        <Row id="copy-files" setting="files.copy" label="Gitignored files" desc={previewDesc(room, copy, files, failed)} {...roomValue(rs, 'files.copy', () => void save({ copy: null }))}
           full={
             <>
               <TagList label="Files to copy" value={copy} addLabel="Add pattern" placeholder="certs/*.pem" onChange={(next) => save({ copy: next })} />
@@ -207,9 +207,9 @@ function SetupPage({ roomId, room, rs }: { roomId: string; room: Room; rs: RoomS
             </>
           } />
         {exclude.length > 0 && (
-          <Row setting="files.exclude" label="Never copied" desc="Skipped even when a pattern above matches." full={<TagList label="Files never copied" value={exclude} addLabel="Add file" onChange={(next) => save({ exclude: next })} />} />
+          <Row id="never-copied" setting="files.exclude" label="Never copied" desc="Skipped even when a pattern above matches." full={<TagList label="Files never copied" value={exclude} addLabel="Add file" onChange={(next) => save({ exclude: next })} />} />
         )}
-        <Row setting="files.symlinkNodeModules" label="Symlink node_modules" desc="Faster setup. Workspaces share dependencies." {...roomValue(rs, 'files.symlinkNodeModules', () => void patchRoomSettings(roomId, { files: { symlinkNodeModules: null } }))}>
+        <Row id="symlink-node-modules" setting="files.symlinkNodeModules" label="Symlink node_modules" desc="Faster setup. Workspaces share dependencies." {...roomValue(rs, 'files.symlinkNodeModules', () => void patchRoomSettings(roomId, { files: { symlinkNodeModules: null } }))}>
           <Toggle label="Symlink node_modules" checked={!!rs?.files.symlinkNodeModules} onChange={(v) => void patchRoomSettings(roomId, { files: { symlinkNodeModules: v } })} />
         </Row>
       </Section>

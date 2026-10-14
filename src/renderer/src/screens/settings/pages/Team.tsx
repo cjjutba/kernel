@@ -153,7 +153,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   return (
     <RoomPage room={room} rs={rs} title="Agents" shared>
       <Section title="Roles">
-        <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
+        <Row id="lead" lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
         <span className="set-actions">
           <span className="set-desc" role="status">{elsewhere ? `Customized in ${leadFile}` : customized ? 'Customized' : 'Default'}</span>
           {elsewhere
@@ -164,7 +164,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
         </span>
         </Row>
         {!!files.length && (
-          <Row label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
+          <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
             <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
           </Row>
         )}
@@ -195,7 +195,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {!!files.length && (
         <Section label="Limits">
-          <Row label="Open workspaces" {...roomValue(rs, 'agents.openWorkspaces', () => void patchRoomSettings(roomId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
+          <Row id="open-workspaces" label="Open workspaces" {...roomValue(rs, 'agents.openWorkspaces', () => void patchRoomSettings(roomId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
             <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: Number(v) } })} />
           </Row>
         </Section>

@@ -26,13 +26,13 @@ export function RoomPermissions({ roomId }: { roomId?: string }) {
   return (
     <RoomPage room={room} rs={rs} title="Permissions">
       <Section label="Mode">
-        <Row label="Mode" labelId="rp-mode" desc="Chats in this room start in this mode." {...(current ? { changed: true, onReset: () => void pickMode(undefined, roomId) } : { inherited: { to: { page: 'permissions' as const }, label: 'Settings, Permissions' } })}>
+        <Row id="mode" label="Mode" labelId="rp-mode" desc="Chats in this room start in this mode." {...(current ? { changed: true, onReset: () => void pickMode(undefined, roomId) } : { inherited: { to: { page: 'permissions' as const }, label: 'Settings, Permissions' } })}>
           <Select label="Mode" labelledBy="rp-mode" align="right" value={current ?? appMode ?? USE_DEFAULT} onChange={(v) => void pickMode(v as PermissionMode, roomId)} options={modes} {...menu} />
         </Row>
       </Section>
       <Section title="Always allowed" footnote={<>Never allow and protected branches apply in every room, from <SettingsLink to={{ page: 'permissions' }}>Settings, Permissions</SettingsLink>.</>}>
-        <Row label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => save({ allow })} />} />
-        <Row label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => save({ allowTools })} />} />
+        <Row id="commands" label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => save({ allow })} />} />
+        <Row id="tools" label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => save({ allowTools })} />} />
       </Section>
     </RoomPage>
   )

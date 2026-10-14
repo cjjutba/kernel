@@ -159,22 +159,25 @@ export function ScopeBadge({ scope }: { scope: Scope }) {
 }
 
 /**
- * A heading and a card of rows. `count` is a number after the title, `scope` the badge saying where the values are saved, `note` a
+ * A heading and a card of rows. `holds` lists the ids of rows inside a `collapsible` section that search can land on: landing on one opens it. `id` makes the section a search target when it holds no single row (the theme picker). `count` is a number after the title, `scope` the badge saying where the values are saved, `note` a
  * muted line beside the heading and `action` a button at its right (Add run script). `footnote` is the line under the card.
  * `collapsible` folds the card behind the heading, open when `defaultOpen`. `plain` leaves out the card, for a table or status line.
  */
-export function Section({ title, count, scope, note, action, footnote, collapsible, defaultOpen = false, plain, label, children }: {
-  title?: string; count?: number | string; scope?: Scope; note?: ReactNode; action?: ReactNode; footnote?: ReactNode
+export function Section({ id, holds, title, count, scope, note, action, footnote, collapsible, defaultOpen = false, plain, label, children }: {
+  id?: string; holds?: string[]; title?: string; count?: number | string; scope?: Scope; note?: ReactNode; action?: ReactNode; footnote?: ReactNode
   collapsible?: boolean; defaultOpen?: boolean; plain?: boolean; label?: string; children: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  // A search result for a row inside a folded section opens it first, so the row is there to land on.
+  const route = useStore((s) => s.ui.route)
+  useEffect(() => { if (holds && route.name === 'settings' && route.row && holds.includes(route.row)) setOpen(true) }, [route])
   const shown = !collapsible || open
   const n = count !== undefined && count !== '' && <span className="set-count">{count}</span>
   const heading = collapsible
     ? <button type="button" className="set-fold" aria-expanded={open} onClick={() => setOpen(!open)}><h2>{title}{n}</h2><Icon name="right" size={12} /></button>
     : title && <h2>{title}{n}</h2>
   return (
-    <section className="set-section" aria-label={title ? undefined : label}>
+    <section className="set-section" data-row={id} aria-label={title ? undefined : label}>
       {(title || action || scope || note) && (
         <div className="set-section-head">
           {heading}
@@ -191,13 +194,14 @@ export function Section({ title, count, scope, note, action, footnote, collapsib
 
 /**
  * A label and optional description on the left, the control on the right. `full` puts the control on its own line.
+ * `id` is the row's name in search: a result opens the page, scrolls to the row, highlights it and focuses its control (KERNEL-727).
  * `setting` is the setting's dotted path (`models.leadPlanMode`): a row whose change doesn't reach running agents says so under its description (KERNEL-725),
  * and a Saved note in the row says when running chats keep the old value. On a room page `inherited` says the value is the app's and links to the page it comes from, `changed` says the room sets it, and `onReset` adds Reset, which sends `null` for the key. `shared` is a row saved to the tracked settings.toml, so its Saved note says to commit it.
  * `child` is a row that only matters because of the one above it: it is indented on a guide line. `lead` is a picture before the label
  * (an avatar or a logo). `hover` holds the buttons that show while the pointer is on the row.
  */
-export function Row({ label, shared, inherited, changed, changedIn, desc, setting, onReset, children, full, className, child, lead, hover, labelId }: {
-  label: ReactNode; shared?: boolean; inherited?: { to: SettingsTarget; label: string }; changed?: boolean; changedIn?: { id: string; name: string; to: SettingsTarget }[]; desc?: ReactNode; setting?: string; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
+export function Row({ id, label, shared, inherited, changed, changedIn, desc, setting, onReset, children, full, className, child, lead, hover, labelId }: {
+  id?: string; label: ReactNode; shared?: boolean; inherited?: { to: SettingsTarget; label: string }; changed?: boolean; changedIn?: { id: string; name: string; to: SettingsTarget }[]; desc?: ReactNode; setting?: string; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
   child?: boolean; lead?: ReactNode; hover?: ReactNode; labelId?: string
 }) {
   const roomId = useContext(RoomScope)
@@ -210,7 +214,7 @@ export function Row({ label, shared, inherited, changed, changedIn, desc, settin
   }
   return (
     <RowTiming.Provider value={{ timing: setting ? timingOf(setting, roomId) : undefined, roomId, shared }}>
-    <div ref={ref} className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
+    <div ref={ref} data-row={id} className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
       {child && <span className="set-guide" aria-hidden="true" />}
       {lead && <span className="set-lead">{lead}</span>}
       <div className="set-text">
@@ -313,7 +317,7 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
 }
 
 /** Where a Settings link goes: an app page, or a room's page with its section. */
-export type SettingsTarget = { page: SettingsPage; roomId?: string; section?: RoomSettingsSection; agentId?: string }
+export type SettingsTarget = { page: SettingsPage; roomId?: string; section?: RoomSettingsSection; agentId?: string; row?: string }
 
 /** "Settings, Models and effort" you can click: a cross-reference to another Settings page (KERNEL-680). */
 export function SettingsLink({ to, children }: { to: SettingsTarget; children: ReactNode }) {

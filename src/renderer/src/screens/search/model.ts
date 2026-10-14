@@ -30,6 +30,8 @@ export interface PaletteItem {
 
 /** Settings pages the palette can jump to: the Settings sidebar's list, with its names (KERNEL-680). */
 export const settingsPages: [SettingsPage, string][] = NAV_PAGES.map((p) => [p.page, p.label])
+/** The settings on those pages, which land on their row like a Settings search result (KERNEL-727). */
+const settingsRows = NAV_PAGES.flatMap((p) => p.keywords.map((k) => ({ page: p.page, pageLabel: p.label, ...k })))
 
 /**
  * How well `query` matches `text`: 0 for no match, higher is better. Every query character must appear in order.
@@ -220,7 +222,11 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${workspaceRowLabel(w)} workspace`, { name: 'workspace', workspaceId: w.id }, { also: `${w.name} ${w.branch}` })),
     ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
     // Each room's own pages, named after the room: "Settings: Client A, Scripts".
-    ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))
+    ...settingsRows.map((k) => goto(`go-set-${k.page}-${k.rowId}`, `Settings: ${k.pageLabel}, ${k.label}`, { name: 'settings', page: k.page, row: k.rowId }, { also: 'preferences' })),
+    ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.flatMap((p) => [
+      goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' }),
+      ...p.keywords.map((k) => goto(`go-set-${r.id}-${p.section}-${k.rowId}`, `Settings: ${r.name}, ${p.label}, ${k.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section, row: k.rowId }, { also: 'preferences room' }))
+    ]))
   ]
 
   return { items: [...suggested, ...chatItems, ...sharedNow, ...goDefault, ...roomItems], more }

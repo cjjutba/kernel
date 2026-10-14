@@ -23,7 +23,7 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
   const drop = (name: string) => void patchRoomSettings(roomId, { runScripts: { [name]: null } })
   return (
     <>
-      <Section title="Run scripts" count={scripts.length} plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
+      <Section id="run-scripts" title="Run scripts" count={scripts.length} plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
         <DataTable
           label="Run scripts" columns={['Name', 'Command']} grid="140px minmax(0, 1fr)" empty="No run scripts. Add one to start the app from a workspace."
           rows={scripts.map((s) => {
@@ -52,10 +52,10 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
 export function RunMode({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
   return (
     <Section label="Running">
-      <Row label="Run mode" {...roomValue(rs, 'scripts.runMode', () => void patchRoomSettings(roomId, { scripts: { runMode: null } }))}>
+      <Row id="run-mode" label="Run mode" {...roomValue(rs, 'scripts.runMode', () => void patchRoomSettings(roomId, { scripts: { runMode: null } }))}>
         <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchRoomSettings(roomId, { scripts: { runMode: v as NonNullable<RoomSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
       </Row>
-      <Row label="Ports" desc={`Each workspace gets ${PORT_BLOCK}.`}>
+      <Row id="ports" label="Ports" desc={`Each workspace gets ${PORT_BLOCK}.`}>
         <span className="set-value">{`$KERNEL_PORT to $((KERNEL_PORT + ${PORT_BLOCK - 1}))`}</span>
       </Row>
     </Section>

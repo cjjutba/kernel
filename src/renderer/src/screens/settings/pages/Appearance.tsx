@@ -28,7 +28,7 @@ export function Appearance({ s }: { s: AppSettings }) {
   }
   return (
     <Page title="Appearance">
-      <Section title="Theme" plain>
+      <Section id="theme" title="Theme" plain>
         <div role="radiogroup" aria-label="Theme" className="pe-themes">
           {THEMES.map((t, i) => (
             <button key={t.value} id={`pe-theme-${t.value}`} type="button" role="radio" aria-checked={a.theme === t.value} tabIndex={a.theme === t.value ? 0 : -1} className="pe-theme" onClick={() => set({ theme: t.value })}
@@ -42,12 +42,12 @@ export function Appearance({ s }: { s: AppSettings }) {
         </div>
       </Section>
       <Section title="Text and layout">
-        <Row label="Font size"><SegmentedControl label="Font size" value={a.fontSize} onChange={(v) => set({ fontSize: v as Appearance['fontSize'] })} options={[{ value: 'small', label: 'Small' }, { value: 'default', label: 'Default' }, { value: 'large', label: 'Large' }]} /></Row>
-        <Row label="Density"><SegmentedControl label="Density" value={a.density} onChange={(v) => set({ density: v as Appearance['density'] })} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></Row>
+        <Row id="font-size" label="Font size"><SegmentedControl label="Font size" value={a.fontSize} onChange={(v) => set({ fontSize: v as Appearance['fontSize'] })} options={[{ value: 'small', label: 'Small' }, { value: 'default', label: 'Default' }, { value: 'large', label: 'Large' }]} /></Row>
+        <Row id="density" label="Density"><SegmentedControl label="Density" value={a.density} onChange={(v) => set({ density: v as Appearance['density'] })} options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} /></Row>
       </Section>
       <Section title="Accessibility">
-        <Row label="Reduce motion"><Toggle label="Reduce motion" checked={a.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
-        <Row label="Use pointer cursors" desc="Show a hand over buttons and links."><Toggle label="Use pointer cursors" checked={a.pointerCursors} onChange={(v) => set({ pointerCursors: v })} /></Row>
+        <Row id="reduce-motion" label="Reduce motion"><Toggle label="Reduce motion" checked={a.reduceMotion} onChange={(v) => set({ reduceMotion: v })} /></Row>
+        <Row id="pointer-cursors" label="Use pointer cursors" desc="Show a hand over buttons and links."><Toggle label="Use pointer cursors" checked={a.pointerCursors} onChange={(v) => set({ pointerCursors: v })} /></Row>
       </Section>
     </Page>
   )

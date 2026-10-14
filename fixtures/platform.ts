@@ -569,6 +569,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the room.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
+  // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
+  SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
@@ -589,6 +591,8 @@ export const platformFixtures: Record<string, Fixture> = {
     production: { [ids.roomA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
   })),
+  // KERNEL-727: a search for "hook server port" lands inside the folded Advanced section, which opens first.
+  SettingsHooksLanded: scene(() => ({ hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') }, ui: { route: { name: 'settings', page: 'hooks', row: 'hook-port' } } })),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
   // KERNEL-679: a dev run started inside a workspace says hooks are off in place of Install, with no snippet. No PNG.
   SettingsHooksWorkspaceRun: settingsPage('hooks', { hooks: { port: 4669, listening: true, installed: false, build: 'run', problem: { kind: 'workspace-run' }, events: hookEvents.map((e) => ({ ...e, installed: false, lastSeen: undefined })) } }),

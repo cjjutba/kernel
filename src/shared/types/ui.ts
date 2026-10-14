@@ -30,7 +30,8 @@ export type Route =
    * `agentId` opens that agent's editor inside the Agents page it came from: `page: 'agents'` for the app's list, or `page: 'room'`
    * with `section: 'agents'` and a `roomId` for a room's (KERNEL-641).
    */
-  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string; agentId?: string }
+  /** `row` is the id of the setting's row to scroll to, highlight and focus once the page is open (KERNEL-727). */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider; account?: string; agentId?: string; row?: string }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 

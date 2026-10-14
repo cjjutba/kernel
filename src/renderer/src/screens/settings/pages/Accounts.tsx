@@ -237,16 +237,17 @@ export function Accounts({ s }: { s: AppSettings }) {
         )
       })}
       <Section title="Limits">
-        <Row label="Switch accounts at a limit" desc="Move agents to the subscription with the most room.">
+        <Row id="switch-at-limit" label="Switch accounts at a limit" desc="Move agents to the subscription with the most room.">
           <Toggle label="Switch accounts at a limit" disabled={!canSwitch} checked={canSwitch && switching} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { claude: v, codex: v } } })} />
         </Row>
         <Row
+          id="pause-near-limit"
           label={<>Pause new work near a limit<button type="button" className="icon-btn ac-info" data-tip={PAUSE_HELP} aria-label="About pausing new work"><Icon name="info" size={14} /></button></>}
           desc="Hold new tasks so running ones can finish."
         >
           <Toggle label="Pause new work near a limit" checked={s.usage.pauseNearLimit} onChange={(v) => void patchSettings({ usage: { pauseNearLimit: v } })} />
         </Row>
-        <Row label="Weekly limit warning" desc="Notify me at 80% of a weekly limit.">
+        <Row id="weekly-limit-warning" label="Weekly limit warning" desc="Notify me at 80% of a weekly limit.">
           <Toggle label="Weekly limit warning" checked={s.usage.warnBeforeWeekly} onChange={(v) => void patchSettings({ usage: { warnBeforeWeekly: v } })} />
         </Row>
       </Section>
