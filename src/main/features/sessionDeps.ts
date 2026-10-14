@@ -1,13 +1,16 @@
 import { chatProvider } from '@shared/providers'
 import type { Kernel } from '../kernel'
+import { bus } from '../bus'
 import type { SessionDeps } from '../services/sessions'
-import { agentAccessInRoom, aliasesInRoom, disabledInRoom } from '../services/settings'
+import { agentAccessInRoom, aliasesInRoom, disabledInRoom, referencesInRoom } from '../services/settings'
 
 /**
  * What Sessions calls back into Kernel for (KERNEL-324). A new reaction to a finished turn goes in `onTurnDone`, where the
  * order matters: the Lead hears about a turn only after Kernel has read the PR it may have opened.
  */
 export function sessionDeps(k: Kernel): SessionDeps {
+  // Reference folders the room log already warned about, by room and path, so each warns once per run (KERNEL-748).
+  const warned = new Set<string>()
   return {
     store: k.store,
     approvals: k.approvals,
@@ -21,6 +24,18 @@ export function sessionDeps(k: Kernel): SessionDeps {
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
     accessFor: (ws) => { const room = k.store.room(ws.roomId); return room ? agentAccessInRoom(room.path, ws.agentId) : undefined },
+    // A folder that isn't there is skipped, so the chat still starts, and the room log says so once (KERNEL-748).
+    referencesFor: (ws) => {
+      const room = k.store.room(ws.roomId)
+      if (!room) return undefined
+      const { present, missing } = referencesInRoom(room.path)
+      for (const path of missing) {
+        if (warned.has(`${room.id}\0${path}`)) continue
+        warned.add(`${room.id}\0${path}`)
+        bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: 'skipped a reference folder that is missing:', object: path, warn: true })
+      }
+      return present
+    },
     onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
     rulesFor: (ws, agent, chat) => k.tools.rulesFor(ws, agent, chat),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],

@@ -286,7 +286,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                         </button>
                       ) : (
                         <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{dirName(r.entry.path)}</span>
+                          <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{r.entry.reference ?? dirName(r.entry.path)}</span>
                         </button>
                       )
                     })}
