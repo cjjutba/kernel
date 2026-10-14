@@ -7,7 +7,7 @@ import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -423,6 +423,10 @@ export class Prs extends Feature {
 
   /** What each workspace's PR was when Kernel last weighed it for auto-merge, so each change is weighed once (KERNEL-556). */
   private weighed = new Map<string, string>()
+  /** How many times Kernel weighed each workspace's PR again at the same key, after a refusal GitHub hadn't settled (KERNEL-768). */
+  private retries = new Map<string, { key: string; n: number }>()
+  /** How many times one key is weighed again before its refusal stands. Each waits for the quick re-read, `recheckMs`. */
+  static autoMergeRetries = 8
   /** Rooms already warned that their shared settings file sets a personal `[merge]` key, by room id and the keys. */
   private warnedMerge = new Set<string>()
 
@@ -459,6 +463,7 @@ export class Prs extends Feature {
    */
   async autoMerge(id: string): Promise<{ merged: Workspace } | { refused: string }> {
     const ws = this.mustWs(id)
+    const key = this.weighed.get(id)
     const room = this.mustRoom(ws.roomId)
     const app = this.settings.pr.autoMerge
     let { rules, personal } = autoMergeInRoom(room.path, app)
@@ -469,6 +474,8 @@ export class Prs extends Feature {
     const head = facts.pr?.head
     if (!why || !head) {
       const said = autoMergeBlock(facts) ?? "Kernel couldn't read the pull request from GitHub."
+      // The Lead hears a refusal GitHub hadn't settled only once Kernel stops weighing it again (KERNEL-768).
+      if (autoMergeRetry(facts) && this.weighAgain(id, key)) return { refused: said }
       if (rules.on) this.leadUpdates.autoMergeRefused(id, said)
       return { refused: said }
     }
@@ -481,10 +488,28 @@ export class Prs extends Feature {
     } catch (e) {
       this.leadUpdates.autoMerging(id)
       const said = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+      if (said.startsWith('GitHub is still checking ') && this.weighAgain(id, key)) return { refused: said }
       this.leadUpdates.autoMergeRefused(id, `The merge Kernel started failed. ${said}`)
       bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object: pr, warn: true })
       return { refused: said }
     }
+  }
+
+  /**
+   * Weighs the PR again after the quick re-read, as its key hadn't changed (KERNEL-768): `considerAutoMerge` finds it unweighed.
+   * False once `key` was weighed again `autoMergeRetries` times, and when Kernel stopped, forgot the PR or weighed a newer
+   * key meanwhile, so the refusal stands until the key changes. The quick re-read goes even when an earlier one read unknown.
+   */
+  private weighAgain(id: string, key: string | undefined): boolean {
+    if (this.stopped || key === undefined || this.weighed.get(id) !== key) return false
+    const r = this.retries.get(id)
+    const n = r?.key === key ? r.n : 0
+    if (n >= Prs.autoMergeRetries) return false
+    this.retries.set(id, { key, n: n + 1 })
+    this.weighed.delete(id)
+    this.cancelRecheck(id)
+    this.recheckSoon(id)
+    return true
   }
 
   /**
@@ -772,6 +797,7 @@ export class Prs extends Feature {
   forgetPr(id: string) {
     this.cancelRecheck(id)
     this.weighed.delete(id)
+    this.retries.delete(id)
     this.polls.delete(id)
     this.prints.delete(id)
     this.infos.delete(id)
@@ -842,6 +868,7 @@ export class Prs extends Feature {
     this.recheckTimer = undefined
     this.rechecks.clear()
     this.weighed.clear()
+    this.retries.clear()
   }
   handlers() {
     return {
