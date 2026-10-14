@@ -105,8 +105,9 @@ describe('lead.setMode (KERNEL-770)', () => {
     await k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'build' })
     expect(dividers()).toHaveLength(1)
     await k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'handoff' })
-    expect(dividers().map((d) => d.mode)).toEqual(['build', 'handoff'])
     expect(restarted).toHaveLength(2)
+    // Nothing since the last switch: its divider updates in place (KERNEL-809).
+    expect(dividers().map((d) => d.mode)).toEqual(['handoff'])
     expect(leadModeSwitched('build')).toBe("Switched to Build here. Kernel can edit files in this chat's worktree.")
 
     const kai = (await k.agents(room.id)).find((a) => a.id === 'kai')!
@@ -114,6 +115,23 @@ describe('lead.setMode (KERNEL-770)', () => {
     await expect(k.handlers()['lead.setMode']({ workspaceId: teammate.id, mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: 'nope', mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'solo' as never })).rejects.toThrow('is not a mode')
+  })
+
+  it('updates a tab\'s last divider in place, and adds one after anything else, tab by tab (KERNEL-809)', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    const other = k.store.saveChat({ ...c, id: 'second-tab', title: 'Second' })
+    const modes = (id: string) => k.store.items(id).flatMap((i) => (i.kind === 'leadMode' ? [i.mode] : []))
+    const setMode = (mode: 'build' | 'handoff') => k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode })
+    await setMode('build')
+    k.store.saveItem(c.id, { kind: 'note', id: 'reply', ts: Date.now(), text: 'Done.' })
+    await setMode('handoff')
+    expect(modes(c.id)).toEqual(['build', 'handoff'])
+    expect(modes(other.id)).toEqual(['handoff'])
+    await setMode('build')
+    expect(modes(c.id)).toEqual(['build', 'build'])
+    expect(modes(other.id)).toEqual(['build'])
+    expect(k.store.items(c.id).map((i) => i.kind)).toEqual(['leadMode', 'note', 'leadMode'])
   })
 
   it('switches with uncommitted edits in the worktree, both ways, and leaves them as they were', async () => {

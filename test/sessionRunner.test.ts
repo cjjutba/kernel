@@ -13,7 +13,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { askReason, awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, muteShadowedWarning, ROOM_TOOLS, SHADOWED_WARNING, type ClaudeRunner } from '../src/main/services/providers/claude'
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { Ask } from '../src/main/services/providers/types'
-import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
+import { BYPASS_OFF_AGAIN, BYPASS_WAITS, CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_BUILD_RULE, LEAD_RULE } from '../src/main/services/handoff'
 import { HANDOFF_NO_EDIT } from '../src/main/services/agentTools'
@@ -1534,6 +1534,20 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     await t.sessions.configure('chat', { mode: 'bypassPermissions' })
     expect(notes(t.store)).toEqual(['Bypass permissions starts once this turn ends.'])
     expect(t.call.modes).toEqual([])
+  })
+
+  it('keeps one Bypass note per turn, which says so when Bypass is turned off before the turn ends (KERNEL-809)', async () => {
+    const t = await setup('acceptEdits')
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(notes(t.store)).toEqual([BYPASS_WAITS])
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(notes(t.store)).toEqual([BYPASS_OFF_AGAIN])
+    expect(t.sessions.runMode('chat')).toMatchObject({ mode: 'acceptEdits' })
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    expect(notes(t.store)).toEqual([BYPASS_WAITS])
   })
 
   it('tells the renderer the chat runs in its last mode until the turn ends, then in Bypass permissions (KERNEL-572)', async () => {
