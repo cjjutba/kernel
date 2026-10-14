@@ -291,13 +291,15 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-status[data-tone='warn'] > svg { color: var(--needs); }
 .set-status-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .set-status .btn { height: 28px; font-size: 12.5px; }
-.set-table-head, .set-table-row { display: grid; column-gap: 16px; align-items: center; padding: 0 12px 0 16px; }
+/* The table is the grid and its rows are subgrids, so the actions column is as wide as the widest row's in the header too. */
+.set-table { display: grid; column-gap: 16px; }
+.set-table-head, .set-table-row { display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; padding: 0 12px 0 16px; }
 .set-table-head { height: 32px; background: var(--panel); font-size: 12px; color: var(--faint); }
 .set-table-row { min-height: 44px; padding-top: 8px; padding-bottom: 8px; border-top: 1px solid var(--panel-line); font-size: 13px; color: var(--ink-2); }
 .set-cell { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-cell:first-child { color: var(--ink); }
 .set-cell .mono, .set-cell.mono { font: 12.5px var(--mono); }
-.set-table-empty { padding: 14px 16px; border-top: 1px solid var(--panel-line); font-size: 13px; color: var(--muted); }
+.set-table-empty { grid-column: 1 / -1; padding: 14px 16px; border-top: 1px solid var(--panel-line); font-size: 13px; color: var(--muted); }
 .set-tags { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .set-tag { display: inline-flex; align-items: center; gap: 4px; height: 26px; box-sizing: border-box; padding: 0 3px 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); font-size: 12px; max-width: 100%; min-width: 0; }
 .set-tag-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

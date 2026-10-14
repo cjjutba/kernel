@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptSuggestion, Workspace } from '@shared/types'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { leadModeOf } from '@shared/leadMode'
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
@@ -9,6 +11,7 @@ import { stripRemote } from '../settings/remote'
 import { patchRoomSettings, useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
+import { useLeadPrs } from './pr/leadPrList'
 import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
 import { useLocalMerge } from './pr/useLocalMerge'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
@@ -341,6 +344,11 @@ function TabStrip(props: ComponentProps<typeof Tabs>) {
   )
 }
 
+/** The Team PRs tab's count: the PRs the Lead's list shows, plain and faint as on the Lead's own tabs. */
+function TeamPrsCount({ roomId }: { roomId: string }) {
+  return <span className="tab-count">{useLeadPrs(roomId).length}</span>
+}
+
 /** `filePath` and `diffPath` are the file and diff tabs showing in the center, drawn selected in All files and Changes. */
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diffPath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void; filePath?: string; diffPath?: string }) {
   // The Lead's workspace keeps its own tab, and PRs is the one only it has: elsewhere `prs` falls back to Changes, the way Shared does (KERNEL-354).
@@ -349,7 +357,11 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
   const shared = useStore((s) => sharedHere(s, ws).length)
   // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
   const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
-  const right = (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
+  // A chat with Kernel in Build here works like a teammate's workspace: its own PR, Changes and Checks, with the Lead's PR list as the Team PRs tab (KERNEL-780).
+  const build = isLead && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
+  // Once its PR has merged the chat has nothing of its own open, so the panel goes back to the team's PRs.
+  const idle = build && shown === 'changes' && ws.prState === 'merged' && changes.length === 0
+  const right = idle ? 'prs' : (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
   // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
   const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
   const pick = (id: string) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })
@@ -361,10 +373,11 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
         <div className="panel-tabs" data-lead={isLead || undefined}>
           <TabStrip label="Workspace panel" value={right} onChange={pick} tabs={[
             // The PRs tab has no count: the band and the Ready to merge heading show it.
-            ...(isLead ? [{ id: 'prs', label: 'PRs' }] : []),
+            ...(isLead && !build ? [{ id: 'prs', label: 'PRs' }] : []),
             { id: 'files', label: 'All files' },
             { id: 'changes', label: <>Changes {count(changes.length)}</> },
             { id: 'checks', label: 'Checks' },
+            ...(build ? [{ id: 'prs', label: <>Team PRs <TeamPrsCount roomId={ws.roomId} /></> }] : []),
             ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
           ]} />
           <div ref={setTools} className="panel-tools" role="toolbar" aria-label="Panel actions" />

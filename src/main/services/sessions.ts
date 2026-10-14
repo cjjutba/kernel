@@ -8,11 +8,12 @@ import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
+import { leadModeOf } from '@shared/leadMode'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
-import { forProvider, Handoffs, LEAD_RULE, planApproval } from './handoff'
+import { forProvider, Handoffs, leadRule, planApproval } from './handoff'
 import { mentionNote, mentionsOf } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
@@ -136,7 +137,7 @@ export interface SessionDeps {
   aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
   /** The room's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
   accessFor?: (ws: Workspace) => { unlisted: UnlistedTools; allow: string[] } | undefined
-  /** The room's reference folders that are there now, which a Claude chat may read but not edit (KERNEL-748). */
+  /** The room's reference folders that are there now, which a chat may read but not edit (KERNEL-748, KERNEL-790). */
   referencesFor?: (ws: Workspace) => string[] | undefined
   /**
    * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
@@ -1152,14 +1153,15 @@ export class Sessions {
 
   /**
    * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
-   * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67). The settled card says the plan was
+   * restart does not put it back (D-074), and a Lead chat in Hand off owes the hand-off (KERNEL-67). One in Build here builds
+   * the plan itself, as a teammate does (KERNEL-770). The settled card says the plan was
    * approved, so the chat gets no note. A message Kernel sends carries `approvalId`, so the chat can show the user's answer.
    */
   async planApproved(chatId: string, o: { queue?: boolean; restarted?: boolean; approvalId?: string } = {}): Promise<string> {
     await this.configure(chatId, { plan: false }).catch(() => undefined)
-    const lead = this.isLeadChat(chatId)
-    if (lead) this.handoffs.approved(chatId)
     const chat = this.mustChat(chatId)
+    const lead = this.isLeadChat(chatId) && leadModeOf(this.d.store.workspace(chat.workspaceId)) === 'handoff'
+    if (lead) this.handoffs.approved(chatId)
     // The agent has its plan in context, so the note is short. After a restart it names the plan's file, or carries its
     // text when the file is gone (plan-cards-survive-restart).
     const ws = o.restarted ? this.d.store.workspace(chat.workspaceId) : undefined
@@ -1385,7 +1387,7 @@ export class Sessions {
       const c = this.d.codexFor?.(ws, agent, chat)
       live.threadBypass = mode === 'bypassPermissions'
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), bypass: live.threadBypass })
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), bypass: live.threadBypass })
     } else {
       live.bypass = bypass
       live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), mode, bypass })
@@ -1801,7 +1803,8 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
     ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}.${ws.lead ? ' It is not the main checkout, which the user may be running.' : ''} Stay inside it. Push with \`git push -u origin ${ws.branch}\` (or \`HEAD\`), never a bare \`git push\`.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
-  return [agent?.prompt, agent?.lead && LEAD_RULE, rule, where, port].filter(Boolean).join('\n\n')
+  // The chat's mode picks the Lead's rule: Hand off plans and hands off, Build here builds in this worktree (KERNEL-770).
+  return [agent?.prompt, agent?.lead && leadRule(leadModeOf(ws)), rule, where, port].filter(Boolean).join('\n\n')
 }
 
 /** What Restart session sends, after any messages held for the chat. */

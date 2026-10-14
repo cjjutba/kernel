@@ -51,7 +51,8 @@ const templates = new Map<string, Promise<{ repo: string; origin: string }>>()
 function template(files: Record<string, string>) {
   const key = JSON.stringify(files)
   if (!templates.has(key)) templates.set(key, (async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+    // The run script's file is ignored, so the chat's worktree has no change a hand-off would mention (KERNEL-770).
+    const repo = await tempRepo({ 'README.md': '# client\n', '.gitignore': 'ran.txt\nset-up.txt\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
     await run('git', ['clone', '-q', '--bare', repo, origin])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])

@@ -1,27 +1,57 @@
 name: Test
 
-# Typecheck and the full test suite, once per PR (KERNEL-296). Agents run only the affected tests locally.
-# No path filter, so it can become a required check on main later, like Release note (see release-note.yml).
+# A PR runs typecheck and only the tests its changes affect. A push to main runs the whole suite, so two PRs that each
+# passed and break main together show up right away (KERNEL-296).
+# No path filter, so the Test job reports on every PR and can be a required check on main, like Release note (see release-note.yml).
 # macOS because the tests are written there and need the macOS builds of better-sqlite3 and node-pty.
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
   group: test-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a main run: each commit on main gets its own result, and the ci-main-red issue names that commit.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    name: Test
+  typecheck:
+    name: Typecheck
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      # No install scripts: tsc doesn't need the native modules rebuilt for Electron.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - run: pnpm typecheck
+
+  # Runs the tests. Named apart from the Test job below, which is the one branch protection requires.
+  vitest:
+    name: Vitest
     runs-on: macos-latest
     timeout-minutes: 30
     env:
       KERNEL_HEADLESS: '1'
+    outputs:
+      failed: ${{ steps.failed.outputs.files }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The merge base needs the history of main.
+          fetch-depth: 0
 
       # The version comes from packageManager in package.json.
       - uses: pnpm/action-setup@v6
@@ -34,6 +64,104 @@ jobs:
       # The postinstall script rebuilds better-sqlite3 and node-pty for Electron.
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm typecheck
+      # A PR runs the tests its changes affect, compared with where it left main. The merge base, not HEAD^1, so a
+      # re-run after main moved compares the same commits. Anything that changes how every test runs runs them all.
+      - name: Pick the tests
+        id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "Push to main: the full suite."
+            echo "args=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "$BASE_REF"
+          base=$(git merge-base "origin/$BASE_REF" HEAD)
+          echo "Merge base with origin/$BASE_REF: $base"
+          git diff --name-only "$base" HEAD
+          if git diff --name-only "$base" HEAD | grep -E '^(package\.json|pnpm-lock\.yaml|vitest\.config\.ts|test/support/|test/helpers\.ts|\.github/workflows/)'; then
+            echo "A file that every test depends on changed: the full suite."
+            echo "args=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only the tests the changes affect."
+            echo "args=--changed $base --passWithNoTests" >> "$GITHUB_OUTPUT"
+          fi
 
-      - run: pnpm test
+      - name: Run the tests
+        run: |
+          start=$(date +%s)
+          status=0
+          pnpm exec vitest run ${{ steps.pick.outputs.args }} --reporter=default --reporter=json --outputFile.json=vitest-result.json || status=$?
+          echo "Wall time of the vitest run: $(( $(date +%s) - start )) s"
+          exit $status
+
+      - name: Summary
+        if: always()
+        run: |
+          [ -f vitest-result.json ] || exit 0
+          node -e "const r=require('./vitest-result.json');console.log('## Vitest\n\n'+(process.env.ARGS?'Affected tests only':'Full suite')+': '+r.numTotalTestSuites+' suites, '+r.numTotalTests+' tests, '+r.numFailedTests+' failed.')" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          ARGS: ${{ steps.pick.outputs.args }}
+
+      # The files with a failing test, for the ci-main-red issue.
+      - name: Name the failing tests
+        id: failed
+        if: failure()
+        run: |
+          [ -f vitest-result.json ] || exit 0
+          files=$(node -e "const r=require('./vitest-result.json');console.log(r.testResults.filter(t=>t.status==='failed').map(t=>t.name.replace(process.cwd()+'/','')).join(','))")
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+  # The one check branch protection requires. It passes only when every job it needs passes, and it runs even when one
+  # of them fails or is skipped, so the check always reports.
+  test:
+    name: Test
+    needs: [typecheck, vitest]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          echo "typecheck: ${{ needs.typecheck.result }}"
+          echo "vitest: ${{ needs.vitest.result }}"
+          [ "${{ needs.typecheck.result }}" = "success" ] && [ "${{ needs.vitest.result }}" = "success" ]
+
+  # A red main is easy to see: one open issue while it is red, updated by each failing run, closed on the next green run.
+  main-red:
+    name: Main status
+    needs: [test, vitest]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.test.result }}
+      FAILED: ${{ needs.vitest.outputs.failed }}
+      SHA: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open, update or close the ci-main-red issue
+        run: |
+          short=${SHA:0:7}
+          commit="[$short](${{ github.server_url }}/${{ github.repository }}/commit/$SHA)"
+          open=$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number // empty')
+          if [ "$RESULT" = "success" ]; then
+            [ -n "$open" ] && gh issue close "$open" --comment "Main is green again at $commit ([run]($RUN_URL))."
+            exit 0
+          fi
+          tests=${FAILED:-"none named: typecheck failed, or the tests did not finish"}
+          body="Main is red at $commit ([run]($RUN_URL)).
+
+          Failing test files: $tests"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "$body"
+          else
+            gh label create ci-main-red --color B60205 --description "The test run on main is failing" --force
+            gh issue create --label ci-main-red --title "Main is red: tests fail on $short" --body "$body"
+          fi

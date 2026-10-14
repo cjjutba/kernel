@@ -101,6 +101,11 @@ export const migrations: Migration[] = [
       create table if not exists open_items (id text primary key, thread_id text not null, room_id text not null, key text not null, data text not null, created_at integer not null);
       create unique index if not exists open_items_by_key on open_items (thread_id, key);
     `)
+  },
+  {
+    // Deleting a Lead chat left its open items behind (KERNEL-791). Its items go now, and with the chat from here on.
+    version: 7,
+    up: (db) => db.exec('delete from open_items where thread_id not in (select id from threads)')
   }
 ]
 

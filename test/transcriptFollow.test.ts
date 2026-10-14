@@ -49,6 +49,15 @@ describe('whether the chat keeps following its end after a scroll (KERNEL-605)',
     expect(followsAfterScroll(true, view(30), was(view(30), 4), false)).toBe(true)
   })
 
+  it('leaves a reader who scrolled up where they are when a running turn folds into its summary (KERNEL-784)', async () => {
+    const { followsAfterScroll } = await load()
+    // The turn's stretches and its live line collapse into one row, so the thread gets shorter and the browser keeps the reader's rows in place.
+    const shorter = view(900, 2400)
+    expect(followsAfterScroll(false, shorter, { ...was(shorter, 0), scrollHeight: 3000 }, false)).toBe(false)
+    // A reader who was following, with the end in reach, keeps following through the same fold.
+    expect(followsAfterScroll(true, view(8, 2400), { ...was(view(8, 2400), 600), scrollHeight: 3000 }, false)).toBe(true)
+  })
+
   it('unpins at once when the reader moves up, even by a little', async () => {
     const { followsAfterScroll } = await load()
     expect(followsAfterScroll(true, view(10), was(view(10), 3), true)).toBe(false)

@@ -82,7 +82,7 @@ export interface PaletteInput {
   accounts?: AccountProfile[]
   act: {
     go: (route: Route) => void
-    newWorkspace: (roomId?: string) => void
+    openNewChat: (roomId?: string) => void
     newRoom: () => void
     whatsNew: () => void
     approve: (a: Approval) => void
@@ -136,7 +136,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
 
   const suggested: PaletteItem[] = [
-    item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.newWorkspace(room?.id), { keys: ['⌘', 'N'] }),
+    item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.openNewChat(room?.id), { keys: ['⌘', 'N'] }),
     ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${workspaceRowLabel(forPr)}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: `pull request ${forPr.name} ${forPr.branch}` })] : []),
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
     ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),

@@ -5,7 +5,7 @@ import { Icon, type IconName } from '../../icons'
 import { IconButton, Spinner, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route, type State } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
-import { chatWorkspaces, isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
+import { chatWorkspaces, isLeadWorkspace, leadOf, openNewChat, useLeadWaiting } from '../../lead'
 import { archiveChatFromSidebar, archivingChat } from '../../screens/workspace/archiveChat'
 import { reducedMotion, useArriving, useStage } from '../../screens/workspace/archiveMotion'
 import { currentThread } from '../../nav'
@@ -86,10 +86,10 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
 }
 
 /** A row's state icon. Its state is the accessible name. While the row runs (`busy`), the loader takes the icon's box, so nothing moves when the run starts or stops. */
-function Glyph({ g, busy, seed }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boolean; seed: string }) {
+function Glyph({ g, busy }: { g: WorkspaceGlyph & { icon: IconName }; busy?: boolean }) {
   return (
     <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label}>
-      {busy ? <Spinner label={null} seed={seed} /> : <Icon name={g.icon} />}
+      {busy ? <Spinner label={null} /> : <Icon name={g.icon} />}
     </span>
   )
 }
@@ -111,7 +111,7 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   return (
     <>
       <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`New chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
-        <Glyph g={shown} busy={g.icon === 'spin'} seed={roomId} />
+        <Glyph g={shown} busy={g.icon === 'spin'} />
         <span className="grow ellipsis">New chat</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : null}
       </button>
@@ -160,7 +160,7 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
         className="nav-item nav-sub" aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread ? `${name}, Unread` : name} data-unread={unread ? '' : undefined}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
-        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} seed={thread.id} /> : <Icon name={shown.icon} />}</span>
+        <span className="nav-glyph" data-tone={shown.tone} data-owned={owned.length ? '' : undefined} data-plan={planning ? '' : undefined} aria-hidden="true">{busy ? <Spinner label={null} /> : <Icon name={shown.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
@@ -229,7 +229,7 @@ function WorkspaceItemRow({ ws, parent, slot, nested, leaving, onSettled }: { ws
   return (
     <div {...card.bind} className={`hv ws-row${archiving ? ' busy' : ''}${leaving && !leaving.held ? ' row-fold' : ''}`} data-key={slot?.hint || undefined} inert={leaving ? true : undefined} onAnimationEnd={(e) => { if (e.target === e.currentTarget && e.animationName === 'archive-fold') onSettled?.() }}>
       <NavItem
-        sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={shown} busy={g.icon === 'spin'} seed={ws.id} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
+        sub nested={nested} leaving={leaving} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={shown} busy={g.icon === 'spin'} />} label={label} slot={slot} unread={unread ? (g.label ? `${label}, ${g.label}` : label) : undefined}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={<>
           {diff && ws.stat && <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>}
@@ -331,7 +331,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
         {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
         <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
           <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
+          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${room.name}`} onClick={() => openNewChat(room.id)}><Icon name="plus" size={14} /></button>
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
@@ -439,7 +439,7 @@ export function AppSidebar() {
       <div className="row" style={{ height: 36, paddingLeft: 4, flexShrink: 0 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="pen" /></button>
+        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => openNewChat(openRoom)}><Icon name="pen" /></button>
       </div>
       <div className="nav-list" style={{ marginTop: 10, flexShrink: 0 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>

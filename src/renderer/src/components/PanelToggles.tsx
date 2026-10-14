@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { actions, getState, useStore } from '../store'
+import { actions, getState, panelShownIn, useStore } from '../store'
 import { IconButton } from '../ui'
 
 /** Window widths below which a panel folds: the right panel first, then the sidebar (D-080). */
@@ -22,7 +22,13 @@ export function useFoldPanels() {
 }
 
 export const toggleSidebar = () => actions.ui.setSidebar(!getState().ui.sidebar)
-export const toggleRightPanel = () => actions.ui.setRightPanel(!getState().ui.rightPanel)
+/** The workspace in view, for a panel a New chat holds closed (KERNEL-788). */
+const inView = (route: ReturnType<typeof getState>['ui']['route']) => (route.name === 'workspace' ? route.workspaceId : undefined)
+/** What the toggle flips is what the screen shows: in a held chat the panel is closed even while the global flag is on, so one press opens it. */
+export const toggleRightPanel = () => {
+  const { ui } = getState()
+  actions.ui.setRightPanel(!panelShownIn(ui, inView(ui.route)))
+}
 /** Focus mode (Cmd+backslash): hides both sides, or shows both once both are hidden. */
 export const toggleFocus = () => {
   const { sidebar, rightPanel } = getState().ui
@@ -54,6 +60,6 @@ export function SidebarToggle() {
 
 /** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
 export function RightPanelToggle({ name }: { name: string }) {
-  const open = useStore((s) => s.ui.rightPanel)
+  const open = useStore((s) => panelShownIn(s.ui, inView(s.ui.route)))
   return <IconButton icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
 }

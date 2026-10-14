@@ -1,16 +1,18 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, UnlistedTools } from '@shared/types'
 import { linkText } from '@shared/links'
+import { leadModeOf } from '@shared/leadMode'
 import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../../plans'
-import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
+import { ALWAYS_ASK, decide, referenceWrite, REFERENCE_READ_ONLY, rulesOf, saveAlwaysAllow, type Rules, type RunMode, type Step } from '../../permissions'
 import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
+import { SHARED_DIR } from '../../sharedFiles'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { appServerArgs, codexEnv, KERNEL_VERSION, loginWithKey } from './client'
@@ -68,6 +70,8 @@ export interface CodexStart {
    * keeps the MCP servers its tools line leaves out. The thread keeps that list until its process restarts (bypass-allows-unlisted-mcp).
    */
   bypass?: boolean
+  /** The room's reference folders that are there now: the agent may read them, and Kernel declines changes under them (KERNEL-790). */
+  references?: string[]
 }
 
 /** How much of a tool's output, and of each string in its input, a chat row keeps (the same as Claude's rows). */
@@ -157,6 +161,8 @@ export class CodexRunner implements Runner {
   private model: string
   private effort: Effort
   private plan: boolean
+  /** A chat with Kernel in Hand off, which edits no file but the ones it shares (KERNEL-770). Fixed for the process's life. */
+  private readonly handoff: boolean
   private gitDir?: string
   /** The running turn's plan, from its `plan` item. A plan-mode turn that ends with one asks for approval. */
   private planText?: string
@@ -187,6 +193,7 @@ export class CodexRunner implements Runner {
     this.model = chat.model
     this.effort = chat.effort
     this.plan = chat.plan
+    this.handoff = !!host.agent?.lead && leadModeOf(host.workspace) === 'handoff'
     this.threadId = chat.sessionId
     if (chat.sessionId) host.managed(chat.sessionId)
   }
@@ -248,10 +255,14 @@ export class CodexRunner implements Runner {
 
   kill() { if (this.child && this.child.exitCode === null) this.child.kill('SIGTERM') }
 
-  /** The sandbox for the next turn: writes in the workspace and the repo's git folder, network as Settings, Permissions says. Plan mode only reads. */
+  /**
+   * The sandbox for the next turn: writes in the workspace and the repo's git folder, network as Settings, Permissions says.
+   * Plan mode only reads, and so does a chat with Kernel in Hand off (KERNEL-770): every file change then asks, and
+   * `approveFiles` declines all but a file it shares. Git reads in the sandbox, and a git command that writes asks to leave it.
+   */
   private sandbox(): SandboxPolicy {
     const network = this.host.settings().permissions.network !== false
-    if (this.plan) return { type: 'readOnly', networkAccess: network }
+    if (this.plan || this.handoff) return { type: 'readOnly', networkAccess: network }
     return { type: 'workspaceWrite', writableRoots: this.gitDir ? [this.gitDir] : [], networkAccess: network, excludeTmpdirEnvVar: false, excludeSlashTmp: false }
   }
 
@@ -271,7 +282,7 @@ export class CodexRunner implements Runner {
     // The same in every mode (KERNEL-447). Under `untrusted` Kernel sees every command Codex doesn't trust on its own, so Never
     // allow, network off and protected branches hold in Bypass permissions too, and no `approvalsReviewer` ever answers for the
     // user: Auto runs as Accept edits on Codex until Always ask can reach the user under `auto_review` (KERNEL-433).
-    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: this.o.prompt, personality: this.o.personality, ...(config ? { config } : {}) }
+    const settings = { cwd: ws.path, model: this.model, approvalPolicy: 'untrusted' as const, sandbox: 'workspace-write' as const, developerInstructions: withReferences(this.o.prompt, this.o.references), personality: this.o.personality, ...(config ? { config } : {}) }
     if (this.threadId) {
       try {
         const r = await this.rpc.request<ThreadStartResponse>('thread/resume', { threadId: this.threadId, ...settings }, { timeoutMs: 60_000 })
@@ -510,6 +521,9 @@ export class CodexRunner implements Runner {
     }
   }
 
+  /** The rules for the next step, with the room's reference folders, which no file change may touch (KERNEL-790). */
+  private rules(): Rules { return { ...rulesOf(this.host), references: this.o.references } }
+
   /** A paused room's agent waits here, before its next step, as a Claude agent waits at its next tool call. */
   private async held() { const open = this.host.held(); if (open) await open }
 
@@ -524,7 +538,7 @@ export class CodexRunner implements Runner {
     const command = unwrapShell(p.command ?? '')
     const leaves = leavesSandbox(p)
     const step: Step = { tool: 'Bash', command, network: !!p.networkApprovalContext, sandbox: leaves ? 'outside' : 'inside', cwd: p.cwd ?? this.host.workspace.path }
-    const verdict = decide(step, rulesOf(this.host))
+    const verdict = decide(step, this.rules())
     // Codex's answer carries no reason, so a refusal shows in the chat, where the user sees why the step failed.
     if (verdict?.behavior === 'deny') return this.declined(verdict.message)
     if (verdict?.behavior === 'allow') return { decision: 'accept' }
@@ -536,7 +550,7 @@ export class CodexRunner implements Runner {
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
 
-  private declined(why: string): CommandExecutionRequestApprovalResponse {
+  private declined(why: string): { decision: 'decline' } {
     // Two refusals can land in the same millisecond, and each keeps its own note.
     this.host.item({ kind: 'note', id: `codex-declined-${randomUUID()}`, ts: Date.now(), text: why })
     return { decision: 'decline' }
@@ -544,16 +558,23 @@ export class CodexRunner implements Runner {
 
   /**
    * File edits accept in Accept edits, Auto and Bypass permissions, and ask in Manual, as Claude's do. Writes outside the
-   * workspace ask, except in Bypass permissions (KERNEL-447).
+   * workspace ask, except in Bypass permissions (KERNEL-447). A change that touches a reference folder anywhere, in any of its
+   * files, a rename's destination or its `grantRoot`, declines in every mode (KERNEL-790).
    */
   private async approveFiles(p: FileChangeRequestApprovalParams, signal: AbortSignal): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'
+    // A rename writes its destination too, so `move_path` counts as a file the change touches.
+    const touched = [...(change?.changes.flatMap((c) => [c.path, ...(c.kind.type === 'update' && c.kind.move_path ? [c.kind.move_path] : [])]) ?? []), ...(p.grantRoot ? [p.grantRoot] : [])]
+    const cwd = this.host.workspace.path
+    if (touched.some((file) => referenceWrite({ tool: 'Edit', input: { file_path: file }, cwd }, this.o.references))) return this.declined(REFERENCE_READ_ONLY)
     // A review only reads, whatever its agent's file says (KERNEL-549).
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
-    if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
+    // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
+    if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return { decision: 'decline' }
+    if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, this.rules())?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
@@ -566,7 +587,7 @@ export class CodexRunner implements Runner {
   private async approvePermissions(p: PermissionsRequestApprovalParams, signal: AbortSignal): Promise<PermissionsRequestApprovalResponse> {
     const none: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' }
     const granted: PermissionsRequestApprovalResponse = { permissions: { ...(p.permissions.network ? { network: p.permissions.network } : {}), ...(p.permissions.fileSystem ? { fileSystem: p.permissions.fileSystem } : {}) }, scope: 'turn' }
-    const verdict = decide({ tool: 'Permissions', network: !!p.permissions.network, sandbox: 'outside' }, rulesOf(this.host))
+    const verdict = decide({ tool: 'Permissions', network: !!p.permissions.network, sandbox: 'outside' }, this.rules())
     if (verdict?.behavior === 'deny') return none
     if (verdict?.behavior === 'allow') return granted
     const title = p.permissions.network ? 'Allow network access' : 'Allow access outside the workspace'
@@ -590,6 +611,19 @@ export class CodexRunner implements Runner {
     }
     return { answers }
   }
+}
+
+/** Whether `path`, as Codex names a changed file, is under the workspace's `.kernel/shared`, where share_file's files go (KERNEL-770). */
+export function sharesFile(workspace: string, path: string): boolean {
+  const rel = relative(resolve(workspace, SHARED_DIR), resolve(workspace, path))
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..')
+}
+
+/** The thread's developer instructions, with the room's reference folders named, so the agent knows it may read them (KERNEL-790). */
+export function withReferences(prompt: string, references: string[] | undefined): string {
+  if (!references?.length) return prompt
+  const list = references.map((r) => `- ${r}`).join('\n')
+  return `${prompt}\n\nThe room's reference folders. Read them when they help, but don't change them, since Kernel declines any edit there:\n${list}`
 }
 
 /** What a command card says when accepting runs the command outside Codex's sandbox. */

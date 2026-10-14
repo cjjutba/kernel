@@ -1,6 +1,6 @@
 import type { PermissionMode, ReviewKind, RunMode } from './settings'
 import type { TrackerKind } from './trackers'
-import type { ChangedFile } from './workspaces'
+import type { ChangedFile, LeadMode } from './workspaces'
 
 /** The agent CLI a chat runs on: Claude Code through the Agent SDK, or Codex through `codex app-server` (KERNEL-406). */
 export type Provider = 'claude' | 'codex'
@@ -148,6 +148,13 @@ export type ChatItem =
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
   /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */
   | { kind: 'shared'; id: string; ts: number; sharedId: string; version: number }
+  /** The chat with Kernel switched to `mode` from the next turn, drawn as a divider with `leadModeSwitched`'s text (KERNEL-770). */
+  | { kind: 'leadMode'; id: string; ts: number; mode: LeadMode }
+  /**
+   * Kernel, in Build here, says the work is too big for one PR and suggests Hand off with suggest_hand_off (KERNEL-770). Drawn
+   * under its reply as a "Switch to Hand off" button that calls `lead.setMode`, while the chat is still in Build here. `why` is Kernel's reason.
+   */
+  | { kind: 'modeSuggestion'; id: string; ts: number; mode: LeadMode; why: string }
 
 /** What a shared file is, from its extension and first bytes (KERNEL-302). */
 export type SharedKind = 'html' | 'image' | 'pdf' | 'markdown'

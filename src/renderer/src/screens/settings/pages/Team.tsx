@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AgentDef, AppSettings, TeamPatch } from '@shared/types'
+import type { AgentDef, AppSettings, LeadMode, TeamPatch } from '@shared/types'
 import { KERNEL_LEAD, reviewerChoice } from '@shared/team'
+import { leadModeName, newChatLeadMode } from '@shared/leadMode'
 import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
 import { KernelMark } from '../../../icons'
@@ -162,6 +163,13 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button disabled={busy !== null} onClick={() => setResetting(true)}>Reset to default</Button></>
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
         </span>
+        </Row>
+        <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this room.">
+          <Select label="New chats with Kernel" align="right" value={rs?.agents?.leadMode ?? 'app'} disabled={busy !== null} options={[
+            { value: 'app', label: `App default (${leadModeName(newChatLeadMode({ team: { leadMode: s.team.leadMode } }, undefined))})` },
+            { value: 'handoff', label: leadModeName('handoff') },
+            { value: 'build', label: leadModeName('build') }
+          ]} onChange={(v) => void patchRoomSettings(roomId, { agents: { leadMode: v === 'app' ? null : (v as LeadMode) } })} />
         </Row>
         {!!files.length && (
           <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">

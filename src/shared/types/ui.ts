@@ -18,8 +18,11 @@ export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
   | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
   | { name: 'workspace'; workspaceId: string }
-  /** New chat in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
-  | { name: 'leadNew'; roomId: string }
+  /**
+   * New chat, the page every entry point opens (KERNEL-788). No workspace exists until the first message (KERNEL-405). `source` is what the
+   * chat starts from, which the box shows as a chip, and `picks` is what the box had chosen when the issue warning sent it back (KERNEL-500).
+   */
+  | { name: 'leadNew'; roomId: string; source?: WorkspaceSource; picks?: NewChatPicks }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
   | { name: 'issues'; issueId?: string; roomId?: string }
@@ -43,10 +46,6 @@ export interface NewChatPicks {
   plan: boolean
   /** The target branch picked, empty for the default. */
   baseRef: string
-  /** The base a picked PR or branch set, which its prompt already says. */
-  pickedRef: string
-  /** The prompt a picked source wrote, which the next pick may replace. */
-  filled: string
 }
 
 /** A New chat the issue check held back (KERNEL-500). Start anyway sends `parts` to the room's Lead, and Cancel reopens New chat on `source` with `picks`. */
@@ -62,8 +61,6 @@ export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire' | 'tru
 /** The one modal shell's contents. At most one modal is open. */
 export type Modal =
   | null
-  /** `picks` is what New chat had chosen when the issue warning sent it back (KERNEL-500). */
-  | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource; picks?: NewChatPicks }
   | { name: 'search' }
   | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
@@ -105,8 +102,7 @@ export type Modal =
 
 /**
  * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu, and `reply:<id>` the "..." menu under a reply.
- * Composer and new workspace menus share names because only one of the two is on screen.
- */
+  */
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
@@ -194,6 +190,8 @@ export interface UiState {
   nav: { canBack: boolean; canForward: boolean }
   /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /** Ids of the workspaces whose right panel stays closed whatever `rightPanel` says, until the toggle is pressed in that chat. A chat started from New chat is one (KERNEL-788). */
+  panelHeld: string[]
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
   bottomRatio: number
   /** The bottom pane is folded to its tab bar. One flag for the Lead's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */

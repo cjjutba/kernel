@@ -60,13 +60,12 @@ describe('a big terminal open in a room with no chat', () => {
 describe("a room's New chat box draft", () => {
   const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
 
-  it('is its own per room, survives a prune, and leaves the dialog\'s draft alone', async () => {
+  it('is its own per room, survives a prune', async () => {
     vi.resetModules()
-    const { loadDraft, newChatDraftOf, NEW_CHAT_DRAFT, pruneDrafts, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
+    const { loadDraft, newChatDraftOf, pruneDrafts, saveDraft } = await import('../src/renderer/src/screens/workspace/composer/draftStore')
     saveDraft(newChatDraftOf('room-a'), words('plan the week'), '')
     expect(loadDraft(newChatDraftOf('room-a'))).toEqual(words('plan the week'))
     expect(loadDraft(newChatDraftOf('room-b'))).toBeUndefined()
-    expect(loadDraft(NEW_CHAT_DRAFT)).toBeUndefined()
     pruneDrafts({ workspaces: [], chats: {} }, () => true)
     expect(loadDraft(newChatDraftOf('room-a'))).toEqual(words('plan the week'))
   })

@@ -4,7 +4,7 @@ import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
 import { Button, Icon, Select, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
-import { openLeadChat } from '../../lead'
+import { openLeadChat, openNewChat } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
 import { Markdown } from '../workspace/markdown'
 import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
@@ -78,7 +78,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
     try { actions.settings.setRoom(room.id, await call('settings.setRoom', { roomId: room.id, patch: { linear: { team } } })) }
     catch (e) { actions.ui.toast({ title: `Could not link ${team} to ${room.name}`, sub: cleanError(e) }) }
   })
-  const newChat = () => issue && actions.ui.openModal({ name: 'newWorkspace', roomId: room?.id, source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url } })
+  const newChat = () => issue && openNewChat(room?.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url } })
 
   if (!issue) {
     return (
