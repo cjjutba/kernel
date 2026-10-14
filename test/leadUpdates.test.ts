@@ -33,7 +33,7 @@ const NAMES: Record<string, string> = { kernel: 'Kernel', noor: 'Noor', kai: 'Ka
 const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 
 /** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
-async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean; log?: ConstructorParameters<typeof LeadUpdates>[0]['log'] } = {}) {
+async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boolean; log?: ConstructorParameters<typeof LeadUpdates>[0]['log']; ownChat?: (ws: Workspace) => string | undefined } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-lu-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   // Teammate workspaces were handed off in the Lead chat "lc" unless a test says otherwise.
@@ -67,6 +67,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
     reviewer: () => s.reviewer,
     reviewState: () => s.review,
     autoReview: () => s.autoReview,
+    ...(o.ownChat ? { ownChat: o.ownChat } : {}),
     ...(o.defaults ? {} : { delayMs: o.delayMs ?? 20 })
   }
   const make = () => { const x = new LeadUpdates(deps); x.attach(); open.push(x); return x }
@@ -778,6 +779,74 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     await wait()
     expect(s.posts).toHaveLength(1)
     expect(parts(s.posts[0]).todo).toContain('- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.')
+  })
+})
+
+describe("a Build here chat's own PR (KERNEL-778)", () => {
+  /** The chat "bc" builds in its own workspace "bh", in Build here. "lead" stays a chat in Hand off. */
+  async function buildSetup() {
+    const t = await setup({ ownChat: (w) => (w.id === 'bh' ? 'bc' : undefined) })
+    t.ws('bh', 'kernel', { title: 'Retry button' })
+    t.chat('bc', 'bh')
+    return { ...t, bh: t.store.workspace('bh')!, bc: t.store.chat('bc')! }
+  }
+  const SELF = 'Kernel (kernel) · Retry button · workspace bh'
+
+  it('tells the chat itself what to fix, in its own worktree, while a teammate\'s PR still goes through the teammate', async () => {
+    const { s, pr } = await buildSetup()
+    const said: [PrState, string][] = [
+      ['cifail', "- Fix the failed checks on PR #54 in this chat's worktree, then push."],
+      ['changes', "- Make the changes requested on PR #54 in this chat's worktree, then push."],
+      ['conflict', "- Resolve the conflicts on PR #54 in this chat's worktree: fetch, rebase onto main, re-run the tests and force push."],
+      ['merged', '- PR #54 merged. Tell the user in one line that the next change in this chat starts a new branch from main.']
+    ]
+    for (const [state, todo] of said) {
+      pr('bh', state)
+      await wait()
+      expect(s.to.pop()).toBe('bc')
+      const sent = parts(s.posts.pop()!)
+      expect(sent.body[0]).toBe(SELF)
+      expect(sent.todo).toEqual([todo])
+    }
+    pr('w1', 'cifail')
+    await wait()
+    expect(s.to.pop()).toBe('lc')
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+  })
+
+  it("keeps a chat in Hand off silent about its own PR", async () => {
+    const { s, pr } = await buildSetup()
+    pr('lead', 'cifail')
+    await wait()
+    expect(s.posts).toEqual([])
+  })
+
+  it('waits while the chat is building and goes when its turn ends', async () => {
+    const { u, s, pr, bh, bc } = await buildSetup()
+    s.busy.add('bc')
+    pr('bh', 'cifail')
+    await wait()
+    expect(s.posts).toEqual([])
+    s.busy.delete('bc')
+    u.turnDone(bh, bc, { ...done, lead: true })
+    expect(s.to).toEqual(['bc'])
+    expect(parts(s.posts[0]).todo).toEqual(["- Fix the failed checks on PR #54 in this chat's worktree, then push."])
+  })
+
+  it("sends a review's blockers on the chat's PR to the chat, to fix itself", async () => {
+    const { u, s, ws, chat, store } = await buildSetup()
+    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'bh', leadChatId: 'bc' })
+    chat('rvc', 'rv')
+    NAMES.theo = 'Theo'
+    s.reviewer = THEO
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
+    await wait()
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Fix Theo's blockers in this chat's worktree, then push. Then ask Theo to review again with message_agent (workspace rv)."])
+    s.review = rs({ blocking: ['code'], blockers: true })
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('bh')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'Still one.', blockers: [{ text: 'No test.' }], lens: 'code', ts: 2 })
+    await wait()
+    expect(parts(s.posts.pop()!).todo[0]).toMatch(/^- Fix the code review's blockers in this chat's worktree, then push\. Kernel reviews the PR again once its checks pass\./)
   })
 })
 

@@ -47,12 +47,18 @@ async function setup(o: { app?: object; main?: Record<string, string>; local?: b
   }
   let room = await k.addRoom(repo)
   if (o.local) room = k.store.saveRoom({ ...room, host: 'local' })
+  const buildChat = async () => {
+    const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+    await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
+    return k.lead.setMode(k.store.chat(c.id)!.workspaceId, 'build')
+  }
   const activity: ActivityEvent[] = []
   const onActivity = (e: ActivityEvent) => { activity.push(e) }
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
-  const pr = async (files: Record<string, string>, r: { checks?: PrCheck[]; blockers?: ReviewKind[]; approved?: ReviewKind[] } = {}) => {
-    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
+  /** `build`: the work is a chat with Kernel's own, in Build here (KERNEL-778). */
+  const pr = async (files: Record<string, string>, r: { checks?: PrCheck[]; blockers?: ReviewKind[]; approved?: ReviewKind[]; build?: boolean } = {}) => {
+    const ws = r.build ? await buildChat() : await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Task' })
     for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(ws.path, f)), { recursive: true }); await writeFile(join(ws.path, f), c) }
     await git(ws.path, 'add', '-A')
     await git(ws.path, 'commit', '-qm', 'work')
@@ -99,6 +105,16 @@ describe('which PRs merge by themselves', () => {
     expect(await k.prs.autoMerge(ws.id)).toEqual({ merged: expect.objectContaining({ prState: 'merged' }) })
     expect(gh.merged).toEqual(['squash'])
     expect(activity.find((a) => a.text === 'merged automatically')).toMatchObject({ actor: 'kernel', object: 'PR #101' })
+  })
+
+  it("merges a Build here chat's own PR by the same rule, and refuses it on a blocker (KERNEL-778)", async () => {
+    const { k, gh, pr } = await setup({ main: { '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' } })
+    const blocked = await pr({ 'src/a.ts': 'export const a = 1\n' }, { build: true, blockers: ['code'] })
+    expect(await k.prs.autoMerge(blocked.id)).toEqual({ refused: 'The code review found blockers on the latest commit.' })
+    const ws = await pr({ 'src/b.ts': 'export const b = 1\n' }, { build: true })
+    expect(await k.prs.autoMerge(ws.id)).toEqual({ merged: expect.objectContaining({ prState: 'merged' }) })
+    expect(gh.merged).toEqual(['squash'])
+    expect(k.store.workspace(ws.id)?.status).toBe('ready')
   })
 
   it("merges with the user's own personal settings file turning it on, the app's setting off", async () => {

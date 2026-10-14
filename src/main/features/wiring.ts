@@ -34,6 +34,8 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     // With no Lead tab open, an update that needs the Lead opens one rather than being dropped (KERNEL-365).
     open: (roomId, owner) => k.lead.openUpdateTab(roomId, owner),
     isLead: (ws) => !!k.team.agentOf(ws.roomId, ws.agentId)?.lead,
+    // A Build here chat's PR reports to that chat (KERNEL-778).
+    ownChat: (ws) => k.lead.buildTab(ws),
     agentName: (roomId, agentId) => k.team.agentOf(roomId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
     holdOf: (chatId) => k.sessions.postHold(chatId),

@@ -286,6 +286,21 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.posts).toEqual([])
   })
 
+  it('tells a chat in Build here, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
+    const s = await setUp()
+    const leadChat = await s.k.lead.leadChat(s.room.id)
+    await s.k.workspaces.worktreeMade(leadChat.workspaceId)
+    s.k.lead.setMode(leadChat.workspaceId, 'build')
+    const lead = s.k.store.workspace(leadChat.workspaceId)!
+    await commit(lead.path, { 'src/a.ts': SAME_LINE('lead') }, 'lead')
+    await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
+    await s.check()
+    expect(s.posts).toEqual([{ chatId: leadChat.id, text: baseMessage('origin/main', 1, ['src/a.ts']) }])
+    const check = vi.spyOn(s.k.baseWatch, 'check')
+    sessionDeps(s.k).onTurnDone!(s.k.store.workspace(lead.id)!, leadChat, { ok: true, interrupted: false, by: 'user' })
+    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: lead.id })
+  })
+
   it('stops quietly when the fetch fails, and checks again once it works', async () => {
     const s = await setUp()
     await conflictOnMain(s)
