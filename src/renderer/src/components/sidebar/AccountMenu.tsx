@@ -2,7 +2,7 @@ import './account.css'
 import { useRef } from 'react'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Icon, Menu, MENU_SEPARATOR, useBusy, type MenuEntry } from '../../ui'
+import { Icon, Menu, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { PROVIDERS, type AccountProfile, type Provider } from '@shared/types'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'K'
@@ -41,7 +41,7 @@ export function AccountButton() {
         <span className="acct-row">
           <span className="acct-name ellipsis">{a.label}</span>
           <span className="acct-plan ellipsis">{a.auth === 'apiKey' ? undefined : a.plan}</span>
-          {switching ? <span className="spin" aria-hidden="true" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
+          {switching ? <Spinner label={null} /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
         </span>
       ),
       onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'accounts', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)

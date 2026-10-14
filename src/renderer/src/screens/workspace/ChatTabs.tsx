@@ -6,7 +6,7 @@ import { FileIcon } from '../../components/FileIcon'
 import { isUnread } from '../../components/sidebar/unread'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
-import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
+import { Icon, IconButton, Menu, MENU_SEPARATOR, Spinner, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -165,7 +165,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
                   <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
-                    {g?.icon === 'spin' ? <span className="spin" /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                    {g?.icon === 'spin' ? <Spinner label={null} /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>

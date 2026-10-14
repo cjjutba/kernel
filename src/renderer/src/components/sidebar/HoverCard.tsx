@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { ActivityEvent, Chat, Thread, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
-import { Button } from '../../ui'
+import { Button, Spinner } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
@@ -103,7 +103,7 @@ function HoverCard({ at, id, hold, label, children }: { at: DOMRect; id: string;
 function State({ g, merged }: { g: WorkspaceGlyph; merged?: boolean }) {
   return (
     <span className="hc-state" data-tone={merged ? 'merged' : g.tone === 'needs' ? 'needs' : undefined} aria-hidden="true">
-      {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} size={14} />}
+      {g.icon === 'spin' ? <Spinner label={null} /> : <Icon name={g.icon} size={14} />}
     </span>
   )
 }

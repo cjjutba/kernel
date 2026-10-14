@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { McpAccount, McpSignInAll, Provider } from '@shared/types'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, mcpNeedYou, mcpRunKey, useStore } from '../../../store'
-import { Icon, useBusy } from '../../../ui'
+import { Icon, Spinner, useBusy } from '../../../ui'
 
 // Every account's MCP servers (KERNEL-627): the pieces the MCP servers page, Set up this account, the Providers row and a room's
 // Skills and MCP share (KERNEL-661).
@@ -75,7 +75,7 @@ export function SignInLine({ label, needs, run, running, canceling, disabled, on
         <span className="set-warn" role="status">
           <Icon name="warning" size={12} />
           {run?.current ? `Signing in to ${serverName(run.current)}, ${at} of ${total}` : 'Signing in'}
-          <button type="button" className="set-link" aria-label={`Cancel setting up ${label}`} aria-busy={canceling || undefined} disabled={canceling} onClick={onCancel}>{canceling ? <><span className="spin" aria-hidden="true" />Canceling</> : 'Cancel'}</button>
+          <button type="button" className="set-link" aria-label={`Cancel setting up ${label}`} aria-busy={canceling || undefined} disabled={canceling} onClick={onCancel}>{canceling ? <><Spinner label={null} />Canceling</> : 'Cancel'}</button>
         </span>
       )}
       {!live && needs > 0 && (

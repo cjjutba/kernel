@@ -4,7 +4,7 @@ import { call } from '../../api'
 import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
-import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
+import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { patchRoomSettings, useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
@@ -181,7 +181,7 @@ interface CheckRow { state: CheckState; label: string; meta?: string; dim?: bool
 const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail', running: 'run', queued: 'run', skipped: 'idle' }
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'run') return <span className="spin" role="status" aria-label="Running" style={{ margin: '0 1px' }} />
+  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" /></span>
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'x' : state === 'warn' ? 'warning' : 'minus'
   const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>

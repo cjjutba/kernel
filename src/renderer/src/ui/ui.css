@@ -39,7 +39,7 @@
 /* segmented control: equal-width options, labels centred (KERNEL-680) */
 .segmented { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); flex-shrink: 0; }
 .segmented button { height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12.5px; text-align: center; white-space: nowrap; }
-.segmented button:has(.spin) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.segmented button:has(.dots) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .segmented button[aria-checked='true'] { background: var(--surface-3); color: var(--ink); font-weight: 500; }
 
 /* menu */
@@ -102,7 +102,7 @@
 
 /* banner */
 .banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--card-line); background: var(--card-bg); font-size: 12.5px; }
-.banner > svg, .banner > .spin { color: var(--ink-2); flex-shrink: 0; }
+.banner > svg, .banner > .dots { color: var(--ink-2); flex-shrink: 0; }
 .banner-title { color: var(--ink); font-weight: 500; }
 /* A dismissible banner follows a swipe, then slides out. Its close button sits on the top right corner, out of the row, so the row looks the same at rest. */
 .banner[data-dismissible] { position: relative; transition: transform 200ms ease-out; }

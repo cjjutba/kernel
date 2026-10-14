@@ -324,8 +324,19 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); vertical-align: middle; }
-.spin { width: 11px; height: 11px; border-radius: 50%; border: 1.6px solid var(--track); border-top-color: var(--ink-2); animation: spin 0.8s linear infinite; flex-shrink: 0; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* The dot loader (KERNEL-714). Only opacity loops. At rest the dots are graded by --k, which is what reduced motion keeps. Negative delays start the loop mid-wave. */
+.dots { display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, 3px); grid-auto-rows: 3px; gap: 1px; width: 11px; height: 11px; }
+.dots > i { display: block; border-radius: 0.5px; background: var(--spin-ink, var(--ink-2)); opacity: calc(1 - var(--k) * 0.17); }
+.dots[data-size='lg'] { grid-template-columns: repeat(5, 4px); grid-auto-rows: 4px; gap: 3px; width: 32px; height: 32px; }
+.dots[data-size='lg'] > i { border-radius: 1px; opacity: calc(1 - var(--k) * 0.055); }
+.dots[data-size='lg'] > .dots-in { opacity: 0.12; }
+.dots[data-size='lg'] > .dots-gap { background: transparent; }
+@keyframes dots-wave { 0%, 100% { opacity: 0.15; } 50% { opacity: 1; } }
+@keyframes dots-run { 0% { opacity: 0.15; } 8% { opacity: 1; } 55%, 100% { opacity: 0.15; } }
+@media (prefers-reduced-motion: no-preference) {
+  .dots[data-size='sm'] > i { animation: dots-wave 1.2s ease-in-out infinite; animation-delay: calc(var(--k) * 0.1s - 0.6s); }
+  .dots[data-size='lg'] > i:not(.dots-in, .dots-gap) { animation: dots-run 1.6s ease-in-out infinite; animation-delay: calc(var(--k) * 0.1s - 1.6s); }
+}
 .menu { position: absolute; z-index: 60; min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: 13px; }
 .menu-item:hover { background: var(--hover); }
@@ -354,4 +365,3 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .composer:focus-within { border-color: var(--line-4); }
 .composer input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: 14px; }
 
-@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
