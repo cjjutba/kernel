@@ -16,6 +16,7 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many)
 export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: { provider: Provider; accountId: string; preview: MovePreview; reason?: 'banner' }) {
   const id = useId()
   const accounts = useStore((s) => s.accounts)
+  const keeps = useStore((s) => s.settings?.accounts.keepChatsOnAccount ?? true)
   const [busy, run] = useBusy<'keep' | 'all'>()
   // The modal focuses its first button once it mounts, which is Cancel. Keeping chats is the default, so it takes the focus after.
   useEffect(() => { queueMicrotask(() => document.getElementById(`${id}k`)?.focus()) }, [id])
@@ -38,8 +39,8 @@ export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: {
         <>
           <span className="grow" />
           <Button variant="ghost" size="lg" data-dismiss disabled={busy !== null}>Cancel</Button>
-          <Button size="lg" busy={busy === 'all'} busyLabel="Moving" disabled={busy !== null} onClick={() => void go('all')}>Move all chats now</Button>
-          <Button variant="primary" size="lg" id={`${id}k`} busy={busy === 'keep'} busyLabel="Switching" busyPattern="wave-back" disabled={busy !== null} onClick={() => void go('keep')}>Keep chats on {from}</Button>
+          <Button variant={keeps ? 'secondary' : 'primary'} size="lg" id={keeps ? undefined : `${id}k`} busy={busy === 'all'} busyLabel="Moving" disabled={busy !== null} onClick={() => void go('all')}>Move all chats now</Button>
+          {keeps && <Button variant="primary" size="lg" id={`${id}k`} busy={busy === 'keep'} busyLabel="Switching" busyPattern="wave-back" disabled={busy !== null} onClick={() => void go('keep')}>Keep chats on {from}</Button>}
         </>
       }
     >
@@ -47,7 +48,7 @@ export function ConfirmSwitchAccount({ provider, accountId, preview, reason }: {
         <h2 id={`${id}t`}>Switch to {to}?</h2>
         <p id={`${id}b`}>
           {chats.length} {plural(chats.length, 'chat will', 'chats will')} re-read {plural(chats.length, 'its', 'their')} history on {to}, about {kTokens(tokens)} tokens.
-          {' '}Keeping {plural(chats.length, 'it', 'them')} on {from} reads nothing again, and only new chats start on {to}.
+          {' '}{keeps ? `Keeping ${plural(chats.length, 'it', 'them')} on ${from} reads nothing again, and only new chats start on ${to}.` : 'Keep chats on their account is off in Settings, Accounts, so every chat moves.'}
         </p>
         {priced.length > 0 && <p className="ssa-price">On this API key, reading {plural(priced.length, 'it', 'them')} once costs about {dollars(price)}.</p>}
         <ul className="ssa-list" aria-label="Chats that would move">
