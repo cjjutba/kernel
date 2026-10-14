@@ -113,7 +113,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
 .msg-reply .msg-acts { margin-left: -5px; }
 /* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */
-.msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
+.msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-foot:hover .msg-acts, .msg-foot:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
 .msg-acts .icon-btn { width: 24px; height: 24px; border-radius: var(--r-sm); }
 /* Copy alone under an agent line (KERNEL-828): it floats in the gap under the line, so the line keeps its height. */
 .msg-reply[data-copy] { position: relative; }
