@@ -79,12 +79,13 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
 export interface RowGlyph { icon: 'pr' | 'prDraft' | 'spin'; tone: GlyphTone; label: string }
 
 /**
- * The icon in front of a row. It spins while the PR merges, while an action main announced runs on it (`pending`, KERNEL-520) and
- * while its state runs, as the sidebar's icon does. Its label is the state, for a screen reader.
+ * The icon in front of a row. It spins while an action main announced runs on the PR (`pending`, KERNEL-520) and while its state
+ * runs, as the sidebar's icon does. A merge spins in the row's Merge place instead, so the row shows one spinner and the icon stays
+ * the ready one (KERNEL-417). Its label is the state, for a screen reader.
  */
 export function rowGlyph(row: LeadPr, pending?: PrAction): RowGlyph {
   const { ws, state } = row
-  if (ws.prState === 'merging') return { icon: 'spin', tone: 'muted', label: PR_STATUS.merging.label }
+  if (ws.prState === 'merging' || pending === 'merge') return { icon: 'pr', tone: 'add', label: PR_STATUS.merging.label }
   if (pending) return { icon: 'spin', tone: 'muted', label: busyLabel[pending] }
   if (state?.spin) return { icon: 'spin', tone: 'muted', label: state.label }
   if (row.group === 'ready') return { icon: 'pr', tone: 'add', label: 'Ready to merge' }

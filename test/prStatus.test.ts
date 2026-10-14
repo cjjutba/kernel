@@ -63,7 +63,8 @@ describe('a PR action pending (KERNEL-520)', () => {
     expect(headerView('ready', true, false, undefined, false, 'merge')).toMatchObject({ state: { label: 'Ready to merge', tone: 'ready' }, button: { label: 'Merging', kind: 'busy' } })
     expect(workspaceGlyph(w, { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
     const spinning = draw(w, 'merge')
-    expect(spinning).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
+    expect(spinning).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true"><span class="dots"[^>]*>.*<\/span>Merging<\/span>$/)
+    expect(spinning).not.toContain('<button')
     // It reads as the engine's own merging state does, so the two can't disagree.
     expect(spinning).toBe(draw(ws('merging')))
     // Another PR in the same list has nothing pending and keeps its button.

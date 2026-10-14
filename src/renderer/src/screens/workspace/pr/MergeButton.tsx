@@ -4,7 +4,7 @@ import type { PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, useBusy } from '../../../ui'
+import { Button, Spinner, useBusy } from '../../../ui'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrAction, type PrStatus, type Rules } from './model'
 import { request } from './PrHeader'
@@ -12,8 +12,9 @@ import './pr.css'
 
 /**
  * What a PR's Merge button place shows (KERNEL-351, KERNEL-411): nothing, the button, why it can't, the merge running, the
- * merge done, or where an open PR that can't merge yet stands (`state`), in the words and tone every place uses (KERNEL-417). `override` is a PR that only blockers on its latest commit hold back:
- * a soft Merge anyway takes the Merge button's place (KERNEL-501).
+ * merge done, or where an open PR that can't merge yet stands (`state`), in the words and tone every place uses (KERNEL-417).
+ * `override` is a PR that only blockers on its latest commit hold back: a quiet outline Merge anyway takes the Merge button's
+ * place (KERNEL-501, KERNEL-757).
  */
 export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'override'; reviewer: string; count: number } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | ({ kind: 'state' } & PrStatus)
 
@@ -95,18 +96,19 @@ export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; v
       </span>
     )
     case 'override': return (
-      <span className="pr-tone" data-tone="fail">
-        <Button className="pr-soft tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
+      <span className="pr-tone" data-tone="idle">
+        <Button className="pr-outline tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
       </span>
     )
   }
 }
 
 /**
- * An open PR's state in a PRs tab or Team update row, drawn as the PR band draws it (KERNEL-417): while something runs, a spinner
- * with the word in the band's tone, as the band's own busy button; otherwise the word, red for what needs fixing. `why` is its tooltip.
+ * An open PR's state in a PRs tab or Team update row, in the words and tone the PR band uses (KERNEL-417): the word, red for what
+ * needs fixing, and while something runs the spinner before it. It is never a button, so nothing looks pressable but the one
+ * button a person pressed (KERNEL-757). `why` is its tooltip.
  */
 export function PrStatusTag({ status, why }: { status: PrStatus; why?: string }) {
-  if (status.spin) return <span className="pr-tone" data-tone={status.tone}><Button className="pr-soft tucard-merge" busy>{status.label}</Button></span>
+  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} />{status.label}</span>
   return <span className="pr-word" data-tone={status.tone} data-tip={why}>{status.label}</span>
 }

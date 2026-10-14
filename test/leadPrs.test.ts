@@ -74,9 +74,11 @@ describe('the three lists (KERNEL-757)', () => {
     expect(rowGlyph(failed)).toEqual({ icon: 'pr', tone: 'del', label: 'Checks failed' })
     expect(rowGlyph(running)).toEqual({ icon: 'spin', tone: 'muted', label: 'Checks running' })
     expect(rowGlyph(draft)).toEqual({ icon: 'prDraft', tone: 'muted', label: 'Draft' })
-    // A merge pending or running spins the row, whoever started it (KERNEL-520).
-    expect(rowGlyph(ready, 'merge')).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
-    expect(rowGlyph(list([ws('m', { prState: 'merging' })])[0])).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+    // A merge spins in the row's Merge place, whoever started it, so the icon stays the ready one (KERNEL-520).
+    expect(rowGlyph(ready, 'merge')).toEqual({ icon: 'pr', tone: 'add', label: 'Merging' })
+    expect(rowGlyph(list([ws('m', { prState: 'merging' })])[0])).toEqual({ icon: 'pr', tone: 'add', label: 'Merging' })
+    // Any other action main runs on the PR spins the icon, since the row has no button to spin.
+    expect(rowGlyph(failed, 'resolve')).toEqual({ icon: 'spin', tone: 'muted', label: 'Sending' })
   })
 
   it('says a ready row\'s review, since its list says it can merge, and what any other row waits on with the reason', () => {

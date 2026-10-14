@@ -238,9 +238,9 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     pending.w1 = 'merge'
     try {
       const html = draw()
-      // w1 spins in its Merge place, disabled and saying Merging, while w2 keeps its button.
+      // w1 says Merging with the spinner in its Merge place, with nothing to press, while w2 keeps its button.
       expect(html).not.toContain('aria-label="Merge PR #162"')
-      expect(html).toMatch(/<button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button>/)
+      expect(html).toMatch(/<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>/)
       expect(html).toContain('aria-label="Merge PR #161"')
     } finally { delete pending.w1 }
     // The merge was refused: the pending clears and the row reads Merge again.
@@ -285,11 +285,13 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
     // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another or the Lead
-    // (KERNEL-417). The spinner sits in the ready band's green, as the Merge button did.
+    // (KERNEL-417): the spinner and the word in the ready band's green, never a button (KERNEL-757).
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
-    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
+    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>$/)
     // An open PR's state, as the PR band says it: a spinner while checks run, and the word in red for what failed.
-    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/data-tone="idle"><button[^>]*aria-busy="true"[^>]*>.*Checks running/)
+    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/^<span class="pr-word pr-run" data-tone="idle" aria-busy="true">.*Checks running<\/span>$/)
+    // Merge anyway is a quiet outline, since the row's red state already says what is wrong (KERNEL-757).
+    expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<span class="pr-tone" data-tone="idle"><button[^>]*class="[^"]*pr-outline[^"]*"[^>]*>Merge anyway<\/button><\/span>$/)
     expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })).toBe('<span class="pr-word" data-tone="fail">Checks failed</span>')
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
