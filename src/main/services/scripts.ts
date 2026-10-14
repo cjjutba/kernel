@@ -293,16 +293,18 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       // Stop took the script out of `running` before it signalled it. One still there ended by itself.
       const stopped = !current()
       if (current()) running.delete(k)
+      // On Linux node-pty reports SIGHUP, with exit code 0, for a short script that finished before its terminal closed.
+      // Kernel stops scripts with SIGTERM and SIGKILL, so a hangup on a script nobody stopped is a normal end.
+      const hungUp = signal === 1 && exitCode === 0 && !stopped && !timedOut
       // A run script says how it ended, so a server that quit doesn't look like a button that did nothing (KERNEL-679).
       if (name && !restarted.has(proc)) {
-        if (stopped || signal) scriptNote(o.workspaceId, 'run', 'Run script was stopped', 'stdout', name)
+        if (stopped || (signal && !hungUp)) scriptNote(o.workspaceId, 'run', 'Run script was stopped', 'stdout', name)
         else if (exitCode === 0) scriptNote(o.workspaceId, 'run', 'Run script ended', 'stdout', name)
         else scriptNote(o.workspaceId, 'run', `Run script exited with code ${exitCode}`, 'stderr', name)
       }
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
       // A shell a signal ended has no exit code, as a stopped script had none before.
-      const code = signal ? null : exitCode
-      if (code !== 0) console.error(`TMPDEBUG script exit code=${exitCode} signal=${signal} kind=${o.kind} script=${o.script}`)
+      const code = signal && !hungUp ? null : exitCode
       bus.push({ type: 'script.exit', ...tag, code })
       resolve(timedOut ? 'timeout' : code)
     })
