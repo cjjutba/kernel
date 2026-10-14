@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeChatList, rowHolder, slotKey, slotsFor, sidebarRows, threadTab } from '../src/renderer/src/components/sidebar/slots'
+import { mergeChatList, rowHolder, slotKey, slotsFor, sidebarRows, threadTab, workspaceSlotsFor } from '../src/renderer/src/components/sidebar/slots'
 import type { AgentDef, Chat, Room, Thread, Workspace } from '../src/shared/types'
 
 const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'main', paused: false, createdAt: 0 }
@@ -168,5 +168,37 @@ describe('chat lists that arrive while a push already made one', () => {
   it('lets a pushed chat win over its fetched copy, and keeps a chat only the push knows', () => {
     const merged = mergeChatList([chat('c1', { title: 'old' }), chat('c2')], [chat('c1', { title: 'renamed' }), chat('c9')])
     expect(merged.map((c) => [c.id, c.title])).toEqual([['c1', 'renamed'], ['c2', 'c2'], ['c9', 'c9']])
+  })
+})
+
+describe('workspace shortcuts (KERNEL-814)', () => {
+  const workspaces = [own('t1'), own('t2'), ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't1' }), ws('w3', { threadId: 't1' }), ws('w4', { threadId: 't2' }), ws('loose')]
+  const threads = threadsOf(thread('t1', { lastSentAt: 5 }), thread('t2'))
+  const lists = { ...tabsOf('t1'), ...tabsOf('t2') }
+  const at = (workspaceId: string) => workspaceSlotsFor({ name: 'workspace', workspaceId }, room, agents, workspaces, lists, threads).map((w) => w.id)
+
+  it("lists the chat's workspaces in sidebar order, from the chat and from a sibling", () => {
+    expect(at('ws-t1')).toEqual(['w1', 'w2', 'w3'])
+    expect(at('w2')).toEqual(['w1', 'w2', 'w3'])
+    expect(at('w4')).toEqual(['w4'])
+  })
+
+  it('has none past the last, or with no current chat', () => {
+    expect(at('w3')[3]).toBeUndefined()
+    expect(at('loose')).toEqual([])
+    for (const route of [{ name: 'home' }, { name: 'inbox' }, { name: 'leadNew', roomId: 'a' }] as const) {
+      expect(workspaceSlotsFor(route as never, room, agents, workspaces, lists, threads)).toEqual([])
+    }
+  })
+
+  it('still answers for a folded chat', () => {
+    const rows = sidebarRows(room, agents, workspaces, lists, threads, ['t1'])
+    expect(keys(rows)).not.toContain('workspace:w1')
+    expect(at('ws-t1')).toEqual(['w1', 'w2', 'w3'])
+  })
+
+  it('stops at nine', () => {
+    const many = Array.from({ length: 11 }, (_, i) => ws(`m${i}`, { threadId: 't1' }))
+    expect(workspaceSlotsFor({ name: 'workspace', workspaceId: 'ws-t1' }, room, agents, [own('t1'), ...many], tabsOf('t1'), threadsOf(thread('t1')))).toHaveLength(9)
   })
 })

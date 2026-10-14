@@ -20,7 +20,7 @@ import { chatTrusts, chatWaits } from './chatWaits'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
-import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { liveWorkspaces, mergeChatList, openRow, rowHolder, sidebarRows, slotKey, slotsFor, workspaceSlotsFor, type Slot } from './slots'
 import { useLocalMerge } from '../../screens/workspace/pr/useLocalMerge'
 import { useShown, type Fate, type Shown } from './leaving'
 import { chatUnread, roomUnread, workspaceRowUnread } from './unread'
@@ -38,34 +38,35 @@ const same = (a: Route, b: Route) => {
 /** A row whose workspace was archived and has left the list, and is still drawn: `from` is the route the archive moved off, and `held` means it waits as it was. */
 type Gone = { from?: Route; held?: boolean }
 
-/** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
+/** How long ⌘ or ⌃ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
 const HINT_DELAY = 400
 
-/** True once ⌘ has been held alone for HINT_DELAY. Another key, letting go of ⌘ or the window losing focus ends it. */
-function useCmdHeld(): boolean {
+/** True once `mod` has been held alone for HINT_DELAY. Another key, letting go of it or the window losing focus ends it. */
+function useModHeld(mod: 'Meta' | 'Control'): boolean {
   const [held, setHeld] = useState(false)
   useEffect(() => {
     let timer: number | undefined
     const off = () => { window.clearTimeout(timer); timer = undefined; setHeld(false) }
     const down = (e: KeyboardEvent) => {
-      if (e.key !== 'Meta' || e.ctrlKey || e.altKey || e.shiftKey) return off()
+      const others = mod === 'Meta' ? e.ctrlKey : e.metaKey
+      if (e.key !== mod || others || e.altKey || e.shiftKey) return off()
       if (e.repeat || timer !== undefined) return
       timer = window.setTimeout(() => setHeld(true), HINT_DELAY)
     }
-    const up = (e: KeyboardEvent) => { if (e.key === 'Meta') off() }
+    const up = (e: KeyboardEvent) => { if (e.key === mod) off() }
     window.addEventListener('keydown', down)
     window.addEventListener('keyup', up)
     window.addEventListener('blur', off)
     return () => { off(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', off) }
-  }, [])
+  }, [mod])
   return held
 }
 
-/** A numbered row's ⌘N, shown at its right end while ⌘ is held. The row's aria-keyshortcuts says the same to a screen reader. */
-const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hidden="true">⌘{n}</span>
+/** A numbered row's ⌘N (a chat's) or ⌃N (a workspace's), shown at its right end while the key is held. The row's aria-keyshortcuts says the same to a screen reader. */
+const KeyHint = ({ n, ctrl }: { n: number; ctrl?: boolean }) => <span className="mono nav-key" aria-hidden="true">{ctrl ? '⌃' : '⌘'}{n}</span>
 
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
-type RowKey = { n: number; hint: boolean }
+type RowKey = { n: number; hint: boolean; /** The row's number is a ⌃ one: a workspace of the current chat. */ ctrl?: boolean }
 
 /** The icon a row has at rest, which the loader takes the place of while it runs (`busy` on `Glyph`). `rest` is the glyph without the activity, `fallback` stands in when the rest state is a spinner too. */
 const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): WorkspaceGlyph & { icon: IconName } => {
@@ -78,10 +79,10 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
   const current = useStore((s) => { const r = leaving ? leaving.from ?? s.ui.route : s.ui.route; return same(r, route) || (route.name === 'issues' && r.name === 'issues') })
   const arrive = useArriving(current && !leaving)
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current && !leaving ? 'page' : undefined} data-was-current={current && leaving ? '' : undefined} data-arrive={arrive ? '' : undefined} aria-label={unread === undefined ? undefined : `${unread}, Unread`} data-unread={unread === undefined ? undefined : ''} aria-keyshortcuts={slot && `${slot.ctrl ? 'Control' : 'Meta'}+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
-      {slot?.hint ? <KeyHint n={slot.n} /> : right}
+      {slot?.hint ? <KeyHint n={slot.n} ctrl={slot.ctrl} /> : right}
     </button>
   )
 }
@@ -181,7 +182,7 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
   )
 }
 
-const sameSlot = (a?: RowKey, b?: RowKey) => a === b || (!!a && !!b && a.n === b.n && a.hint === b.hint)
+const sameSlot = (a?: RowKey, b?: RowKey) => a === b || (!!a && !!b && a.n === b.n && a.hint === b.hint && a.ctrl === b.ctrl)
 const sameList = <T,>(a: T[], b: T[]) => a === b || (a.length === b.length && a.every((x, i) => x === b[i]))
 const sameGone = (a?: Gone, b?: Gone) => a === b || (!!a && !!b && a.from === b.from && a.held === b.held)
 
@@ -292,7 +293,7 @@ function blocksOf(shown: Shown[]): Shown[][] {
  */
 const NO_KEYS: string[] = []
 
-function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; onToggle: () => void }) {
+function RoomItem({ room, current, expanded, numbered, hints, ctrlHints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; ctrlHints: boolean; onToggle: () => void }) {
   // Only this room's slice of each: an event in another room, or for a chat that isn't a row here, leaves it alone.
   const agents = useStore((s) => ({ [room.id]: s.agents[room.id] }))
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id))
@@ -312,7 +313,14 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const [shown, settle] = useShown(rows, expanded && !reducedMotion(), fate)
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
   const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads])
-  const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
+  // The workspaces of the chat in view get ⌃ numbers, from the same list ⌃1 to ⌃9 read (KERNEL-814).
+  const route = useStore((s) => s.ui.route)
+  const mine = useMemo(() => workspaceSlotsFor(route, room, agents, workspaces, chats, threads).map((w) => w.id), [route, room, agents, workspaces, chats, threads])
+  const slotOf = (row: Slot): RowKey | undefined => {
+    if (row.kind === 'workspace') { const j = mine.indexOf(row.ws.id); return j < 0 ? undefined : { n: j + 1, hint: ctrlHints, ctrl: true } }
+    const i = order.indexOf(slotKey(row))
+    return i < 0 ? undefined : { n: i + 1, hint: hints }
+  }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
   const homes = chatWorkspaces(workspaces, threads, room.id).map((w) => w.id)
@@ -386,7 +394,8 @@ export function AppSidebar() {
   const inbox = useStore(inboxCount)
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
-  const hints = useCmdHeld()
+  const hints = useModHeld('Meta')
+  const ctrlHints = useModHeld('Control')
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
@@ -462,7 +471,7 @@ export function AppSidebar() {
       >
         {rooms.map((r) => {
           const expanded = chosen[r.id] ?? r.id === openRoom
-          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} numbered={r.id === numberedRoom} hints={hints} onToggle={() => toggle(r.id, expanded)} />
+          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} numbered={r.id === numberedRoom} hints={hints} ctrlHints={ctrlHints} onToggle={() => toggle(r.id, expanded)} />
         })}
       </div>
       <div style={{ flex: 1 }} />
