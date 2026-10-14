@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
 import { readFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,6 +24,7 @@ import { muteShadowedWarning } from './services/providers/claude'
 import { macKeychain } from './services/providers/claudeHome'
 import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
+import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
 import { handZoom, zoomStepOf } from './windowZoom'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
@@ -183,6 +184,9 @@ const load = (w: BrowserWindow) => { if (rendererUrl) void w.loadURL(rendererUrl
 /** Traffic lights centered on the screen header row (y 9 to 53), in the same place whether the sidebar is open or hidden (KERNEL-431). */
 const LIGHTS = { x: 20, y: 25 }
 
+/** Settings, Appearance for the window and native UI, made once the app is ready (KERNEL-708). */
+let appearance: WindowAppearance | undefined
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -190,12 +194,12 @@ function createWindow() {
     // Small enough to tile half of a laptop screen. Below 1024 and 900 the right panel and sidebar fold (D-080).
     minWidth: 720,
     minHeight: 520,
-    backgroundColor: '#070707',
+    backgroundColor: appearance?.backgroundColor,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: LIGHTS,
     show: false,
     // A hidden page counts as in the background, and Chromium would slow its timers and frames.
-    webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless }
+    webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless, additionalArguments: appearance ? [appearance.arg] : [] }
   })
   // The default menu would close the window on Cmd+W and reload it on Cmd+R. Kernel closes the open tab and runs the dev
   // script instead, so the page hears about them (KERNEL-539). View, Reload stays in the menu. The menu also zooms the window on
@@ -273,6 +277,9 @@ app.whenReady().then(async () => {
     console.error(`[kernel] no fixture named ${fixtureName}. Known: ${Object.keys(known).join(', ')}`)
     return app.exit(1)
   }
+  // A fixture's theme wins, as `pnpm shots --theme light` asks. A real run opens on what settings.json says.
+  const fixtureLook = fixture && appearanceOf({ theme: fixtureTheme().theme ?? fixture.ui.theme })
+  appearance = new WindowAppearance({ nativeTheme, window: mainWindow, initial: fixtureLook || readAppearance(join(app.getPath('userData'), 'settings.json')) })
   let handlers: Record<string, (req: unknown) => Promise<unknown>>
   let started: Promise<void> = Promise.resolve()
   if (fixture) {
@@ -352,7 +359,7 @@ app.whenReady().then(async () => {
       // A dev run has no updater and no notes in its build, so What's new reads the version's release file in the repo.
       currentNotes: app.isPackaged ? undefined : readNotes(join(app.getAppPath(), 'site', 'content', 'releases', `${app.getVersion()}.md`)),
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
-      onSettings: (s) => { const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
+      onSettings: (s) => { appearance?.set(s.appearance); const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
       showNotification: (n, { silent, sound }) => {
         if (!Notification.isSupported()) return
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent, ...(sound ? { sound } : {}) })
