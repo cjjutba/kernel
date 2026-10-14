@@ -79,9 +79,9 @@ describe('turn files card', () => {
   })
 
   it('titles the card with the file count and totals every file', () => {
-    expect(turnFiles([file('a.ts', 'M', 1, 2)]).title).toBe('1 file changed')
+    expect(turnFiles([file('a.ts', 'M', 1, 2)]).title).toBe('1 file changed in this reply')
     const v = turnFiles([file('a.ts', 'M', 31, 12), file('b.ts', 'D', 0, 54), file('c.ts', 'A', 68, 0)])
-    expect(v.title).toBe('3 files changed')
+    expect(v.title).toBe('3 files changed in this reply')
     expect(v).toMatchObject({ added: 99, removed: 66 })
   })
 
