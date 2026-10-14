@@ -18,7 +18,7 @@ export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
   | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
   | { name: 'workspace'; workspaceId: string }
-  /** New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
+  /** New chat in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
   | { name: 'leadNew'; roomId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
@@ -79,7 +79,7 @@ export type Modal =
   | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
   /** Run this repo's scripts? The room's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
   | { name: 'confirm'; kind: 'trust'; roomId: string }
-  /** Archiving a chat with Rowan that would stop something: its row's Archive, or closing its last tab (KERNEL-405). */
+  /** Archiving a Lead chat that would stop something: its row's Archive, or closing its last tab (KERNEL-405). */
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
@@ -164,7 +164,7 @@ export interface WorkspaceTabs {
   sharedVersion?: Record<string, number>
 }
 
-/** Whose bottom pane a flag is for: a chat with Rowan, or a teammate's workspace. */
+/** Whose bottom pane a flag is for: a Lead chat, or a teammate's workspace. */
 export type BottomKind = 'lead' | 'teammate'
 
 /** The footer's Usage popover: every account's windows, or one number per provider (KERNEL-674). */
@@ -192,7 +192,7 @@ export interface UiState {
   rightPanel: boolean
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
   bottomRatio: number
-  /** The bottom pane is folded to its tab bar. One flag for Rowan's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */
+  /** The bottom pane is folded to its tab bar. One flag for the Lead's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */
   bottomCollapsed: Record<BottomKind, boolean>
   /** The Usage popover's view, kept across launches (KERNEL-674). */
   usageView: UsageView

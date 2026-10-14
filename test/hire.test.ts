@@ -162,10 +162,10 @@ describe('creating an agent in a real room', () => {
     const run = async (args: object) => (await call('create_agent', args)).text
 
     // Only the Lead so far: list_agents says how to get a teammate, and create_workspace builds nothing (KERNEL-554).
-    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nNobody on this team takes tasks yet. Before planning work, ask the user whether to create an agent with create_agent or to add a starter agent in Team.')
+    expect((await call('list_agents', {})).text).toBe('kernel-lead: Kernel, Lead (the Lead, you). Lead.\nNobody on this team takes tasks yet. Before planning work, ask the user whether to create an agent with create_agent or to add a starter agent in Team.')
     const before = k.store.workspaces().length
     expect(await call('create_workspace', { agent: 'kai', title: 'Checkout', brief: 'Build checkout.' })).toEqual({ isError: true, text: NO_TEAMMATES })
-    expect(await call('create_workspace', { agent: 'rowan', title: 'Checkout', brief: 'Build checkout.' })).toMatchObject({ isError: true })
+    expect(await call('create_workspace', { agent: 'kernel-lead', title: 'Checkout', brief: 'Build checkout.' })).toMatchObject({ isError: true })
     expect(k.store.workspaces()).toHaveLength(before)
 
     // Just for the user by default, so the file goes to ~/.claude/agents (KERNEL-466).
@@ -173,7 +173,7 @@ describe('creating an agent in a real room', () => {
       .toBe(`Saved ${join(home, '.claude', 'agents', 'wren.md')}, just for the user on this Mac. Wren joins the team and takes tasks. Wren can reach no MCP servers besides Kernel's own.`)
     expect(await readFile(join(home, '.claude', 'agents', 'wren.md'), 'utf8')).toContain(PR_TOOLS)
     expect((await k.team.agents(room.id)).find((a) => a.id === 'wren')).toMatchObject({ member: true, tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] })
-    expect((await call('list_agents', {})).text).toBe('rowan: Rowan, Lead (the Lead, you). Lead.\nwren: Wren, Designer. Designer. Checks every screen against DESIGN.md.')
+    expect((await call('list_agents', {})).text).toBe('kernel-lead: Kernel, Lead (the Lead, you). Lead.\nwren: Wren, Designer. Designer. Checks every screen against DESIGN.md.')
 
     const tools = ['Read', 'Edit', 'Write', 'Bash', 'mcp__figma', 'mcp__claude_ai_Linear', 'mcp__neon__run_sql', 'mcp__slack']
     expect(await run({ id: 'ivy', description: 'Frontend engineer.', prompt: 'You are Ivy.', tools })).toBe(

@@ -4,6 +4,7 @@ import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
+import { KERNEL_FILE } from '@shared/team'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { bus } from './bus'
@@ -48,7 +49,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const all = Object.values(f.agents).flat().filter((a) => a.origin === 'personal' || a.origin === 'plugin')
     return [...new Map(all.map((a) => [a.id, a])).values()].sort((a, b) => Number(a.origin === 'plugin') - Number(b.origin === 'plugin'))
   }
-  /** The workspace of the room's newest open chat with Rowan, the one `lead.open` finds (KERNEL-405). */
+  /** The workspace of the room's newest open Lead chat, the one `lead.open` finds (KERNEL-405). */
   const leadWs = (roomId: string) => {
     const lead = f.agents[roomId]?.find((a) => a.lead)
     return f.workspaces.filter((w) => w.roomId === roomId && isLeadWorkspace(w, lead?.id)).at(-1)
@@ -124,7 +125,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.restore': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), retired: false }),
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
     'agents.setTeam': async ({ roomId }) => f.agents[roomId] ?? [],
-    'agents.customize': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), builtIn: undefined, file: join('.claude', 'agents', `${agentOf(roomId, agentId).name.toLowerCase()}.md`) }),
+    'agents.customize': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), file: join('.claude', 'agents', KERNEL_FILE) }),
+    'agents.resetLead': async ({ roomId }) => (f.agents[roomId] ?? []).filter((a) => !a.retired),
     'agents.addStarter': async ({ id }) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), role: '', description: '', lead: false, prompt: '', file: join('.claude', 'agents', `${id}.md`), joinedAt: Date.now() }),
     'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },

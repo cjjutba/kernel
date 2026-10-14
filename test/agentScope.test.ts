@@ -76,7 +76,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const theirs = await h['agents.create']({ roomId: room.id, draft: ivy, scope: 'team' })
     expect(theirs).toMatchObject({ id: 'ivy', pr: { number: 7, url: URL } })
     const ws = k.store.workspace(theirs.pr!.workspaceId)!
-    expect(ws).toMatchObject({ status: 'ready', mode: 'worktree', agentId: 'rowan', title: 'Add Ivy to the team', prNumber: 7, prUrl: URL })
+    expect(ws).toMatchObject({ status: 'ready', mode: 'worktree', agentId: 'kernel-lead', title: 'Add Ivy to the team', prNumber: 7, prUrl: URL })
     expect(opened).toEqual([expect.objectContaining({ cwd: ws.path, title: 'Add Ivy to the team', base: ws.baseRef, remote: 'origin', body: expect.stringContaining('`.claude/agents/ivy.md`') })])
     expect(await git(remote, 'show', `${ws.branch}:.claude/agents/ivy.md`)).toBe(ivy.text)
     expect((await git(remote, 'log', '-1', '--format=%s', ws.branch)).trim()).toBe('Add Ivy to the team')
@@ -130,14 +130,14 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const work = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
 
     expect(await h['agents.retire']({ roomId: room.id, agentId: 'kai' })).toEqual({ ok: true })
-    expect(ids(await k.team.agents(room.id))).toEqual(['rowan', 'ivy'])
-    expect(k.store.workspace(work.id)?.agentId).toBe('rowan')
+    expect(ids(await k.team.agents(room.id))).toEqual(['kernel-lead', 'ivy'])
+    expect(k.store.workspace(work.id)?.agentId).toBe('kernel-lead')
     expect(ids(await h['agents.list']({ roomId: room.id, retired: true }))).toEqual(['kai'])
     expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(KAI)
     await clean(repo)
     // Restore brings Kai back from where he never left.
     expect(await h['agents.restore']({ roomId: room.id, agentId: 'kai' })).toMatchObject({ id: 'kai' })
-    expect(ids(await k.team.agents(room.id))).toEqual(['rowan', 'ivy', 'kai'])
+    expect(ids(await k.team.agents(room.id))).toEqual(['kernel-lead', 'ivy', 'kai'])
     expect(await h['agents.list']({ roomId: room.id, retired: true })).toEqual([])
 
     // For the team: a PR moves Ivy's file to .claude/retired-agents, and she leaves the team on this Mac now.
@@ -146,7 +146,7 @@ describe('who an agent change is for (KERNEL-466)', () => {
     const ws = k.store.workspace(theirs.pr!.workspaceId)!
     expect(ws.title).toBe('Retire Ivy')
     expect((await git(remote, 'diff', '-M', '--name-status', 'main', ws.branch)).trim()).toBe('R100\t.claude/agents/ivy.md\t.claude/retired-agents/ivy.md')
-    expect(ids(await k.team.agents(room.id))).toEqual(['rowan', 'kai'])
+    expect(ids(await k.team.agents(room.id))).toEqual(['kernel-lead', 'kai'])
     expect(await readFile(join(repo, '.claude', 'agents', 'ivy.md'), 'utf8')).toBe(IVY)
     await clean(repo)
   })

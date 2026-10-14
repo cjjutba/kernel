@@ -39,7 +39,7 @@ export function catchUpMessage(baseRef: string, behind: number): string {
  * rebases early (KERNEL-180). GitHub says so only once the PR exists. The check is local: `behind` counts the base's new
  * commits, and `git merge-tree` merges the worktree's committed and uncommitted work with the base in memory. It changes
  * no file, index or stash list, and takes no lock on the index. The teammate hears it through a Kernel message, only when it is idle, once per base commit.
- * Rowan isn't woken.
+ * The Lead isn't woken.
  *
  * Triggers, all real events: a PR in the room merged (with a fetch), a teammate's turn ended (it may be told what waited
  * while it was busy), and a workspace was created after a fetch that worked.

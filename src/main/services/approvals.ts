@@ -16,7 +16,7 @@ const isPlan = (a: Approval) => a.kind === 'plan' || a.toolName === 'ExitPlanMod
 
 /**
  * One queue for everything that needs the user: tool permissions (from canUseTool or the PermissionRequest
- * hook), plan approvals and questions from Rowan. request() waits until decide() is called, or the timeout
+ * hook), plan approvals and questions from the Lead. request() waits until decide() is called, or the timeout
  * passes and it resolves null so the caller can fall back (hooks fall back to Claude Code's own prompt).
  */
 export class Approvals {

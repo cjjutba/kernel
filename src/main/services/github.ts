@@ -1,6 +1,6 @@
 import { exec, run, SLOW_MS, type ExecResult } from './exec'
 import type { IssueSummary, MergeMethod, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
-import { gatingChecks } from '@shared/merge'
+import { gatingChecks, runningChecks } from '@shared/merge'
 import { mergeTreeConflicts, stripRemote } from './worktrees'
 import type { OpenPr } from './issueTaken'
 
@@ -83,8 +83,8 @@ export function checksOf(items: RollupItem[], optional: string[] = []): PrCheck[
 }
 
 /**
- * Collapse GitHub's PR fields into the one state the workspace header shows. Only the checks that decide the PR count: a
- * failing check the repo doesn't require leaves it ready (KERNEL-388). `optional` is the room's list of checks to ignore.
+ * Collapse GitHub's PR fields into the one state the workspace header shows. Only the checks that decide the PR fail it: a
+ * failing check the repo doesn't require leaves it ready (KERNEL-388). Any check still running reads `checks` (KERNEL-703). `optional` is the room's list of checks to ignore.
  */
 export function prStateOf(pr: PrView | null, o: { optional?: string[] } = {}): PrState {
   if (!pr) return 'none'
@@ -92,10 +92,13 @@ export function prStateOf(pr: PrView | null, o: { optional?: string[] } = {}): P
   if (pr.state === 'CLOSED') return 'closed'
   if (pr.isDraft) return 'draft'
   if (pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY') return 'conflict'
-  const checks = gatingChecks(checksOf(pr.statusCheckRollup ?? [], o.optional))
+  const all = checksOf(pr.statusCheckRollup ?? [], o.optional)
+  const checks = gatingChecks(all)
   if (checks.some((c) => c.state === 'fail')) return 'cifail'
-  if (checks.some((c) => c.state === 'running' || c.state === 'queued')) return 'checks'
+  if (runningChecks(checks).length) return 'checks'
   if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
+  // A check the repo doesn't require holds ready while it runs, though its failure wouldn't (KERNEL-703).
+  if (runningChecks(all).length) return 'checks'
   // GitHub works out again whether the PR conflicts each time the base moves, and until then it isn't ready (KERNEL-283).
   return pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN' ? 'checks' : 'ready'
 }

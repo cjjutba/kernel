@@ -50,7 +50,7 @@ export function reviewBranch(title: string, task?: string): string {
 }
 
 /**
- * Fill a branch pattern like "{type}/{task}-{slug}", "feat/{slug}" or a chat with Rowan's "{lead}/{slug}", cut to 60 characters.
+ * Fill a branch pattern like "{type}/{task}-{slug}", "feat/{slug}" or a Lead chat's "{lead}/{slug}", cut to 60 characters.
  * `{lead}` is the Lead's name as a slug (KERNEL-405).
  */
 export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat'; lead?: string }): string {
@@ -58,8 +58,8 @@ export function branchName(pattern: string, vars: { slug: string; task?: string;
 }
 
 /**
- * A chat with Rowan's branch from the chat's first title (KERNEL-424): every word of it, cut only by `branchName`'s 60
- * characters. "Setup script tab Run button redundancy" -> `rowan/setup-script-tab-run-button-redundancy`.
+ * A Lead chat's branch from the chat's first title (KERNEL-424): every word of it, cut only by `branchName`'s 60
+ * characters. "Setup script tab Run button redundancy" -> `kernel/setup-script-tab-run-button-redundancy`.
  */
 export function leadBranch(pattern: string, title: string, lead?: string): string {
   return branchName(pattern, { slug: slugify(title.replace(/['’]/g, ''), Infinity), lead })
@@ -253,7 +253,7 @@ async function refState(repo: string, ref: string): Promise<'exists' | 'missing'
 /**
  * Pick a branch name that does not exist yet by appending -2, -3... A name `<remote>/<name>` has, as of the last fetch, is
  * taken too, so Kernel never picks a branch someone else already pushed (KERNEL-479), and so is a name in `taken`, which a
- * chat with Rowan holds before git makes it (KERNEL-542). Throws when git can't say whether a name is taken.
+ * Lead chat holds before git makes it (KERNEL-542). Throws when git can't say whether a name is taken.
  */
 export async function freeBranch(repo: string, wanted: string, remote = 'origin', taken?: ReadonlySet<string>): Promise<string> {
   for (let i = 1; ; i++) {
@@ -287,13 +287,13 @@ export interface CreateWorktree { repo: string; root: string; branch: string; ba
 
 const FOLDER_MAX = 80
 
-/** The folder name a branch's worktree gets when it is free: `rowan/plan-wave-3` -> `rowan-plan-wave-3`. */
+/** The folder name a branch's worktree gets when it is free: `kernel/plan-wave-3` -> `kernel-plan-wave-3`. */
 export const worktreeFolder = (branch: string) => slugify(branch.replace(/\//g, '-'), FOLDER_MAX)
 
 /**
  * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
  * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
- * otherwise get the same folder (KERNEL-267). A folder in `taken` is held by a chat with Rowan whose worktree isn't made
+ * otherwise get the same folder (KERNEL-267). A folder in `taken` is held by a Lead chat whose worktree isn't made
  * yet (KERNEL-542).
  */
 export async function freeWorktreePath(repo: string, root: string, branch: string, taken?: ReadonlySet<string>): Promise<string> {
@@ -309,7 +309,7 @@ export async function freeWorktreePath(repo: string, root: string, branch: strin
 }
 
 /**
- * Moves a worktree's folder to `to` with `git worktree move`, which updates git's record of it, for a chat with Rowan whose
+ * Moves a worktree's folder to `to` with `git worktree move`, which updates git's record of it, for a Lead chat whose
  * branch took its name from the chat's title (KERNEL-424). git refuses a locked worktree, one with submodules, and a `to` that
  * exists.
  */

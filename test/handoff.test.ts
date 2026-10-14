@@ -7,7 +7,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
-import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { briefParts, ISSUE_CAPS, issueText, issueTools } from '../src/main/services/issueMcp'
@@ -378,15 +378,29 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(line).not.toContain('right away')
   })
 
-  it('says the same in the rule, the instructions, the refusal and the starter Rowan, and the rule does not grow', async () => {
-    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, rowan]) {
+  it('says the same in the rule, the instructions, the refusal and the starter Kernel, and the rule does not grow', async () => {
+    const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, PLAN_MODE_OFF, starter]) {
       for (const part of ['one yes-or-no question', 'raises nothing new, quoted in go_ahead', 'changes scope or only agrees with the idea', 'ask once']) expect(said).toContain(part)
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, rowan]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to.
     expect(LEAD_RULE.length).toBeLessThanOrEqual(5395)
+  })
+
+  // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
+  it('speaks to Kernel in its own voice, and the starter Kernel speaks in the first person', async () => {
+    const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
+    expect(LEAD_RULE).toMatch(/^You are Kernel, the Lead/)
+    expect(LEAD_RULE).not.toMatch(/\bKernel (adds|names|starts|sends|does|runs|merges)\b/)
+    expect(LEAD_RULE).toContain('Branches are named from the issue key')
+    expect(LEAD_RULE).toContain('Reviews start on their own once a PR passes checks')
+    expect(LEAD_RULE).toContain('Messages that start with "Team update"')
+    expect(UPDATE_HEADER).toBe('Team update, not from the user.')
+    expect(starter).toMatch(/^---\nname: kernel\n/)
+    expect(starter.split('---\n')[2]).toMatch(/^You are Kernel/)
+    expect(starter).not.toMatch(/rowan/i)
   })
 })
 
@@ -439,10 +453,10 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
   })
 
-  it('describes the same call in the rule, the instructions, the tool and the starter Rowan', async () => {
-    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
+  it('describes the same call in the rule, the instructions, the tool and the starter Kernel', async () => {
+    const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
-    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, tool.description, rowan]) {
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, tool.description, starter]) {
       expect(said).toMatch(/full plan as markdown in plan/)
       expect(said).toMatch(/one line per task in steps/)
     }
@@ -456,8 +470,8 @@ describe('waiting for another PR (KERNEL-259)', () => {
     expect(LEAD_RULE).toContain("When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it.")
     expect(LEAD_RULE).toContain('When a teammate says it is waiting on another PR, call wait_for_merge for it.')
     expect(LEAD_RULE).toContain('To start a waiting teammate anyway, call wait_for_merge with an empty list.')
-    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
-    expect(rowan).toContain("pass that workspace's id in wait_for and tell the user which merge starts it")
+    const starter = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'kernel.md'), 'utf8')
+    expect(starter).toContain("pass that workspace's id in wait_for and tell the user which merge starts it")
     const tools = kernelTools({} as KernelToolDeps)
     expect(tools.find((x) => x.name === 'create_workspace')!.description).not.toContain('Starts the agent right away')
     expect(tools.map((x) => x.name)).toContain('wait_for_merge')
@@ -478,7 +492,7 @@ describe('create_workspace with issue (KERNEL-163)', () => {
     await tool.handler({ agent: 'noor', title: 'Other', brief: 'Goal' } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'noor', title: 'Issues screen', issue: 'KERNEL-83' })
     expect(asked[1]).not.toHaveProperty('issue')
-    expect(LEAD_RULE).toContain("When a task builds an issue from the room's tracker, pass its key as issue to create_workspace. Kernel adds the issue to the teammate's brief, and mcp__kernel__get_issue reads any issue.")
+    expect(LEAD_RULE).toContain("When a task builds an issue from the room's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.")
   })
 })
 

@@ -324,7 +324,7 @@ describe('who gets share_file (KERNEL-302)', () => {
     const s = await setup()
     await mkdir(join(s.room.path, '.kernel'), { recursive: true })
     await writeFile(join(s.room.path, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["kernel", "chrome-devtools"]\n')
-    for (const [ws, id] of [[s.leadWs, 'rowan'], [s.review, 'theo'], [s.kai, 'kai']] as const) {
+    for (const [ws, id] of [[s.leadWs, 'kernel-lead'], [s.review, 'theo'], [s.kai, 'kai']] as const) {
       const c = await started(s, ws)
       const tools = s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
       expect(tools, id).toContain('share_file')
@@ -346,20 +346,20 @@ describe('who gets share_file (KERNEL-302)', () => {
   it('gives every agent share_file next to its own tools while sharing is on, and nothing new while it is off', async () => {
     const on = await setup({ sharing: true })
     const names = (s: typeof on, ws: Workspace, id: string) => s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
-    const lead = names(on, on.leadWs, 'rowan')
+    const lead = names(on, on.leadWs, 'kernel-lead')
     expect(lead).toEqual(expect.arrayContaining(['create_workspace', 'message_agent', 'share_file']))
     expect(lead.at(-1)).toBe('share_file')
     expect(names(on, on.review, 'theo')).toEqual(['submit_review', 'get_issue', 'share_file'])
     expect(names(on, on.kai, 'kai')).toEqual(['wait_for_merge', 'get_issue', 'share_file'])
     const mcp = (s: typeof on, ws: Workspace, id: string) => (s.k().sessions as unknown as { d: { mcpFor: (w: Workspace, a: AgentDef, c: Chat) => Record<string, { name: string; tools: string[] }> } }).d.mcpFor(ws, s.agent(id), s.chatOf(ws))
     expect(mcp(on, on.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'get_issue', 'share_file'] } })
-    expect(mcp(on, on.leadWs, 'rowan').kernel.tools).toEqual(lead)
+    expect(mcp(on, on.leadWs, 'kernel-lead').kernel.tools).toEqual(lead)
 
     const off = await setup({ sharing: false })
-    expect(names(off, off.leadWs, 'rowan')).toEqual(lead.slice(0, -1))
+    expect(names(off, off.leadWs, 'kernel-lead')).toEqual(lead.slice(0, -1))
     expect(mcp(off, off.review, 'theo')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review', 'get_issue'] } })
     expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge', 'get_issue'] } })
-    expect(mcp(off, off.leadWs, 'rowan').kernel.tools).toEqual(lead.slice(0, -1))
+    expect(mcp(off, off.leadWs, 'kernel-lead').kernel.tools).toEqual(lead.slice(0, -1))
 
     // The Lead's prompt names shared files only while sharing is on. With it off, each session starts as on main: the
     // same server and tools, and no word about sharing in any prompt.

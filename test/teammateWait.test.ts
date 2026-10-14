@@ -175,10 +175,10 @@ describe('who gets wait_for_merge', () => {
     const leadWs = k.store.workspace(lead.workspaceId)!
     expect(deps.mcpFor(kai, agent('kai'), chatOf(k, kai))?.kernel.tools).toEqual(['wait_for_merge', 'get_issue', 'share_file'])
     expect(deps.mcpFor(review, agent('theo'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review', 'get_issue', 'share_file'])
-    expect(deps.mcpFor(leadWs, agent('rowan'), lead)?.kernel.tools).not.toContain('submit_review')
+    expect(deps.mcpFor(leadWs, agent('kernel-lead'), lead)?.kernel.tools).not.toContain('submit_review')
     expect(deps.rulesFor(kai, agent('kai'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
     expect(deps.rulesFor(review, agent('theo'))).not.toContain('wait_for_merge')
-    expect(deps.rulesFor(leadWs, agent('rowan'))).not.toContain('wait_for_merge')
+    expect(deps.rulesFor(leadWs, agent('kernel-lead'))).not.toContain('wait_for_merge')
     expect(TEAMMATE_RULE).toContain("If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop.")
     await k.stop()
   })

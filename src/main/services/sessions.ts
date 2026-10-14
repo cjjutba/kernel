@@ -710,7 +710,7 @@ export class Sessions {
   }
 
   /**
-   * A chat with Rowan whose worktree Kernel hasn't made yet has nowhere to run a turn either. Its tabs are held until it is, and
+   * A Lead chat whose worktree Kernel hasn't made yet has nowhere to run a turn either. Its tabs are held until it is, and
    * this keeps any other message waiting with them (KERNEL-542).
    */
   private unmade(chat: Chat) { return !!this.d.store.workspace(chat.workspaceId)?.worktreePending }
@@ -960,7 +960,7 @@ export class Sessions {
   /**
    * Settings, Account: with "Pause new work when close to the limit" on, a teammate's chat starts no new turn while the 5-hour
    * window is at 90% or the weekly one at 95% (`nearLimit`). Turns that are running finish. The Lead's chats are never held,
-   * so Rowan can still answer the user (D-094). What waits goes out when usage drops or the window resets (KERNEL-220).
+   * so the Lead can still answer the user (D-094). What waits goes out when usage drops or the window resets (KERNEL-220).
    */
   private nearLimitHolds(chatId: string): boolean {
     if (!this.d.settings().usage?.pauseNearLimit || this.isLeadChat(chatId)) return false
@@ -1747,7 +1747,7 @@ export class Sessions {
 }
 
 export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
-  // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each chat with Rowan now has a branch of its own.
+  // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each Lead chat now has a branch of its own.
   const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
     ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
     : ws.mode === 'worktree'

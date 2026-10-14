@@ -328,7 +328,7 @@ export async function updateAgent(repoPath: string, id: string, patch: AgentEdit
   if (isUnreadable(cur)) throw new Error(`Kernel can't read ${basename(path)}: ${cur.warnings![0].detail}. Fix the file, then save again.`)
   const role = text(parseFrontmatter(src).meta.role)
   const description = patch.description ?? cur.description
-  if (!oneLine(description)) throw new Error('Add a description so Rowan knows what to hand this agent.')
+  if (!oneLine(description)) throw new Error('Add a description so Kernel knows what to hand this agent.')
   // The name is the file stem, so the display name follows it. Role is the only label that can change.
   const next = {
     description, role: patch.role ?? role,
@@ -367,7 +367,7 @@ export const agentSlug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '
 
 /**
  * New agent > Describe. Builds the file from the description alone, so it works offline and the same way every time.
- * The review step edits the text, and "Refine it in a chat with Rowan" hands it to the Lead for anything smarter.
+ * The review step edits the text, and "Refine it in a Lead chat" hands it to the Lead for anything smarter.
  */
 export function draftAgent(o: { description: string; name?: string; model?: string }): AgentDraft {
   const description = oneLine(o.description)
@@ -377,18 +377,18 @@ export function draftAgent(o: { description: string; name?: string; model?: stri
   const name = titleCase(id)
   const sentence = description.charAt(0).toUpperCase() + description.slice(1).replace(/[.!?]*$/, '.')
   const model = o.model || 'sonnet'
-  const prompt = `You are ${name}. ${sentence} Work in your own worktree, keep changes small, and tell Rowan what you did and what is left when you finish.`
+  const prompt = `You are ${name}. ${sentence} Work in your own worktree, keep changes small, and tell the Lead what you did and what is left when you finish.`
   const text = renderAgentFile({ id, description: sentence, model, tools, role, prompt })
   return { id, name, description: sentence, model, tools, text, file: `.claude/agents/${id}.md` }
 }
 
-/** The id a new agent's file gives it, after checking Claude Code can read the file and it has what Rowan needs. */
+/** The id a new agent's file gives it, after checking Claude Code can read the file and it has what the Lead needs. */
 export function draftId(draft: Pick<AgentDraft, 'id' | 'text'>): string {
   const { meta, body, error } = parseFrontmatter(draft.text)
   if (error) throw new Error(`Claude Code can't read this file: ${error}.`)
   const id = text(meta.name) || draft.id
   if (!ID.test(id)) throw new Error('The name in the file must be lowercase letters, numbers and dashes, starting with a letter.')
-  if (!text(meta.description)) throw new Error('The file needs a description line so Rowan knows what to hand this agent.')
+  if (!text(meta.description)) throw new Error('The file needs a description line so Kernel knows what to hand this agent.')
   if (!body.trim()) throw new Error('The file needs instructions under the second ---.')
   return id
 }

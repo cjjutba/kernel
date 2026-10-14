@@ -72,7 +72,7 @@ export class Checkpoints extends Feature {
 
   handlers() {
     return {
-      // A chat with Rowan whose worktree isn't made yet has none (KERNEL-542).
+      // A Lead chat whose worktree isn't made yet has none (KERNEL-542).
       'checkpoints.list': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return ws.worktreePending ? [] : listCheckpoints(ws) },
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId)
     } satisfies Partial<Handlers>
