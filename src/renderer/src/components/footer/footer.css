@@ -8,6 +8,12 @@
 .ft-mark { display: inline-flex; }
 .ft-name { color: var(--ink-2); font-weight: 500; }
 .ft-name[data-dim] { color: var(--muted); font-weight: 400; }
+.ft-other { color: var(--muted); }
+.ft-other:hover:not(:disabled), .ft-other:focus-visible { color: var(--ink); }
+.ft-other:hover:not(:disabled) .ft-name, .ft-other:focus-visible .ft-name { color: var(--ink-2); }
+.ft-swap { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; }
+.ft-other .ft-name { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
+.ft-more[data-narrow] { display: none; }
 .ft-out { color: var(--muted); }
 .ft-win { display: inline-flex; align-items: center; gap: 5px; }
 .ft-nums { display: inline-flex; align-items: baseline; gap: 5px; }
@@ -31,8 +37,12 @@
 /* The pill fits the 32px footer. */
 .ft .ft-pill { height: 24px; }
 
-/* A narrow window drops the other accounts' chips first, then the Fable number. Nothing wraps or overlaps. */
-@container ft (max-width: 1040px) { .ft-other { display: none; } }
+/* A narrow window folds the inline other accounts into one "more" chip that counts them all, then drops the Fable number. Nothing wraps or overlaps. */
+@container ft (max-width: 1040px) {
+  .ft-other:not(.ft-more) { display: none; }
+  .ft-more { display: none; }
+  .ft-more[data-narrow] { display: inline-flex; }
+}
 @container ft (max-width: 820px) { .ft-num[data-fable] { display: none; } }
 
 /* The popover opens above the row from the footer's bottom left, 392px wide. A row is a button that expands in place; the
@@ -69,7 +79,7 @@ button.pm-head:focus-visible { outline: 0; background: var(--hover); }
 .plan-win .meter { width: 56px; flex-shrink: 0; height: 4px; }
 .plan-win .pm-mp { width: 34px; flex-shrink: 0; text-align: right; }
 .plan-wr { flex: 1; min-width: 0; text-align: right; white-space: nowrap; color: var(--muted); }
-.plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; }
+.plan-switch { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; margin: 0 -8px; max-height: 176px; overflow-y: auto; }
 .plan-switch-title { padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .menu-item.plan-other { align-items: baseline; gap: 8px; color: var(--ink); }
 .menu-item.plan-other:disabled { color: var(--faint); }

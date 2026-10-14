@@ -480,6 +480,8 @@ export const actions = {
       setUi({ usageView: view, usageOpen: usageOpenAtFirst(view) })
       try { localStorage.setItem(USAGE_VIEW, view) } catch { /* not remembered */ }
     },
+    /** Opens the Usage popover with only `provider`'s row expanded, from a footer chip. */
+    openUsage: (provider: Provider) => setState((s) => ({ ui: { ...s.ui, menu: 'plan', usageOpen: [provider] } })),
     toggleUsageProvider: (provider: Provider) => setState((s) => ({ ui: { ...s.ui, usageOpen: s.ui.usageOpen.includes(provider) ? s.ui.usageOpen.filter((p) => p !== provider) : [...s.ui.usageOpen, provider] } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {

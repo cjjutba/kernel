@@ -326,7 +326,14 @@ async function narrowSidebar(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// UsageFooterNarrow is the window at 900px wide, where the footer's inline accounts fold into the "more" chip (KERNEL-697).
+async function narrowWindow(page: Page, app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: 900, h: HEIGHT })
+  await page.waitForTimeout(400)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  UsageFooterNarrow: narrowWindow,
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
