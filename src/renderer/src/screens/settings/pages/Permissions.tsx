@@ -85,7 +85,7 @@ export function Permissions({ s }: { s: AppSettings }) {
       <Section title="Rules">
         {rule('Always ask before', 'Every mode except Bypass.', p.alwaysAsk, 'alwaysAsk', 'Add command')}
         {rule('Never allow', 'Blocked in every mode, Bypass included.', p.neverAllow, 'neverAllow', 'Add command')}
-        {rule('Protected branches', 'Pushes are blocked in every mode.', p.protectedBranches, 'protectedBranches', 'Add branch')}
+        {rule('Protected branches', 'Pushes are blocked in Bypass. Other modes ask first.', p.protectedBranches, 'protectedBranches', 'Add branch')}
       </Section>
       <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per room, on {firstRoom ? <>each room’s <SettingsLink to={{ page: 'room', roomId: firstRoom.id, section: 'permissions' }}>Permissions page</SettingsLink></> : 'each room’s Permissions page'}.</>}>
         <Row label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
