@@ -60,6 +60,10 @@ export const modePatch = (mode: ComposerMode): { plan: true } | { mode: Permissi
 /** What a run of Shift+Tab presses saves where it lands. `before` is the chat's own `mode` from before the run, or undefined when it followed the room or Settings. A run that lands on Plan puts it back, so the plan's approval leaves the chat where it was (KERNEL-772). */
 export const cyclePatch = (before: PermissionMode | undefined, landed: ComposerMode): { plan: true; mode: PermissionMode | undefined } | { mode: PermissionMode; plan: false } => (landed === 'plan' ? { plan: true, mode: before } : modePatch(landed) as { mode: PermissionMode; plan: false })
 
+/** A run of Shift+Tab presses belongs to one chat: a press in another chat starts a new run from that chat's own `mode`. */
+export interface CycleRun { chatId: string; before: PermissionMode | undefined }
+export const cycleRun = (run: CycleRun | null, chatId: string, own: PermissionMode | undefined): CycleRun => (run && run.chatId === chatId ? run : { chatId, before: own })
+
 /** The mode Shift+Tab goes to from `from`: the next in the order that `can` run, round to the start. It stays put when nothing else can run. */
 export function nextMode(from: ComposerMode, can: (mode: ComposerMode) => boolean): ComposerMode {
   const at = MODE_ORDER.indexOf(from)

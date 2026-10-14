@@ -21,7 +21,7 @@ import { ModeMenu } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
-import { MODE_ICON, buttonName, modeAria, cyclePatch, modePatch, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { MODE_ICON, buttonName, modeAria, cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
@@ -70,7 +70,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
-  const run = useRef<{ before: PermissionMode | undefined } | null>(null)
+  const run = useRef<CycleRun | null>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const modeAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
@@ -182,8 +182,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }
   const pickMode = (mode: ComposerMode) => { run.current = null; setMode(mode) }
   const cycleMode = () => {
-    const before = run.current ? run.current.before : chat.mode
-    run.current = { before }
+    const { before } = (run.current = cycleRun(run.current, chat.id, chat.mode))
     setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)), (m) => cyclePatch(before, m))
   }
   const providerModels = useProviderModels(provider)

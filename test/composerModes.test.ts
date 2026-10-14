@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cyclePatch, modePatch } from '../src/renderer/src/screens/workspace/composer/modes'
+import { cyclePatch, cycleRun, modePatch } from '../src/renderer/src/screens/workspace/composer/modes'
 
 describe('Shift+Tab into Plan (KERNEL-772)', () => {
   it('puts back a chat that had no mode of its own', () => {
@@ -17,5 +17,10 @@ describe('Shift+Tab into Plan (KERNEL-772)', () => {
   it('leaves mode alone when Plan is picked from the menu', () => {
     expect(modePatch('plan')).toEqual({ plan: true })
     expect(modePatch('acceptEdits')).toEqual({ mode: 'acceptEdits', plan: false })
+  })
+  it('starts a new run in another chat from that chat\'s own mode', () => {
+    const a = cycleRun(null, 'a', undefined)
+    expect(cycleRun(a, 'a', 'acceptEdits')).toBe(a)
+    expect(cycleRun(a, 'b', 'auto')).toEqual({ chatId: 'b', before: 'auto' })
   })
 })
