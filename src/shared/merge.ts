@@ -24,6 +24,20 @@ export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === '
 /** The checks that decide a PR: all but the optional ones, which the repo doesn't require or the room lists (KERNEL-388). */
 export const gatingChecks = (checks: PrCheck[]) => checks.filter((c) => !c.optional)
 
+/**
+ * The checks still running or queued, optional ones included: a PR doesn't read ready or merge while any of them runs, though
+ * an optional one that fails doesn't hold it (KERNEL-703).
+ */
+export const runningChecks = (checks: PrCheck[]) => checks.filter((c) => c.state === 'running' || c.state === 'queued')
+
+/** "Test is still running.", "Test and Lint are still running.", "Test and 2 other checks are still running." */
+export function runningText(running: PrCheck[]): string {
+  const [first, ...rest] = running.map((c) => c.name)
+  if (!rest.length) return `${first} is still running.`
+  if (rest.length === 1) return `${first} and ${rest[0]} are still running.`
+  return `${first} and ${rest.length} other checks are still running.`
+}
+
 /** Why GitHub won't merge a ready PR, in a few words for a list or a card: "GitHub blocks the merge: {why}" (KERNEL-401). */
 export const blockedWhy: Record<PrBlocked, string> = { review: 'it needs an approving review', behind: 'the branch is behind its base', rules: "the branch's rules" }
 
@@ -115,20 +129,26 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
 /**
  * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now: it has to be
  * ready or open, and settled on whether it conflicts, which GitHub works out again each time the base moves (KERNEL-376).
- * Only the checks that decide the PR count, and GitHub's own branch rules hold it too (KERNEL-388). Its head commit wins
+ * Only the checks that decide the PR count toward green, and GitHub's own branch rules hold it too (KERNEL-388). A check still
+ * running holds it, required or not, and says its name (KERNEL-703). Its head commit wins
  * over the one the last poll saw. Blockers on the head commit, from any kind of review, hold the merge whatever the settings
  * say (KERNEL-497, KERNEL-549). With "require Reviewer approval" on, every required kind of review that looked at the PR
  * needs to have approved its head commit; a PR nobody reviewed merges as before. `override` is a person's Merge anyway: it
- * skips the review, and only the review. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
+ * skips the review and optional checks still running, and nothing else. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, _name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
-  if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
+  // Any check still running holds the merge and reads `checks`, required or not. Merge anyway goes past the optional ones (KERNEL-703).
+  const running = pr ? runningChecks(pr.checks) : []
+  const past = !!o.override && running.length > 0 && running.every((c) => c.optional)
+  const may = (state: PrState) => mergeableState(state) || (past && state === 'checks')
+  if (!may(ws.prState) && !(running.length && ws.prState === 'checks')) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
   if (rules.requireGreen && pr && !allGreen(gatingChecks(pr.checks))) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
+  if (running.length && !past) return runningText(running)
   // GitHub's own rules hold the merge even when Kernel's would let it through. With no read, the last poll's word (KERNEL-388).
   const blocked = pr ? pr.blocked : ws.prBlocked
   if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
-  if (pr && (pr.conflictsUnknown || !mergeableState(pr.state))) return 'This pull request is not ready to merge.'
+  if (pr && (pr.conflictsUnknown || !may(pr.state))) return 'This pull request is not ready to merge.'
   if (o.override) return undefined
   const s = kindStates({ ...ws, prHead: pr?.head ?? ws.prHead })
   if (s.blocking.length) return `${reviewsText(s.blocking)} found ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
@@ -195,8 +215,9 @@ export interface AutoMergeFacts {
 /**
  * Why Kernel won't merge a PR by itself, or undefined when it may (KERNEL-556). Every condition has to hold: auto-merge on, a
  * PR on GitHub rather than a local merge, green checks required and at least one check that decides the PR, all of them
- * green, nothing GitHub blocks, every required kind of review approved the head commit and none found blockers on it, no
- * review still running, under the line limit, and no always-review path changed. A fact Kernel couldn't read refuses too.
+ * green, no check still running, optional ones included (KERNEL-703), nothing GitHub blocks, every required kind of review
+ * approved the head commit and none found blockers on it, no review still running, under the line limit, and no
+ * always-review path changed. A fact Kernel couldn't read refuses too.
  * A PR with no checks fails here though `allGreen([])` is true: nothing tested it.
  */
 export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
@@ -208,6 +229,8 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
   const checks = gatingChecks(pr.checks)
   if (!checks.length) return 'It has no required checks, and auto-merge needs at least one to pass.'
   if (!allGreen(checks)) return 'Not every required check has passed.'
+  const running = runningChecks(pr.checks)
+  if (running.length) return runningText(running)
   if (pr.blocked) return blockedText(pr.blocked, pr.baseRef)
   if (pr.state !== 'ready' || pr.conflictsUnknown) return "GitHub doesn't read it as ready to merge."
   const r = f.reviews
