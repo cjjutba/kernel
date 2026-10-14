@@ -45,7 +45,7 @@ export function Hero({ version }: { version: string }) {
       <div className="relative mt-16 px-6">
         <Shot
           src={leadPlan}
-          alt="Kernel: Rowan's plan for four tasks waits for review, with the room's team and workspaces in the sidebar"
+          alt="Kernel: Kernel's plan for four tasks waits for review, with the room's team and workspaces in the sidebar"
           sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
           preload
           className="mx-auto max-w-320"

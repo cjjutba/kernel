@@ -243,7 +243,7 @@ async function openCompare(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// LeadNoChatsBranch is New chat with Rowan with New branch from main open. The menu is the composer's own, so press the button and wait for the
+// LeadNoChatsBranch is New chat with Kernel with New branch from main open. The menu is the composer's own, so press the button and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
   await page.getByRole('button', { name: 'New branch from main' }).click()

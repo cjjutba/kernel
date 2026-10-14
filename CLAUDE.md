@@ -1,6 +1,6 @@
 # Kernel
 
-Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team. The user briefs Rowan (the Lead) in Rowan's chat, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. The floor and the Board were removed (KERNEL-606), so don't build toward them, and don't describe Kernel as an office or a place where agents sit at desks in docs, release notes, the website or the repo description. Read `docs/PRODUCT.md` once per session if you are new to it.
+Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team. The user briefs Kernel in Kernel's chat, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. The floor and the Board were removed (KERNEL-606), so don't build toward them, and don't describe Kernel as an office or a place where agents sit at desks in docs, release notes, the website or the repo description. Read `docs/PRODUCT.md` once per session if you are new to it.
 
 ## Commands
 
@@ -71,7 +71,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Lists that several PRs add to (fixtures) keep one entry per line. No doc states a count that every PR would have to change, and tests derive counts from the files.
-- Never run `git pull` in the main checkout, the folder where `main` is checked out (the first line of `git worktree list`). That goes for Rowan and every chat. CJ runs Kernel from that folder with `pnpm dev`. A pull reloads the window onto code the running app doesn't have, and the restart that fixes it interrupts every agent. Anything else that rewrites its files does the same, so don't run `git checkout`, `git switch`, `git merge` or `git reset` there either. To see what landed on main, run `git fetch origin` and read `origin/main`. To bring a branch up to date, rebase it onto `origin/main` in its own worktree. CJ pulls main when no agent is running.
+- Never run `git pull` in the main checkout, the folder where `main` is checked out (the first line of `git worktree list`). That goes for Kernel and every chat. CJ runs Kernel from that folder with `pnpm dev`. A pull reloads the window onto code the running app doesn't have, and the restart that fixes it interrupts every agent. Anything else that rewrites its files does the same, so don't run `git checkout`, `git switch`, `git merge` or `git reset` there either. To see what landed on main, run `git fetch origin` and read `origin/main`. To bring a branch up to date, rebase it onto `origin/main` in its own worktree. CJ pulls main when no agent is running.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 
 ## Lanes

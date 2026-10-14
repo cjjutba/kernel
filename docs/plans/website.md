@@ -2,7 +2,7 @@
 
 Implementation plan for Claude Code. Owner: CJ. Branch: `feat/website`.
 
-> **Since D-104.** The floor and the Board are hidden, so the site no longer shows them. The hero shows Rowan's plan in Rowan's chat (`lead-plan.png`), the tour's Board tab is now Team (`team.png`), and the Details card "The floor" is "Statuses from real events". `design/site/` has the same changes and is still the spec. The plan below is kept as it was written. `floor.png` stays only for the 0.1.0 changelog entry, which shipped with the floor.
+> **Since D-104.** The floor and the Board are hidden, so the site no longer shows them. The hero shows Kernel's plan in Kernel's chat (`lead-plan.png`), the tour's Board tab is now Team (`team.png`), and the Details card "The floor" is "Statuses from real events". `design/site/` has the same changes and is still the spec. The plan below is kept as it was written. `floor.png` stays only for the 0.1.0 changelog entry, which shipped with the floor.
 
 ## 0. Read this first
 
@@ -330,8 +330,8 @@ Three cards, 56 px below, 16 px gap, `repeat(auto-fit, minmax(min(320px, 100%), 
 
 The visuals are small UI mockups built in HTML and CSS, **not images** (copy them from the reference `.mini` markup into `StepMinis.tsx`):
 
-1. A brief composer: "Add PDF export to invoices. Spec first.", a "To Rowan · Lead" chip, a white round send button.
-2. A plan card: "Rowan's plan is ready", "T-15 · Export invoices as PDF", three task rows (T-15a PDF renderer Noor, T-15b Download button Kai, T-15c Snapshot tests Ivy), "Request changes" and "Approve plan" buttons.
+1. A brief composer: "Add PDF export to invoices. Spec first.", a "To Kernel" chip, a white round send button.
+2. A plan card: "Kernel's plan is ready", "T-15 · Export invoices as PDF", three task rows (T-15a PDF renderer Noor, T-15b Download button Kai, T-15c Snapshot tests Ivy), "Request changes" and "Approve plan" buttons.
 3. A PR card: branch "invoice-pdf", "Kai", "+212 -20", "4 checks passed", then the merged row "#41 Merged" and a purple "Archive" button.
 
 These are decorative: `aria-hidden="true"` on each visual.

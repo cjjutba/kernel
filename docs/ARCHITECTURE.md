@@ -33,7 +33,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 
 `ClaudeRunner` runs a chat as a Claude Agent SDK `query()` in streaming input mode, with:
 - `cwd` set to the workspace path, `settingSources: ['user','project','local']` so CLAUDE.md, agents and skills load
-- the agent from the room's resolved team (`features/team.ts`, `services/teamResolve.ts`): the repo's `.claude/agents`, `[team]` in `.kernel/settings.toml`, and Kernel's own Rowan and Theo where the repo has no Lead or reviewer (KERNEL-397), plus the user's `~/.claude/agents` and Claude Code's plugin agents (`services/pluginAgents.ts`, KERNEL-463), with the user's own edits and retires on this Mac laid over them (`features/agentChanges.ts`, KERNEL-466)
+- the agent from the room's resolved team (`features/team.ts`, `services/teamResolve.ts`): the repo's `.claude/agents`, `[team]` in `.kernel/settings.toml`, and Kernel's own Theo where the repo has no reviewer (KERNEL-397), plus the user's `~/.claude/agents` and Claude Code's plugin agents (`services/pluginAgents.ts`, KERNEL-463), with the user's own edits and retires on this Mac laid over them (`features/agentChanges.ts`, KERNEL-466)
 - `systemPrompt: { type: 'preset', preset: 'claude_code', append: <agent instructions + workspace context> }`
 - `permissionMode` from `effectiveMode` (`services/permissions.ts`): plan mode, then the chat's mode, the room's and the app's, with Auto and Bypass permissions only where `features/permissions.ts` says the chat can run them. `allowDangerouslySkipPermissions` only for a chat in Bypass permissions (KERNEL-447)
 - no `sandbox`, Bypass permissions included, so commands run as they would in the user's terminal once Kernel's hooks and `canUseTool` let them through (KERNEL-571)

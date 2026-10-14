@@ -12,7 +12,7 @@ export function BriefMini() {
       <div className="text-ui leading-snug">Add PDF export to invoices. Spec first.</div>
       <div className="mt-6 flex items-center">
         <span className="inline-flex h-6 items-center rounded-chip border border-line-strong bg-chip px-2 text-micro text-ink-2">
-          To Rowan · Lead
+          To Kernel
         </span>
         <span className="flex-1" />
         <span className="inline-flex size-7 items-center justify-center rounded-full bg-ink text-canvas">
@@ -32,7 +32,7 @@ const tasks = [
 export function PlanMini() {
   return (
     <div className={mini}>
-      <div className="text-small font-semibold">Rowan&apos;s plan is ready</div>
+      <div className="text-small font-semibold">Kernel&apos;s plan is ready</div>
       <div className="text-micro text-muted">T-15 · Export invoices as PDF</div>
       <div className="mt-3 grid grid-plan-rows gap-y-1 text-micro text-ink-2">
         {tasks.map(([id, title, who]) => (

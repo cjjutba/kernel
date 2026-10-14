@@ -12,10 +12,10 @@
 //   --rebuild-world   build the room again instead of reusing the one saved for this code
 //
 // Nothing is simulated. It launches the built app headless (KERNEL_HEADLESS=1) with its own application-data folder, its own HOME and a
-// temp git repo with a bare origin, so it never touches the data or ~/.claude of a Kernel you run. The room, its chats with Rowan, its
+// temp git repo with a bare origin, so it never touches the data or ~/.claude of a Kernel you run. The room, its chats with Kernel, its
 // workspaces and their worktrees are made through the app's own IPC, and every archive is the app's own: main stops sessions and removes
 // worktrees, pushes each archived workspace, and answers when it is done. The one thing set by hand is which chat a workspace belongs to
-// (and a title for the row), because only Rowan's create_workspace tool sets that and it needs a Claude session. That is one UPDATE on
+// (and a title for the row), because only Kernel's create_workspace tool sets that and it needs a Claude session. That is one UPDATE on
 // the app's database before the window loads. No Claude session ever starts: preflight passes on CLAUDE_CODE_USE_BEDROCK and no prompt is sent.
 //
 // The room is built once per code version and saved, then restored before each run, so every run archives the same untouched world.
@@ -67,7 +67,7 @@ export function classify(sig: Sig, want: Expect): Seen {
 }
 
 /** The words for a screen, as a person would say it. */
-export const say = (s: Sig) => s.kind === 'workspace' ? `"${s.title}"${s.tabs ? '' : ' with no tabs'}` : s.kind === 'new-chat' ? 'New chat with Rowan' : s.kind === 'history' ? 'History' : s.kind === 'none' ? 'a blank screen' : `${s.text}`
+export const say = (s: Sig) => s.kind === 'workspace' ? `"${s.title}"${s.tabs ? '' : ' with no tabs'}` : s.kind === 'new-chat' ? 'New chat with Kernel' : s.kind === 'history' ? 'History' : s.kind === 'none' ? 'a blank screen' : `${s.text}`
 
 /** Runs in the page. Reads the screen in the main area (the live one, not the copy an archive leaves under it while it fades, and not the footer) on every animation frame and on every DOM change, so a screen that is committed and gone between two frames still shows. Page side, so it uses nothing from this file. */
 export function sampler(want: Expect, judge: (sig: Sig, want: Expect) => Seen) {
@@ -172,7 +172,7 @@ async function freePort(): Promise<number> {
   })
 }
 
-/** A repo with one commit and a bare origin, so Rowan's chats get worktrees and a room with no GitHub merges on the Mac. */
+/** A repo with one commit and a bare origin, so Kernel's chats get worktrees and a room with no GitHub merges on the Mac. */
 function makeRepo(live: string) {
   const repo = join(live, 'shop')
   const origin = join(live, 'origin.git')
@@ -323,7 +323,7 @@ async function quiet(page: Page) {
   }
 }
 
-/** Makes the room: chats with Rowan, workspaces, a dirty tree, a merged branch and a branch ready to merge, all through the app. Returns what the paths need. */
+/** Makes the room: chats with Kernel, workspaces, a dirty tree, a merged branch and a branch ready to merge, all through the app. Returns what the paths need. */
 async function buildWorld(ctx: Ctx): Promise<World> {
   const { page } = ctx
   await pastOnboarding(page)
@@ -376,7 +376,7 @@ async function buildWorld(ctx: Ctx): Promise<World> {
   for (const key of ['nav', 'button']) writeFileSync(join(workspaces[key].path, `${key}-notes.md`), 'half done\n')
   // Pushed to the bare origin, so the commits are on the remote and Archive on merge finds nothing to keep the branch for.
   for (const [key, file] of [['billing', 'billing.ts'], ['reviewed', 'invites.ts']] as const) { commit(key, file); sh('git', ['push', 'origin', 'HEAD'], workspaces[key].path) }
-  // A chat with Rowan that has done work: a commit on the remote, so the PR header has a state to show on its own workspace.
+  // A chat with Kernel that has done work: a commit on the remote, so the PR header has a state to show on its own workspace.
   const worked = (await listWs(page)).find((w) => w.id === chats['Export invoices as PDF'].workspaceId)
   workspaces.worked = { id: worked.id, path: worked.path }
   commit('worked', 'invoices.pdf.ts')
@@ -796,7 +796,7 @@ export function table(): string {
   const after = readResults('after')
   const keys = [...new Set([...before, ...after].filter((r) => paths.some((p) => p.id === r.id)).map((r) => `${r.id}|${r.where}`))]
   const order = (k: string) => paths.findIndex((p) => p.id === k.split('|')[0]) * 10 + ['screen', 'chat', 'history'].indexOf(k.split('|')[1])
-  const word = (s: string) => (s === 'old' ? 'the item' : s === 'dest' ? 'New chat with Rowan' : s)
+  const word = (s: string) => (s === 'old' ? 'the item' : s === 'dest' ? 'New chat with Kernel' : s)
   const cell = (r?: Result) => (r ? `${r.verdict === 'PASS' ? 'pass' : r.verdict === 'FAIL' ? 'FAIL' : 'ERROR'}: ${r.sequence.length ? r.sequence.map(word).join(', then ') : (r.lines[0] ?? '').replace(/\s+/g, ' ')}` : 'not run')
   const rows = keys.sort((a, b) => order(a) - order(b)).map((k) => {
     const [id, where] = k.split('|') as [string, Where]
