@@ -28,6 +28,12 @@ export type WorkspaceSource =
   | { kind: 'branch'; branch: string }
   | { kind: 'issue'; id: string; title: string; url?: string; tracker?: TrackerKind }
 
+/**
+ * A PR head Kernel made by updating the branch from its base (KERNEL-832): `to` merges `from` with the base and brings in
+ * nothing else, as git checked before Kernel recorded it.
+ */
+export interface BaseUpdate { from: string; to: string }
+
 export interface DiffStat {
   files: number
   added: number
@@ -107,6 +113,11 @@ export interface Workspace {
    * empty (KERNEL-717). With "Wait for the reviewer's approval to merge" on, the PR doesn't merge meanwhile.
    */
   reviewPending?: string
+  /**
+   * Heads Kernel made by updating the PR's branch from its base (KERNEL-832). A verdict on `from` counts on `to`, blockers
+   * included, and `to` starts no new automatic review. A teammate's push is never recorded here.
+   */
+  baseUpdates?: BaseUpdate[]
   /** The PR's head commit as GitHub last reported it. */
   prHead?: string
   prNumber?: number
