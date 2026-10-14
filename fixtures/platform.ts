@@ -387,7 +387,7 @@ function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number)
       ...lines.map((l): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'setup', lines: [l] })),
       ...(code === undefined ? [] : [{ type: 'script.exit' as const, workspaceId: ids.lead, kind: 'setup' as const, code }])
     ],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'files', leadRight: 'files', bottom: 'setup', toolsOpen: false }, tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
   }
 }
 
@@ -854,7 +854,7 @@ export const platformFixtures: Record<string, Fixture> = {
       setupData(ids.table, SETUP_RAW.frozen),
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
-    ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'setup', toolsOpen: false } }
   })),
   // A chat with Kernel sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
   WorkspaceLeadSetup: scene((f) => leadSetup(f, [

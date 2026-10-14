@@ -51,8 +51,6 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-caret.more { opacity: 0; }
 .tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
-.cp-btn { flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r); background: transparent; color: var(--muted); font-size: 12.5px; }
-.cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
 /* transcript */
 /* The scroll area sits in a frame, so the Scroll to bottom button floats over it instead of scrolling away with the thread (KERNEL-532). */
@@ -450,10 +448,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .chat-suggest button:hover { background: var(--surface-3); border-color: var(--line-3); }
 .tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--input-line); border-radius: var(--r-sm); background: var(--input-bg); color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; }
 
-/* A narrow chat column: Checkpoints keeps its icon, and the transcript and composer pull in from the edges (D-080). */
+/* A narrow chat column: the transcript and composer pull in from the edges (D-080). */
 @container chat (max-width: 520px) {
-  .cp-btn { width: 28px; justify-content: center; padding: 0; }
-  .cp-label { display: none; }
   .ws-scroll { padding: 16px 16px 8px; }
   .ws-chat[data-rail] .ws-scroll { padding-right: 32px; }
 }

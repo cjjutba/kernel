@@ -71,6 +71,5 @@ describe('the cover list matches what Kernel draws', () => {
   it('keeps the roles of the lists and cards that have no class of their own', () => {
     expect(read('screens/workspace/composer/Composer.tsx')).toContain('role="listbox"')
     expect(read('screens/workspace/composer/ModelPicker.tsx')).toContain('role="dialog"')
-    expect(read('screens/workspace/checkpoints/Checkpoints.tsx')).toContain('role="dialog"')
   })
 })
