@@ -81,29 +81,18 @@ export function Avatar({ name, size = 20, solid }: { name: string; size?: number
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
 }
 
-/** Clockwise order of the 16 outer cells of the large grid, as [row, col], from the top left (KERNEL-714). */
-const RING: ReadonlyArray<readonly [number, number]> = [
-  [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [1, 4], [2, 4], [3, 4], [4, 4], [4, 3], [4, 2], [4, 1], [4, 0], [3, 0], [2, 0], [1, 0]
-]
 const wave = Array.from({ length: 9 }, (_, i) => Math.floor(i / 3) + (i % 3))
-const grid = Array.from({ length: 25 }, (_, i) => {
-  const r = Math.floor(i / 5), c = i % 5
-  const at = RING.findIndex(([rr, cc]) => rr === r && cc === c)
-  return at >= 0 ? at : r === 2 && c === 2 ? null : -1
-})
 
 /**
- * The loader: a flat grid of dots whose opacity loops. `sm` is a 3x3 diagonal wave in the box the old ring had. `lg` is a 5x5 grid for loading that fills a panel, with light circling the outer ring.
- * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. Still and graded under reduced motion (KERNEL-714).
+ * The loader: a 3x3 grid of dots whose opacity loops in a diagonal wave. It is sized in em, so it follows the text beside it, and it always sits beside words.
+ * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. Still and graded under reduced motion (KERNEL-714, KERNEL-740).
  */
-export function Spinner({ size = 'sm', label = 'Loading', className }: { size?: 'sm' | 'lg'; label?: string | null; className?: string }) {
+export function Spinner({ label = 'Loading', className }: { label?: string | null; className?: string }) {
   const a11y = label === null ? { 'aria-hidden': true as const } : { role: 'status', 'aria-label': label }
   const cls = `dots${className ? ` ${className}` : ''}`
   return (
-    <span className={cls} data-size={size} {...a11y}>
-      {size === 'sm'
-        ? wave.map((k, i) => <i key={i} style={{ '--k': k } as CSSProperties} />)
-        : grid.map((k, i) => (k === null ? <i key={i} className="dots-gap" /> : k < 0 ? <i key={i} className="dots-in" /> : <i key={i} style={{ '--k': k } as CSSProperties} />))}
+    <span className={cls} {...a11y}>
+      {wave.map((k, i) => <i key={i} style={{ '--k': k } as CSSProperties} />)}
     </span>
   )
 }

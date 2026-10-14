@@ -16,6 +16,7 @@
 
 /* States with no list */
 .is-center { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0 40px; }
+.is-loading { gap: 8px; color: var(--muted); }
 .is-state { flex-direction: column; gap: 8px; text-align: center; }
 .is-state h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
 .is-state p { margin: 0 0 10px; max-width: 340px; color: var(--muted); line-height: 1.5; }
