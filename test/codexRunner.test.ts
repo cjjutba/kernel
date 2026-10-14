@@ -123,11 +123,11 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('thinking').map((i) => i.text)).toEqual(['**Reading the schema**'])
     expect(t.of('tool').map((i) => [i.name, i.label, i.status, i.output])).toEqual([
       ['Bash', 'Run pnpm test', 'done', '12 passed'],
-      ['Edit', 'Edit src/db/schema.ts', 'done', '+pdf_url'],
-      ['mcp__linear__get_issue', 'linear · get_issue', 'done', 'Issue'],
-      ['mcp__kernel__ping', 'kernel · ping', 'done', 'pong hi'],
-      ['Read', 'Read', 'done', ''],
-      ['Read', 'Read', 'done', '']
+      ['Edit', 'Edit: src/db/schema.ts', 'done', '+pdf_url'],
+      ['mcp__linear__get_issue', 'Read KERNEL-1 in Linear', 'done', 'Issue'],
+      ['mcp__kernel__ping', 'Ping', 'done', 'pong hi'],
+      ['Read', 'Read: .kernel/attachments/image.png', 'done', ''],
+      ['Read', 'Read: .kernel/attachments/image-2.png', 'done', '']
     ])
     expect(t.of('tool').slice(-2).map((i) => i.detail)).toEqual(['.kernel/attachments/image.png', '.kernel/attachments/image-2.png'])
     expect(t.pings).toEqual(['hi'])
@@ -223,7 +223,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
     const ask = track(await setup({ mode: 'default' }))
     await files(ask)
     const card = await ask.pending()
-    expect(card).toMatchObject({ toolName: 'Write', title: 'Write notes.md' })
+    expect(card).toMatchObject({ toolName: 'Write', title: 'Write: notes.md' })
     ask.approvals.decide(card.id, { behavior: 'deny' })
     await ask.idle()
     expect(await ask.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
