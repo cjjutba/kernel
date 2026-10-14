@@ -19,7 +19,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
   const cls = ['btn', variant !== 'secondary' && variant, size === 'lg' && 'lg', className].filter(Boolean).join(' ')
   return (
     <button type={type} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} /> : icon && <Icon name={icon} size={14} />}
+      {busy ? <Spinner label={null} kind="action" /> : icon && <Icon name={icon} size={14} />}
       {busy && busyLabel !== undefined ? busyLabel : children}
     </button>
   )
@@ -29,7 +29,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
 export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; busy?: boolean; busyLabel?: string }) {
   return (
     <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} /> : <Icon name={icon} size={size} />}
+      {busy ? <Spinner label={null} kind="action" /> : <Icon name={icon} size={size} />}
     </button>
   )
 }

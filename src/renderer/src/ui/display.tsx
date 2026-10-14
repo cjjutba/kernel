@@ -17,7 +17,7 @@ export function Banner({ kind, title, children, actions, onDismiss }: { kind: Ba
   const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
   return (
     <div role="alert" className="banner" data-kind={kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
-      {kind === 'retry' ? <Spinner label={null} /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
+      {kind === 'retry' ? <Spinner label={null} kind="swap" /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
       <div className="grow"><div className="banner-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
       {actions}
       {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
@@ -81,18 +81,36 @@ export function Avatar({ name, size = 20, solid }: { name: string; size?: number
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
 }
 
-const wave = Array.from({ length: 9 }, (_, i) => Math.floor(i / 3) + (i % 3))
+export type SpinnerKind = 'action' | 'agent' | 'process' | 'load' | 'swap'
+
+const spot = (r: number, c: number) => (r === 1 && c === 1 ? 0 : (r + c) % 2 ? 1 : 2)
+const order: Record<SpinnerKind, (r: number, c: number) => number> = {
+  action: spot,
+  agent: (r, c) => r + c,
+  process: (_, c) => c,
+  load: (r) => r,
+  swap: (r, c) => 2 - spot(r, c),
+}
+const patterns = Object.fromEntries(Object.entries(order).map(([kind, at]) => [kind, Array.from({ length: 9 }, (_, i) => at(Math.floor(i / 3), i % 3))])) as Record<SpinnerKind, number[]>
+
+/** A stable offset into the 1.6s loop from an id, so a row keeps its rhythm across renders and rows run out of step. */
+function phaseOf(seed: string) {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return `${((h % 16) / 10).toFixed(1)}s`
+}
 
 /**
- * The loader: a 3x3 grid of dots whose opacity loops in a diagonal wave. It is sized in em, so it follows the text beside it, and it always sits beside words.
- * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. Still and graded under reduced motion (KERNEL-714, KERNEL-740).
+ * The loader: a 3x3 grid of dots whose opacity loops, in an order that says what kind of wait it is. `action` ripples out from the center (busy buttons), `agent` crosses the diagonals (an agent working, the default),
+ * `process` sweeps the columns (a script or setup step), `load` sweeps the rows (loading data) and `swap` ripples in from the corners (a small inline change). It is sized in em, so it follows the text beside it, and it always sits beside words.
+ * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. `seed` starts the loop at a point taken from an id. Under reduced motion it holds the first group of its kind lit and dim (KERNEL-714, KERNEL-740, KERNEL-759).
  */
-export function Spinner({ label = 'Loading', className }: { label?: string | null; className?: string }) {
+export function Spinner({ label = 'Loading', kind = 'agent', seed, className }: { label?: string | null; kind?: SpinnerKind; seed?: string; className?: string }) {
   const a11y = label === null ? { 'aria-hidden': true as const } : { role: 'status', 'aria-label': label }
   const cls = `dots${className ? ` ${className}` : ''}`
   return (
-    <span className={cls} {...a11y}>
-      {wave.map((k, i) => <i key={i} style={{ '--k': k } as CSSProperties} />)}
+    <span className={cls} data-kind={kind} style={seed ? ({ '--phase': phaseOf(seed) } as CSSProperties) : undefined} {...a11y}>
+      {patterns[kind].map((k, i) => <i key={i} style={{ '--k': k } as CSSProperties} />)}
     </span>
   )
 }

@@ -65,6 +65,9 @@ function Display() {
       <Section title="Banners">
         <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
       </Section>
+      <Section title="Loader kinds">
+        <div className="devui-row">{(['action', 'agent', 'process', 'load', 'swap'] as const).map((k) => <span key={k} className="row" style={{ gap: 6 }}><Spinner kind={k} />{k}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
+      </Section>
       <Section title={`Icons (${iconNames().length})`}>
         <div className="devui-icons">{iconNames().map((n) => <span key={n} title={n}><Icon name={n} /></span>)}</div>
       </Section>
