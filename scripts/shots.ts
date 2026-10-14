@@ -296,6 +296,13 @@ async function personalMenu(page: Page, item?: string) {
   await page.waitForTimeout(300)
 }
 
+// SettingsAccountsAlsoCli is Work's details open, where the Sign-in source line is. The open state is local to the page.
+async function openDetails(page: Page, account: string) {
+  await page.getByRole('button', { name: new RegExp(account) }).and(page.locator('.ac-disc')).first().click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // SearchSwitchAccount is the palette with "switch" typed. The query is local to the palette.
 async function typeSwitch(page: Page) {
   await page.getByRole('combobox', { name: 'Type a command or search' }).fill('switch')
@@ -345,6 +352,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsAddAccountCodex: (page) => openAddAccount(page, 1),
   SettingsAddAccountCodexBrowser: (page) => openAddAccount(page, 1, 'Sign in with ChatGPT'),
   SettingsAddAccountDuplicate: addDuplicate,
+  SettingsAccountsAlsoCli: (page) => openDetails(page, 'Work'),
   SettingsAccountsRename: (page) => personalMenu(page, 'Rename'),
   SettingsAccountsMenu: (page) => personalMenu(page),
   SettingsAccountsRemove: (page) => personalMenu(page, 'Remove'),

@@ -405,6 +405,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
+  // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.
+  SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
   SettingsAccountsCodex: providersPage('codex'),
   SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
