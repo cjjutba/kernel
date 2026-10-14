@@ -966,6 +966,9 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     const now = Date.now()
     kc.set(CLI, { claudeAiOauth: { accessToken: 'max-login' }, mcpOAuth: { 'linear|aaa': signIn('linear', 'cli', now + HOUR), 'claude.ai Gmail|ccc': { serverName: 'claude.ai Gmail', accessToken: 'cli-gmail-access' } } })
     const side = await h['accounts.add']({ provider: 'claude' })
+    // The add's background reads start Claude processes, each of which shares the sign-ins. One landing between the two writes
+    // below shares linear before its cache entry exists, and nothing clears the entry later.
+    await settleReads(k); await quiet()
     const folder = k.providers.claudeHome(side.id)
     const SIDE = credentialsItem({ CLAUDE_CONFIG_DIR: folder })
     // Claude Code made the login's item when it signed in, and found linear needs a sign-in there.
