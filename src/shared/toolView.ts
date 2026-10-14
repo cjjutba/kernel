@@ -205,7 +205,7 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
   }
 }
 
-const DENIED = /doesn't want to proceed|tool use was rejected|permission to use .* has been denied|request interrupted by user|you denied|user denied/i
+const DENIED = /doesn't want to proceed|tool use was rejected|permission to use .* has been denied|request interrupted by user|you denied|user denied|denied in kernel/i
 
 /** Whether a failed call failed because its approval was refused, or because it was cut off and never answered. */
 function stateOf(item: ToolLike): ToolState {
