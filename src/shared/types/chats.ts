@@ -262,6 +262,8 @@ export type TeamEventKind =
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   // A ready PR GitHub starts or stops blocking: a required review, a branch behind its base, other rules (KERNEL-401).
   | 'pr.blocked' | 'pr.unblocked'
+  // Kernel brought a PR it was about to merge up to date with its base, or stopped doing so after too many tries (KERNEL-835).
+  | 'pr.updated'
   // Where a ready PR's review stands, a grey segment of its own after Ready to merge (KERNEL-411).
   | 'pr.review'
   | 'review'

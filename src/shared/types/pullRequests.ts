@@ -46,6 +46,8 @@ export interface PrInfo {
   reviewDecision?: 'approved' | 'changes' | 'pending'
   /** The head commit (headRefOid). */
   head?: string
+  /** The base branch's commit GitHub last compared the PR with (baseRefOid). Behind the base's tip once the base moved after the PR's checks ran (KERNEL-835). */
+  baseOid?: string
   /** GitHub is still working out whether the open PR conflicts with its base (mergeable UNKNOWN), as after the base moved. */
   conflictsUnknown?: boolean
   /** Why GitHub won't merge a PR whose checks passed yet: a required review, a branch behind its base, or other branch rules (KERNEL-388). */
