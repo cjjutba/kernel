@@ -94,11 +94,14 @@ export type AgentOrigin = 'project' | 'personal' | 'plugin'
  * And since KERNEL-634:
  * - `model-unknown`: its provider is signed in but doesn't offer the model its `model:` pins. `model-unavailable` is for a
  *   provider that is signed out.
+ *
+ * And since KERNEL-692:
+ * - `kernel-name`: its name is Kernel, the Lead's, so it shows as "Kernel (agent)".
  */
 export type AgentWarningKind =
   | 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
   | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off' | 'looks-like-subagent' | 'model-unavailable'
-  | 'model-unknown'
+  | 'model-unknown' | 'kernel-name'
 
 export interface AgentWarning {
   kind: AgentWarningKind

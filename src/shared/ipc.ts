@@ -100,6 +100,8 @@ export interface KernelApi {
   'agents.setTeam': { req: { roomId: string; team: TeamPatch; from?: 'setup' | 'settings' }; res: AgentDef[] }
   /** Copies Kernel's own Lead or reviewer into .claude/agents so the user can edit it, and returns the new file's agent. */
   'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
+  /** Deletes .claude/agents/kernel.md, so the room's Lead is Kernel as it ships again, and returns the team (KERNEL-692). */
+  'agents.resetLead': { req: { roomId: string }; res: AgentDef[] }
   /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
   'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
   /**
