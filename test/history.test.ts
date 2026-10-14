@@ -346,7 +346,7 @@ describe('the saved place', () => {
     go(at('lead'))
     go({ name: 'settings', page: 'room', roomId: 'r1', section: 'git' })
     expect(saved().route).toEqual(at('lead'))
-    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'scripts' })
+    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'setup' })
     expect(saved().route).toEqual(at('lead'))
     actions.ui.leaveSettings()
     expect(saved().route).toEqual(at('lead'))

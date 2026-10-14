@@ -1,4 +1,4 @@
-import { useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from 'react'
+import { useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import { Icon, type IconName, type IconSize } from '../icons'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
@@ -62,11 +62,6 @@ export function Tabs({ tabs, value, onChange, label, variant = 'pill' }: { tabs:
   )
 }
 
-/** On/off switch (Settings rows). Name it with `label`, or wrap it in a labelled row. */
-export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
-  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className="toggle" onClick={() => onChange(!checked)}><span /></button>
-}
-
 /** A checkbox and its label, one row. `align="top"` pins the box to the first line of a label that wraps or has a second line. Pass the
  *  row's own class (a bordered option, a list item) as `className`; the box itself always looks the same. */
 export function Checkbox({ checked, onChange, align = 'center', className, children, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'onChange' | 'checked'> & { checked: boolean; onChange: (checked: boolean) => void; align?: 'center' | 'top'; children: ReactNode }) {
@@ -78,32 +73,15 @@ export function Checkbox({ checked, onChange, align = 'center', className, child
   )
 }
 
-/** A native select with the canvas chrome, so keyboard and screen readers work for free. `inline` is the bare value with up and down
- *  chevrons, for a settings row inside a popover (New chat's branch options). */
-export function Select({ options, label, variant = 'field', className, ...rest }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'aria-label'> & { options: { value: string; label: string }[]; label: string; variant?: 'field' | 'inline' }) {
-  return (
-    <span className={[variant === 'inline' ? 'select-inline' : 'select', className].filter(Boolean).join(' ')}>
-      <select aria-label={label} {...rest}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      <Icon name={variant === 'inline' ? 'chevrons' : 'chevron'} size={12} />
-    </span>
-  )
+/** On/off switch (Settings rows). Name it with `label`, or wrap it in a labelled row. */
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className="toggle" onClick={() => onChange(!checked)}><span /></button>
 }
 
-/** A select drawn as a chip: `children` show the choice (a name, a value, a letter tile), and the real select lies over the chip, invisible,
- *  so the keyboard and screen readers work. `label` is the select's accessible name. */
-export function SelectChip({ options, value, onChange, label, className, children }: { options: { value: string; label: string }[]; value: string; onChange: (value: string) => void; label: string; className?: string; children: ReactNode }) {
-  return (
-    <span className={['select-chip', className].filter(Boolean).join(' ')}>
-      {children}
-      <Icon name="chevron" size={12} />
-      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </span>
-  )
-}
-
-/** One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's label, for a script that is running. */
+/**
+ * One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's
+ * label, for a script that is running. Every option is the same width, so none looks like the default (KERNEL-680).
+ */
 export function SegmentedControl({ options, value, onChange, label }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {

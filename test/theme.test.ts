@@ -106,7 +106,7 @@ describe('theme contrast', () => {
   })
   it('status words reach 4.5:1 on their tint in both themes', () => {
     const fails: string[] = []
-    for (const [name, theme] of themes(both)) for (const t of ['add', 'del', 'muted'])
+    for (const [name, theme] of themes(both)) for (const t of ['del', 'muted'])
       if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
@@ -247,9 +247,9 @@ describe('design tokens beyond color', () => {
     expect(scan(tsx, (l) => [...l.matchAll(/style=\{\{([^{}]*)\}\}/g)].some((m) =>
       /(?:^|,)\s*(fontSize|fontWeight|lineHeight|color|background\w*|gap|margin\w*|padding\w*|border\w*)\s*:\s*(-?[0-9.]+|'[^']*')\s*(?:,|$)/.test(m[1])))).toEqual([])
   })
-  it('checkboxes and selects are the shared controls, outside ui/', () => {
+  it('checkboxes are the shared Checkbox outside ui/ (selects are test/noNativeSelect.test.ts)', () => {
     const tsx = files.filter((f) => f.endsWith('.tsx') && !rel(f).startsWith('src/renderer/src/ui/')).map((f) => [f, readFileSync(f, 'utf8')] as const)
-    expect(scan(tsx, (l) => /<input[^>]*type="checkbox"|<select\b/.test(l))).toEqual([])
+    expect(scan(tsx, (l) => /<input[^>]*type="checkbox"/.test(l))).toEqual([])
   })
   it('every var() names a custom property that is defined', () => {
     const text = files.map((f) => readFileSync(f, 'utf8')).join('\n')

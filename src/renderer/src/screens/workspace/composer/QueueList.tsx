@@ -8,7 +8,7 @@ const textOf = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.te
 /** What the note above the queue says. A running turn needs none: the transcript already shows the agent working. */
 const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
-  capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models.',
+  capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
   paused: 'Queued. Sends when you resume the room.',
   merge: 'Queued. Sends when the work it waits for merges.',
   limit: 'Close to your usage limit. Sends when it resets or usage drops.'

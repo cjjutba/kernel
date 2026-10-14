@@ -44,7 +44,7 @@ export function AccountButton() {
           {switching ? <span className="spin" aria-hidden="true" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
         </span>
       ),
-      onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'providers', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)
+      onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'accounts', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)
     }
   }
   const groups = PROVIDERS.flatMap((p, i) => {
@@ -67,7 +67,7 @@ export function AccountButton() {
                 MENU_SEPARATOR,
                 { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
                 MENU_SEPARATOR,
-                { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'providers' }) }
+                { id: 'manage', label: 'Manage accounts', onSelect: () => go({ name: 'settings', page: 'accounts' }) }
               ]
             : [
                 ...(who ? [{ id: 'who', label: who, disabled: true }] : []),

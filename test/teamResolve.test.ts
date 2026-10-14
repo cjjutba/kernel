@@ -80,7 +80,7 @@ describe('resolveTeam', () => {
     const r = await team(files)
     expect(r.agents[0]).toMatchObject({ id: 'rowan', lead: true })
     expect(r.agents.find((a) => a.id === 'theo')).toMatchObject({ reviewer: true, member: false })
-    expect(r.agents.filter((a) => a.member).map((a) => a.id).sort()).toEqual(['ivy', 'kai', 'lumi', 'noor'])
+    expect(r.agents.filter((a) => a.member).map((a) => a.id).sort()).toEqual(['ivy', 'kai', 'noor'])
     expect(r.agents.some((a) => a.builtIn)).toBe(false)
   })
 

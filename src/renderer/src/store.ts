@@ -6,6 +6,7 @@ import type { AccountAddStep, AccountProfile, Provider,
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
+import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
@@ -414,8 +415,12 @@ let toastSeq = 0
 /** Typed writes, one group per slice. Screens call these instead of reshaping state themselves. */
 export const actions = {
   ui: {
-    /** Navigate. Closes any modal and menu. Entering a workspace opens its right panel on Changes, or on PRs for the Lead's. */
-    go: (route: Route, opts?: { history?: HistoryMode }) => {
+    /**
+     * Navigate. Closes any modal and menu. Entering a workspace opens its right panel on Changes, or on PRs for the Lead's. A Settings page
+     * that was merged into another opens the one that holds it now (KERNEL-680).
+     */
+    go: (to: Route, opts?: { history?: HistoryMode }) => {
+      const route = currentRoute(to)
       const from = leaving()
       const now = state.ui.route
       const entering = route.name === 'workspace' && !(now.name === 'workspace' && now.workspaceId === route.workspaceId)

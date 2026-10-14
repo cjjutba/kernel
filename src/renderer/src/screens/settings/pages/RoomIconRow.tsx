@@ -1,22 +1,19 @@
-import { useRef } from 'react'
 import type { KernelApi } from '@shared/ipc'
 import type { Room } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { RoomIcon } from '../../../components/RoomIcon'
-import { actions, useStore } from '../../../store'
-import { Button, Icon, Menu, useBusy, type MenuEntry } from '../../../ui'
-import { roomLetter } from '../../rooms/roomInfo'
+import { actions } from '../../../store'
+import { Select, useBusy } from '../../../ui'
 import { Row } from '../kit'
+import { useMenuOpen } from './roomMenu'
 
 type Kind = 'letter' | 'github' | 'image'
 
 const LABEL: Record<Kind, string> = { letter: 'Letter', github: 'GitHub avatar', image: 'Image' }
-const BUSY: Record<Kind, string> = { letter: 'Saving', github: 'Getting avatar', image: 'Saving' }
 
-/** Settings > a room > General > Icon (SettingsRoom.png, SettingsRoomIcon.png): the room's letter, its GitHub avatar or a picked image. */
+/** Settings > a room > General > Icon (MorePage roomGeneral, KERNEL-680): the room's letter, its GitHub avatar or a picked image. Choose image opens the file dialog. */
 export function RoomIconRow({ room }: { room: Room }) {
-  const open = useStore((s) => s.ui.menu === 'roomIcon')
-  const anchor = useRef<HTMLDivElement>(null)
+  const menu = useMenuOpen('roomIcon')
   const [busy, run] = useBusy<Kind>()
   const kind: Kind = room.icon?.kind ?? 'letter'
   // The avatar comes from the room's GitHub owner, so a room with no GitHub repo can't ask for one. One that already has it keeps the entry.
@@ -31,31 +28,21 @@ export function RoomIconRow({ room }: { room: Room }) {
       fail(e)
     }
   })
-  const choose = async (next: Kind) => {
-    if (next === 'letter' && kind === 'letter') return
-    if (next !== 'image') return save(next, { kind: next })
-    // The file dialog opens before the busy state starts, so the button doesn't say "Saving" while it is up. Cancelling returns null.
+  const pick = (next: Kind) => { if (next !== kind) save(next, { kind: next } as KernelApi['rooms.setIcon']['req']['icon']) }
+  const chooseImage = async () => {
+    // The file dialog opens before the busy state starts, so the control doesn't look busy while it is up. Cancelling returns null.
     let path: string | null
     try { path = await call('system.pickImage', undefined) } catch (e) { return fail(e) }
     if (path) save('image', { kind: 'image', path })
   }
-
-  const tile = (child: React.ReactNode) => <span className="set-icon-mini" aria-hidden="true">{child}</span>
-  const entries: MenuEntry[] = [
-    { id: 'letter', label: 'Letter', leading: tile(roomLetter(room.name)), checked: kind === 'letter', onSelect: () => void choose('letter') },
-    ...(github ? [{ id: 'github', label: 'GitHub avatar', leading: kind === 'github' ? <RoomIcon room={room} className="set-icon-mini" /> : tile(<Icon name="user" size={12} />), checked: kind === 'github', onSelect: () => void choose('github') }] : []),
-    { id: 'image', label: 'Choose image', leading: kind === 'image' ? <RoomIcon room={room} className="set-icon-mini" /> : tile(<Icon name="image" size={12} />), checked: kind === 'image', onSelect: () => void choose('image') }
+  const options = [
+    { value: 'letter', label: LABEL.letter },
+    ...(github ? [{ value: 'github', label: LABEL.github }] : []),
+    ...(kind === 'image' ? [{ value: 'image', label: LABEL.image }] : [])
   ]
-
   return (
-    <Row label="Icon" desc="Shown next to the room in the sidebar and on its chats">
-      <div className="set-icon" ref={anchor}>
-        <RoomIcon room={room} className="set-icon-tile" />
-        <Button className="set-icon-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={busy ? BUSY[busy] : `Room icon: ${LABEL[kind]}`} busy={busy !== null} busyLabel={busy ? BUSY[busy] : undefined} onClick={() => actions.ui.toggleMenu('roomIcon')}>
-          {LABEL[kind]}<Icon name="chevron" size={12} />
-        </Button>
-        {open && <Menu label="Room icon" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: 0, top: 36, width: 224 }} items={entries} />}
-      </div>
+    <Row label="Icon" desc="Shown in the sidebar and on the room’s chats." lead={<RoomIcon room={room} className="set-icon-tile" />}>
+      <Select label="Room icon" value={kind} options={options} disabled={busy !== null} align="right" onChange={(v) => pick(v as Kind)} actions={[{ label: 'Choose image…', icon: 'image', onSelect: () => void chooseImage() }]} {...menu} />
     </Row>
   )
 }

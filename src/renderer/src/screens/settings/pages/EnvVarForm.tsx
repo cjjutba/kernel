@@ -4,6 +4,7 @@ import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, Modal, useBusy } from '../../../ui'
 import { envChanged, useEnv } from '../env'
+import { SettingsLink } from '../kit'
 
 /**
  * What is wrong with a name, or undefined. This is the engine's rule (`ENV_NAME` and Kernel's own names, both from src/shared).
@@ -55,7 +56,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
     })
   }
   const intro = room
-    ? `For ${room.name}. It wins over the same name in Settings, Environment.`
+    ? <>For {room.name}. It wins over the same name in <span onClickCapture={actions.ui.closeModal}><SettingsLink to={{ page: 'env' }}>Settings, Environment</SettingsLink></span>.</>
     : 'For every room. A room\'s variable with the same name wins.'
   return (
     <Modal

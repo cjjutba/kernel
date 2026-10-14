@@ -208,13 +208,13 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
 
         <div className="nw-foot">
           <span ref={modelAnchor} className="relative">
-            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted fw-regular">{effortLabel}</span><Icon name="chevron" size={12} /></Button>
+            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted fw-regular" >{effortLabel}</span><Icon name="chevron" size={12} /></Button>
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { pickModel(m, x); actions.ui.closeMenu() }} onEffort={pickEffort} />}
           </span>
           <span className="grow">
             {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}
           </span>
-          <span ref={plusAnchor} className="nw-plus relative">
+          <span ref={plusAnchor} className="nw-plus relative" >
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
@@ -226,18 +226,18 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
   )
 }
 
-/** Target branch and where it runs (NewWorkspaceBranch.png). Both are native selects, so the keyboard works. */
+/** Target branch and where it runs (NewWorkspaceBranch.png). Both are Selects, so the keyboard works. */
 function BranchMenu({ anchorRef, target, targets, onTarget, mode, onMode, hint }: { anchorRef: React.RefObject<HTMLElement | null>; target: string; targets: string[]; onTarget: (b: string) => void; mode: WorkspaceMode; onMode: (m: WorkspaceMode) => void; hint: string }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: actions.ui.closeMenu, onOutside: actions.ui.closeMenu, ref, anchorRef })
   return (
     <div ref={ref} role="dialog" aria-label="Branch options" className="nw-pop nw-branch">
-      <label className="nw-row"><span>Target branch</span>
-        <Select variant="inline" className="mono nw-target" label="Target branch" value={target} disabled={mode === 'current'} onChange={(e) => onTarget(e.target.value)} options={targets.map((t) => ({ value: t, label: t }))} />
-      </label>
-      <label className="nw-row"><span>Runs in</span>
-        <Select variant="inline" label="Runs in" value={mode} onChange={(e) => onMode(e.target.value as WorkspaceMode)} options={MODES.map((m) => ({ value: m.id, label: m.label }))} />
-      </label>
+      <div className="nw-row"><span>Target branch</span>
+        <Select variant="plain" align="right" className="nw-select mono" label="Target branch" value={target} disabled={mode === 'current'} onChange={onTarget} options={targets.map((t) => ({ value: t, label: t }))} />
+      </div>
+      <div className="nw-row"><span>Runs in</span>
+        <Select variant="plain" align="right" className="nw-select" label="Runs in" value={mode} onChange={(v) => onMode(v as WorkspaceMode)} options={MODES.map((m) => ({ value: m.id, label: m.label }))} />
+      </div>
       <p className="nw-hint">{hint}</p>
     </div>
   )

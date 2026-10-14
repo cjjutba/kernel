@@ -139,13 +139,13 @@ const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}
 })
 /** The popover open over the same home, in Detailed unless `view` says Compact. */
 const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
-/** Settings, Providers on one tab, with each account's nickname, plan and usage windows (KERNEL-561). */
+/** Settings, Accounts with each account's nickname, plan and usage windows (KERNEL-561, KERNEL-680). `tab` scrolls to that provider. */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
   accounts: richAccounts,
   providerStatus,
   usage: providerUsage(),
   ...extra,
-  ui: { route: { name: 'settings', page: 'providers', tab } }
+  ui: { route: { name: 'settings', page: 'accounts', tab } }
 }))
 /**
  * Work, the account in use, hit its weekly limit with switching off, so the page's banner offers Personal, which is past 75% of its
@@ -159,8 +159,6 @@ const limitUsage = (): RateLimit[] => [
 const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { switchAtLimit: { claude: false, codex: false } } } })
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
-/** Settings, Account and usage with the accounts of the Usage popover and Fable's weekly window on Work (KERNEL-665). */
-const accountPage = (extra: Partial<Fixture> = {}) => settingsPage('account', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow], ...extra })
 
 // KERNEL-26, KERNEL-191: the room pages read their own room's .kernel files, so the fixture gives Client A the values the canvas shows.
 // `sources` says which file set what: both files are there, so the settings files button offers both.
@@ -388,26 +386,20 @@ export const platformFixtures: Record<string, Fixture> = {
   Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
-  // KERNEL-665: every Claude Code and Codex account with its own windows, as the Usage popover lists them. The Codex shots are the page scrolled down to that section.
-  SettingsAccount: accountPage(),
-  // The key runs the agents, and the subscriptions keep the numbers they had when it took over (KERNEL-524).
-  SettingsAccountApiKey: accountPage({ accounts: [{ ...workClaude, active: false }, personalClaude, keyAccount('claude', true), ownCodex, personalCodex] }),
-  SettingsAccountCodex: accountPage({ accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex] }),
-  SettingsAccountCodexSignedOut: accountPage({ accounts: [workClaude, personalClaude, keyAccount('claude'), { ...ownCodex, signedIn: false }] }),
   SettingsShortcuts: settingsPage('shortcuts'),
   // KERNEL-406: Frontend and Backend run on Codex. The rest stay on Claude.
   SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),
-  // KERNEL-406: both providers' accounts and status, with Claude's own login active and a second Claude account added.
-  SettingsProviders: providersPage('claude'),
-  SettingsProvidersCodex: providersPage('codex'),
-  SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
+  // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
+  SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
+  SettingsAccountsCodex: providersPage('codex'),
+  SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   // KERNEL-524: an API key account beside the login, on each tab, then with the key in use and the sheet that adds one.
-  SettingsProvidersApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
-  SettingsProvidersApiKeyActive: providersPage('claude', {
+  SettingsAccountsApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
+  SettingsAccountsApiKeyActive: providersPage('claude', {
     accounts: [{ ...workClaude, active: false }, keyAccount('claude', true), ownCodex],
     providerStatus: { ...providerStatus, claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'API key', configFile: '/Users/you/.claude/settings.json' } }
   }),
-  SettingsProvidersCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
+  SettingsAccountsCodexApiKey: providersPage('codex', { accounts: [workClaude, ownCodex, keyAccount('codex')] }),
   SettingsAddAccountApiKey: providersPage('claude', { accounts: [workClaude, keyAccount('claude'), ownCodex] }),
   // KERNEL-561: the one-button sheet on each tab, and its signing-in state. Claude's `code` step arrives from the start and the sheet shows a link for it (KERNEL-615), Codex has no such step.
   SettingsAddAccount: addAccountPage('claude'),
@@ -415,23 +407,23 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAddAccountCodex: addAccountPage('codex'),
   SettingsAddAccountCodexBrowser: addAccountPage('codex', 'browser'),
   // KERNEL-561: Personal being renamed, and a Claude account from before the full login that asks to sign in again with the usage its last turn read.
-  SettingsProvidersRename: providersPage('claude'),
-  SettingsProvidersLegacy: providersPage('claude', {
+  SettingsAccountsRename: providersPage('claude'),
+  SettingsAccountsLegacy: providersPage('claude', {
     accounts: [workClaude, { ...personalClaude, email: undefined, plan: undefined, usageFromTurns: true, legacyToken: true }, keyAccount('claude'), ownCodex],
     usage: providerUsage(todayAt(14, 10))
   }),
   // KERNEL-619: Claude Code found two claude.ai connectors on Personal's login that need a sign-in. Work's login has none.
-  SettingsProvidersMcp: providersPage('claude', {
+  SettingsAccountsMcp: providersPage('claude', {
     mcpAccounts: mcpAcrossAccounts,
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: [{ server: 'claude.ai Google Drive', connector: true }, { server: 'claude.ai Gmail', connector: true }] }, keyAccount('claude'), ownCodex]
   }),
   // KERNEL-627: Sign in to all on the same line while it runs, then what failed.
-  SettingsProvidersMcpSigningIn: providersPage('claude', {
+  SettingsAccountsMcpSigningIn: providersPage('claude', {
     mcpAccounts: mcpAcrossAccounts,
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(1) }, keyAccount('claude'), ownCodex],
     push: [{ type: 'account.mcpSignInAll', run: signInAllRun }]
   }),
-  SettingsProvidersMcpSignInFailed: providersPage('claude', {
+  SettingsAccountsMcpSignInFailed: providersPage('claude', {
     mcpAccounts: mcpAcrossAccounts,
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns.slice(2) }, keyAccount('claude'), ownCodex],
     push: [{ type: 'account.mcpSignInAll', run: signInAllFailed }]
@@ -442,24 +434,24 @@ export const platformFixtures: Record<string, Fixture> = {
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, mcpSignIns: personalMcpSignIns }, keyAccount('claude'), ownCodex],
     providerStatus,
     usage: providerUsage(),
-    ui: { route: { name: 'settings', page: 'providers', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '6 MCP servers need you', action: { label: 'Set up', modal: setUpModal } }] }
+    ui: { route: { name: 'settings', page: 'accounts', tab: 'claude' }, toasts: [{ id: 'mcp-needed', title: '6 MCP servers need you', action: { label: 'Set up', modal: setUpModal } }] }
   })),
   // KERNEL-619: Personal's Keychain item waits on a macOS prompt. It reads as waiting, not signed out, keeps no usage lines, and can't be switched to or signed out.
-  SettingsProvidersKeychain: providersPage('claude', {
+  SettingsAccountsKeychain: providersPage('claude', {
     accounts: [{ ...workClaude, mcpSignIns: [] }, { ...personalClaude, keychainWait: true }, keyAccount('claude'), ownCodex],
     usage: providerUsage().filter((l) => l.accountId !== 'personal')
   }),
   // KERNEL-619: both logins are seats in one Claude Team organization, so Personal says it shares limits with Work.
-  SettingsProvidersSameOrg: providersPage('claude', {
+  SettingsAccountsSameOrg: providersPage('claude', {
     accounts: [{ ...workClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['personal'] }, { ...personalClaude, plan: 'Claude Team', mcpSignIns: [], sameOrg: ['cli'] }, keyAccount('claude'), ownCodex],
     providerStatus: { ...providerStatus, claude: { ...providerStatus.claude!, plan: 'Claude Team' } }
   }),
   // feat-providers-redesign: the account in use at its weekly limit with switching off, the page in light, and Personal's menu and Remove.
-  SettingsProvidersLimit: limitPage(),
-  SettingsProvidersLimitLight: light(limitPage()),
-  SettingsProvidersLight: light(providersPage('claude')),
-  SettingsProvidersMenu: providersPage('claude'),
-  SettingsProvidersRemove: providersPage('claude'),
+  SettingsAccountsLimit: limitPage(),
+  SettingsAccountsLimitLight: light(limitPage()),
+  SettingsAccountsLight: light(providersPage('claude')),
+  SettingsAccountsMenu: providersPage('claude'),
+  SettingsAccountsRemove: providersPage('claude'),
   // KERNEL-619: Personal's login is already in Kernel, so Add account says so and keeps its Sign in button.
   SettingsAddAccountDuplicate: providersPage('claude', { push: [{ type: 'account.add', add: { provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' } }] }),
   // KERNEL-561: the menu lists every account of both providers with its plan and usage, and Cmd+K switches to any that isn't in use.
@@ -520,7 +512,7 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
-  SettingsRoomScripts: roomPage('scripts', clientA({
+  SettingsRoomSetup: roomPage('setup', clientA({
     runScripts: [
       { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
       { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
@@ -533,26 +525,24 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
   SettingsRoomEnvironment: roomPage('environment', envRoomA),
   SettingsEnvironmentAdd: scene(() => ({ ...envRoomA, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'environment' }, modal: { name: 'envVar', roomId: ids.roomA } } })),
-  SettingsRoomInstructions: roomPage('instructions', clientA()),
   SettingsRoomPermissions: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } } })),
   // KERNEL-455: the room's mode menu is open, over Use app default.
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
-  SettingsScripts: settingsPage('scripts'),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
-  SettingsFiles: scene((f) => ({
+  SettingsRoomSetupFiles: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
     rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     localFiles: { [ids.roomA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'files' } }
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
   })),
   // KERNEL-449: two of those files look like production, so the warning sits above the list, by file and variable name.
-  SettingsFilesProduction: scene((f) => ({
+  SettingsRoomSetupProduction: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
     rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     localFiles: { [ids.roomA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
     production: { [ids.roomA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'files' } }
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
   })),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
   // KERNEL-679: a dev run started inside a workspace says hooks are off in place of Install, with no snippet. No PNG.
@@ -570,7 +560,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
   // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Lumi, which is optional.
-  SettingsRoomReviews: scene((f) => ({
+  SettingsRoomPrs: scene((f) => ({
     ...clientA({
       review: {
         rounds: 2,
@@ -584,7 +574,7 @@ export const platformFixtures: Record<string, Fixture> = {
       merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] }
     }),
     agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'reviews' } }
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
   })),
   SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers, mcpAccounts: mcpAcrossAccounts }),
   // KERNEL-661: twenty-seven servers as switches in a room, each with one word of status and the link to the global page.

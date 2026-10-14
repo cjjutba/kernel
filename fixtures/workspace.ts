@@ -33,7 +33,7 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
   }))
 
 /**
- * KERNEL-413: the header as design/redesign/ draws it. Noor's PR #147 for KERNEL-155 in the room Kernel, with the issue's title where
+ * KERNEL-413: the header. Noor's PR #147 for KERNEL-155 in the room Kernel, with the issue's title where
  * the workspace's name was, in one PR state. The right panel is hidden unless `panel`, which puts the PR cluster in the panel head.
  */
 const HEADER_BRANCH = 'cjjutbaofficial/kernel-155-home-and-inbox-keep-asking-about-requests-and-prs'
@@ -53,7 +53,7 @@ const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { pa
   }))
 
 /**
- * KERNEL-478: a branch that merges on the Mac, as design/redesign/PrLocal*.png draws it. Noor's discount code branch in the Shop room, a local
+ * KERNEL-478: a branch that merges on the Mac, as the PrLocal fixtures show it. Noor's discount code branch in the Shop room, a local
  * folder with no GitHub remote, 3 commits ahead of main. `behind`, `conflicts` and `dirty` are what git said about it. The room's merge
  * method is a squash, and `merged` is the commit it left on main.
  */
@@ -802,7 +802,7 @@ const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 3
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
 
 /**
- * KERNEL-515: the panel's strip for each tab, as design/redesign/PanelToolbar*.png and PanelFilter.png draw it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
+ * KERNEL-515: the panel's strip for each tab, as the PanelToolbar* fixtures and PanelFilter show it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
  * All files tree marks and the Checks tab counts. Its run script is on port 4303.
  */
 const PANEL_CHANGES: ChangedFile[] = [
@@ -827,7 +827,7 @@ const PANEL_CHANGES: ChangedFile[] = [
 /** The repo's files: the changed ones above with their status, and the rest as the canvas lists them. */
 const PANEL_TREE: FileEntry[] = [
   ...['.changes', '.changes/unreleased', '.github', 'design', 'docs', 'docs/decisions', 'fixtures', 'scripts', 'src', 'src/main', 'src/main/features', 'src/main/services', 'src/preload', 'src/renderer', 'src/renderer/src', 'src/renderer/src/screens', 'src/renderer/src/screens/home', 'src/renderer/src/screens/inbox', 'src/shared', 'test'].map((path) => ({ path, dir: true })),
-  ...['docs/ARCHITECTURE.md', 'docs/PRODUCT.md', 'docs/SCREENS.md', 'src/main/bus.ts', 'src/main/kernel.ts', '.gitignore', 'CLAUDE.md', 'DESIGN.md', 'package.json'].map((path) => ({ path, dir: false })),
+  ...['docs/ARCHITECTURE.md', 'docs/PRODUCT.md', 'docs/ROADMAP.md', 'src/main/bus.ts', 'src/main/kernel.ts', '.gitignore', 'CLAUDE.md', 'DESIGN.md', 'package.json'].map((path) => ({ path, dir: false })),
   ...PANEL_CHANGES.map((c): FileEntry => ({ path: c.path, dir: false, status: c.status }))
 ]
 
@@ -1126,7 +1126,7 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * KERNEL-599: the chat rail, as design/redesign/ChatRail*.png draw it. Noor's chat on PR #147 for KERNEL-155 holds 18 messages, each with a short turn,
+ * KERNEL-599: the chat rail. Noor's chat on PR #147 for KERNEL-155 holds 18 messages, each with a short turn,
  * and the 14th has the long reply. ChatRail and ChatRailOpen are read from the 14th message (the shot script scrolls it under the tab row), ChatRailNarrow is
  * at the bottom with the right panel open.
  */
@@ -1407,7 +1407,7 @@ const hireScene = (tools: string[], servers?: AgentReach, scope?: AgentScope) =>
 }))
 
 /**
- * KERNEL-586: the turn files card as design/redesign/TurnFiles*.png draws it, in Noor's chat for KERNEL-155. A first answer, then a turn that ends in `reply` (or in
+ * KERNEL-586: the turn files card, in Noor's chat for KERNEL-155. A first answer, then a turn that ends in `reply` (or in
  * its tool calls, with no reply) and the files it changed. The right panel lists everything PR #147 changed so far, which is `panel`.
  */
 const tf = (path: string, status: ChangedFile['status'], added: number, removed: number): ChangedFile => ({ path, status, added, removed })
@@ -1679,7 +1679,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanChanges: scene(planChanges),
   WorkspacePlanReplaced: scene(planReplaced),
   WorkspacePlanExit: scene(planExit),
-  // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
+  // The other plan mode states (KERNEL-322). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
@@ -1811,7 +1811,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
-  // The right panel's two panes (KERNEL-513, design/redesign/): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Rowan's chat, which starts with it
+  // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Rowan's chat, which starts with it
   // folded to its tab bar. A teammate's can fold too, and its handle lights like the sidebar's edge. A new chat waiting on setup opens the bottom on Setup even when it was folded.
   PanelSplit: idleRun(headerScene('ready', [], { panel: true })),
   PanelSplitLead: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
@@ -2016,7 +2016,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     prNote('m-note', 'PR #42 was squashed into main.', 'merged')
   ], { prs: prInfo('merged') }),
   WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.', 'closed')], { prs: prInfo('closed') }),
-  // The PR header in the states the canvas above doesn't draw (KERNEL-274, design/redesign/Pr*.png).
+  // The PR header in the states the fixtures above don't cover (KERNEL-274).
   WorkspacePRNoChanges: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
     changes: { [ids.table]: [] },
@@ -2045,14 +2045,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
-  // A branch that merges on the Mac, in a room with no GitHub (KERNEL-478, design/redesign/PrLocal*.png).
+  // A branch that merges on the Mac, in a room with no GitHub (KERNEL-478).
   PrLocalReady: localScene('ready'),
   PrLocalBehind: localScene('behind'),
   PrLocalConflict: localScene('conflict'),
   PrLocalMerging: localScene('merging'),
   PrLocalMerged: localScene('merged'),
   PrLocalDirty: localScene('dirty'),
-  // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the chat header in both states (KERNEL-425).
+  // The header and the PR capsule (KERNEL-413): the toggle ends the chat header in both states (KERNEL-425).
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   PrReadyHidden: headerScene('ready', []),

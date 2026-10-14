@@ -147,11 +147,11 @@ function cloudCheck(env: NodeJS.ProcessEnv): PreflightCheck | null {
 async function codexCheck(bin: string | undefined, run: typeof exec): Promise<PreflightCheck> {
   const v = bin ? await run(bin, ['--version'], { timeoutMs: 60000 }) : null
   const version = v?.code === 0 ? parseClaudeVersion(v.stdout) : null
-  if (!version) return { id: 'codex', ok: false, blocking: false, title: 'Codex did not start', detail: 'A role in Settings, Models and effort runs on Codex, and Kernel could not start it. Check Settings, Providers.' }
+  if (!version) return { id: 'codex', ok: false, blocking: false, title: 'Codex did not start', detail: 'A role in Settings, Models and effort runs on Codex, and Kernel could not start it. Check Settings, Accounts.' }
   const signedIn = (await run(bin!, ['login', 'status'], { timeoutMs: 15000 })).code === 0
   return signedIn
     ? { id: 'codex', ok: true, blocking: false, title: 'Codex', detail: 'Signed in with ChatGPT', meta: `v${version}` }
-    : { id: 'codex', ok: false, blocking: false, title: 'Not signed in to Codex', detail: 'A role runs on Codex. Sign in with your ChatGPT plan in Settings, Providers.', meta: `v${version}`, fix: { command: 'codex login' } }
+    : { id: 'codex', ok: false, blocking: false, title: 'Not signed in to Codex', detail: 'A role runs on Codex. Sign in with your ChatGPT plan in Settings, Accounts.', meta: `v${version}`, fix: { command: 'codex login' } }
 }
 
 /** Every worktree, commit and merge goes through git, so a missing one blocks. An old one only loses conflict lists. */

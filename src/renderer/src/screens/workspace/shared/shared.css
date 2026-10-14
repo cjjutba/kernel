@@ -113,7 +113,7 @@
 .cm-sees { height: 22px; display: flex; align-items: center; gap: 8px; font-size: var(--fs-meta); color: var(--muted); }
 .cm-sees > span:first-child { flex-shrink: 0; white-space: nowrap; }
 .cm-chip { height: 22px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 7px; white-space: nowrap; overflow: hidden; border: 1px solid var(--chip-line); border-radius: var(--r-sm); background: var(--tint-muted); color: var(--ink-2); font: var(--fs-chip) var(--mono); }
-.cm-lines { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--card-line); border-radius: var(--r); color: var(--muted); font: var(--fs-chip)/17px var(--mono); overflow-wrap: anywhere; }
+.cm-lines { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--card-line); border-radius: var(--r); color: var(--muted); font: var(--fs-chip)/var(--fs-md-h1) var(--mono); overflow-wrap: anywhere; }
 .cm-gone { margin: 0; font-size: var(--fs-code); line-height: var(--lh); color: var(--ink-2); }
 .cm-link { padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; text-decoration: underline; }
 .cm-said { margin: 0; font-size: var(--fs-ui); line-height: 20px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }

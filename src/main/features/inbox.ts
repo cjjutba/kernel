@@ -3,6 +3,7 @@ import { join, relative } from 'node:path'
 import type { Decision } from '@shared/types'
 import type { Handlers } from '../kernel'
 import type { Typed } from '../services/approvals'
+import { bannerSound } from '../services/notifications'
 import { planChanges } from '../services/handoff'
 import { attachmentNote, planExists, saveAttachments, savePlan } from '../services/plans'
 import { Feature } from './feature'
@@ -68,6 +69,10 @@ export class Inbox extends Feature {
     return {
       'notifications.list': async () => this.notifications.list(),
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
+      'notifications.playSound': async ({ sound }) => {
+        this.o.showNotification?.({ id: 'n-sound-preview', kind: 'system', title: 'Kernel', sub: 'This is how a notification sounds.', needsYou: false, read: true, createdAt: Date.now() }, bannerSound(sound))
+        return { ok: true }
+      },
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => {
         if (this.approvals.waitingPlan(id)) return this.answerPlan(id, decision)

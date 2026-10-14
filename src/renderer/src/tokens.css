@@ -3,7 +3,7 @@
    fills sit behind a status word in its own color (Settings, Providers; comment chips); `--needs` is only the composer's context ring from 75%, no icon uses it (no-amber-icons).
    `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
    orange, on the Claude mark in the model picker and nowhere else. */
-/* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
+/* Dark is the default. Light values are the dark ones lightened, and test/theme.test.ts checks every text pair for contrast.
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
   color-scheme: dark;
@@ -37,7 +37,6 @@
      text-safe amber reads brown on a bar (feat-providers-redesign). */
   --needs-fill: #f2c55c;
   --del-fill: #f06363;
-  --tint-add: #173327;
   --tint-del: #2f191b;
   --tint-muted: #252527;
   --aside: #0d0d0e;
@@ -114,7 +113,6 @@
   --needs: #7a4f00;
   --needs-fill: #d97706;
   --del-fill: #dc3e42;
-  --tint-add: #d7f0e2;
   --tint-del: #fbe1e1;
   --tint-muted: #e8e8ec;
   --aside: #f7f7f8;
@@ -214,7 +212,7 @@
   --fs-sub: 15px; --fs-doc-h3: 15.5px; --fs-dialog: 16px; --fs-md-h1: 17px; --fs-doc-h2: 19px; --fs-title-sm: 20px; --fs-title: 22px;
   --fs-doc-h1: 24px; --fs-page: 26px; --fs-display: 28px; --fs-hero: 36px;
   /* Unitless line heights. A px line height stays next to the control height it centres text in. */
-  --lh-none: 1; --lh-hero: 1.15; --lh-tight: 1.25; --lh-heading: 1.3; --lh-snug: 1.4; --lh-ui: 1.45; --lh: 1.5; --lh-prose: 1.55;
+  --lh-none: 1; --lh-hero: 1.15; --lh-compact: 1.2; --lh-tight: 1.25; --lh-heading: 1.3; --lh-snug: 1.4; --lh-ui: 1.45; --lh: 1.5; --lh-prose: 1.55;
   --lh-relaxed: 1.6; --lh-code: 1.65; --lh-loose: 1.7;
   /* Weights: 400 and 500, and 600 for page titles, names on cards, letter tiles and avatars, dialog headings and bold text in a reply. */
   --fw-regular: 400; --fw-medium: 500; --fw-semibold: 600;

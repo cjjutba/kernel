@@ -98,7 +98,7 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
                 <>
                   <Button variant="primary" busy={busy === 'again'} busyLabel="Starting" disabled={busy !== null} onClick={() => void again()}>Run again</Button>
                   <Button variant="ghost" busy={busy === 'skip'} busyLabel="Sending" disabled={busy !== null} onClick={() => void skip()}>Send anyway</Button>
-                  <Button variant="ghost" disabled={busy !== null} onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })}>Edit script</Button>
+                  <Button variant="ghost" disabled={busy !== null} onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })}>Edit script</Button>
                 </>
               )}
             </div>

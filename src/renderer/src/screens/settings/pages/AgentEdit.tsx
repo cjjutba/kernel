@@ -5,7 +5,7 @@ import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
 import { AgentFields, editOf, useAgentForm, useSkillNames } from '../../agent/AgentEditor'
 import { shortFile } from '../../agent/model'
-import { Page } from '../kit'
+import { Page, SettingsLink } from '../kit'
 import { AgentSaveScope } from './AgentSaveScope'
 import { agentSource, pluginOf } from './agentRows'
 
@@ -40,7 +40,8 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
   if (!list) return <Page title={agentId} back={back}>{null}</Page>
   if (!agent || !form) {
     return (
-      <Page title={agentId} back={back} intro={roomId ? `${agentId} is not on this team. They may have been retired, or the file was renamed.` : `${agentId} is not in ~/.claude/agents or a plugin. The file may have been renamed or removed.`}>
+      <Page title={agentId} back={back}>
+        <p className="set-note">{roomId ? `${agentId} is not on this team. They may have been retired, or the file was renamed.` : `${agentId} is not in ~/.claude/agents or a plugin. The file may have been renamed or removed.`}</p>
         <div><Button onClick={() => go(listRoute)}>{roomId ? 'Back to the room’s agents' : 'Back to agents'}</Button></div>
       </Page>
     )
@@ -85,13 +86,15 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
   ) : plugin ? undefined : (
     <div className="set-actions">
       {saved && !dirty && <span role="status" className="ap-save-note">Saved to {shortFile(agent.file)}</span>}
-      {roomId && <Button variant="ghost" disabled={agent.lead || !!busy} title={agent.lead ? `${agent.name} leads this room. Pick another Lead in Settings, Agents first.` : undefined} onClick={retire}>Retire</Button>}
+      {roomId && agent.lead && <span className="set-desc">{agent.name} leads this room. Pick another Lead in <SettingsLink to={{ page: 'room', roomId, section: 'agents' }}>Settings, {room?.name ?? 'room'}, Agents</SettingsLink> first.</span>}
+      {roomId && <Button variant="ghost" disabled={agent.lead || !!busy} onClick={retire}>Retire</Button>}
       <Button variant={dirty ? 'primary' : 'secondary'} busy={!asking && busy === 'save'} busyLabel="Saving" disabled={!dirty || !form.description.trim() || !!busy} onClick={() => (asksScope ? setAsking(true) : void save())}>Save changes</Button>
     </div>
   )
-  const intro = plugin ? `From the ${pluginOf(agent)} plugin. Kernel doesn’t change a plugin’s files.` : agentSource(agent)
+  const source = plugin ? `From the ${pluginOf(agent)} plugin. Kernel doesn’t change a plugin’s files.` : agentSource(agent)
   return (
-    <Page title={agent.name} intro={intro} back={back} action={action}>
+    <Page title={agent.name} back={back} action={action}>
+      <p className="set-desc">{source}</p>
       <form className="ae-form" onSubmit={(e) => { e.preventDefault(); if (dirty && !builtIn && !plugin && form.description.trim() && !busy) { if (asksScope) setAsking(true); else void save() } }}>
         <AgentFields agent={agent} form={form} set={set} skillNames={skillNames} readOnly={plugin} noSkillsHint={roomId ? undefined : 'No skills found.'} />
         {error && !asking && <p role="alert" className="ae-error">{error}</p>}

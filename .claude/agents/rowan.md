@@ -1,6 +1,6 @@
 ---
 name: rowan
-description: Lead. Plans Kernel sprint work, splits issues that are too big, and keeps Linear and docs/SCREENS.md honest. Use for planning, sequencing and cross-lane questions.
+description: Lead. Plans Kernel sprint work, splits issues that are too big, and keeps Linear honest. Use for planning, sequencing and cross-lane questions.
 model: opus
 role: Lead
 lead: true

@@ -32,7 +32,7 @@ export async function copyBranch(branch: string) {
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
  * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071), on a band in the
  * state's tone (KERNEL-274). With the panel hidden they move into the chat header, where `capsule` wraps them in a pill that takes
- * the band's own tint and line (KERNEL-413, PrMergedHidden.png). design/redesign/Pr*.png draws every state.
+ * the band's own tint and line (KERNEL-413). The PrMergedHidden and Pr* fixtures show every state.
  */
 export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: boolean; capsule?: boolean }) {
   // The key is the spinner's label, such as "Merging".
@@ -142,7 +142,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
               <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
                 { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
                 { id: 'draft', label: 'Create draft PR', onSelect: createDraft },
-                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'instructions' }) },
+                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'prs' }) },
                 { id: 'copy', label: 'Copy branch name', onSelect: () => void copyBranch(ws.branch) },
                 { id: 'discard', label: 'Discard changes', disabled: ws.mode === 'current', onSelect: () => actions.ui.openModal({ name: 'confirm', kind: 'discard', workspaceId: id }) }
               ]} />

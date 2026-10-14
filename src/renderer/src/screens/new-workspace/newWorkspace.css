@@ -1,4 +1,4 @@
-/* New workspace modal (KERNEL-16). Values from design/canvas/project/NewWorkspace.dc.html. */
+/* New workspace modal (KERNEL-16). */
 /* The shell does not clip it (below), so it rounds itself to the shell's inner radius, or its square box shows past the corners. */
 .nw { border-radius: calc(var(--r-xl) - 1px); background: var(--surface-2); }
 /* Its pickers open past the dialog's edges, so it never scrolls (D-080). It is short enough to fit any window Kernel allows. */
@@ -35,6 +35,9 @@
 .nw-row { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: var(--r-sm); font-size: var(--fs-ui); }
 .nw-row:hover, .nw-row:focus-within { background: var(--hover); }
 .nw-row > span:first-child { flex: 1; color: var(--ink-3); }
+.nw-select { color: var(--ink-2); min-width: 0; }
+.nw-select.mono .select-trigger { font-size: var(--fs-code); }
+.nw-select:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-2xs); }
 .nw-hint { margin: 4px 10px 6px; font-size: var(--fs-meta); line-height: var(--lh-ui); color: var(--muted); }
 
 .nw-from { right: 8px; top: 48px; width: 460px; min-height: 240px; overflow: hidden; }
@@ -56,4 +59,3 @@
 .nw-from-none .nw-from-note { margin: 0; }
 .nw-from-none-title { font-weight: var(--fw-medium); color: var(--ink); }
 .nw-from-none .btn { height: 28px; margin-top: 8px; padding: 0 12px; border-radius: var(--r); font-size: var(--fs-code); font-weight: var(--fw-medium); }
-.nw-target { font-size: var(--fs-code); }

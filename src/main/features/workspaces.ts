@@ -80,7 +80,7 @@ export class Workspaces extends Feature {
     const s = this.settings
     const agents = await this.k.team.agents(roomId)
     const lead = o.lead ? agents.find((a) => a.lead) : undefined
-    if (o.lead && !lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one in Settings, Agents.')
+    if (o.lead && !lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one on this room\'s Agents page in Settings.')
     const agent = lead ?? o.agent ?? agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
     if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
     // A review gets its own worktree started from the work it reviews (KERNEL-130).

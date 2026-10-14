@@ -6,7 +6,10 @@ import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { RoomMcp } from './RoomMcp'
 
-/** Settings > a room > Skills and MCP (SettingsSkills.png). Sign-ins live in Settings, MCP servers (KERNEL-661). What is off is kept per room in its .kernel settings, so the same skill can be on in one room and off in another. */
+/**
+ * Settings > a room > Skills and MCP (MorePage roomSkills, KERNEL-680): a switch for each skill and MCP server. What is off is kept per room in
+ * its .kernel settings, so the same skill can be on in one room and off in another. Sign-ins live in Settings, MCP servers (KERNEL-661).
+ */
 export function Skills({ roomId }: { roomId?: string }) {
   const { room, rs } = useRoomPage(roomId)
   const [skills, setSkills] = useState<Skill[]>([])
@@ -22,11 +25,11 @@ export function Skills({ roomId }: { roomId?: string }) {
   }
   const isOn = (kind: 'skills' | 'mcp', name: string) => !(off?.[kind] ?? []).includes(name)
   return (
-    <RoomPage room={room} rs={rs} title="Skills and MCP" intro={`Skills and MCP servers agents can use in ${room.name}.`}>
-      <Section title="Skills">
-        {skills.length === 0 && <p className="set-empty">No skills found in this repo or your user folders.</p>}
+    <RoomPage room={room} rs={rs} title="Skills and MCP">
+      <Section title="Skills" count={skills.length || undefined} scope="mac">
+        {skills.length === 0 && <p className="set-empty">No skills found in this repo or your user folders. Add one in <code>.claude/skills</code> and it shows up here.</p>}
         {skills.map((k) => (
-          <Row key={k.name} label={<>/{k.name}</>}>
+          <Row key={k.name} label={<span className="mono">/{k.name}</span>} desc={k.description || undefined}>
             <Toggle label={`/${k.name}`} checked={isOn('skills', k.name)} onChange={(v) => flip('skills', k.name, v)} />
           </Row>
         ))}

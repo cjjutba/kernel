@@ -260,6 +260,8 @@ export interface KernelApi {
   // home and inbox (KERNEL-17)
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
+  /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
+  'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
    * The workspace of the room's newest open chat with Rowan, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
    * is open: it never starts one (KERNEL-405).

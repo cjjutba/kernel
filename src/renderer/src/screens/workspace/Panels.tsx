@@ -425,7 +425,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   })
   const stopSetup = () => doing('stopSetup', () => attempt('Could not stop setup', () => call('scripts.stop', { workspaceId: ws.id, kind: 'setup' })))
   const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
-  const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
+  const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'setup' })
   // The Run tab's empty state has the Run button, so the strip's steps aside while it shows and the word is never on screen twice (KERNEL-512).
   const onRunTab = !collapsed && bottom === 'run'
   const runEmpty = onRunTab && !noRun && !hasOutput

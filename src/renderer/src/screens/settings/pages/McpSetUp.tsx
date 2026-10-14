@@ -1,21 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { McpAccountServer, McpConnect, McpServerKind, Provider } from '@shared/types'
+import type { McpAccountServer, McpConnect, Provider } from '@shared/types'
 import { mcpNeedsYou } from '@shared/mcpCounts'
 import { call, cleanError, onPush } from '../../../api'
 import { actions, getState, mcpRunKey, useStore } from '../../../store'
 import { Button, Checkbox, Modal, useBusy } from '../../../ui'
 import { joinNames, serverName, useMcpAccounts, useSignInAll } from './mcpAccounts'
+import { MCP_GROUPS, mcpStatus } from './mcpGroups'
 
 // Set up this account (KERNEL-661, no PNG): the servers that need the user on one account as a checklist with everything ticked, then
 // the progress of `accounts.mcpSetUp`, then what was done and what failed. The unticked ones are ignored by the engine.
-
-const GROUPS: { kind: McpServerKind; title: string }[] = [
-  { kind: 'user', title: 'Your servers' },
-  { kind: 'connector', title: 'claude.ai connectors' },
-  { kind: 'plugin', title: 'Plugins' }
-]
-
-const status = (s: McpAccountServer) => (s.state === 'needs-sign-in' ? 'Needs sign-in' : s.state === 'failed' ? `Failed${s.error ? `: ${s.error}` : ''}` : s.kind === 'connector' ? 'Not set up' : s.note ?? 'Not set up')
 
 export function McpSetUp({ provider, accountId }: { provider: Provider; accountId: string }) {
   const { accounts } = useMcpAccounts()
@@ -46,7 +39,7 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
     setPushed(undefined)
     actions.accounts.clearMcpRun(provider, accountId)
     try {
-      const include = GROUPS.flatMap((g) => ticked.filter((s) => s.kind === g.kind)).map((s) => s.name)
+      const include = MCP_GROUPS.flatMap((g) => ticked.filter((s) => s.kind === g.kind)).map((s) => s.name)
       actions.accounts.mcpRun(await call('accounts.mcpSetUp', { provider, accountId, include }))
       actions.accounts.set(await call('accounts.list', undefined))
     } catch (e) {
@@ -69,7 +62,7 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
     body = (
       <>
         <p className="mcp-su-lead">Kernel signs in to what stays ticked, one after another. What you untick is ignored on {label}.</p>
-        {GROUPS.map((g) => {
+        {MCP_GROUPS.map((g) => {
           const list = items.filter((s) => s.kind === g.kind)
           if (!list.length) return null
           return (
@@ -77,7 +70,7 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
               <legend className="set-group">{g.title}</legend>
               {list.map((s) => (
                 <Checkbox key={s.name} className="mcp-su-item" align="top" checked={!skipped.includes(s.name)} onChange={(on) => setSkipped(on ? skipped.filter((n) => n !== s.name) : [...skipped, s.name])}>
-                  <span><span className="set-label">{serverName(s.name)}</span><span className="set-desc">{status(s)}</span></span>
+                  <span><span className="set-label">{serverName(s.name)}</span><span className="set-desc">{mcpStatus(s)}</span></span>
                 </Checkbox>
               ))}
             </fieldset>
