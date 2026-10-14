@@ -130,3 +130,9 @@
 .pr-tone .split-caret:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
 /* The capsule's state word sits on the buttons' centre line. */
 .pr-cap .pr-state { line-height: 16px; }
+
+.pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: 12px; color: var(--ink-3); }
+.pr-overruled .pr-overruled-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-undo { flex-shrink: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-2); text-decoration: underline; cursor: pointer; }
+.pr-undo:hover { color: var(--ink); }
+.pr-undo:disabled { cursor: default; opacity: 0.6; }
