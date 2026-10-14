@@ -66,7 +66,7 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to its feature's `handlers()`.
  * Empty since KERNEL-30 built the last ones (update.*).
  */
-export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
+export const UNBUILT = { 'openItems.list': 'KERNEL-749', 'openItems.dismiss': 'KERNEL-749' } as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
 type Unbuilt = keyof typeof UNBUILT
 

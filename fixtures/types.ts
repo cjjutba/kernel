@@ -1,6 +1,6 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -38,6 +38,8 @@ export interface Fixture {
   overlaps?: Overlap[]
   /** Lead chats, each holding the Lead tabs whose `threadId` names it (KERNEL-337). */
   threads?: Thread[]
+  /** What each Lead chat still owes, by `threadId` (KERNEL-749). */
+  openItems?: OpenItem[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
   /** Recent project folders (OpenFolder.png). */

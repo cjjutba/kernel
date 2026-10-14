@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -294,6 +294,10 @@ export interface KernelApi {
   'threads.archivePreview': { req: { threadId: string }; res: ChatArchivePreview }
   /** Archives a Lead chat: the workspaces it handed off, unless Settings says otherwise, then its own (KERNEL-405). */
   'threads.archive': { req: { threadId: string }; res: Ok }
+  /** What the Lead chat still owes its teammates or the user: questions, blockers, proposed hand-offs, mentions, oldest first (KERNEL-749). */
+  'openItems.list': { req: { threadId: string }; res: OpenItem[] }
+  /** The user closes an open item, so the Lead is no longer reminded of it (KERNEL-749). */
+  'openItems.dismiss': { req: { id: string }; res: Ok }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
