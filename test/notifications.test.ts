@@ -282,7 +282,7 @@ describe('rows that are over (KERNEL-155)', () => {
   it("ends an archived workspace's approval that has a waiter, and leaves a held hook to its own session", async () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
-    const port = 17950 + Math.floor(Math.random() * 40)
+    const port = await freePort()
     const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ roomId: 'r', workspaceId: 'w', agentId: 'kai' }) })
     try {
       const started = Date.now()
