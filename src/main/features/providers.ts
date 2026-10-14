@@ -448,6 +448,7 @@ export class Providers extends Feature {
     }
     if (!changed) return
     await this.save()
+    if (this.stopped) return
     if (was === true && !who.signedIn && !o.quiet) {
       const name = a?.label ?? file[provider].cli?.label ?? file[provider].cli?.email ?? OWN_LOGIN[provider]
       // One a day at most: a session the server refuses while `auth status` still reads signed in goes round every 10 seconds.
@@ -1347,6 +1348,7 @@ export class Providers extends Feature {
     let timer: NodeJS.Timeout | undefined
     const first = await Promise.race([read, new Promise<'waiting'>((resolve) => { timer = setTimeout(() => resolve('waiting'), this.keychainMs.wait) })])
     clearTimeout(timer)
+    if (this.stopped) return undefined
     if (first !== 'waiting') { this.keychainRead(a.id); return undefined }
     const wait = { prompt: read.then((r) => r === 'ok') }
     this.keychain.set(a.id, wait)
