@@ -501,6 +501,14 @@ describe('a teammate that already started', () => {
     const kept = k.store.workspace(w.id)!.waitsFor!
     expect(kept).toMatchObject({ on: [noor.id], held: false, tip: expect.any(String) })
     expect(kept.releasing).toBeUndefined()
+    // The next poll and start look at the wait again, and find nothing to send.
+    const sent = users(k, chat).length
+    await k.prs['pollPrs']()
+    await k.waits.retryWaits()
+    await flush()
+    expect(users(k, chat)).toHaveLength(sent)
+    expect(k.store.workspace(w.id)?.waitsFor).toEqual(kept)
+    expect(pending(k).filter((e) => e.workspaceId === w.id && e.kind.startsWith('wait.')).map((e) => e.kind)).toEqual(['wait.rebase_missing'])
     // The Lead asks again, and the teammate rebases this time.
     expect((await k.lead['messageWorkspace'](room.id, w.id, 'Rebase onto origin/main, please.', lead.id)).sent).toBe(true)
     await rebase(w)

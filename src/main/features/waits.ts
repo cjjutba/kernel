@@ -1,4 +1,4 @@
-import type { ChatPart, NoteRef, PrState, Workspace } from '@shared/types'
+import type { ChatPart, NoteRef, PrState, WaitsFor, Workspace } from '@shared/types'
 import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
 import { fastForward, fetchOrigin, isAncestor, revParse, stripRemote } from '../services/worktrees'
@@ -6,6 +6,12 @@ import { issueTracker } from '../services/trackers'
 import { buildsIssue, isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
 import { head } from './shared'
 import { Feature } from './feature'
+
+/**
+ * A wait kept because the turn Kernel started to rebase ended without the merge in the branch (KERNEL-691). Its targets
+ * merged, so nothing releases it again: a turn that rebased, the Lead or a new wait ends it.
+ */
+const keptForRebase = (w?: WaitsFor) => !!w?.tip && !w.releasing
 
 /** Workspaces that wait for another PR to merge (KERNEL-259, KERNEL-328). */
 export class Waits extends Feature {
@@ -55,7 +61,8 @@ export class Waits extends Feature {
   /** Releases the wait when everything it is on has merged. */
   async settleWait(id: string) {
     const ws = this.store.workspace(id)
-    if (ws?.waitsFor && ws.status !== 'archived' && waitMet(ws.waitsFor, this.store.workspaces(ws.roomId))) await this.releaseWait(id)
+    // Every poll and start comes here, and a kept wait would send the rebase message again each time.
+    if (ws?.waitsFor && !keptForRebase(ws.waitsFor) && ws.status !== 'archived' && waitMet(ws.waitsFor, this.store.workspaces(ws.roomId))) await this.releaseWait(id)
   }
 
   /**
@@ -158,7 +165,7 @@ export class Waits extends Feature {
   private async dropWait(id: string) {
     const ws = this.mustWs(id)
     // Kept for a missing rebase: Kernel asked already, so ending it asks nothing again (KERNEL-691).
-    if (ws.waitsFor?.tip && !ws.waitsFor.releasing) return this.clearWait(id)
+    if (keptForRebase(ws.waitsFor)) return this.clearWait(id)
     if (ws.waitsFor && ws.status === 'ready' && !ws.waitsFor.releasing) return this.releaseWait(id, { now: true })
     this.clearWait(id)
   }
@@ -203,7 +210,7 @@ export class Waits extends Feature {
    */
   async releaseTaken(id: string, chatId: string, by: string) {
     const ws = this.store.workspace(id)
-    if (ws?.waitsFor && !ws.waitsFor.releasing && ws.waitsFor.tip && this.prChat(id)?.id === chatId) return this.rebasedLater(id, ws.waitsFor.tip)
+    if (keptForRebase(ws?.waitsFor) && this.prChat(id)?.id === chatId) return this.rebasedLater(id, ws!.waitsFor!.tip!)
     if (by !== 'kernel' || !ws?.waitsFor?.releasing || !this.releaseSent.has(id) || this.prChat(id)?.id !== chatId) return
     if (this.sessions.queued(chatId).some((q) => q.from === 'kernel')) return
     const tip = ws.waitsFor.tip
@@ -224,7 +231,7 @@ export class Waits extends Feature {
   private async rebasedLater(id: string, tip: string) {
     const rebased = await isAncestor(this.mustWs(id).path, tip, `refs/heads/${this.mustWs(id).branch}`) !== false
     const now = this.store.workspace(id)?.waitsFor
-    if (rebased && now && !now.releasing && now.tip === tip) this.clearWait(id)
+    if (rebased && keptForRebase(now) && now!.tip === tip) this.clearWait(id)
   }
 
   /**
