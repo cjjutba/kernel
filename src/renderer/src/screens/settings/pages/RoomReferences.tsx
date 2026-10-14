@@ -2,7 +2,7 @@ import type { RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState } from '../../../store'
 import { Button, useBusy } from '../../../ui'
-import { DataTable, SaveNote, Section, useSaveNote, type TableRow } from '../kit'
+import { appliesTo, DataTable, SaveNote, Section, useSaveNote, type TableRow } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
@@ -43,7 +43,7 @@ export function RoomReferences({ roomId, rs }: { roomId: string; rs: RoomSetting
         <Button icon="plus" busy={busy === 'add'} busyLabel="Adding" disabled={busy !== null} onClick={() => void choose()}>Add folder</Button>
       </>}
       note="Agents can read these folders and @ finds their files. They can’t change them."
-      footnote="Saved in settings.local.toml, so it stays on your Mac. A folder that is not there is skipped until it is."
+      footnote={['Saved in settings.local.toml, so it stays on your Mac. A folder that is not there is skipped until it is', appliesTo('references', roomId)].filter(Boolean).join('. ')}
     >
       <DataTable label="Reference folders" columns={['Folder', 'Status']} grid="minmax(0, 1fr) 120px" rows={rows} empty="No reference folders. Add a folder next to this project, like a backend, and agents can read it." />
     </Section>
