@@ -296,6 +296,12 @@ export interface KernelApi {
    * chat with Kernel.
    */
   'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
+  /**
+   * Links a Build here chat to an issue, by its workspace and the issue's key (KERNEL-778). Before the branch is pushed Kernel
+   * renames it the way a teammate's branch for that issue is named. After a push it only links. The PR names the key, so the
+   * issue moves to Done when it merges. Refuses a workspace that isn't a chat with Kernel.
+   */
+  'lead.linkIssue': { req: { workspaceId: string; issue: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */

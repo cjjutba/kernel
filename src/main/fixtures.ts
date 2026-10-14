@@ -264,6 +264,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
       ws.leadMode = mode
       return ws
     },
+    'lead.linkIssue': async ({ workspaceId, issue }) => {
+      const ws = f.workspaces.find((w) => w.id === workspaceId)
+      if (!ws) throw new Error('This fixture has no such workspace.')
+      ws.source = { kind: 'issue', id: issue, title: ws.title ?? issue }
+      return ws
+    },
     'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {
