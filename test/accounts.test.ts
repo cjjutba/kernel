@@ -1608,3 +1608,126 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     await k.stop()
   })
 })
+
+describe('One login, one row (KERNEL-701)', () => {
+  const keys = ['FAKE_EMAIL', 'FAKE_PLAN', 'FAKE_ORG', 'FAKE_CODEX_EMAIL', 'FAKE_CODEX_LOGIN_EMAIL'] as const
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+  afterEach(() => { for (const key of keys) { if (before[key] === undefined) delete process.env[key]; else process.env[key] = before[key] } })
+
+  /** A Kernel whose Claude is a fake CLI with its own login as cj@example.com on Max, and whose Codex login is cj@example.com. */
+  async function setUp() {
+    const t = await kernel()
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    const claude = await fakeClaude()
+    await t.k.providers.setPath('claude', { path: claude.bin })
+    const steps: AccountAddStep[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add') steps.push(e.add) })
+    const h = t.k.handlers()
+    const rows = async (provider: 'claude' | 'codex' = 'claude') => (await h['accounts.list'](undefined)).filter((a) => a.provider === provider)
+    const add = async (provider: 'claude' | 'codex', email: string) => {
+      if (provider === 'claude') process.env.FAKE_EMAIL = email
+      else process.env.FAKE_CODEX_LOGIN_EMAIL = email
+      return h['accounts.add']({ provider })
+    }
+    /** Run login: Claude Code's own login in Terminal signs in as `email`. */
+    const runLogin = async (email: string, org?: string) => {
+      process.env.FAKE_EMAIL = email
+      if (org) process.env.FAKE_ORG = org
+      else delete process.env.FAKE_ORG
+      await h['providers.signIn']({ provider: 'claude', accountId: 'cli' })
+    }
+    return { ...t, claude, h, steps, rows, add, runLogin }
+  }
+
+  it('shows an added account and a Run login onto the same email as one row, in use while the CLI login is', async () => {
+    const { k, h, rows, add, runLogin } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    await runLogin('Side@example.com')
+    expect((await rows()).map((a) => [a.id, a.cli, a.alsoCli, a.active, a.signedIn])).toEqual([[side.id, false, true, true, true]])
+    // Switched to the added account itself, it is still the one row.
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    expect((await rows()).map((a) => [a.id, a.alsoCli, a.active])).toEqual([[side.id, true, true]])
+    // Run login onto another email brings the CLI's own row back.
+    await runLogin('other@example.com')
+    expect((await rows()).map((a) => [a.id, a.alsoCli])).toEqual([['cli', undefined], [side.id, undefined]])
+    await k.stop()
+  })
+
+  it("counts a twin whose organization hasn't been read as the same login", async () => {
+    const { k, rows, add, runLogin } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    await runLogin('side@example.com', 'org-team')
+    expect((await rows()).map((a) => [a.id, a.alsoCli])).toEqual([[side.id, true]])
+    // Once both organizations are known and differ, they are two logins.
+    const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; orgId?: string }[] } } }
+    p.load().claude.accounts.find((a) => a.id === side.id)!.orgId = 'org-personal'
+    expect((await rows()).map((a) => a.id)).toEqual(['cli', side.id])
+    await k.stop()
+  })
+
+  it('folds a Codex twin into one row', async () => {
+    const { k, rows, add } = await setUp()
+    const added = await add('codex', 'chatgpt@example.com')
+    expect((await rows('codex')).map((a) => a.id)).toEqual(['cli', added.id])
+    // Codex's own login in Terminal signs in as the added account's email.
+    process.env.FAKE_CODEX_EMAIL = 'ChatGPT@example.com'
+    expect((await rows('codex')).map((a) => [a.id, a.alsoCli, a.active])).toEqual([[added.id, true, true]])
+    await k.stop()
+  })
+
+  it('refuses Sign in again onto a login another row has, and leaves that row signed out with its email', async () => {
+    const { k, h, claude, rows, add, steps } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    const other = await add('claude', 'other@example.com')
+    process.env.FAKE_EMAIL = 'SIDE@example.com'
+    await expect(h['providers.signIn']({ provider: 'claude', accountId: other.id })).rejects.toThrow('That account is already in Kernel.')
+    expect(steps.at(-1)).toMatchObject({ provider: 'claude', step: 'failed', error: 'That account is already in Kernel.' })
+    expect((await rows()).map((a) => [a.id, a.email, a.signedIn])).toEqual([['cli', 'cj@example.com', true], [side.id, 'side@example.com', true], [other.id, 'other@example.com', false]])
+    // Its folder signed out. The other logins stay signed in.
+    expect(Object.keys(await claude.logins()).sort()).toEqual(['cli', k.providers.claudeHome(side.id)].sort())
+    // The user did it, so the Inbox doesn't say it signed out.
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toEqual([])
+    // Codex refuses the same way.
+    const one = await add('codex', 'one@example.com')
+    const two = await add('codex', 'two@example.com')
+    process.env.FAKE_CODEX_LOGIN_EMAIL = 'one@example.com'
+    await expect(h['providers.signIn']({ provider: 'codex', accountId: two.id })).rejects.toThrow('That account is already in Kernel.')
+    expect((await rows('codex')).map((a) => [a.id, a.email, a.signedIn])).toEqual([['cli', 'cj@example.com', true], [one.id, 'one@example.com', true], [two.id, 'two@example.com', false]])
+    expect(existsSync(join(k.providers.codexHome(two.id)!, 'auth.json'))).toBe(false)
+    await k.stop()
+  })
+
+  it('never moves at a limit onto a twin of the login in use, on Claude or Codex', async () => {
+    const { k, h, add, runLogin } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    const other = await add('claude', 'other@example.com')
+    await runLogin('side@example.com', 'org-team')
+    const at = Math.round(Date.now() / 1000) + 3600
+    const window = (accountId: string | undefined, status: 'rejected' | 'allowed', utilization: number, provider?: 'codex'): RateLimit => ({ type: 'five_hour', status, utilization, resetsAt: at, ...(accountId ? { accountId } : {}), ...(provider ? { provider } : {}) } as RateLimit)
+    // The twin has the most room by its own windows, and is still never picked.
+    const limits = [window(undefined, 'rejected', 1), window(side.id, 'allowed', 0.1), window(other.id, 'allowed', 0.5)]
+    expect(k.providers.spareAccount('claude', limits)).toBe(other.id)
+    // On the twin itself, the CLI's own login isn't picked either.
+    await h['accounts.switch']({ provider: 'claude', accountId: side.id })
+    expect(k.providers.spareAccount('claude', [window(side.id, 'rejected', 1), window(undefined, 'allowed', 0.1), window(other.id, 'allowed', 0.5)])).toBe(other.id)
+    // Codex: the only other account is the login in use, so there is nowhere to go.
+    const chatgpt = await add('codex', 'chatgpt@example.com')
+    process.env.FAKE_CODEX_EMAIL = 'chatgpt@example.com'
+    await h['accounts.list'](undefined)
+    expect(k.providers.spareAccount('codex', [window(undefined, 'rejected', 1, 'codex'), window(chatgpt.id, 'allowed', 0.1, 'codex')])).toBeUndefined()
+    await k.stop()
+  })
+
+  it('saves one sign-out notice for one login, not one per row', async () => {
+    const { k, claude, add, runLogin } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    await runLogin('side@example.com')
+    await k.providers.readUsage({ force: true })
+    // Signed out on claude.ai: the added folder and the CLI's own login both read signed out.
+    await claude.setLogin(k.providers.claudeHome(side.id), null)
+    await claude.setLogin('cli', null)
+    await k.providers.readUsage({ force: true })
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out')).map((n) => n.title)).toEqual(['side@example.com is signed out'])
+    await k.stop()
+  })
+})
