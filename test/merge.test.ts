@@ -81,10 +81,35 @@ describe("the repo's own rules (KERNEL-388)", () => {
   const green = { requireGreen: true, requireReviewer: false }
 
   it("counts only the checks that decide the PR, so a failing optional check doesn't hold the merge", () => {
-    const checks: PrInfo['checks'] = [{ name: 'Release note', state: 'pass' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'running', optional: true }]
+    const checks: PrInfo['checks'] = [{ name: 'Release note', state: 'pass' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'pass', optional: true }]
     expect(gatingChecks(checks)).toEqual([{ name: 'Release note', state: 'pass' }])
+    expect(mergeBlock(ws(), info({ checks }), { requireGreen: false, requireReviewer: false })).toBeUndefined()
     expect(mergeBlock(ws(), info({ checks }), green)).toBeUndefined()
     expect(mergeBlock(ws(), info({ checks: [{ name: 'Release note', state: 'running' }, ...checks.slice(1)] }), green)).toContain('Checks have not passed yet')
+  })
+
+  // KERNEL-703: #656 merged while Test, which the repo didn't require, still ran.
+  it('holds the merge while any check runs, required or not, and names it', () => {
+    const running: PrInfo['checks'] = [{ name: 'Release note', state: 'pass' }, { name: 'Test', state: 'running', optional: true }]
+    for (const rules of [green, { requireGreen: false, requireReviewer: false }]) {
+      // The last poll read it ready before Test started, or already reads checks.
+      expect(mergeBlock(ws(), info({ checks: running }), rules)).toBe('Test is still running.')
+      expect(mergeBlock(ws({ prState: 'checks' }), info({ state: 'checks', checks: running }), rules)).toBe('Test is still running.')
+    }
+    const two: PrInfo['checks'] = [...running, { name: 'Lint', state: 'queued', optional: true }]
+    expect(mergeBlock(ws(), info({ checks: two }), green)).toBe('Test and Lint are still running.')
+    expect(mergeBlock(ws(), info({ checks: [...two, { name: 'e2e', state: 'running', optional: true }] }), green)).toBe('Test and 2 other checks are still running.')
+  })
+
+  it('lets Merge anyway past an optional check still running, and not past a required one', () => {
+    const running: PrInfo['checks'] = [{ name: 'Release note', state: 'pass' }, { name: 'Test', state: 'running', optional: true }]
+    expect(mergeBlock(ws(), info({ checks: running }), green, name, { override: true })).toBeUndefined()
+    expect(mergeBlock(ws({ prState: 'checks' }), info({ state: 'checks', checks: running }), green, name, { override: true })).toBeUndefined()
+    const required: PrInfo['checks'] = [{ name: 'Release note', state: 'running' }]
+    expect(mergeBlock(ws({ prState: 'checks' }), info({ state: 'checks', checks: required }), { requireGreen: false, requireReviewer: false }, name, { override: true })).toBe('Release note is still running.')
+    expect(mergeBlock(ws({ prState: 'checks' }), info({ state: 'checks', checks: required }), green, name, { override: true })).toContain('Checks have not passed yet')
+    // Merge anyway doesn't skip anything else GitHub reads: a PR whose state is checks with no check running isn't ready.
+    expect(mergeBlock(ws({ prState: 'checks' }), info({ state: 'checks' }), green, name, { override: true })).toBe(notReady)
   })
 
   it("refuses a PR GitHub won't merge yet with GitHub's reason, after the checks", () => {

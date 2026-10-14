@@ -257,6 +257,8 @@ export class Prs extends Feature {
     // A read that changes nothing isn't saved or pushed, so each poll doesn't redraw the window and refresh every task (KERNEL-216).
     const same = (Object.keys(patch) as (keyof Workspace)[]).every((key) => patch[key] === ws[key])
     const next = same ? ws : this.updateWs(id, patch)
+    // A ready PR whose checks ran again between two reads changes no field, so no workspace event weighs it (KERNEL-703).
+    if (same && info && next.prState === 'ready') this.considerAutoMerge(next)
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info, ws.prBlocked === 'behind')
@@ -426,7 +428,7 @@ export class Prs extends Feature {
 
   /**
    * A workspace changed (wiring.ts). A teammate's PR that reads ready, with an approval of its head and no blockers on it, is
-   * weighed for auto-merge once per head, set of approvals and GitHub block (KERNEL-556). Until the user's auto-merge is on,
+   * weighed for auto-merge once per head, set of approvals, GitHub block (KERNEL-556) and settled checks (KERNEL-703). Until the user's auto-merge is on,
    * that costs reading the room's two settings files. While it is on, the Lead's updates on the PR wait for the outcome, so
    * Rowan doesn't say "ready to merge" about a PR Kernel is merging.
    */
@@ -434,7 +436,9 @@ export class Prs extends Feature {
     if (this.stopped || ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber) return
     const s = kindStates(ws)
     if (!s.approved.length || s.blocking.length) return
-    const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? ''].join(':')
+    // The checks as the last read settled them, so a check that ran after a weigh refused it brings a new one (KERNEL-703).
+    const checks = (this.infos.get(ws.id)?.info.checks ?? []).map((c) => `${c.name}=${c.state}${c.url ? `@${c.url}` : ''}`).join(',')
+    const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? '', checks].join(':')
     if (this.weighed.get(ws.id) === key) return
     this.weighed.set(ws.id, key)
     const room = this.store.room(ws.roomId)
