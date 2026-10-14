@@ -1630,6 +1630,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // No PNG draws an image in a diff tab (KERNEL-410). Git only says a binary file differs, so the tab shows the pictures: an added one as it is in the worktree, a changed one as Before and After.
   WorkspaceDiffImageAdded: imageDiffScene('A'),
   WorkspaceDiffImageModified: imageDiffScene('M'),
+  // KERNEL-739: an image in the All changes diff opens in its own tab, like a chat chip. scripts/shots.ts clicks the picture.
+  WorkspaceDiffImageInlineOpen: scene((f) => ({
+    changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status: 'A', added: 0, removed: 0 }] },
+    diffs: { ...f.diffs, [ids.table]: 'diff --git a/public/logo.png b/public/logo.png\nnew file mode 100644\nBinary files /dev/null and b/public/logo.png differ\n' },
+    images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter } } },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:', files: [], diffs: [''] } } }
+  })),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
