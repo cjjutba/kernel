@@ -235,6 +235,9 @@ export class Prs extends Feature {
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
+    // Kernel is bringing the PR up to date (KERNEL-835). The new head waits until the update is recorded, or its ready
+    // reaches `onReady` first and starts a review round of its own. `bringUpToDate` reads it again after.
+    if (this.updating.has(id)) return ws
     this.noteRead(id, ws, info)
     if (info) {
       this.prints.set(id, fingerprintOf(info))
@@ -436,9 +439,9 @@ export class Prs extends Feature {
   static autoMergeRetries = 8
   /**
    * How many times Kernel brought each workspace's PR up to date before merging it by itself (KERNEL-835), by PR number, the
-   * head the last update made, and whether the Lead heard that Kernel stopped.
+   * heads the last update started from and made, and whether the Lead heard that Kernel stopped.
    */
-  private updates = new Map<string, { pr: number; n: number; head?: string; told?: boolean }>()
+  private updates = new Map<string, { pr: number; n: number; from?: string; head?: string; told?: boolean }>()
   /** Workspaces whose PR Kernel is bringing up to date now, so two weighs of the same head update it once. */
   private updating = new Set<string>()
   /** The most times Kernel brings one PR up to date. Past that, the Lead tells the user and Kernel leaves it (KERNEL-835). */
@@ -544,6 +547,9 @@ export class Prs extends Feature {
    */
   private async bringUpToDate(ws: Workspace, pr: PrInfo & { head: string }): Promise<{ refused: string } | { updated: string }> {
     const id = ws.id
+    // A weigh that read the PR before it merged, or before Kernel read a newer head, updates nothing. The next read weighs it.
+    const now = this.store.workspace(id)
+    if (!now || now.prState !== 'ready' || this.merging.has(id) || (now.prHead && now.prHead !== pr.head)) return { refused: 'The pull request changed while Kernel weighed it.' }
     const remote = await this.k.config.remoteOfWs(ws)
     const base = pr.baseRef || stripRemote(ws.baseRef, remote)
     const was = this.updates.get(id)
@@ -558,11 +564,14 @@ export class Prs extends Feature {
       return { refused: said }
     }
     if (this.updating.has(id)) return { refused: 'Kernel is already bringing it up to date.' }
+    // A weigh that read the head before Kernel's update, and got here after it.
+    if (was?.pr === pr.number && was.from === pr.head) return { updated: was.head ?? pr.head }
     this.updating.add(id)
     try {
       return await this.updateNow(ws, pr, base, remote, n)
     } finally {
       this.updating.delete(id)
+      void this.k.refreshPr(id).catch(() => undefined)
     }
   }
 
@@ -584,18 +593,17 @@ export class Prs extends Feature {
       bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: `couldn't bring it up to date with ${base}`, object, warn: true })
       return { refused: said }
     }
-    this.updates.set(id, { pr: pr.number, n: n + 1 })
+    this.updates.set(id, { pr: pr.number, n: n + 1, from: pr.head })
     const after = await this.read(ws, ws.path, ws.branch, { remote }).catch(() => null)
     const to = after?.head
     if (to && to !== pr.head) {
-      this.updates.set(id, { pr: pr.number, n: n + 1, head: to })
+      this.updates.set(id, { pr: pr.number, n: n + 1, from: pr.head, head: to })
       await this.k.reviews.recordBaseUpdate(id, pr.head, to).catch(() => false)
       await this.pullUpdate(this.mustWs(id), to, base, pr.number).catch(() => undefined)
     }
     this.leadUpdates.branchUpdated(ws, base)
     this.note(id, `Brought ${object} up to date with ${base}. Kernel merges it once its checks pass.`)
     bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: `brought it up to date with ${base}, waiting for checks`, object })
-    void this.k.refreshPr(id).catch(() => undefined)
     return { updated: to ?? pr.head }
   }
 
