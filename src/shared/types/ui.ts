@@ -74,6 +74,8 @@ export type Modal =
   | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
+  /** Revert files to a checkpoint from the transcript. `start` says it is the chat's first (KERNEL-766). */
+  | { name: 'confirm'; kind: 'revert'; workspaceId: string; checkpointId: string; start?: boolean }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
   /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
   | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
