@@ -70,7 +70,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
     if (whole && ws && isLeadChatWorkspace(ws)) return attempt('Could not archive the chat', () => archiveChatFromSidebar(whole))
     const asks = !threadId || !!whole
     if (asks && ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
-    return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect))
+    return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect, tabs.map((t) => t.id)))
   }
   // The menu belongs to the open tab, so right-clicking another chat opens it first.
   const openTabMenu = (id: string) => {

@@ -73,7 +73,7 @@ describe('tabOf', () => {
     actions.ui.openTab('other', 'o1')
     actions.ui.openTab('lead', 'file:a.ts')
     expect(tabOf(getState(), 'other')).toBe('o1')
-    expect(getState().ui.tabs.lead).toEqual({ tab: 'file:a.ts', lastChat: 'c3', files: ['a.ts'], diffs: [], shared: [] })
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'file:a.ts', lastChat: 'c3', files: ['a.ts'], diffs: [], shared: [], recent: ['file:a.ts', 'c3'] })
   })
 })
 
@@ -83,7 +83,7 @@ describe('openTab', () => {
     actions.ui.openTab('lead', 'diff:src/a.ts')
     actions.ui.openTab('lead', 'diff:src/a.ts')
     actions.ui.openTab('lead', 'image:1')
-    expect(getState().ui.tabs.lead).toEqual({ tab: 'image:1', lastChat: 'c2', files: [], diffs: ['src/a.ts'], shared: [] })
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'image:1', lastChat: 'c2', files: [], diffs: ['src/a.ts'], shared: [], recent: ['image:1', 'diff:src/a.ts', 'c2'] })
   })
 })
 
@@ -100,7 +100,7 @@ describe('shared tabs', () => {
     actions.ui.openTab('lead', 'shared:s1')
     actions.ui.openTab('lead', 'shared:s2')
     actions.ui.openTab('lead', 'shared:s1')
-    expect(getState().ui.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1', 's2'] })
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1', 's2'], recent: ['shared:s1', 'shared:s2', 'c2'] })
   })
   it('is open only while it is in the list, and falls back to the last chat when it is closed', () => {
     expect(hasTab(getState(), 'lead', 'shared:s1')).toBe(false)
@@ -148,9 +148,9 @@ describe('shared tabs', () => {
     actions.ui.go(at('lead'))
     actions.ui.openShared('lead', 's1', 2)
     const place = placeToSave(getState())!
-    expect(place.tabs.lead).toMatchObject({ tab: 'shared:s1', shared: ['s1'], sharedVersion: { s1: 2 } })
+    expect(place.tabs.lead).toMatchObject({ tab: 'shared:s1', shared: ['s1'], recent: ['shared:s1'], sharedVersion: { s1: 2 } })
     const back = restorePlace(JSON.stringify(place), getState())
-    expect(back?.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: undefined, files: [], diffs: [], shared: ['s1'], sharedVersion: { s1: 2 } })
+    expect(back?.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: undefined, files: [], diffs: [], shared: ['s1'], recent: ['shared:s1'], sharedVersion: { s1: 2 } })
   })
   it('restores only well-formed shared tabs', () => {
     const tabs = { lead: { tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1', 4, ''], sharedVersion: { s1: 'two', s2: 1 } } }
@@ -345,7 +345,7 @@ describe('placeToSave', () => {
   it('is the route and the tabs', () => {
     actions.ui.go(at('lead'))
     actions.ui.openTab('lead', 'c2')
-    expect(placeToSave(getState())).toEqual({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c2', lastChat: 'c2', files: [], diffs: [], shared: [] } } })
+    expect(placeToSave(getState())).toEqual({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c2', lastChat: 'c2', files: [], diffs: [], shared: [], recent: ['c2'] } } })
   })
   it('is where Settings was opened from while Settings is open, and nothing without one', () => {
     actions.ui.go({ name: 'settings', page: 'general' })

@@ -7,6 +7,8 @@ import { actions, getState, go, loadWorkspace, useStore, type State } from '../.
 import { sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
+import { nextTab } from './nextTab'
+import { sharedTab } from './shared/shared'
 import { archiveChatFromSidebar } from './archiveChat'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './confirm.css'
@@ -49,17 +51,21 @@ function chatRows(s: State, roomId: string) {
 
 /**
  * Close chat tabs. Main stops each chat's session, which ends a running turn and drops its queued messages, and opens a
- * new chat when no chat tab is left. When the open tab is one of them, the next tab to its right opens, or to its left when
- * none is left on the right, like closing a browser tab. In the Lead's workspace that is the next tab of the same chat. Closing a chat's
+ * new chat when no chat tab is left. When the open tab is one of them, the tab used before it opens (`nextTab`), like any other tab.
+ * `order` is the tabs on screen left to right, so a file, diff or shared tab can be the one returned to; without it the chat tabs and the
+ * store's file, diff and shared tabs are used. In the Lead's workspace that is the tabs of the same chat. Closing a chat's
  * last tab closes the chat, and the shared Lead workspace it was in sends you to the room's front door, as archiving any chat on screen does (KERNEL-596).
  */
-export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void) {
+export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void, order?: string[]) {
   const s = getState()
   const closing = closesThread(s, workspaceId, ids)
   const all = s.chats[workspaceId] ?? []
   const shown = all.find((c) => c.id === active)
   // The tabs a neighbour is picked from: the active tab's own chat in the Lead's workspace, else every tab.
   const before = shown?.threadId ? all.filter((c) => c.threadId === shown.threadId) : all
+  const t = s.ui.tabs[workspaceId]
+  const tabsNow = order ?? [...before.filter((c) => !c.closed).map((c) => c.id), ...(t?.files ?? []).map((p) => `file:${p}`), ...(t?.diffs ?? []).map((p) => `diff:${p}`), ...(t?.shared ?? []).map(sharedTab)]
+  const next = nextTab(tabsNow, t?.recent, ids, active)
   for (const id of ids) {
     await call('chats.close', { chatId: id })
     dropDrafts([id])
@@ -72,10 +78,8 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
   }
   if (!active || !ids.includes(active)) return
   const left = getState().chats[workspaceId] ?? []
-  const was = before.findIndex((c) => c.id === active)
-  const kept = new Set(left.map((c) => c.id))
-  const next = [...before.slice(was + 1), ...before.slice(0, was).reverse()].find((c) => kept.has(c.id)) ?? left.find((c) => !shown?.threadId || c.threadId === shown.threadId) ?? left[0]
-  if (next) select(next.id)
+  const pick = next ?? left.find((c) => !shown?.threadId || c.threadId === shown.threadId)?.id ?? left[0]?.id
+  if (pick) select(pick)
 }
 
 /** Asks before closing chats that are still running, since closing stops the agent mid-turn. `ChatTabs` closes idle chats without asking. */
