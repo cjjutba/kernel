@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, symlink } from 'node:fs/promises'
 import { execFileSync, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, Chat, ChatItem, ChatPart, Decision, OpenItem, Room, TeamUpdate, Workspace } from '@shared/types'
@@ -15,7 +15,8 @@ import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/mai
 import type { Ask } from '../src/main/services/providers/types'
 import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
-import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
+import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_BUILD_RULE, LEAD_RULE } from '../src/main/services/handoff'
+import { HANDOFF_NO_EDIT } from '../src/main/services/agentTools'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
 import type { AppSettings } from '../src/main/services/settings'
@@ -2825,5 +2826,60 @@ describe('images in a chat message (KERNEL-545)', () => {
     expect(fresh).not.toBe(first)
     expect(await nextBlocks(fresh)).toEqual(sentText)
     expect((await readdir(join(repo, '.kernel/attachments'))).sort()).toEqual(['image-2.png', 'image.png'])
+  })
+})
+
+describe('a chat with Kernel in Hand off or Build here, on Claude (KERNEL-770)', () => {
+  const lead = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', lead: true, prompt: 'You are Kernel.', file: '/r/kernel.md' } as AgentDef
+  const leadWs = (leadMode?: 'handoff' | 'build') => ({ agentId: 'kernel', lead: true as const, threadId: 'thread', ...(leadMode ? { leadMode } : {}) })
+  const gateOf = (options: Options) => options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks).at(-1) as HookCallback
+  const use = (gate: HookCallback, tool: string, input: Record<string, unknown> = {}) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: input, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
+  const refused = { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: HANDOFF_NO_EDIT } }
+
+  it.each([['with no tools line', undefined], ['with Edit and Write on its tools line', ['Read', 'Edit', 'Write', 'Bash']]])('Hand off takes the Hand off rule and refuses every edit but a plan file, %s', async (_what, tools) => {
+    const { options } = await setup('bypassPermissions', { agent: { ...lead, tools }, ws: leadWs() })
+    const prompt = (options.systemPrompt as { append: string }).append
+    expect(prompt).toContain(LEAD_RULE)
+    expect(prompt).not.toContain(LEAD_BUILD_RULE)
+    expect(options.disallowedTools).toContain('NotebookEdit')
+    const gate = gateOf(options)
+    for (const tool of ['Edit', 'Write', 'MultiEdit', 'NotebookEdit']) expect(await use(gate, tool, { file_path: '/tmp/ws/src/app.ts' }), tool).toEqual(refused)
+    // Plan mode still writes its plan before it asks (D-023).
+    expect(await use(gate, 'Write', { file_path: join(homedir(), '.claude', 'plans', 'plan.md') })).toEqual({})
+    for (const tool of ['Read', 'Bash', 'mcp__kernel__create_workspace']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
+  it('Build here takes the Build here rule and edits even when the tools line leaves Edit and Write out', async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...lead, tools: ['Read', 'Grep', 'Glob', 'Bash'] }, ws: leadWs('build') })
+    const prompt = (options.systemPrompt as { append: string }).append
+    expect(prompt).toContain(LEAD_BUILD_RULE)
+    expect(prompt).not.toContain(LEAD_RULE)
+    expect(options.disallowedTools ?? []).not.toContain('Edit')
+    const gate = gateOf(options)
+    for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(await use(gate, tool, { file_path: '/tmp/ws/src/app.ts' }), tool).toEqual({})
+    // What the tools line leaves out otherwise stays out.
+    expect(await use(gate, 'WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+  })
+
+  it('Build here with no tools line limits nothing', async () => {
+    const { options } = await setup('acceptEdits', { agent: lead, ws: leadWs('build') })
+    expect(options).not.toHaveProperty('disallowedTools')
+  })
+
+  it('a switch takes effect from the next turn: the running turn finishes, then the process starts again with the new rule and tools', async () => {
+    const { sessions, call, options, chat, store } = await setup('acceptEdits', { agent: lead, ws: leadWs() })
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    store.saveWorkspace({ ...store.workspace('ws')!, leadMode: 'build' })
+    sessions.restartIdle(['ws'])
+    expect((options.abortController as AbortController).signal.aborted).toBe(false)
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    await flush()
+    expect((options.abortController as AbortController).signal.aborted).toBe(true)
+    await sessions.send(chat.id, [{ type: 'text', text: 'Fix the button padding' }])
+    const next = sdk.calls[sdk.calls.length - 1].options as Options
+    expect(next.resume).toBe(options.sessionId)
+    expect((next.systemPrompt as { append: string }).append).toContain(LEAD_BUILD_RULE)
+    expect(next).not.toHaveProperty('disallowedTools')
   })
 })

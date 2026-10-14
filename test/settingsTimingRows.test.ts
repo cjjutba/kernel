@@ -11,7 +11,8 @@ const lines = files.flatMap((f) => readFileSync(f, 'utf8').split('\n')).filter((
 /**
  * Settings that have no row in Settings at all: main reads them, but only a settings file sets them.
  */
-const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow'])
+// The mode defaults get their rows in KERNEL-780, which takes them off this list.
+const NO_ROW = new Set(['hookPort', 'experimental.sharing', 'models.effortByModel', 'mcp.aliases', 'agents.unlistedTools', 'agents.allow', 'team.leadMode', 'agents.leadMode'])
 
 const NOTED = new Set(['newChats', 'newWorkspaces', 'newRooms', 'restart'])
 const noted = (map: Record<string, string>) => Object.entries(map).filter(([, t]) => NOTED.has(t)).map(([k]) => k)

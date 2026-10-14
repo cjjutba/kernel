@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import { LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
@@ -98,12 +99,15 @@ export class Lead extends Feature {
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    // Hand off or Build here, from the room's default, else the app's (KERNEL-770). Read before anything is saved.
+    const room = this.store.room(roomId)
+    const leadMode = newChatLeadMode(this.settings, room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined)
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
-    const ws = cut.ws.mode === 'worktree' ? this.updateWs(cut.ws.id, { naming: 'branch' }) : cut.ws
+    const ws = this.updateWs(cut.ws.id, { leadMode, ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
     // Through the composer's own path, so Bypass where policy or the workspace doesn't allow it still runs as Accept edits.
     const chat = o.mode ? await this.sessions.configure(this.saveChat(cut.chat).id, { mode: o.mode }) : this.saveChat(cut.chat)
     this.userSpoke(chat.id)
@@ -121,6 +125,29 @@ export class Lead extends Feature {
       if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
     })
     return chat
+  }
+
+  /**
+   * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, and the chat's idle processes
+   * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
+   * process restarts after it.
+   */
+  setMode(workspaceId: string, mode: LeadMode): Workspace {
+    if (!LEAD_MODES.includes(mode)) throw new Error(`${String(mode)} is not a mode. Use handoff or build.`)
+    const ws = this.store.workspace(workspaceId)
+    if (!ws || !isLeadChatWorkspace(ws)) throw new Error('Only a chat with Kernel can switch between Hand off and Build here.')
+    if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
+    if (leadModeOf(ws) === mode) return ws
+    const next = this.updateWs(ws.id, { leadMode: mode })
+    for (const c of this.chatTabs(ws.id)) if (c.kind !== 'terminal') this.place(c.id, { kind: 'leadMode', id: newId(), ts: Date.now(), mode })
+    this.sessions.restartIdle([ws.id])
+    return next
+  }
+
+  /** Puts an item in a chat's transcript. */
+  private place(chatId: string, item: ChatItem) {
+    this.store.saveItem(chatId, item)
+    bus.push({ type: 'chat.item', chatId, item })
   }
 
   /**
@@ -501,6 +528,17 @@ export class Lead extends Feature {
       plans: () => this.threadPlans(roomId, chat).map((a) => ({ tab: this.store.chat(a.chatId!)?.title ?? '', at: a.createdAt, plan: a.detail ?? '' })),
       // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
       planMode: () => !!this.store.chat(chat.id)?.plan,
+      // Read when the session starts, so a turn finishes in the mode it started in, and a switch restarts it (KERNEL-770).
+      leadMode: leadModeOf(this.store.workspace(chat.workspaceId)),
+      // The files changed in this chat's own worktree, which teammates won't start from (KERNEL-770). Kernel's own `.kernel`
+      // folder, with the user's attachments and shared files, doesn't count.
+      ownChanges: async () => {
+        const own = this.store.workspace(chat.workspaceId)
+        if (!own || own.mode !== 'worktree' || !existsSync(own.path)) return 0
+        const out = await git(own.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel').catch(() => '')
+        return out.split('\n').filter((l) => l.trim()).length
+      },
+      suggestHandoff: (why) => this.place(chat.id, { kind: 'modeSuggestion', id: newId(), ts: Date.now(), mode: 'handoff', why }),
       createWorkspace: async ({ issue, images, goAhead, ...o }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
@@ -858,6 +896,7 @@ export class Lead extends Feature {
       'lead.open': async ({ roomId }) => { await this.leadOf(roomId); return this.newestChatWorkspace(roomId) ?? null },
       'lead.start': async ({ roomId, ...o }) => this.newLeadChat(roomId, o),
       'lead.prefetch': async ({ roomId }) => { this.prefetch(roomId); return { ok: true } },
+      'lead.setMode': async ({ workspaceId, mode }) => this.setMode(workspaceId, mode),
       'threads.list': async ({ roomId }) => this.store.threads(roomId),
       'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title),
       'threads.archivePreview': async ({ threadId }) => this.archivePreview(threadId),
