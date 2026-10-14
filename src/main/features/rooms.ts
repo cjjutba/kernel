@@ -296,7 +296,7 @@ export class Rooms extends Feature {
       // A workspace that fails to archive keeps the room open, and the error names it, so nothing is half archived without the user knowing.
       const failed: string[] = []
       for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
-        try { await this.k.archiveWorkspace(ws.id) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
+        try { await this.k.archiveWorkspace(ws.id) } catch (e) { this.sessions.stopWorkspace(ws.id, { tree: true }); failed.push(`${ws.name}: ${(e as Error).message}`) }
       }
       if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${before.name} stays open. ${failed.join(' ')}`)
     }
@@ -344,7 +344,7 @@ export class Rooms extends Feature {
     const room = this.mustRoom(roomId)
     const failed: string[] = []
     for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
-      try { await this.k.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees, removingRoom: true }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
+      try { await this.k.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees, removingRoom: true }) } catch (e) { this.sessions.stopWorkspace(ws.id, { tree: true }); failed.push(`${ws.name}: ${(e as Error).message}`) }
     }
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     // Each cleanup reads the room and runs its archive script, so the record goes only once every one has ended (KERNEL-702).

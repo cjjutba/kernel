@@ -1,9 +1,10 @@
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, RepoSummary } from '@shared/types'
 import { parse, unwrap } from './bashGuard'
 import { exec, git, gitSlow, run } from './exec'
+import { removeTree } from './removeTree'
 
 // Everything a new room needs from the outside world: reading folders, GitHub through `gh`, the starter team and settings.toml.
 
@@ -85,7 +86,7 @@ export async function cloneRepo(fullName: string, dest: string) {
  */
 export async function copyTemplate(fullName: string, dest: string) {
   await cloneRepo(fullName, dest)
-  await rm(join(dest, '.git'), { recursive: true, force: true })
+  await removeTree(join(dest, '.git'))
   await git(dest, 'init', '-q', '-b', 'main')
   await gitSlow(dest, 'add', '-A')
   await git(dest, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')

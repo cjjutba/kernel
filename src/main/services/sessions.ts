@@ -20,6 +20,7 @@ import type { McpReport } from './mcp'
 import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
+import { endAll } from './processes'
 import { ClaudeRunner, claudeCommands, claudeModels, TOOL_STOPPED } from './providers/claude'
 import { claudeExecutable } from './providers/binary'
 import { chatMode, type ChatAvailability, type RunMode } from './permissions'
@@ -40,6 +41,8 @@ interface Live {
   tasks: Set<string>
   /** Cards this process put up (`placeApproval`). A Stop or Send now, or the process ending, ends those still waiting (KERNEL-563). */
   cards: Set<string>
+  /** The pids of the processes this chat started, each the leader of its own process group, which `stop` can end (KERNEL-810). */
+  groups: Set<number>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
   /** An api_retry is counting down. The next reply or result clears the banner. Kept for a window that loads meanwhile (KERNEL-340). */
@@ -1174,7 +1177,12 @@ export class Sessions {
     return text
   }
 
-  stop(chatId: string) {
+  /**
+   * `tree` also ends what the process started: Close chat and archive. Its process group gets SIGTERM after the process is
+   * closed, then SIGKILL 2 seconds later (KERNEL-810). Without it, as at an idle stop or a restart, a dev server an agent
+   * started keeps running.
+   */
+  stop(chatId: string, o: { tree?: boolean } = {}) {
     const live = this.live.get(chatId)
     // A chat stopped while idle has no process but is stopped all the same.
     if (!live && !this.turns.has(chatId)) return
@@ -1185,6 +1193,7 @@ export class Sessions {
     this.expireCards(this.turns.get(chatId)?.plans)
     this.turns.delete(chatId)
     if (live) this.end(chatId, live)
+    if (live && o.tree) void endAll([...live.groups].map((pid) => -pid))
     if (this.queued(chatId).length) this.setQueue(chatId, [])
     const ws = shown ? this.d.store.workspace(this.mustChat(chatId).workspaceId) : undefined
     if (ws) this.setStatus(ws, this.d.agentFor(ws), 'idle')
@@ -1257,7 +1266,7 @@ export class Sessions {
     this.drain(chatId)
   }
 
-  stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
+  stopWorkspace(workspaceId: string, o: { tree?: boolean } = {}) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id, o) }
 
   /**
    * The agent behind these workspaces changed: its file, its tools, or who leads (KERNEL-397). A process only reads its
@@ -1320,20 +1329,23 @@ export class Sessions {
   /**
    * Claude Code processes from the last run that are still alive (KERNEL-215). A force quit or a crash leaves them running
    * the step they were on, in the same worktree a resumed session is about to use. Each saved pid that is still alive and
-   * still the same binary gets SIGTERM, then SIGKILL if it hasn't gone within `waitMs`. Returns the pids it ended.
+   * still the same binary gets SIGTERM, then SIGKILL if it hasn't gone within `waitMs`. Its process group gets the same, so
+   * the shells, dev servers and test runs it started end with it (KERNEL-810). Returns the pids it ended.
    */
   async endLeftovers(waitMs = 2000): Promise<number[]> {
     const saved = this.d.store.meta<SavedPid[]>(PIDS) ?? []
     const left: SavedPid[] = []
     for (const p of Array.isArray(saved) ? saved : []) if (typeof p?.pid === 'number' && !this.pids.has(p.pid) && (await runs(p))) left.push(p)
-    for (const p of left) signal(p.pid, 'SIGTERM')
+    for (const p of left) { signal(p.pid, 'SIGTERM'); signal(-p.pid, 'SIGTERM') }
     const until = Date.now() + waitMs
     let alive = left
+    // What the group started may outlive the process itself, so a process counts as gone once its group is.
+    const stays = async (p: SavedPid) => (await runs(p)) || signal(-p.pid, 0)
     while (alive.length && Date.now() < until) {
       await new Promise((r) => setTimeout(r, 100))
-      alive = (await Promise.all(alive.map(async (p) => ((await runs(p)) ? p : undefined)))).filter((p): p is SavedPid => !!p)
+      alive = (await Promise.all(alive.map(async (p) => ((await stays(p)) ? p : undefined)))).filter((p): p is SavedPid => !!p)
     }
-    for (const p of alive) signal(p.pid, 'SIGKILL')
+    for (const p of alive) { if (await runs(p)) signal(p.pid, 'SIGKILL'); signal(-p.pid, 'SIGKILL') }
     // Only now, so a crash during the wait still finds them at the next launch.
     this.savePids()
     return left.map((p) => p.pid)
@@ -1379,7 +1391,7 @@ export class Sessions {
     const root = this.d.store.room(ws.roomId)?.path
     const account = this.d.accountFor?.(chatProvider(chat))
     const { mode, bypass } = this.modes(chat, ws)
-    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), cards: new Set<string>(), groups: new Set<number>(), account, onKey: this.d.authOf?.(chatProvider(chat), account) === 'apiKey', mode } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent, chat))
@@ -1409,7 +1421,11 @@ export class Sessions {
       roomTools: () => this.d.roomTools?.(ws.roomId) ?? [],
       allowToolInRoom: (rule) => this.d.allowToolInRoom?.(ws.roomId, rule),
       held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
-      spawn: (command, args, o, proc) => this.spawn(command, args, o, proc),
+      spawn: (command, args, o, proc) => {
+        const child = this.spawn(command, args, o, proc)
+        if (child.pid) live.groups.add(child.pid)
+        return child
+      },
       managed: (sessionId) => { this.managedIds.add(sessionId) },
       item: (item) => this.item(this.mustChat(chatId), item),
       sessionStarted: (sessionId, o = {}) => {
@@ -1885,4 +1901,5 @@ function runs(p: SavedPid): Promise<boolean> {
   })
 }
 
-function signal(pid: number, sig: NodeJS.Signals) { try { process.kill(pid, sig) } catch { /* already gone */ } }
+/** A negative pid is a process group. False when nothing got the signal: it is already gone. */
+function signal(pid: number, sig: NodeJS.Signals | 0): boolean { try { process.kill(pid, sig); return true } catch { return false } }

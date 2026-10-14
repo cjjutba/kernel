@@ -4,6 +4,7 @@ import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'nod
 import type { SharedFile, SharedKind, SharedVersion, Workspace } from '@shared/types'
 import type { Store } from '../db'
 import { excludeFromGit } from './settings'
+import { removeTree } from './removeTree'
 
 // Files agents share with share_file (KERNEL-302). Kernel checks each one, keeps a copy of every version in
 // `<dataDir>/shared/<id>/v<n>/<name>` and records it in `shared_files`. The copies outlive the workspace: archiving leaves
@@ -314,7 +315,7 @@ export class SharedFiles {
 
   /** Deletes the copies of these files, for a room that was removed. Their rows go with the room's. */
   async remove(ids: string[]) {
-    for (const id of ids) await rm(this.folder(id), { recursive: true, force: true }).catch(() => undefined)
+    for (const id of ids) await removeTree(this.folder(id)).catch(() => undefined)
   }
 
   private must(id: string, n: number) {
