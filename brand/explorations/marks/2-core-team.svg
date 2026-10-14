@@ -1,8 +1,0 @@
-<!-- Direction 2, Core and team. 120 unit grid. Four equal blocks lock around one round core with an 8 unit gap everywhere. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="currentColor">
-  <rect x="8" y="8" width="72" height="24" rx="4"/>
-  <rect x="88" y="8" width="24" height="72" rx="4"/>
-  <rect x="40" y="88" width="72" height="24" rx="4"/>
-  <rect x="8" y="40" width="24" height="72" rx="4"/>
-  <circle cx="60" cy="60" r="20"/>
-</svg>
