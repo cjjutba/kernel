@@ -1,10 +1,12 @@
 import './system.css'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { AppSettings, PrInstructions } from '@shared/types'
 import { ALWAYS_REVIEW } from '@shared/merge'
 // The pure text builders: the default a PR instruction goes back to. Nothing here reads a file.
 import { addressReviewText, createPrText, fixChecksText, resolveText } from '@shared/prTexts'
 import { Button, SegmentedControl, Toggle } from '../../../ui'
+import { call } from '../../../api'
+import { actions, useStore } from '../../../store'
 import { Page, Row, Section, TagList } from '../kit'
 import { patchSettings } from '../useSettings'
 import { NumberField } from './fields'
@@ -33,6 +35,10 @@ const DEFAULTS: PrInstructions = { createInstructions: createPrText(), resolveIn
 export function PRs({ s }: { s: AppSettings }) {
   const p = s.pr
   const auto = p.autoMerge
+  const roomSettings = useStore((x) => x.roomSettings)
+  const rooms = useStore((x) => x.rooms)
+  useEffect(() => { for (const r of rooms) void call('settings.room', { roomId: r.id }).then((rs) => actions.settings.setRoom(r.id, rs)).catch(() => undefined) }, [rooms.map((r) => r.id).join()])
+  const changedIn = (path: string) => rooms.filter((r) => ['local', 'override', 'shared'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs' } as const }))
   const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
     <>
@@ -47,7 +53,7 @@ export function PRs({ s }: { s: AppSettings }) {
           } />
         </Section>
         <Section title="Merging">
-          <Row label="Merge method">
+          <Row label="Merge method" changedIn={changedIn('pr.mergeMethod')}>
             <SegmentedControl label="Merge method" value={p.mergeMethod} onChange={(v) => set({ mergeMethod: v as Pr['mergeMethod'] })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
           </Row>
           <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>

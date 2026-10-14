@@ -1,6 +1,6 @@
 import type { RoomSettings, TrackerKind } from '@shared/types'
 import { Select } from '../../../ui'
-import { isOverride, Row, sourceLine } from '../kit'
+import { Row, roomValue } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { useMenuOpen } from './roomMenu'
 
@@ -27,9 +27,8 @@ export function RoomTrackerRow({ roomId, rs, detected }: { roomId: string; rs: R
   return (
     <Row
       label="Issue tracker"
-      source={sourceLine(rs, 'tracker.kind')}
       desc={chosen ? undefined : DETECTED[detected]}
-      onReset={isOverride(rs, 'tracker.kind') ? () => void patchRoomSettings(roomId, { tracker: { kind: null } }) : undefined}
+      {...roomValue(rs, 'tracker.kind', () => void patchRoomSettings(roomId, { tracker: { kind: null } }))}
     >
       <Select
         label="Issue tracker" value={current} align="right" {...menu}

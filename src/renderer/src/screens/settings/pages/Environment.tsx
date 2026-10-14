@@ -6,7 +6,7 @@ import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Modal, useBusy } from '../../../ui'
-import { appliesTo, DataTable, NoRoom, Page, RoomPage, Section, sourceLine, useRoomPage, type TableRow } from '../kit'
+import { appliesTo, DataTable, isOverride, NoRoom, Page, RoomPage, Section, useRoomPage, type TableRow } from '../kit'
 import { RowMenu } from './RowMenu'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchRoomSettings } from '../useSettings'
@@ -115,7 +115,7 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
     cells: [<span className="mono"><FileLabel path={f.path} /></span>, f.missing ? 'Missing' : ''],
     actions: <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
   }))
-  const source = sourceLine(rs, path)
+  const source = isOverride(rs, path) ? 'Changed for this room' : undefined
   return (
     <>
       <Section

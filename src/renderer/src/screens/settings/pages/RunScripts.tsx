@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type RoomSettings } from '@shared/types'
 import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
-import { DataTable, isOverride, Row, Section, sourceLine } from '../kit'
+import { DataTable, Row, roomValue, Section } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 type Script = RoomSettings['runScripts'][number]
@@ -23,7 +23,7 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
   const drop = (name: string) => void patchRoomSettings(roomId, { runScripts: { [name]: null } })
   return (
     <>
-      <Section title="Run scripts" count={scripts.length} scope="mac" plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
+      <Section title="Run scripts" count={scripts.length} plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
         <DataTable
           label="Run scripts" columns={['Name', 'Command']} grid="140px minmax(0, 1fr)" empty="No run scripts. Add one to start the app from a workspace."
           rows={scripts.map((s) => {
@@ -52,7 +52,7 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
 export function RunMode({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
   return (
     <Section label="Running">
-      <Row label="Run mode" source={sourceLine(rs, 'scripts.runMode')} onReset={isOverride(rs, 'scripts.runMode') ? () => void patchRoomSettings(roomId, { scripts: { runMode: null } }) : undefined}>
+      <Row label="Run mode" {...roomValue(rs, 'scripts.runMode', () => void patchRoomSettings(roomId, { scripts: { runMode: null } }))}>
         <SegmentedControl label="Run mode" value={rs?.scripts.runMode ?? 'concurrent'} onChange={(v) => void patchRoomSettings(roomId, { scripts: { runMode: v as NonNullable<RoomSettings['scripts']['runMode']> } })} options={[{ value: 'concurrent', label: 'Concurrent' }, { value: 'single', label: 'One at a time' }]} />
       </Row>
       <Row label="Ports" desc={`Each workspace gets ${PORT_BLOCK}.`}>

@@ -19,7 +19,7 @@ export function RoomMcp({ isOn, flip }: { isOn: (name: string) => boolean; flip:
   const { accounts } = useMcpAccounts()
   const names = useMemo(() => [...new Set((accounts ?? []).flatMap((a) => a.servers.map((s) => s.name)))], [accounts])
   return (
-    <Section title="MCP servers" count={names.length || undefined} scope="mac" note={<>Sign-ins are on <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</>} footnote={appliesTo('disabled.mcp')}>
+    <Section title="MCP servers" count={names.length || undefined} note={<>Sign-ins are on <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</>} footnote={appliesTo('disabled.mcp')}>
       {!accounts && <p className="set-empty">Checking MCP servers</p>}
       {accounts && names.length === 0 && <p className="set-empty">No MCP servers yet. Add one in <SettingsLink to={{ page: 'mcp' }}>Settings, MCP servers</SettingsLink>.</p>}
       {names.map((name) => {
