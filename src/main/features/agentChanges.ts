@@ -268,6 +268,8 @@ export class AgentChanges extends Feature {
   /** A change for the team that didn't happen: its workspace, worktree and branch go, and History keeps no record of it. */
   private async drop(id: string) {
     await this.k.archive.archiveWorkspace(id, true, { noScript: true }).catch(() => undefined)
+    // The worktree and branch go in the archive's cleanup, which History's delete must not race (KERNEL-702).
+    await this.k.archive.cleanedUp(id)
     await this.k.history.deleteWorkspaces([id], { deleteUnpushed: true }).catch(() => undefined)
   }
 }

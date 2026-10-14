@@ -214,15 +214,16 @@ describe('lead.start answers before the worktree exists (KERNEL-542)', () => {
     await vi.waitFor(() => expect(callIn(ws.path)).toHaveLength(1))
   })
 
-  it('archives a chat whose worktree is being made, and leaves no folder or branch behind', async () => {
+  it('archives a chat whose worktree is being made at once, and leaves no folder or branch behind', async () => {
     const { k, room: r } = await room()
     const open = slowNetwork()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'Plan it' })
     const ws = wsOf(k, chat)
-    const archived = k.handlers()['threads.archive']({ threadId: chat.threadId! })
-    open()
-    await archived
+    // The archive doesn't wait for git: the cleanup does (KERNEL-702).
+    await k.handlers()['threads.archive']({ threadId: chat.threadId! })
     expect(wsOf(k, chat).status).toBe('archived')
+    open()
+    await k.archive.cleanedUp(ws.id)
     await k.archive.trashEmptied()
     expect(existsSync(ws.path)).toBe(false)
     expect(await git(r.path, 'branch', '--list', ws.branch)).toBe('')

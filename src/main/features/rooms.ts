@@ -347,6 +347,8 @@ export class Rooms extends Feature {
       try { await this.k.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees, removingRoom: true }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
     }
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
+    // Each cleanup reads the room and runs its archive script, so the record goes only once every one has ended (KERNEL-702).
+    for (const ws of this.store.workspaces(roomId)) await this.k.archive.cleanedUp(ws.id)
     this.k.overlaps.forget(roomId)
     const shared = this.store.sharedFiles({ roomId }).map((f) => f.id)
     this.store.deleteRoom(roomId)

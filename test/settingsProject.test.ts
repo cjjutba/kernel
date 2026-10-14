@@ -489,6 +489,7 @@ describe('the room remote (KERNEL-190)', () => {
     // Push to the room's remote, then archive and delete the branch: nothing is lost, so it goes.
     await commit(a.path, 'a.md')
     await h['workspaces.archive']({ workspaceId: a.id, deleteBranch: true, push: true })
+    await k.archive.cleanedUp(a.id)
     expect(await onBare(bare, a.branch)).toBe(true)
     expect(await localBranch(repo, a.branch)).toBe(false)
 
@@ -497,6 +498,7 @@ describe('the room remote (KERNEL-190)', () => {
     await commit(b.path, 'b.md')
     await git(b.path, 'push', '-q', 'upstream', b.branch)
     await k.archiveWorkspace(b.id, true)
+    await k.archive.cleanedUp(b.id)
     expect(await localBranch(repo, b.branch)).toBe(false)
     await k.stop()
   })
@@ -1309,6 +1311,7 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     bus.on('push', on)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     bus.off('push', on)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(marker)).rejects.toThrow()

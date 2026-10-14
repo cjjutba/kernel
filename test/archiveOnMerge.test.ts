@@ -241,6 +241,7 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
     const { k, repo, author } = await setup({ origin: true, roomDelete: true })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
+    await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(false)
   })
 
@@ -248,6 +249,7 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
     const { k, repo, author } = await setup({ origin: true, deleteBranch: true, roomDelete: false })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
+    await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(true)
   })
 
@@ -256,6 +258,7 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
     const { k, repo, author } = await setup({ origin: true, deleteBranch: false, roomDelete: 'yes' })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
+    await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(true)
   })
 
@@ -263,10 +266,12 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
     const keep = await setup({ origin: true, deleteBranch: true, roomDelete: true })
     await pushWork(keep.author)
     await keep.k.archive.archiveWorkspace(keep.author.id, false)
+    await keep.k.archive.cleanedUp(keep.author.id)
     expect(await hasBranch(keep.repo, keep.author)).toBe(true)
     const drop = await setup({ origin: true, deleteBranch: false, roomDelete: false })
     await pushWork(drop.author)
     await drop.k.archive.archiveWorkspace(drop.author.id, true)
+    await drop.k.archive.cleanedUp(drop.author.id)
     expect(await hasBranch(drop.repo, drop.author)).toBe(false)
   })
 
@@ -277,14 +282,16 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
     await run('git', ['-C', author.path, 'add', '-A'])
     await run('git', ['-C', author.path, 'commit', '-q', '-m', 'more'])
     await k.archive.archiveWorkspace(author.id)
+    await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(true)
   })
 
   it('deletes the branch of work Kernel archives on merge', async () => {
-    const { repo, author, status, land } = await setup({ origin: true, roomDelete: true })
+    const { k, repo, author, status, land } = await setup({ origin: true, roomDelete: true })
     const head = await pushWork(author)
     await land('merged', head)
     await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
+    await k.archive.cleanedUp(author.id)
     expect(await hasBranch(repo, author)).toBe(false)
   })
 })

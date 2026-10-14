@@ -55,6 +55,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     // Hold the delete queue: archive resolving anyway shows it doesn't wait for the delete.
     const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(ws.path)).rejects.toThrow(/ENOENT/)
     expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain(basename(ws.path))
@@ -78,6 +79,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     expect(await linkNodeModules(repo, ws.path)).toBe(true)
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     await k.trashEmptied()
     expect(await readdir(join(dirname(ws.path), '.trash'))).toEqual([])
     expect(await readFile(join(repo, 'node_modules', 'left-pad', 'index.js'), 'utf8')).toBe('module.exports = 1\n')
@@ -115,6 +117,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     await fill(ws.path)
     const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     const back = await k.restoreWorkspace(ws.id)
     // Setup runs again before the agent goes on (KERNEL-77).
     expect(back.status).toBe('setup')
@@ -136,13 +139,18 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     expect(await readdir(join(dirname(a.path), '.trash'))).toEqual([])
   }, 30000)
 
-  it('keeps the workspace open when the worktree cannot be read', async () => {
+  it('archives, leaves the folder alone and warns when the worktree cannot be read (KERNEL-702)', async () => {
     const { k, room } = await setup()
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await chmod(dirname(ws.path), 0o000)
     onTestFinished(() => chmod(dirname(ws.path), 0o755))
-    await expect(k.archiveWorkspace(ws.id, false)).rejects.toThrow(/EACCES/)
-    expect(k.store.workspace(ws.id)?.status).not.toBe('archived')
+    await k.archiveWorkspace(ws.id, false)
+    expect(k.store.workspace(ws.id)?.status).toBe('archived')
+    await k.archive.cleanedUp(ws.id)
+    const note = k.store.activity(room.id).find((a) => a.kind === 'note' && a.workspaceId === ws.id && a.warn)
+    expect(note).toMatchObject({ text: "couldn't finish cleaning up after archiving", object: ws.name, quote: expect.stringMatching(/EACCES/) })
     expect(trash(k)).toEqual([])
+    await chmod(dirname(ws.path), 0o755)
+    expect((await stat(ws.path)).isDirectory()).toBe(true)
   }, 30000)
 })

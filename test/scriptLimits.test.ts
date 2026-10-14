@@ -101,6 +101,7 @@ describe('setup and archive scripts', () => {
     const { k, room } = await kernelWith('[scripts]\narchive = "sleep 600"\n', 0.01)
     const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     await k.archive.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     expect(linesOf(ws.id)).toContain("The archive script didn't finish in 0.01 minutes, so Kernel stopped it.")
   })

@@ -95,6 +95,7 @@ describe('an agent switches branches in its worktree', () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Moved' })
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'moved-here'])
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     // Nothing unpushed on the new branch, so it goes as asked. The old one isn't the workspace's anymore.
     expect(await branchList(room.path, 'moved-here')).toBe('')
     expect(await branchList(room.path, ws.branch)).toContain(ws.branch)
@@ -108,6 +109,7 @@ describe('an agent switches branches in its worktree', () => {
     await run('git', ['-C', ws.path, 'checkout', '-q', '-b', 'kept-work'])
     await commit(ws.path, 'work.ts')
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     const back = await k.restoreWorkspace(ws.id)
     expect(back.branch).toBe('kept-work')
     expect(await head(back.path)).toBe('kept-work')

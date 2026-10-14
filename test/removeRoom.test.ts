@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
+import { bus } from '../src/main/bus'
 import { run } from '../src/main/services/exec'
 import { Kernel } from '../src/main/kernel'
 
@@ -11,8 +12,8 @@ import { Kernel } from '../src/main/kernel'
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
 
-async function setup() {
-  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI })
+async function setup(files: Record<string, string> = {}) {
+  const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', deleteBranchOnArchive: true } }))
@@ -54,12 +55,43 @@ describe('removing a room', () => {
   })
 
   it('keeps the room and names the workspace when one fails to archive', async () => {
+    const { k, room, done } = await setup()
+    const sync = k.prs.syncBranch.bind(k.prs)
+    k.prs.syncBranch = async (id) => { if (id === done.id) throw new Error('git is locked'); return sync(id) }
+    await expect(k.removeRoom(room.id, true)).rejects.toThrow(`Could not archive a workspace, so ${room.name} stays. ${done.name}: git is locked`)
+    expect(k.store.room(room.id)).toBeDefined()
+    await k.stop()
+  })
+
+  it("removes the room and leaves a folder that isn't a worktree alone, with a warning (KERNEL-702)", async () => {
     const { k, room, repo, done } = await setup()
-    // The worktree is gone from git, but a folder is back at its path. It may hold the user's files, so archiving fails (D-105).
+    // The worktree is gone from git, but a folder is back at its path. It may hold the user's files, so it stays (D-105).
     await run('git', ['-C', repo, 'worktree', 'remove', '--force', done.path])
     await mkdir(done.path)
-    await expect(k.removeRoom(room.id, true)).rejects.toThrow(`Could not archive a workspace, so ${room.name} stays. ${done.name}:`)
-    expect(k.store.room(room.id)).toBeDefined()
+    await writeFile(join(done.path, 'mine.txt'), 'mine\n')
+    const notes: string[] = []
+    const on = (e: { kind: string; workspaceId?: string; warn?: boolean; text: string }) => { if (e.kind === 'note' && e.warn && e.workspaceId === done.id) notes.push(e.text) }
+    bus.on('activity', on)
+    onTestFinished(() => { bus.off('activity', on) })
+    await k.removeRoom(room.id, true)
+    expect(notes).toEqual(["couldn't finish cleaning up after archiving"])
+    expect(existsSync(join(done.path, 'mine.txt'))).toBe(true)
+    expect(k.store.room(room.id)).toBeUndefined()
+    await k.stop()
+  })
+
+  it('waits for every cleanup, one from an earlier archive included, before it forgets the room (KERNEL-702)', async () => {
+    const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'archived.txt')
+    const { k, room, done, busy } = await setup({ '.kernel/settings.toml': `[scripts]\narchive = "sleep 0.3; echo $KERNEL_WORKSPACE_NAME >> ${log}"\n` })
+    await trustRoom(k, room.id)
+    await k.archiveWorkspace(done.id)
+    // The archive returned while its script still runs.
+    expect(existsSync(done.path)).toBe(true)
+    await k.removeRoom(room.id, true)
+    expect((await readFile(log, 'utf8')).trim().split('\n').sort()).toEqual([busy.name, done.name].sort())
+    expect(existsSync(done.path)).toBe(false)
+    expect(existsSync(busy.path)).toBe(false)
+    expect(k.store.room(room.id)).toBeUndefined()
     await k.stop()
   })
 })
