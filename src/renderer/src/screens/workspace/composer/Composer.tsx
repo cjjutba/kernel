@@ -13,7 +13,7 @@ import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../.
 import { useRoomSettings } from '../../settings/useSettings'
 import { Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { PlanStrip } from '../cards/plan'
+import { PlanStrip, usePlanStrip } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
@@ -67,6 +67,17 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced, chat.id)
+  // The strip outlives its plan while it closes, and the box stays in plan mode with it, so the placeholder, the chip and the glow change when the strip is gone (KERNEL-833).
+  // After Approve the caret goes to the box, where the Approve button had the focus.
+  const strip = usePlanStrip(plan, () => d.focus())
+  const holding = !!strip.shown
+  // Whether the chat itself was planning while the strip was last open, so the chip holds Plan only for a chat that showed it.
+  const [planWas, setPlanWas] = useState(chat.plan)
+  if (!strip.closing && planWas !== chat.plan) setPlanWas(chat.plan)
+  // The swap fades once the strip is gone. The two names let the same animation run again, with no timer to clear it.
+  const [swap, setSwap] = useState<'a' | 'b' | undefined>()
+  const [wasHolding, setWasHolding] = useState(holding)
+  if (wasHolding !== holding) { setWasHolding(holding); if (!holding) setSwap((x) => (x === 'a' ? 'b' : 'a')) }
   // Fixtures open the model picker and the mode menu the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
   // In a chat with Kernel the mode menu is Hand off and Build here (KERNEL-780).
   const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : getState().ui.menu === 'mode' ? (ws && isLeadChatWorkspace(ws) ? 'leadMode' : 'mode') : null)
@@ -206,7 +217,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
     if (getState().runModes[chat.id]) return
     void call('chats.runMode', { chatId: chat.id }).then((m) => { if (!getState().runModes[chat.id]) actions.chats.setRunMode(chat.id, m) }).catch(() => undefined)
   }, [chat.id])
-  const shown = shownMode(chat.plan, runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
+  const shown = shownMode(chat.plan || (holding && planWas), runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
   const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
@@ -229,7 +240,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
-  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
+  const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !holding && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
   const [sendingNow, runNow] = useBusy<string>()
   const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id }))))
@@ -266,7 +277,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const model = modelLabelOf(chat.model, providerModels)
   const effort = effortLabel(chat.effort)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
+  const placeholder = blocked ? 'Paused until this is resolved' : plan || holding ? 'Enter your plan adjustments here' : running || queueWhy === 'setup' ? 'Add a follow up' : suggested || (withKernel ? leadPlaceholder(leadMode, name) : `Ask ${name} to make changes, @mention files, run /skills`)
 
   // ^⌘1 to 4 pick a model (at the effort it last ran at) and ⌘⇧/ cycles the effort, with the picker open or not.
   // The open picker handles them itself and marks the event handled. ⌘L puts the caret in the box. ⌘⇧L is the Lead chat (App.tsx).
@@ -308,6 +319,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       above={<>
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
         {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
+        <span className="sr-only" role="status" aria-live="polite">{strip.said}</span>
         {banner}
         {dirty.length > 0 && <UncommittedNote files={dirty} />}
         <QueueList
@@ -361,8 +373,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
           <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>{agent?.lead ? `No files or teammates match “${mention.query}”.` : `No files match “${mention.query}”.`}</p></div>
         )}
       </>}
-      box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}
-      top={<PlanStrip plan={plan} />}
+      box={{ 'data-plan': chat.plan || plan || holding ? 'true' : undefined, 'data-swap': swap, 'data-blocked': blocked || undefined, 'data-drop': d.over || undefined, style: { opacity: blocked ? 0.5 : 1 } }}
+      top={<PlanStrip strip={strip} hasText={hasDraft} onSendChanges={() => void send()} onBack={d.focus} />}
       input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
