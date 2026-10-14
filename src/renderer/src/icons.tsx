@@ -172,14 +172,27 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: IconSize }) {
   return <HugeiconsIcon icon={H[name as keyof typeof H]} size={size} strokeWidth={STROKE} aria-hidden="true" />
 }
 
-/** The big mark on Welcome and Home. Off the size scale and drawn thin, so nothing else uses it. */
-export function LargeMark({ size, stroke }: { size: number; stroke: number }) {
-  return <HugeiconsIcon icon={H.layers} size={size} strokeWidth={stroke * (24 / 16)} aria-hidden="true" />
+// Kernel's Block K (design/brand/k-icon.svg, KERNEL-818), centered in a 120 box so the K is 0.8 of the box's height. Solid, in `currentColor`.
+const K_MARK = 'M0 2.5A2.5 2.5 0 0 1 2.5 0L29.5 0A2.5 2.5 0 0 1 32 2.5L32 93.5A2.5 2.5 0 0 1 29.5 96L2.5 96A2.5 2.5 0 0 1 0 93.5ZM46 40.59A2.5 2.5 0 0 1 46.26 39.47L65.31 1.38A2.5 2.5 0 0 1 67.55 0L95.95 0A2.5 2.5 0 0 1 98.19 3.62L76 48L98.19 92.38A2.5 2.5 0 0 1 95.95 96L67.55 96A2.5 2.5 0 0 1 65.31 94.62L46.26 56.53A2.5 2.5 0 0 1 46 55.41Z'
+// The avatar cut: channel 20 instead of 14 and corners r 1.5, so the channel stays open at 12 to 14px (a 14 channel is 1.1px there).
+const K_MARK_SMALL = 'M0 1.5A1.5 1.5 0 0 1 1.5 0L30.5 0A1.5 1.5 0 0 1 32 1.5L32 94.5A1.5 1.5 0 0 1 30.5 96L1.5 96A1.5 1.5 0 0 1 0 94.5ZM52 40.35A1.5 1.5 0 0 1 52.16 39.68L71.59 0.83A1.5 1.5 0 0 1 72.93 0L103.57 0A1.5 1.5 0 0 1 104.91 2.17L82 48L104.91 93.83A1.5 1.5 0 0 1 103.57 96L72.93 96A1.5 1.5 0 0 1 71.59 95.17L52.16 56.32A1.5 1.5 0 0 1 52 55.65Z'
+
+/** The big mark on Welcome and Home. Off the size scale, so nothing else uses it. */
+export function LargeMark({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="currentColor" aria-hidden="true">
+      <path transform="translate(10 12)" d={K_MARK} />
+    </svg>
+  )
 }
 
 /** Kernel's own mark at avatar size: the Lead's avatar, in place of a letter. */
 export function KernelMark({ size = 16 }: { size?: IconSize }) {
-  return <HugeiconsIcon icon={H.layers} size={size} strokeWidth={STROKE} aria-hidden="true" />
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" fill="currentColor" aria-hidden="true">
+      <path transform="translate(7 12)" d={K_MARK_SMALL} />
+    </svg>
+  )
 }
 
 export type IconName = keyof typeof H | keyof typeof K
@@ -282,7 +295,7 @@ const MARKS = {
   posthog: 'M9.854 14.5 5 9.647.854 5.5A.5.5 0 0 0 0 5.854V8.44a.5.5 0 0 0 .146.353L5 13.647l.147.146L9.854 18.5l.146.147v-.049c.065.03.134.049.207.049h2.586a.5.5 0 0 0 .353-.854L9.854 14.5zm0-5-4-4a.487.487 0 0 0-.409-.144.515.515 0 0 0-.356.21.493.493 0 0 0-.089.288V8.44a.5.5 0 0 0 .147.353l9 9a.5.5 0 0 0 .853-.354v-2.585a.5.5 0 0 0-.146-.354l-5-5zm1-4a.5.5 0 0 0-.854.354V8.44a.5.5 0 0 0 .147.353l4 4a.5.5 0 0 0 .853-.354V9.854a.5.5 0 0 0-.146-.354l-4-4zm12.647 11.515a3.863 3.863 0 0 1-2.232-1.1l-4.708-4.707a.5.5 0 0 0-.854.354v6.585a.5.5 0 0 0 .5.5H23.5a.5.5 0 0 0 .5-.5v-.6c0-.276-.225-.497-.499-.532zm-5.394.032a.8.8 0 1 1 0-1.6.8.8 0 0 1 0 1.6zM.854 15.5a.5.5 0 0 0-.854.354v2.293a.5.5 0 0 0 .5.5h2.293c.222 0 .39-.135.462-.309a.493.493 0 0 0-.109-.545L.854 15.501zM5 14.647.854 10.5a.5.5 0 0 0-.854.353v2.586a.5.5 0 0 0 .146.353L4.854 18.5l.146.147h2.793a.5.5 0 0 0 .353-.854L5 14.647z'
 } as const
 
-/** A service's mark at `size`, in `currentColor`. Kernel's is its own layers mark, and a server Kernel has no mark for gets the plug. */
+/** A service's mark at `size`, in `currentColor`. Kernel's is its own K, and a server Kernel has no mark for gets the plug. */
 export function ServiceMark({ name, size = 15 }: { name: ServiceName; size?: number }) {
   const stroked: IconSize = size <= 14 ? 14 : 16
   if (name === 'kernel') return <KernelMark size={stroked} />

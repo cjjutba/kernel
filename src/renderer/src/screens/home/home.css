@@ -35,7 +35,7 @@
 
 /* Empty */
 .hm-welcome { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 24px 24px; position: relative; }
-.hm-mark { position: absolute; top: calc(50% - 290px); color: var(--line-3); opacity: 0.6; }
+.hm-mark { position: absolute; top: calc(50% - 302px); color: var(--line-3); opacity: 0.6; }
 .hm-welcome h2 { position: relative; margin: 0; font-size: 28px; font-weight: 600; color: var(--ink); letter-spacing: -0.6px; }
 .hm-welcome > p { position: relative; margin: 8px 0 24px; color: var(--muted); font-size: 15px; }
 .hm-ask { position: relative; width: 640px; max-width: 100%; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
