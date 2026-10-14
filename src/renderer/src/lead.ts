@@ -3,6 +3,8 @@ import type { AgentDef, Approval, NewChatPicks, Workspace, WorkspaceSource } fro
 import { isLeadWorkspace as isLead } from '@shared/leadWorkspace'
 import { call, cleanError } from './api'
 import { roomAgents } from './nav'
+import { focusComposerIn } from './screens/workspace/composer/bus'
+import { leadNewKey } from './components/sidebar/slots'
 import { actions, getState, go, useStore } from './store'
 
 /** The room's Lead: the agent marked `lead: true`. */
@@ -62,7 +64,10 @@ export async function openLead(roomId: string): Promise<Workspace | undefined> {
  */
 export function openNewChat(roomId: string | undefined, opts?: { source?: WorkspaceSource; picks?: NewChatPicks }): void {
   const room = roomId ?? getState().rooms[0]?.id
-  if (room) go({ name: 'leadNew', roomId: room, ...opts })
+  if (!room) return
+  // The box takes the caret when it mounts, or at once when New chat is already showing.
+  focusComposerIn(leadNewKey(room))
+  go({ name: 'leadNew', roomId: room, ...opts })
 }
 
 /**
