@@ -36,12 +36,14 @@ jobs:
       - run: pnpm typecheck
 
       # Keep going after a failure so the report lists every failing file, not just the first.
+      # Calls vitest the way scripts/test.ts does (it only adds a test slot, and CI takes none). Not
+      # `pnpm test --reporter=...`: pnpm itself takes --reporter (default, append-only, ndjson, silent).
       - name: Test
         id: test
         continue-on-error: true
         run: |
           start=$(date +%s)
-          pnpm test --reporter=default --reporter=json --outputFile.json=vitest.json
+          node node_modules/vitest/vitest.mjs run --reporter=default --reporter=json --outputFile.json=vitest.json
           code=$?
           echo "wall=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
           exit $code
