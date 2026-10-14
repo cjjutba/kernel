@@ -1,20 +1,23 @@
 import { EventEmitter } from 'node:events'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppUpdate } from '../src/shared/types'
 import { bus } from '../src/main/bus'
-import { blockedReason, parseNotes, Updater, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
+import { blockedReason, CHECK_EVERY_MS, parseNotes, STALL_MS, Updater, WAKE_MS, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
 import { packagedClaude } from '../src/main/services/sessions'
 
 /** Stands in for electron-updater's autoUpdater. `next` is what the following check emits. */
 class FakeEngine extends EventEmitter implements UpdateEngine {
   autoDownload = false
   autoInstallOnAppQuit = false
+  logger?: UpdateEngine['logger']
   installs = 0
+  checks = 0
+  cancel = vi.fn()
   next: (e: FakeEngine) => void = (e) => e.emit('update-not-available')
-  async checkForUpdates() { this.emit('checking-for-update'); this.next(this) }
+  async checkForUpdates() { this.checks++; this.emit('checking-for-update'); this.next(this); return { cancellationToken: { cancel: this.cancel } } }
   quitAndInstall() { this.installs++ }
 }
 
@@ -140,6 +143,148 @@ describe('Updater', () => {
     await new Updater({ current: '0.1.0', dataDir, engine }).check()
     await saved(dataDir, { version: '0.2.0' })
     expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine() }).get().installed).toBeUndefined()
+  })
+})
+
+// KERNEL-711: the updater recovers on its own, without a restart.
+describe('Updater recovery', () => {
+  const minutes = (n: number) => vi.advanceTimersByTimeAsync(n * 60_000)
+  const newer: UpdateInfo = { version: '0.3.0', releaseNotes: '### Newer\nThe newest one.' }
+  let warn: ReturnType<typeof vi.spyOn>
+  beforeEach(() => { vi.useFakeTimers(); warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined) })
+  afterEach(() => { vi.useRealTimers(); warn.mockRestore() })
+
+  it('downloads a newer version behind a ready one, and installs only the newest', async () => {
+    const dataDir = await dir()
+    const engine = new FakeEngine()
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir, engine })
+    await u.check()
+    expect(u.get()).toMatchObject({ status: 'ready', version: '0.2.0' })
+    const pushed: AppUpdate[] = []
+    const listen = (e: { type: string; update?: AppUpdate }) => { if (e.type === 'update' && e.update) pushed.push(e.update) }
+    bus.on('push', listen)
+    engine.next = (e) => { e.emit('update-available', newer); e.emit('download-progress', { percent: 30 }) }
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0', notes: parseNotes(notes) })
+    // Restart to update waits for the newer one rather than install a version the feed moved past.
+    u.install()
+    expect(engine.installs).toBe(0)
+    engine.emit('update-downloaded', newer)
+    bus.off('push', listen)
+    expect(pushed.map((p) => [p.status, p.version])).toEqual([['ready', '0.3.0']])
+    expect(engine.installs).toBe(1)
+    vi.useRealTimers()
+    await saved(dataDir, { version: '0.3.0', shown: false })
+    expect(await readdir(dataDir)).toEqual(['update.json'])
+  })
+
+  it('keeps the ready update when a newer check or download fails', async () => {
+    const engine = new FakeEngine()
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    await u.check()
+    engine.next = (e) => e.emit('error', new Error('offline'))
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0' })
+    engine.next = (e) => { e.emit('update-available', newer); e.emit('error', new Error('sha512 checksum mismatch')) }
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0' })
+    u.install()
+    expect(engine.installs).toBe(1)
+
+    // Restart pressed while the newer one downloads, and that download fails: Kernel already stopped, so the ready one installs.
+    engine.next = (e) => e.emit('update-available', newer)
+    await u.check()
+    u.install()
+    expect(engine.installs).toBe(1)
+    engine.emit('error', new Error('net::ERR_CONNECTION_RESET'))
+    expect(engine.installs).toBe(2)
+  })
+
+  it('retries a failure after 5 minutes, 15, then every hour, and goes back to 4 hours after a success', async () => {
+    const engine = new FakeEngine()
+    engine.next = (e) => e.emit('error', new Error('offline'))
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    u.start()
+    await minutes(0)
+    expect(engine.checks).toBe(1)
+    await minutes(4)
+    expect(engine.checks).toBe(1)
+    await minutes(1)
+    expect(engine.checks).toBe(2)
+    await minutes(14)
+    expect(engine.checks).toBe(2)
+    await minutes(1)
+    expect(engine.checks).toBe(3)
+    await minutes(60)
+    expect(engine.checks).toBe(4)
+    engine.next = (e) => e.emit('update-not-available')
+    await minutes(60)
+    expect(engine.checks).toBe(5)
+    expect(u.get()).toMatchObject({ status: 'idle', error: undefined })
+    await vi.advanceTimersByTimeAsync(CHECK_EVERY_MS - 1)
+    expect(engine.checks).toBe(5)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(engine.checks).toBe(6)
+    // A failure after the success starts the backoff over at 5 minutes.
+    engine.next = (e) => e.emit('error', new Error('offline'))
+    await vi.advanceTimersByTimeAsync(CHECK_EVERY_MS)
+    expect(engine.checks).toBe(7)
+    await minutes(5)
+    expect(engine.checks).toBe(8)
+    u.stop()
+    await vi.advanceTimersByTimeAsync(CHECK_EVERY_MS)
+    expect(engine.checks).toBe(8)
+  })
+
+  it('drops a download with no progress for 10 minutes and retries it', async () => {
+    const engine = new FakeEngine()
+    engine.next = (e) => e.emit('update-available', info)
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    u.start()
+    await minutes(0)
+    expect(u.get().status).toBe('downloading')
+    await minutes(9)
+    engine.emit('download-progress', { percent: 10 })
+    await minutes(9)
+    expect(u.get()).toMatchObject({ status: 'downloading', progress: 10 })
+    expect(engine.cancel).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(STALL_MS - 9 * 60_000)
+    expect(u.get()).toMatchObject({ status: 'idle', version: undefined })
+    expect(engine.cancel).toHaveBeenCalledTimes(1)
+    expect(engine.checks).toBe(1)
+    engine.next = download
+    await minutes(5)
+    expect(engine.checks).toBe(2)
+    expect(u.get()).toMatchObject({ status: 'ready', version: '0.2.0' })
+    u.stop()
+  })
+
+  it('checks on wake at most once every 30 minutes', async () => {
+    const engine = new FakeEngine()
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    u.wake()
+    await minutes(0)
+    expect(engine.checks).toBe(0)
+    u.start()
+    await minutes(10)
+    u.wake()
+    await minutes(0)
+    expect(engine.checks).toBe(1)
+    await vi.advanceTimersByTimeAsync(WAKE_MS - 10 * 60_000)
+    u.wake()
+    await minutes(0)
+    expect(engine.checks).toBe(2)
+    await minutes(29)
+    u.wake()
+    await minutes(0)
+    expect(engine.checks).toBe(2)
+    u.stop()
+  })
+
+  it('sends electron-updater\'s own lines to the log', async () => {
+    const engine = new FakeEngine()
+    new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    engine.logger?.info('Staging percentage: 0.5, percentage: 0.2, user id: abc')
+    expect(warn).toHaveBeenCalledWith('[updater]', 'Staging percentage: 0.5, percentage: 0.2, user id: abc')
   })
 })
 
