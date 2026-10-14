@@ -128,7 +128,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, and the chat's idle processes
+   * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, or its last one updates, and the chat's idle processes
    * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
    * process restarts after it.
    */
@@ -139,7 +139,12 @@ export class Lead extends Feature {
     if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
     if (leadModeOf(ws) === mode) return ws
     const next = this.updateWs(ws.id, { leadMode: mode })
-    for (const c of this.chatTabs(ws.id)) if (c.kind !== 'terminal') this.place(c.id, { kind: 'leadMode', id: newId(), ts: Date.now(), mode })
+    // A tab whose last item is a divider updates it in place, so switching back and forth leaves one (KERNEL-809).
+    for (const c of this.chatTabs(ws.id)) {
+      if (c.kind === 'terminal') continue
+      const last = this.store.items(c.id).at(-1)
+      this.place(c.id, { kind: 'leadMode', id: last?.kind === 'leadMode' ? last.id : newId(), ts: Date.now(), mode })
+    }
     this.sessions.restartIdle([ws.id])
     return next
   }

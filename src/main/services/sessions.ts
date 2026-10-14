@@ -70,6 +70,8 @@ interface Live {
    * process restarts (bypass-allows-unlisted-mcp). Undefined on Claude.
    */
   threadBypass?: boolean
+  /** The note saying Bypass permissions waits for this turn, so turning it on again updates it and off again corrects it (KERNEL-809). */
+  bypassNote?: { id: string; waits: boolean }
   /** The mode Kernel last started or switched the process in, which a Claude process keeps while Bypass permissions waits (KERNEL-572). */
   mode: RunMode
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
@@ -684,12 +686,20 @@ export class Sessions {
     const waits = restart && live.bypass !== undefined && mode === 'bypassPermissions'
     if (!waits) live.mode = mode
     const switched = waits ? Promise.resolve() : live.runner.setMode(mode)
+    // Turned off again before the turn ended: the process keeps its mode, so the note stops promising Bypass (KERNEL-809).
+    if (live.bypassNote?.waits && !bypass) this.bypassNote(chat, live, false)
     if (!restart) return switched
     if (live.running || live.tasks.size) {
       this.stale.add(chat.id)
-      if (live.bypass !== undefined && bypass) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: 'Bypass permissions starts once this turn ends.' })
+      if (live.bypass !== undefined && bypass && !live.bypassNote?.waits) this.bypassNote(chat, live, true)
     } else this.end(chat.id, live)
     return switched
+  }
+
+  /** Puts the turn's Bypass note in the transcript, or updates it in place when the turn has one (KERNEL-809). */
+  private bypassNote(chat: Chat, live: Live, waits: boolean) {
+    live.bypassNote = { id: live.bypassNote?.id ?? randomUUID(), waits }
+    this.item(chat, { kind: 'note', id: live.bypassNote.id, ts: Date.now(), text: waits ? BYPASS_WAITS : BYPASS_OFF_AGAIN })
   }
 
   /**
@@ -1653,6 +1663,8 @@ export class Sessions {
   private setRunning(chat: Chat, ws: Workspace, live: Live, running: boolean) {
     if (live.running === running) return
     live.running = running
+    // Each turn gets its own Bypass note.
+    if (running) live.bypassNote = undefined
     if (!running) { live.whenIdle?.(); live.whenIdle = undefined }
     // The journal is written at every turn start and end, so a crash leaves the right list. A quit freezes it.
     if (!this.closing && this.working.has(chat.id) !== running) {
@@ -1820,6 +1832,10 @@ export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies.
 export const RELAUNCH_NUDGE = 'Kernel closed while you were working, so your last step may not have finished. Check the worktree and what you already did (git status, open PRs, workspaces you handed off) before you redo anything, then carry on.'
 
 /** Why a chat that carries on after a relaunch stopped, as `onExit` reports it: a quit, or a crash or a force quit. */
+/** The note when Bypass permissions waits for the running turn, and what it says once Bypass is turned off again before that (KERNEL-809). */
+export const BYPASS_WAITS = 'Bypass permissions starts once this turn ends.'
+export const BYPASS_OFF_AGAIN = 'Bypass permissions was turned off before this turn ended.'
+
 export const QUIT_REASON = 'Kernel quit'
 export const CRASH_REASON = 'Kernel closed unexpectedly'
 
