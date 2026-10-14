@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Skill } from '@shared/types'
 import { call } from '../../../api'
 import { Toggle } from '../../../ui'
-import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
+import { appliesTo, NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { RoomMcp } from './RoomMcp'
 
@@ -26,7 +26,7 @@ export function Skills({ roomId }: { roomId?: string }) {
   const isOn = (kind: 'skills' | 'mcp', name: string) => !(off?.[kind] ?? []).includes(name)
   return (
     <RoomPage room={room} rs={rs} title="Skills and MCP">
-      <Section title="Skills" count={skills.length || undefined} scope="mac">
+      <Section title="Skills" count={skills.length || undefined} scope="mac" footnote={appliesTo('disabled.skills')}>
         {skills.length === 0 && <p className="set-empty">No skills found in this repo or your user folders. Add one in <code>.claude/skills</code> and it shows up here.</p>}
         {skills.map((k) => (
           <Row key={k.name} label={<span className="mono">/{k.name}</span>} desc={k.description || undefined}>

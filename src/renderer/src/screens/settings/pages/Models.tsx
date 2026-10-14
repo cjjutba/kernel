@@ -2,7 +2,7 @@ import './agents.css'
 import { COMPACT_WINDOWS, EFFORT_LABELS, type AppSettings, type CompactWindow, type Provider, type Role, type RoleModel } from '@shared/types'
 import { IconButton, Select, Toggle } from '../../../ui'
 import { effortsOf, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
-import { Page, Row, Section } from '../kit'
+import { appliesTo, Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
 const ROLES: { key: Role; title: string }[] = [
@@ -66,19 +66,19 @@ export function Models({ s }: { s: AppSettings }) {
   const limits = [...new Set([...LIMITS, m.agentLimit])].filter((n) => n > 0).sort((a, b) => a - b)
   return (
     <Page title="Models and effort">
-      <Section title="Roles" note={<IconButton icon="info" size={14} label="About pinned models" className="ag-info" data-tip={PIN_NOTE} />} plain label="Roles">
+      <Section title="Roles" note={<IconButton icon="info" size={14} label="About pinned models" className="ag-info" data-tip={PIN_NOTE} />} plain label="Roles" footnote={appliesTo('models.roles')}>
         <Roles s={s} />
       </Section>
       <Section title="Planning">
-        <Row label="Lead starts in plan mode"><Toggle label="Lead starts in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
-        <Row label="New workspaces start in plan mode" desc="The Lead’s hand-offs skip it, since the Lead already planned."><Toggle label="New workspaces start in plan mode" checked={m.workspacePlanMode} onChange={(v) => void patchSettings({ models: { workspacePlanMode: v } })} /></Row>
+        <Row setting="models.leadPlanMode" label="Lead starts in plan mode"><Toggle label="Lead starts in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
+        <Row setting="models.workspacePlanMode" label="New workspaces start in plan mode" desc="The Lead’s hand-offs skip it, since the Lead already planned."><Toggle label="New workspaces start in plan mode" checked={m.workspacePlanMode} onChange={(v) => void patchSettings({ models: { workspacePlanMode: v } })} /></Row>
       </Section>
       <Section title="Teamwork">
         <Row label="Agents working at once" desc="More agents use more of your limits. Lead chats don’t count.">
           <Select label="Agents working at once" value={String(m.agentLimit)} options={[...limits.map((n) => ({ value: String(n), label: String(n) })), { value: '0', label: 'No limit' }]} onChange={(v) => void patchSettings({ models: { agentLimit: Number(v) } })} />
         </Row>
         <Row label="Keep the Lead updated" desc="Tells the Lead about failed checks, reviews and questions."><Toggle label="Keep the Lead updated" checked={m.leadUpdates} onChange={(v) => void patchSettings({ models: { leadUpdates: v } })} /></Row>
-        <Row label={<>Agent teams <span className="set-badge">Experimental</span></>} desc="The Lead coordinates teammates through a shared task list."><Toggle label="Agent teams" checked={m.agentTeams} onChange={(v) => void patchSettings({ models: { agentTeams: v } })} /></Row>
+        <Row setting="models.agentTeams" label={<>Agent teams <span className="set-badge">Experimental</span></>} desc="The Lead coordinates teammates through a shared task list."><Toggle label="Agent teams" checked={m.agentTeams} onChange={(v) => void patchSettings({ models: { agentTeams: v } })} /></Row>
         {m.agentTeams && (
           <>
             <Row child label="Send back tasks without test output" desc="A task marked done before any test ran goes back once."><Toggle label="Send back tasks without test output" checked={s.hooks.requireTestOutput} onChange={(v) => void patchSettings({ hooks: { requireTestOutput: v } })} /></Row>

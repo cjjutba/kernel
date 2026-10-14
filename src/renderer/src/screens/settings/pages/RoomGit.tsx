@@ -106,16 +106,16 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
     <RoomPage room={room} rs={rs} title="Git">
       <PushAccess roomId={roomId} remote={rs?.workspace.remote ?? app.remote} />
       <Section title="New workspaces" scope="mac">
-        <Row label="Workspace type" onReset={reset('mode')}>
+        <Row setting="workspace.mode" label="Workspace type" onReset={reset('mode')}>
           <Select label="Workspace type" align="right" value={rs?.workspace.mode ?? USE_DEFAULT} onChange={(v) => set({ mode: v || null })} options={choice(MODE[app.mode], [{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }])} />
         </Row>
-        <Row label="Branch from" onReset={reset('baseRef')}>
+        <Row setting="workspace.baseRef" label="Branch from" onReset={reset('baseRef')}>
           <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v || null })} options={choice(app.baseRef, named(branches, own('baseRef')))} />
         </Row>
         <Row label="Remote" onReset={reset('remote')}>
           <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v || null })} options={choice(app.remote, named(remotes.length ? remotes : ['origin'], own('remote')))} />
         </Row>
-        <Row label="Lead chat branch names" onReset={reset('leadBranchPattern')}>
+        <Row setting="workspace.leadBranchPattern" label="Lead chat branch names" onReset={reset('leadBranchPattern')}>
           <LeadPattern value={rs?.workspace.leadBranchPattern ?? ''} placeholder={`${app.leadBranchPattern}  Default`} save={(v) => set({ leadBranchPattern: v })} />
         </Row>
       </Section>
