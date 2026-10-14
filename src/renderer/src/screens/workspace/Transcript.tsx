@@ -108,11 +108,17 @@ function Counts({ added, removed }: { added: number; removed: number }) {
 
 const MORE = ':more'
 
+/** Opens the right panel on the Changes tab, the way the header's panel toggle opens it. */
+function showChanges() {
+  actions.ui.setWorkspaceView({ right: 'changes' })
+  actions.ui.setRightPanel(true)
+}
+
 /**
  * The files a finished turn created, edited or deleted, each row a button that opens that file's diff (KERNEL-586). From 7 files the
  * card shows the first 5 and a row that opens the rest in place. The rows are one tab stop and the arrow keys move between them.
  */
-function TurnFilesCard({ files, onOpenDiff }: { files: ChangedFile[]; onOpenDiff: (path: string) => void }) {
+function TurnFilesCard({ files, inWorkspace, onOpenDiff }: { files: ChangedFile[]; inWorkspace?: number; onOpenDiff: (path: string) => void }) {
   const [open, setOpen] = useState(false)
   const [stop, setStop] = useState<string>()
   const v = useMemo(() => turnFiles(files), [files])
@@ -129,8 +135,10 @@ function TurnFilesCard({ files, onOpenDiff }: { files: ChangedFile[]; onOpenDiff
     list[Math.max(0, Math.min(list.length - 1, at + step))].focus()
   }
   return (
-    <Card className="tf" role="group" aria-label="Files changed in this turn">
-      <div className="tf-h"><span className="tf-c">{v.title}</span><Counts added={v.added} removed={v.removed} /></div>
+    <Card className="tf" role="group" aria-label="Files changed in this reply">
+      <div className="tf-h"><span className="tf-c">{v.title}</span><Counts added={v.added} removed={v.removed} />
+        {inWorkspace !== undefined && <button type="button" className="tf-all" aria-label={`Show all ${inWorkspace} changed ${inWorkspace === 1 ? 'file' : 'files'} in this workspace`} onClick={showChanges}>{inWorkspace} in workspace</button>}
+      </div>
       <div className="tf-b" onKeyDown={move}>
         {rows.map((r) => (
           <button key={r.path} type="button" className="tf-r" data-gone={r.deleted || undefined} aria-label={r.label} tabIndex={r.path === tabbable ? 0 : -1} onFocus={() => setStop(r.path)} onClick={() => onOpenDiff(r.path)}>
@@ -154,19 +162,19 @@ function TurnFilesCard({ files, onOpenDiff }: { files: ChangedFile[]; onOpenDiff
   )
 }
 
-interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; meta?: string; onOpenDiff: (path: string) => void }
+interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; inWorkspace?: number; meta?: string; onOpenDiff: (path: string) => void }
 
 /**
  * A reply, with Copy, Retry and a "..." menu that forks. The reply that ends a finished turn also carries the turn's files and
  * its time, which leads the actions' row (KERNEL-346). Fork into new workspace only shows where the workspace has its own worktree.
  */
-function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, meta, onOpenDiff }: ReplyProps) {
+function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, inWorkspace, meta, onOpenDiff }: ReplyProps) {
   const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(item.id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(item.id) })
   return (
     <div className="msg msg-reply">
       <Markdown text={item.text} />
-      {files && <TurnFilesCard files={files} onOpenDiff={onOpenDiff} />}
+      {files && <TurnFilesCard files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
       <MessageActions label="Message actions" copy={item.text} meta={meta}
         items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) }]}
         more={{ menu: `reply:${item.id}`, items: forks }} />
@@ -431,14 +439,14 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   }
 }
 
-interface BlockProps { block: ThreadBlock; chatId: string; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; onTerminal: () => Promise<unknown> }
+interface BlockProps { block: ThreadBlock; chatId: string; changes: ChangedFile[]; inWorkspace?: number; agentName: string; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; onTerminal: () => Promise<unknown> }
 
 /** Only a tool group reads the changed files, so a new list redraws the groups and nothing else. */
 const sameProps = (a: BlockProps, b: BlockProps) =>
-  sameBlock(a.block, b.block) && a.chatId === b.chatId && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
+  sameBlock(a.block, b.block) && a.chatId === b.chatId && a.inWorkspace === b.inWorkspace && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
   && (a.block.kind !== 'group' || a.changes === b.changes)
 
-const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
+const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
   if (block.kind === 'error') {
     return (
       <ErrorCard message={block.message} output={block.output} agentName={agentName} onTerminal={onTerminal}
@@ -449,8 +457,8 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
-  if (block.kind === 'files') return <TurnFilesCard files={block.files} onOpenDiff={onOpenDiff} />
-  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} meta={block.meta} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'files') return <TurnFilesCard files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} onOpenDiff={onOpenDiff} />
   const item = block.item
   switch (item.kind) {
     case 'user': {
@@ -601,6 +609,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // Only a workspace with its own worktree forks into a new one, and not a chat with Rowan's, which plans and hands off (KERNEL-405).
   // The new workspace opens while its setup runs.
   const worktree = ws?.mode === 'worktree' && !ws.lead
+  // Only the latest reply's card links to the workspace's changes, and only when they differ from its own and the diff is the agent's alone.
+  let latestFiles = -1
+  if (worktree) for (let i = blocks.length - 1; i >= 0 && latestFiles < 0; i--) { const b = blocks[i]; if ((b.kind === 'reply' && b.files) || b.kind === 'files') latestFiles = i }
   const forkWorkspace = useCallback((itemId: string) => attempt('Could not fork into a new workspace', async () => {
     const next = await call('workspaces.fork', { chatId, itemId })
     actions.workspaces.upsert(next)
@@ -630,7 +641,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
         )}
         <TranscriptWorkspace.Provider value={workspaceId}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
-          {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
+          {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}

@@ -124,12 +124,12 @@ function turnFileRow(f: ChangedFile): TurnFileRow {
 const FOLD_AT = 6
 const FOLD_SHOWN = 5
 
-/** The turn files card: its title and totals, the files in the order given, and the rows a fold hides with their totals. */
+/** The reply's files card: its title and totals, the files in the order given, and the rows a fold hides with their totals. */
 export function turnFiles(files: ChangedFile[]): { title: string; added: number; removed: number; shown: TurnFileRow[]; hidden: TurnFileRow[]; hiddenAdded: number; hiddenRemoved: number } {
   const rows = files.map(turnFileRow)
   const fold = rows.length > FOLD_AT
   const hidden = fold ? rows.slice(FOLD_SHOWN) : []
   const { added, removed } = sum(rows)
   const more = sum(hidden)
-  return { title: `${rows.length} ${rows.length === 1 ? 'file' : 'files'} changed`, added, removed, shown: fold ? rows.slice(0, FOLD_SHOWN) : rows, hidden, hiddenAdded: more.added, hiddenRemoved: more.removed }
+  return { title: `${rows.length} ${rows.length === 1 ? 'file' : 'files'} changed in this reply`, added, removed, shown: fold ? rows.slice(0, FOLD_SHOWN) : rows, hidden, hiddenAdded: more.added, hiddenRemoved: more.removed }
 }

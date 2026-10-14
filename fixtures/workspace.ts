@@ -1431,7 +1431,7 @@ const TF_STALE = tf('test/inboxStale.test.ts', 'A', 68, 0)
 const TF_ROWS = tf('test/inboxRows.test.ts', 'A', 88, 0)
 const TF_NOTIFY_TEST = tf('test/notifications.test.ts', 'M', 0, 5)
 
-const turnFilesScene = (turn: ChatItem[], panel: ChangedFile[]) => {
+const turnFilesScene = (turn: ChatItem[], panel: ChangedFile[], earlier?: ChangedFile[]) => {
   const f = idleRun(headerScene('ready', [], { panel: true }))
   const total = (key: 'added' | 'removed') => panel.reduce((n, c) => n + c[key], 0)
   return {
@@ -1440,7 +1440,7 @@ const turnFilesScene = (turn: ChatItem[], panel: ChangedFile[]) => {
     items: { [ids.tableChat]: [
       userMsg('tf-u0', 'Does the Inbox drop a request once I have answered it?'),
       { kind: 'text', id: 'tf-x0', ts: at(10, 19), text: 'Not yet. A row stays until the next refresh, which is why you still see approvals you already handled.' },
-      { kind: 'result', id: 'tf-r0', ts: at(10, 19), durationMs: 21_000, ok: true },
+      { kind: 'result', id: 'tf-r0', ts: at(10, 19), durationMs: 21_000, ok: true, ...(earlier && { files: earlier }) },
       ...turn
     ] },
     changes: { ...f.changes, [ids.table]: panel }
@@ -1581,7 +1581,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...folded('tf1', 9, 2),
     tfReply('Answered requests now leave the Inbox right away. The row goes the moment the approval resolves, so nothing lingers until the next refresh.\n\nThe old polling helper had no callers left, so I deleted it. `pnpm typecheck` and `pnpm test` both pass.'),
     tfEnd(4, 12, [10, 31], [TF_INBOX, TF_POLL, TF_STALE])
-  ], TF_PANEL_SHORT),
+  ], TF_PANEL_SHORT, [TF_NOTES, TF_DECISION]),
   TurnFilesLong: turnFilesLong(),
   TurnFilesNoReply: turnFilesScene([
     tfAsk('Drop answered rows as soon as the request resolves, and add a test for it.'),
