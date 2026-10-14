@@ -170,7 +170,7 @@ const limitUsage = (): RateLimit[] => [
   window5('claude', 'personal', 82, next(11, 20)), windowWeek('claude', 'personal', 10, nextOn(1, 3, 0)),
   window5('codex', 'cli', 7, next(16, 15)), windowWeek('codex', 'cli', 21, nextOn(4, 8, 0))
 ]
-const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { switchAtLimit: { claude: false, codex: false } } } })
+const limitPage = () => providersPage('claude', { usage: limitUsage(), settings: { ...DEFAULT_SETTINGS('/Users/you'), accounts: { ...DEFAULT_SETTINGS('/Users/you').accounts, switchAtLimit: { claude: false, codex: false } } } })
 /** The Add account sheet is opened from the page's button, and a sign-in that waits on the browser is the engine's `account.add` step. */
 const addAccountPage = (tab: Provider, step?: 'browser' | 'code') => providersPage(tab, step ? { push: [{ type: 'account.add', add: { provider: tab, step, url: tab === 'claude' ? 'https://claude.ai/oauth/authorize' : 'https://auth.openai.com/oauth/authorize' } }] } : {})
 

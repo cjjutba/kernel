@@ -781,7 +781,10 @@ describe('kernel recovery paths', () => {
     expect(k.store.room(room.id)?.paused).toBe(false)
     expect(k.sessions.isRunning(chat.id)).toBe(true)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
-    expect(k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))).toEqual(['Now on Work (Personal hit its 5-hour limit)'])
+    // The carry-on turn ends on Work, and the note says where it moved (KERNEL-842).
+    sdk.calls[sdk.calls.length - 1].feed(result('r2'))
+    await flush()
+    expect(k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))).toEqual(['Moved to Work (Personal hit its 5-hour limit)'])
     await k.stop({ budgetMs: 0 })
   })
 

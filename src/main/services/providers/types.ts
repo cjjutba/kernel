@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, Workspace } from '@shared/types'
+import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, TokenCounts, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import type { AppSettings } from '../settings'
 import type { RunMode } from '../permissions'
@@ -108,6 +108,11 @@ export interface RunnerHost {
   reset(trigger?: string): void
   /** Context window use, 0 to 100, with the breakdown when the CLI gives one. */
   setContext(context: number, usage?: Chat['contextUsage']): void
+  /**
+   * What the running turn read and cached, reported just before it ends (KERNEL-842): the turn's counts, its first model
+   * call's, and the chat's size in tokens after its last call when the provider says.
+   */
+  turnUsage(u: TurnUsage): void
   /** The running turn ended. */
   turnEnded(t: { id: string; ok: boolean; durationMs?: number; error?: string }): void
   /** The provider's guess at the user's next message, after a turn ended (Claude's prompt suggestions, KERNEL-530). */
@@ -137,3 +142,6 @@ export interface RunnerHost {
   /** Send Kernel's own message as the chat's next turn, after what is queued: a plan's approval, a hand-off reminder (Codex). */
   followUp(text: string): void
 }
+
+/** A turn's token counts as a runner reports them (`RunnerHost.turnUsage`, KERNEL-842). */
+export interface TurnUsage extends TokenCounts { first?: TokenCounts; context?: number }

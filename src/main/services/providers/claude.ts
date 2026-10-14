@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type McpServerStatus, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
-import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, UnlistedTools } from '@shared/types'
+import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, CompactWindow, Effort, TokenCounts, UnlistedTools } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -93,6 +93,8 @@ export class ClaudeRunner implements Runner {
   private readonly cwds = new Map<string, string>()
   /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
   private resume?: string
+  /** The running turn's first and last main-loop model calls, by their usage, for the turn's facts (KERNEL-842). */
+  private calls: { first?: Usage; last?: Usage } = {}
   /** The mode Kernel last put the CLI in: the start's, then each one `setPermissionMode` took (KERNEL-447). */
   private applied: RunMode
   /** The mode Claude Code last said it runs in, from its init and status messages. A message can lag a switch. */
@@ -373,6 +375,8 @@ export class ClaudeRunner implements Runner {
         host.replied()
         // Subagent chatter stays inside the tool row. Only the model it runs on reaches the row's label.
         if (msg.parent_tool_use_id) { this.subagentModel(msg.parent_tool_use_id, msg.message.model); return }
+        // Each content block comes as its own message with the call's usage, so the first call is the first one seen.
+        if (msg.message.usage) { this.calls.first ??= msg.message.usage; this.calls.last = msg.message.usage }
         msg.message.content.forEach((block: any, i: number) => {
           const id = `${msg.uuid}:${i}`
           if (block.type === 'text' && block.text?.trim()) host.item({ kind: 'text', id, ts: now, text: block.text })
@@ -416,7 +420,10 @@ export class ClaudeRunner implements Runner {
         const ok = msg.subtype === 'success'
         // A turn that ended on an API error is `success` with `is_error`, so it never says the API was reached.
         if (ok && !msg.is_error) host.reached()
+        const calls = this.calls
+        this.calls = {}
         if (msg.subtype !== 'success' && this.resume && msg.errors?.includes(`${SESSION_GONE}${this.resume}`) && host.sessionGone()) return
+        if (msg.usage) host.turnUsage({ ...counts(msg.usage), ...(calls.first ? { first: counts(calls.first) } : {}), ...(calls.last ? { context: contextOf(calls.last) } : {}) })
         host.turnEnded({ id: msg.uuid, ok, durationMs: msg.duration_ms, error: ok ? undefined : msg.subtype })
         return
       }
@@ -1003,6 +1010,20 @@ export function limitsFromUsage(res: SDKControlGetUsageResponse): LimitPatch[] {
   for (const type of WINDOWS) add(type, res.rate_limits?.[type])
   add('seven_day_overage_included', res.rate_limits?.model_scoped?.find((m) => /fable/i.test(m.display_name)))
   return out
+}
+
+/** The token fields of a Messages API usage, as the SDK sends it on an assistant message and a result. */
+type Usage = { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null }
+
+/** A usage's input counts (KERNEL-842). The API counts input that wasn't cached apart from what was read or written. */
+function counts(u: Usage): TokenCounts {
+  return { input: u.input_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0 }
+}
+
+/** The chat's size after a model call: everything it read, and what it wrote, which the next call reads. */
+function contextOf(u: Usage): number {
+  const c = counts(u)
+  return c.input + c.cacheRead + c.cacheWrite + (u.output_tokens ?? 0)
 }
 
 /** The SDK adds the end of stderr to a process's exit error only when it spawned the process itself. */

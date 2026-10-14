@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, UnlistedTools } from '@shared/types'
+import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, TokenCounts, UnlistedTools } from '@shared/types'
 import { linkText } from '@shared/links'
 import { leadModeOf } from '@shared/leadMode'
 import { describeTool } from '../../approvals'
@@ -34,6 +34,8 @@ import type { RateLimitSnapshot } from './protocol/v2/RateLimitSnapshot'
 import type { SandboxPolicy } from './protocol/v2/SandboxPolicy'
 import type { ThreadItem } from './protocol/v2/ThreadItem'
 import type { ThreadStartResponse } from './protocol/v2/ThreadStartResponse'
+import type { ThreadTokenUsage } from './protocol/v2/ThreadTokenUsage'
+import type { TokenUsageBreakdown } from './protocol/v2/TokenUsageBreakdown'
 import type { ToolRequestUserInputParams } from './protocol/v2/ToolRequestUserInputParams'
 import type { ToolRequestUserInputResponse } from './protocol/v2/ToolRequestUserInputResponse'
 import type { Turn } from './protocol/v2/Turn'
@@ -143,6 +145,16 @@ async function gitCommonDir(cwd: string): Promise<string | undefined> {
 /** A thread Codex no longer has: its rollout was deleted, or `~/.codex/sessions` was cleared (KERNEL-286's Codex side). */
 const threadGone = (e: unknown) => e instanceof RpcError && /no rollout found|thread not found/i.test(e.message)
 
+/**
+ * A Codex model call's input counts in Claude's terms (KERNEL-842). OpenAI counts cached input inside `inputTokens`, so the
+ * input that wasn't cached is what is left once the reads and writes are taken out.
+ */
+function codexCounts(u: TokenUsageBreakdown): TokenCounts {
+  const cacheRead = u.cachedInputTokens ?? 0
+  const cacheWrite = u.cacheWriteInputTokens ?? 0
+  return { input: Math.max(0, (u.inputTokens ?? 0) - cacheRead - cacheWrite), cacheRead, cacheWrite }
+}
+
 /** One chat's `codex app-server` process (KERNEL-406). */
 export class CodexRunner implements Runner {
   private readonly proc: Proc = { stderr: '' }
@@ -168,6 +180,8 @@ export class CodexRunner implements Runner {
   private planText?: string
   /** The turn already asked for approval with Kernel's request_plan_approval, so its plan item asks nothing more. */
   private planAsked = false
+  /** The running turn's first and last model calls, from `thread/tokenUsage/updated`, for the turn's facts (KERNEL-842). */
+  private calls: { first?: TokenUsageBreakdown; last?: TokenUsageBreakdown } = {}
   /**
    * Aborts when the running turn stops (Stop, Send now), ends or loses its process. Every card the turn put up waits on
    * it, Kernel's tools' too, so a stopped turn's card ends as expired (KERNEL-563).
@@ -399,7 +413,8 @@ export class CodexRunner implements Runner {
       case 'turn/started': this.turnId = params.turn?.id ?? this.turnId; return
       case 'turn/completed': void this.turnCompleted(params.turn as Turn); return
       case 'thread/tokenUsage/updated': {
-        const u = params.tokenUsage as { last: { totalTokens: number }; modelContextWindow: number | null }
+        const u = params.tokenUsage as ThreadTokenUsage
+        if (u?.last) { this.calls.first ??= u.last; this.calls.last = u.last }
         if (u?.modelContextWindow) this.host.setContext(Math.max(0, Math.min(100, Math.round((u.last.totalTokens / u.modelContextWindow) * 100))), { used: u.last.totalTokens, max: u.modelContextWindow, rows: [] })
         return
       }
@@ -492,6 +507,9 @@ export class CodexRunner implements Runner {
     if (!ok && turn.status === 'failed' && turn.error?.message) this.host.item({ kind: 'note', id: `${turn.id}-error`, ts: Date.now(), text: turn.error.message })
     const plan = ok && this.plan && !this.planAsked ? this.planText : undefined
     this.planText = undefined
+    const { first, last } = this.calls
+    this.calls = {}
+    if (last) this.host.turnUsage({ ...codexCounts(last), ...(first ? { first: codexCounts(first) } : {}), context: last.totalTokens })
     this.host.turnEnded({ id: `${turn.id}-result`, ok, durationMs: turn.durationMs ?? undefined, error: ok ? undefined : turn.status === 'interrupted' ? 'interrupted' : 'error_during_execution' })
     // A plan-mode turn that ended with a plan: the user approves it as Claude's ExitPlanMode would, and the agent goes on.
     if (plan?.trim()) { void this.planned(plan); return }

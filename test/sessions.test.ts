@@ -730,7 +730,9 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     const failures: { failure: string; account: string | undefined }[] = []
     const sessions = new Sessions({
       store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
-      accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }), switchNote: (_p, id) => `Now on ${id}`,
+      accountFor: () => active, claudeEnv: () => ({ CLAUDE_CONFIG_DIR: `/homes/${active}` }),
+      moveNote: (chat, from) => `Moved from ${from} to ${chat.ranOn}${chat.lastTurn ? `, ${chat.lastTurn.cacheWrite} written` : ''}`,
+      emailOf: (_p, id) => (id ? `${id}@example.com` : undefined),
       onFailure: (failure, _ws, _provider, account) => failures.push({ failure, account })
     })
     const start = async (text = 'Add a pdf_url column') => {
@@ -767,7 +769,10 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     const next = await t.start('Run the tests')
     expect(sdk.calls.at(-1)).toBe(next)
     expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
-    expect(t.notes()).toEqual(['Now on personal'])
+    // The move is noted once the turn on Personal ends.
+    expect(t.notes()).toEqual([])
+    await t.finish(next)
+    expect(t.notes()).toEqual(['Moved from work to personal'])
   })
 
   it('finishes a turn waiting on plan approval on the account it started on, and goes on with the plan there', async () => {
@@ -808,7 +813,8 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
     expect(next.options.resume).toBe('session-1')
     expect(t.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
-    expect(t.notes()).toEqual(['Now on personal'])
+    await t.finish(next)
+    expect(t.notes()).toEqual(['Moved from work to personal'])
   })
 
   it('blames a sign-out a turn hits after a switch on the account it started on, and runs nothing again by itself', async () => {
@@ -845,7 +851,36 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     expect(t.stopped(call)).toBe(true)
     expect(next).not.toBe(call)
     expect(next.options.env?.CLAUDE_CONFIG_DIR).toBe('/homes/personal')
-    expect(t.notes()).toEqual(['Now on personal'])
+    await t.finish(next)
+    expect(t.notes()).toEqual(['Moved from work to personal'])
+  })
+
+  const usage = (input: number, cacheRead: number, cacheWrite: number, output = 0) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite })
+  const reply = (call: (typeof sdk.calls)[number], uuid: string, u: ReturnType<typeof usage>) =>
+    call.feed({ type: 'assistant', uuid, parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Done' }], usage: u }, session_id: 'session-1' })
+
+  it('saves the turn\'s cache numbers as the chat\'s last turn, and notes a move with the move turn\'s numbers (KERNEL-842)', async () => {
+    const t = await setup()
+    const first = await t.start()
+    reply(first, 'a1', usage(4, 20_000, 1_000, 30))
+    first.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5, usage: usage(4, 20_000, 1_000, 30) })
+    await flush()
+    expect(t.store.chat('chat')?.lastTurn).toMatchObject({ account: 'work', email: 'work@example.com', model: 'claude-sonnet-5-5', context: 21_034, input: 4, cacheRead: 20_000, cacheWrite: 1_000, first: { input: 4, cacheRead: 20_000, cacheWrite: 1_000 } })
+    t.switchTo('personal')
+    const next = await t.start('Run the tests')
+    // Two calls: the first writes the whole chat to Personal's cache, the second reads it back. A subagent's call doesn't count.
+    reply(next, 'a2', usage(10, 0, 300_000, 50))
+    next.feed({ type: 'assistant', uuid: 'a-sub', parent_tool_use_id: 'task-1', message: { content: [], usage: usage(1, 0, 900_000), model: 'claude-haiku-4-5-20251001' }, session_id: 'session-1' })
+    reply(next, 'a3', usage(5, 300_050, 200, 100))
+    next.feed({ type: 'result', subtype: 'success', uuid: 'r2', duration_ms: 5, usage: usage(15, 300_050, 300_200, 150) })
+    await flush()
+    const turn = t.store.chat('chat')?.lastTurn
+    expect(turn).toMatchObject({ account: 'personal', email: 'personal@example.com', context: 300_355, input: 15, cacheRead: 300_050, cacheWrite: 300_200, first: { input: 10, cacheRead: 0, cacheWrite: 300_000 } })
+    expect(turn?.estimated).toBeUndefined()
+    expect(t.notes()).toEqual(['Moved from work to personal, 300200 written'])
+    // The note comes after the move turn's result row.
+    expect(t.store.items('chat').at(-1)).toMatchObject({ kind: 'note' })
+    expect(t.store.items('chat').at(-2)).toMatchObject({ kind: 'result', id: 'r2' })
   })
 })
 
