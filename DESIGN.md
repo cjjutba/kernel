@@ -126,6 +126,15 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Attaching files (KERNEL-815)
+
+Dragging, dropping, pasting and picking a file all answer at once, in the workspace chat, the Lead chat and New chat alike.
+
+- Overlay: files dragged over the chat pane cover the whole pane with a `surface` scrim at 92% and a 1px dashed `line-4` rectangle inset 12px, labeled "Drop to attach" in `ink-2`, and the composer box's border goes to `line-4`. No shadow, no color. It clears when the drag leaves the pane (an enter and leave count, so moving between child elements doesn't flicker it), on drop, on Escape and when the window loses focus. Text dragged with no files leaves the pane alone, and a blocked or disabled box shows no overlay and takes no drop.
+- Drop anywhere: files dropped on the box land at the caret, files dropped elsewhere on the pane land at the end of the draft.
+- Placeholder chip: each file gets a chip as soon as it is dropped, picked or pasted, with the dot loader (`arrow-down`) in the icon slot and the file name in `muted`. It becomes the real chip in place, in the order the files came. A file that can't be attached loses its chip and shows the "Could not attach" toast. Send shows its busy label ("Attaching") until every placeholder has settled, so a message never goes without a file it was meant to carry.
+- Entry: a chip that lands fades in and scales from 0.96 over 160ms on `cubic-bezier(0.22, 1, 0.36, 1)`. Under reduced motion it appears in place.
+
 ## Remembered choices
 
 - A choice the user makes stays until they change it: a tab, a filter, a picked room, mode, branch or script, a width. Leaving the screen, opening another chat or relaunching never resets it.

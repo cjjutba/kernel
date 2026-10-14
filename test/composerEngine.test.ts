@@ -7,13 +7,14 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
+import { attachFiles, Held } from '../src/renderer/src/screens/workspace/composer/attach'
 import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
 import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
 import { toUserMessage } from '../src/main/services/providers/claude'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
 import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
-import type { AppSettings, ChatRunMode } from '../src/shared/types'
+import type { AppSettings, ChatPart, ChatRunMode } from '../src/shared/types'
 import { tempRepo } from './helpers'
 
 describe('@ file search', () => {
@@ -253,5 +254,47 @@ describe('permission mode from the composer', () => {
     expect(getState().runModes['c-mode']).toEqual(bypassOnTheBranch)
     apply({ type: 'chat.runMode', chatId: 'c-mode', mode: { mode: 'auto', picked: 'auto', pickedIn: 'app' } })
     expect(getState().runModes['c-mode']).toEqual({ mode: 'auto', picked: 'auto', pickedIn: 'app' })
+  })
+})
+
+describe('attaching files', () => {
+  const file = (name: string) => ({ name }) as File
+  const host = (log: string[]) => ({
+    hold: (name: string) => { log.push(`hold ${name}`); return `id-${name}` },
+    settle: (id: string, part: ChatPart) => log.push(`settle ${id} ${part.type === 'text' ? '' : part.name}`),
+    drop: (id: string) => log.push(`drop ${id}`)
+  })
+
+  it('holds a place for every file before the first one is read, then settles them in order', async () => {
+    const log: string[] = []
+    await attachFiles([file('a.png'), file('b.txt')], host(log), async (f) => { log.push(`read ${f.name}`); return { type: 'file', name: f.name, lines: 1, text: 'x' } })
+    expect(log).toEqual(['hold a.png', 'hold b.txt', 'read a.png', 'settle id-a.png a.png', 'read b.txt', 'settle id-b.txt b.txt'])
+  })
+
+  it('removes the place of a file that cannot be attached, toasts, and still attaches the rest', async () => {
+    const log: string[] = []
+    const before = getState().ui.toasts.length
+    await attachFiles([file('big.bin'), file('ok.txt')], host(log), async (f) => {
+      if (f.name === 'big.bin') throw new Error('big.bin is too large to attach (2048 KB).')
+      return { type: 'file', name: f.name, lines: 1, text: 'x' }
+    })
+    expect(log).toEqual(['hold big.bin', 'hold ok.txt', 'drop id-big.bin', 'settle id-ok.txt ok.txt'])
+    const toasts = getState().ui.toasts.slice(before)
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].title).toBe('Could not attach')
+    expect(toasts[0].sub).toContain('too large')
+  })
+
+  it('stops counting a cancelled file at once, and ignores its read when it ends', () => {
+    const held = new Held()
+    held.add('a', 'a.png')
+    held.add('b', 'b.png')
+    expect(held.release('a')).toBe(true)
+    expect(held.size).toBe(1)
+    // The cancelled file's read ends later: nothing is left to settle, and the count stays right.
+    expect(held.release('a')).toBe(false)
+    expect(held.size).toBe(1)
+    expect(held.release('b')).toBe(true)
+    expect(held.size).toBe(0)
   })
 })
