@@ -9,6 +9,8 @@ import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
 import { land, localMerge, LocalMergeError, localStatus, prepareMerge, type Refusal } from '../src/main/services/localMerge'
 import { setUp, tempRepo } from './helpers'
+import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
+import { mergeView } from '../src/renderer/src/screens/workspace/pr/MergeButton'
 
 // The one rule every Merge button and the Lead use for whether a PR can merge (KERNEL-115, KERNEL-349).
 
@@ -196,6 +198,61 @@ describe('kinds of review (KERNEL-549)', () => {
   it('lets a later approval of the head commit by the same kind clear its blockers on an older one, but not blockers on the head commit', () => {
     expect(mergeBlock(ws({ reviews: [code('blockers', A), code('approved', B, { workspaceId: 'r2' })] }), info(), both, name)).toBeUndefined()
     expect(kindStates(ws({ reviews: [code('blockers'), code('approved', B, { workspaceId: 'r2' })] }))).toMatchObject({ approved: [], blocking: ['code'] })
+  })
+})
+
+describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
+  const round = (o: Partial<NonNullable<Workspace['reviewRound']>> = {}): Workspace['reviewRound'] => ({ n: 1, rounds: 2, head: B, prNumber: 42, kinds: ['code', 'security'], ...o })
+  const code = (verdict: 'approved' | 'blockers', sha = B) => v(verdict, sha, 1, { lens: 'code' })
+  const security = (verdict: 'approved' | 'blockers', sha = B) => v(verdict, sha, 2, { lens: 'security' })
+  const starting = 'The review of the latest commit is starting. Merging waits for every required review (Settings, Pull requests).'
+
+  it('holds from the ready event, before Kernel knows which reviews run', () => {
+    expect(mergeBlock(ws({ reviewPending: B }), info(), both, name)).toBe(starting)
+    // A marker on an older head says nothing about this one.
+    expect(mergeBlock(ws({ reviewPending: A }), info(), both, name)).toBeUndefined()
+  })
+
+  it('holds until every required kind of the round approves the head, before any of them reports', () => {
+    expect(mergeBlock(ws({ reviewRound: round() }), info(), both, name)).toBe("The code and security reviews haven't approved the latest commit. Merging waits for every required review (Settings, Pull requests).")
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved')] }), info(), both, name)).toBe("The security review hasn't approved the latest commit. Merging waits for every required review (Settings, Pull requests).")
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved'), security('approved')] }), info(), both, name)).toBeUndefined()
+  })
+
+  it('waits again on a new head once its round starts', () => {
+    const approved = [code('approved', A), security('approved', A)]
+    expect(mergeBlock(ws({ prHead: A, reviewRound: round({ head: A }), reviews: approved }), info({ head: A }), both, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviewRound: round({ head: A }), reviews: approved, reviewPending: B }), info(), both, name)).toBe(starting)
+    // The new round runs the code review again and keeps the security review's approval, which moved to the new head.
+    const kept = [code('approved', A), security('approved', B)]
+    expect(mergeBlock(ws({ reviewRound: round({ n: 2, kept: ['security'] }), reviews: kept }), info(), both, name)).toContain("The code review hasn't approved")
+    expect(mergeBlock(ws({ reviewRound: round({ n: 2, kept: ['security'] }), reviews: [...kept, code('approved')] }), info(), both, name)).toBeUndefined()
+  })
+
+  it('never waits for a skipped or optional kind', () => {
+    expect(mergeBlock(ws({ reviewRound: round({ skipped: ['security'] }), reviews: [code('approved')] }), info(), both, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviewRound: round({ optional: ['security'] }), reviews: [code('approved')] }), info(), both, name)).toBeUndefined()
+  })
+
+  it('never waits for a kind whose blockers on the head were overruled (KERNEL-732)', () => {
+    const overruled = { head: B, kinds: ['security' as const], by: 'user' as const, ts: 3 }
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved'), security('blockers')], overruled }), info(), both, name)).toBeUndefined()
+    // An overrule of an older head leaves the planned kind waiting.
+    expect(mergeBlock(ws({ reviewRound: round(), reviews: [code('approved')], overruled: { ...overruled, head: A } }), info(), both, name)).toContain("The security review hasn't approved")
+  })
+
+  it('changes nothing with the approval switch off, or with a round of another PR', () => {
+    expect(mergeBlock(ws({ reviewPending: B, reviewRound: round() }), info(), { requireGreen: true, requireReviewer: false }, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviewRound: round({ prNumber: 7 }) }), info(), both, name)).toBeUndefined()
+  })
+
+  it('lists the PR as waiting for approval, not ready', () => {
+    const w = { ...ws({ reviewRound: round(), roomId: 'room', agentId: 'kai', status: 'ready' }) } as Workspace
+    const [row] = leadPrs([w], { leadId: undefined, roomId: 'room', prs: { w: info() }, rules: both, agents: [] })
+    expect(row).toMatchObject({ ready: false, state: { label: 'Waiting for approval' } })
+    expect(row.blockers).toBeUndefined()
+    // Merge reads the same rule, so it offers no Merge, nor Merge anyway.
+    expect(mergeView(w, info(), both)).toEqual({ kind: 'blocked', reason: expect.stringContaining("haven't approved the latest commit") })
   })
 })
 

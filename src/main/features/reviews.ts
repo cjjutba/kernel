@@ -159,7 +159,8 @@ export class Reviews extends Feature {
     }
     const skipped = plan.filter((p) => !kept.includes(p.kind) && p.optional && !!this.k.account.nearLimit(this.modelFor(p).provider)).map((p) => p.kind)
     const runs = plan.length - kept.length - skipped.length
-    return { n: (last?.n ?? 0) + (runs ? 1 : 0), rounds, head, prNumber: of.prNumber!, kinds: plan.map((p) => p.kind), ...(kept.length ? { kept } : {}), ...(skipped.length ? { skipped } : {}) }
+    const optional = plan.filter((p) => p.optional).map((p) => p.kind)
+    return { n: (last?.n ?? 0) + (runs ? 1 : 0), rounds, head, prNumber: of.prNumber!, kinds: plan.map((p) => p.kind), ...(kept.length ? { kept } : {}), ...(skipped.length ? { skipped } : {}), ...(optional.length ? { optional } : {}) }
   }
 
   /**
@@ -183,19 +184,25 @@ export class Reviews extends Feature {
    * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
    * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. Except when the user
    * archived the review workspace before every kind reported: then the kinds with no verdict on the head run again in a new
-   * review workspace, in the same round (KERNEL-633). The Lead's own workspaces and reviews get none.
+   * review workspace, in the same round (KERNEL-633). The Lead's own workspaces and reviews get none. From the ready event
+   * until the round is saved, the workspace's `reviewPending` names the head, so a PR waiting for its reviewer's approval
+   * doesn't merge before Kernel knows which reviews it gets (KERNEL-717). A plan that comes back empty clears it.
    */
   async onReady(workspaceId: string): Promise<void> {
     const of = this.store.workspace(workspaceId)
     if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || this.isLeadWorkspace(of)) return
-    if (this.settings.pr.autoReview === false) return this.noteNotStarted(of)
+    if (this.settings.pr.autoReview === false) {
+      if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
+      return this.noteNotStarted(of)
+    }
     this.notStarted.delete(of.id)
     if (this.starting.has(of.id)) return
     const last = this.roundOf(of)
     const again = last?.head === (of.prHead ?? '') ? last : undefined
     if (again && (this.openReview(of) || !this.unreported(of, again).length)) return
-    // Before any await, so an update composed meanwhile reads the review as in progress.
+    // Before any await, so an update composed meanwhile reads the review as in progress, and no merge goes ahead meanwhile.
     this.starting.add(of.id)
+    this.updateWs(of.id, { reviewPending: of.prHead ?? '' })
     try {
       await this.k.team.agents(of.roomId)
       const { plan, rounds } = await this.planFor(of)
@@ -223,13 +230,27 @@ export class Reviews extends Feature {
       const fresh = this.mustWs(of.id)
       const last = this.roundOf(fresh)
       const reviews = fresh.reviews?.map((v) => (last && round.kept?.includes(lensOf(v)) && v.verdict === 'approved' && v.sha === last.head && (!v.prNumber || v.prNumber === fresh.prNumber) ? { ...v, sha: round.head, keptFrom: v.keptFrom ?? v.sha } : v))
-      this.updateWs(of.id, { reviewRound: round, ...(reviews ? { reviews } : {}) })
+      this.updateWs(of.id, { reviewRound: round, reviewPending: undefined, ...(reviews ? { reviews } : {}) })
     } catch (e) {
       if (this.stopped) return
       console.warn(`[reviews] starting the review of ${of.name} failed`, e)
       bus.activity({ kind: 'note', roomId: of.roomId, workspaceId: of.id, agentId: of.agentId, actor: 'kernel', text: "couldn't start the review of", object: `PR #${of.prNumber}`, warn: true })
     } finally {
       this.starting.delete(of.id)
+      // A stopped Kernel's database is closed. The marker stays, and `start` takes it up at the next start.
+      if (!this.stopped && this.store.workspace(of.id)?.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
+    }
+  }
+
+  /**
+   * Takes up the reviews Kernel was working out when it last quit (KERNEL-717): a ready PR whose `reviewPending` still names its
+   * head gets its ready again, since no ready event comes for a PR already ready. The marker holds its merge until then.
+   */
+  start(): void {
+    for (const ws of this.store.workspaces()) {
+      if (ws.reviewPending === undefined || ws.status === 'archived') continue
+      if (ws.prState === 'ready' && ws.reviewPending === (ws.prHead ?? '')) void this.onReady(ws.id).catch(() => undefined)
+      else this.updateWs(ws.id, { reviewPending: undefined })
     }
   }
 

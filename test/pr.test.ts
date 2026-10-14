@@ -723,6 +723,21 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.stop()
   })
 
+  it('with Reviewer approval required, refuses a PR whose planned reviews have not approved its latest commit yet (KERNEL-717)', async () => {
+    const { k, ws, gh } = await setup()
+    const head = 'b'.repeat(40)
+    gh.pr = { ...info({ state: 'ready', checks: [{ name: 'e2e', state: 'pass' }] }), head }
+    await k.prs.refreshPr(ws.id)
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviewPending: head })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('The review of the latest commit is starting.')
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviewPending: undefined, reviewRound: { n: 1, rounds: 2, head, prNumber: 42, kinds: ['code'] } })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow("The code review hasn't approved the latest commit.")
+    expect(gh.merged).toEqual([])
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'approved', summary: '', sha: head, prNumber: 42, lens: 'code', ts: 1 }] })
+    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+    await k.stop()
+  })
+
   it('merges a PR nobody reviewed, and one with no approval of its latest commit with the setting off (KERNEL-115)', async () => {
     const { k, ws, gh } = await setup()
     gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }

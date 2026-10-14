@@ -721,8 +721,11 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
 /** What the Lead's PRs tab (KERNEL-354) reads for one open PR, in the words of LeadPrs.png. */
 interface OpenPr {
   id: string; agentId: string; key: string; n: number; title: string; state: Workspace['prState']; stat: [number, number]
-  /** Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head commit. None is not reviewed. */
-  review?: 'approved' | 'stale' | 'blockers'
+  /**
+   * Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head
+   * commit, `planned` a code review round started on the head that hasn't reported (KERNEL-717). None is not reviewed.
+   */
+  review?: 'approved' | 'stale' | 'blockers' | 'planned'
   overruled?: true
 }
 
@@ -739,6 +742,7 @@ const prFields = (p: OpenPr): Partial<Workspace> => {
   return {
     title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
     stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews,
+    ...(p.review === 'planned' ? { reviewRound: { n: 1, rounds: 2, head: `h${p.n}`, prNumber: p.n, kinds: ['code'] } } : {}),
     ...(p.overruled && { overruled: { head: `h${p.n}`, kinds: ['code' as const], by: 'user' as const, ts: at(20, 40) } })
   }
 }
@@ -1873,6 +1877,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...f, commits: { [ids.table]: PANEL_COMMITS }, branches: ['origin/main', 'origin/develop', 'origin/kernel-154-inbox-rows'] }
   })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
+  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'kai', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Kai is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
   // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
   LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
