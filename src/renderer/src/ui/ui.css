@@ -80,8 +80,8 @@
 /* toast: WorkspaceToast.png, with the title over the sub and no close button, on the Usage popover's surface (toast-motion-and-swipe) */
 .toast-stack { position: fixed; z-index: 70; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; width: 360px; }
 /* Each toast's slot opens before it slides in and closes after it slides out, so the toasts above glide instead of jumping. The -8px takes up the stack's gap. A flex item keeps its content height unless min-height is 0. */
-.toast-slot { min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: toast-open 160ms ease-out; }
-.toast-slot[data-leaving] { animation: toast-close 160ms ease-in 200ms forwards; }
+.toast-slot { min-height: 0; interpolate-size: allow-keywords; animation: toast-open 160ms ease-out, toast-clip 160ms; }
+.toast-slot[data-leaving] { animation: toast-close 160ms ease-in 200ms forwards, toast-clip 160ms 200ms forwards; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); transition: transform 200ms ease-out; animation: toast-in 300ms ease-out 160ms backwards; }
 .toast[data-swiping] { transition: none; }
 .toast-slot[data-leaving] > .toast { animation: toast-sink 200ms ease-in forwards; }
@@ -91,6 +91,8 @@
 .toast-title { font-weight: 500; color: var(--ink); }
 .toast-sub { color: var(--muted); }
 .toast-action { padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; font-weight: 500; text-decoration: none; cursor: pointer; }
+/* The slot clips only while its height animates, so the toast can rise from below and sink or swipe down past its slot unclipped. */
+@keyframes toast-clip { from, to { overflow-y: clip; } }
 @keyframes toast-open { from { height: 0; margin-top: -8px; } }
 @keyframes toast-close { to { height: 0; margin-top: -8px; } }
 @keyframes toast-in { from { transform: translateY(16px); opacity: 0; } }
