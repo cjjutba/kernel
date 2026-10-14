@@ -79,6 +79,8 @@ export function listen(k: Kernel): () => void {
     // others. The update goes then, not at the next PR poll (KERNEL-637).
     if ((e.type === 'chat.running' && !e.running) || (e.type === 'chat.queue' && !e.queue.length)) k.leadUpdates.chatFreed()
     if (e.type === 'agent.status') k.team.onStatus(e)
+    // An archived room's settings files aren't watched (KERNEL-723).
+    if (e.type === 'room' && e.room.archived) k.config.unwatchRoom(e.room.id)
     // Someone signed in or out: Claude says so with `account`, Codex and account switches with `accounts`, so the next
     // team read checks pinned models again (KERNEL-634).
     if (e.type === 'account' || e.type === 'accounts') k.team.forgetOffers()
@@ -109,5 +111,9 @@ export function listen(k: Kernel): () => void {
   // A room's settings file that stopped parsing warns in the room (KERNEL-231).
   const onSettingsError = (e: SettingsError) => k.config.settingsError(e)
   bus.on('activity', onActivity).on('hook', onHook).on('push', onPush).on('settingsError', onSettingsError)
-  return () => { bus.off('activity', onActivity).off('hook', onHook).off('push', onPush).off('settingsError', onSettingsError) }
+  return () => {
+    bus.off('activity', onActivity).off('hook', onHook).off('push', onPush).off('settingsError', onSettingsError)
+    // The rooms' settings watchers push too, so they stop with the rest (KERNEL-723).
+    k.config?.stopWatching()
+  }
 }

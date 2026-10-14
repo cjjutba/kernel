@@ -386,9 +386,9 @@ export class Reviews extends Feature {
   handlers() {
     return {
       // Kai's Settings page for reviews writes through this (KERNEL-549).
-      'settings.setReview': async ({ roomId, review }) => saveReviewSettings(this.mustRoom(roomId).path, review),
+      'settings.setReview': async ({ roomId, review }) => this.k.config.wrote(roomId, await saveReviewSettings(this.mustRoom(roomId).path, review)),
       // The Reviews page's always-review box writes through this (KERNEL-594).
-      'settings.setAlwaysReview': async ({ roomId, paths }) => saveAlwaysReview(this.mustRoom(roomId).path, paths)
+      'settings.setAlwaysReview': async ({ roomId, paths }) => this.k.config.wrote(roomId, await saveAlwaysReview(this.mustRoom(roomId).path, paths))
     } satisfies Partial<Handlers>
   }
 }
