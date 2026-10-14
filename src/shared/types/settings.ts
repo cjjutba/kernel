@@ -343,5 +343,18 @@ export type RoomSettingsPatch = {
   agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null }
 }
 
+/**
+ * Scripts Kernel found for a room and offers, never applies (KERNEL-682). `source` is where they came from: Conductor's
+ * or Superset's files in the repo, or `detected` from the repo's lockfiles. `file` is the one to show, as a path in the
+ * repo (".conductor/settings.toml", "pnpm-lock.yaml"). `patch` goes to `settings.setRoom` as it is. `notes` say what
+ * the patch leaves out or left as written, one sentence each.
+ */
+export interface ScriptSuggestion {
+  source: 'conductor' | 'superset' | 'detected'
+  file: string
+  patch: RoomSettingsPatch
+  notes: string[]
+}
+
 /** Recursive partial for settings patches. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] : T[K] extends object | null ? DeepPartial<T[K]> : T[K] }

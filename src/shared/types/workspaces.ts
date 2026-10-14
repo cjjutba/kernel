@@ -259,6 +259,11 @@ export interface ScriptTrust {
    * script (KERNEL-260). Left out when the repo has none.
    */
   installScripts?: { name: string; command: string }[]
+  /**
+   * The command the room's one-time Install step waits to run in the main checkout, when it runs the repo's own code, as
+   * `bundle install` does (KERNEL-444). Set only while that step waits for trust (KERNEL-682).
+   */
+  install?: string
   /** Open workspaces held in `trust` until the room is trusted. */
   workspaceIds: string[]
 }

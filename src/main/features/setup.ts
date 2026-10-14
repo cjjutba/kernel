@@ -5,6 +5,7 @@ import { copyLocalFiles, replayScripts, resizeScript, runScript, scriptNote, scr
 import { snapshot } from '../services/checkpoints'
 import { readSetupEnv, resetSetupEnv, setupEnvPath } from '../services/env'
 import { waitMet } from '../services/waits'
+import { suggestScripts } from '../services/scriptImport'
 import { head } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
@@ -332,7 +333,12 @@ export class Setup extends Feature {
       'scripts.stop': async ({ workspaceId, kind, name }) => { if (kind === 'setup') stopScript(workspaceId, 'setup'); else if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
       'scripts.skipSetup': async ({ workspaceId }) => { void this.skipSetup(workspaceId).catch(() => undefined); return { ok: true } },
       'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } },
-      'scripts.resize': async ({ workspaceId, kind, name, cols, rows }) => { resizeScript(workspaceId, kind, name, cols, rows); return { ok: true } }
+      'scripts.resize': async ({ workspaceId, kind, name, cols, rows }) => { resizeScript(workspaceId, kind, name, cols, rows); return { ok: true } },
+      // Reads the repo and writes nothing. Settings saves a suggestion through `settings.setRoom` (KERNEL-682).
+      'scripts.suggest': async ({ roomId }) => {
+        const { path } = this.mustRoom(roomId)
+        return suggestScripts(path, await loadRepoSettings(path), this.home)
+      }
     } satisfies Partial<Handlers>
   }
 }

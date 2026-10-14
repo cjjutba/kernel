@@ -139,10 +139,12 @@ describe('One database per workspace (KERNEL-449)', () => {
   })
 
   it('shows the example in the settings file Kernel writes, as comments that change nothing', () => {
-    for (const setup of ['pnpm install', undefined]) {
-      const text = defaultRepoSettings(setup)
-      expect(parseToml(text)).toEqual(setup ? { files: { copy: ['.env', '.env.local'] }, scripts: { setup } } : { files: { copy: ['.env', '.env.local'] } })
-      expect(text).toContain(`#   setup = "${setup ? `${setup} && ` : ''}createdb $KERNEL_WORKSPACE_SLUG"`)
+    for (const install of ['pnpm install', undefined]) {
+      const text = defaultRepoSettings(install)
+      // No script is live, whether or not Kernel knows the stack (KERNEL-682).
+      expect(parseToml(text)).toEqual({ files: { copy: ['.env', '.env.local'] } })
+      expect(text).toContain('# setup = "pnpm install"')
+      expect(text).toContain(`#   setup = "${install ? `${install} && ` : ''}createdb $KERNEL_WORKSPACE_SLUG"`)
       expect(text).toContain('#   archive = "dropdb --if-exists $KERNEL_WORKSPACE_SLUG"')
       expect(text).toContain('#   DATABASE_URL=postgres://localhost:5432/${KERNEL_WORKSPACE_SLUG}')
     }

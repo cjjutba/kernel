@@ -1,7 +1,7 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
-  Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { TelemetryRecord } from '@shared/telemetry'
@@ -79,6 +79,8 @@ export interface Fixture {
    * and `env`, which reads as no env files.
    */
   roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'>>>
+  /** By room id, what `scripts.suggest` returns. None when unset (KERNEL-682). */
+  scriptSuggestions?: Record<string, ScriptSuggestion[]>
   /**
    * Variables by name only, never values: `app` for the app's, `rooms` by room id. A room's `files` are its env files
    * with whether each is missing (KERNEL-247).
