@@ -10,7 +10,7 @@ import { Feature } from './feature'
 
 /** One change for the team: a commit in a workspace of its own, and the pull request it opens (KERNEL-466). */
 interface TeamChange {
-  /** The commit's subject and the PR's title: "Add Lumi to the team". */
+  /** The commit's subject and the PR's title: "Add Wren to the team". */
   title: string
   /** What the PR changes, a sentence or two, for its body and the workspace's note. */
   body: string

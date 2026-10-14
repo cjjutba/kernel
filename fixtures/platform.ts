@@ -315,7 +315,7 @@ const agentFile = (id: string, name: string, role: string, description: string):
 const sixAgents: AgentDef[] = [
   agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
   agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
-  agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('lumi', 'Lumi', 'Designer', 'Joined today')
+  agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('wren', 'Wren', 'Designer', 'Joined today')
 ]
 const longExample = 'Use this agent to design AI features and pick models. <example>Context: The user is adding chat. user: "Which SDK should I use?" assistant: "I will use the ai-architect agent."</example> <commentary>The request is about architecture, so hand it over.</commentary> Covers streaming, tool calling and cost.'
 const extraAgents: AgentDef[] = [
@@ -595,7 +595,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAgentEdit: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'ops' } } })),
   // KERNEL-641: a plugin's agent read only: the fields are disabled, the line names the plugin, and there is no Save changes or Retire.
   SettingsAgentPlugin: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents', agentId: 'vercel:deployment-expert' } } })),
-  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Lumi, which is optional.
+  // KERNEL-557: Client A's `[review]` as the canvas draws it (KERNEL-594: and its always-review paths). The code review runs as Kernel, so the room has no agent that reviews. Security runs as Theo, and the UX review as Wren, which is optional.
   SettingsRoomPrs: scene((f) => ({
     ...clientA({
       review: {
@@ -603,7 +603,7 @@ export const platformFixtures: Record<string, Fixture> = {
         kinds: {
           code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
           security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
-          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'lumi', model: 'claude-sonnet-5-5', provider: 'claude' }
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
         }
       },
       // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
