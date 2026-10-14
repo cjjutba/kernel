@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { ChangedFile, Checkpoint, CheckpointPreview, DiffStat } from '@shared/types'
 import { exec, run, SLOW_MS } from './exec'
+import { removeTree } from './removeTree'
 import { freeBranch } from './worktrees'
 
 /**
@@ -64,7 +65,7 @@ async function withTempIndex<T>(cwd: string, seed: { index: true } | { tree: str
     }
     return await fn(env)
   } finally {
-    await rm(dir, { recursive: true, force: true })
+    await removeTree(dir)
   }
 }
 

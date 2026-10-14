@@ -1,12 +1,14 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo, trustRoom, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
+import { processesIn } from '../src/main/services/processes'
 import { blocksOverlap } from '../src/main/services/scripts'
 import { branchExists } from '../src/main/services/worktrees'
 
@@ -152,5 +154,79 @@ describe('archive returns before its cleanup (KERNEL-702)', () => {
     expect(await branchExists(repo, ws.branch)).toBe(false)
     // One archive, one cleanup.
     expect(k.store.activity(ws.roomId).filter((a) => a.kind === 'workspace.archived' && a.workspaceId === ws.id)).toHaveLength(1)
+  })
+})
+
+describe('archive ends what still runs in the worktree (KERNEL-810)', () => {
+  const left: number[] = []
+  afterEach(() => { vi.restoreAllMocks(); for (const pid of left.splice(0)) try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } })
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
+  const gone = async (pid: number) => { const t = Date.now(); while (alive(pid) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 50)); return !alive(pid) }
+
+  /**
+   * Leaves a `sleep` running in `cwd` and returns its pid. `group` is a shell in a process group of its own with the sleep
+   * in it, as an agent's tool starts one. `nohup` is a sleep its shell left behind, which outlives the shell.
+   */
+  async function leave(cwd: string, how: 'group' | 'nohup'): Promise<number> {
+    const pid = how === 'group'
+      ? await new Promise<number>((r) => {
+        const sh = spawn('/bin/sh', ['-c', 'sleep 300 & echo $!; wait'], { cwd, detached: true, stdio: ['ignore', 'pipe', 'ignore'] })
+        sh.stdout.once('data', (d: Buffer) => r(Number(String(d).trim())))
+        onTestFinished(() => { try { process.kill(-sh.pid!, 'SIGKILL') } catch { /* gone */ } })
+      })
+      : await new Promise<number>((r) => execFile('/bin/sh', ['-c', 'nohup sleep 300 >/dev/null 2>&1 & echo $!'], { cwd }, (_e, out) => r(Number(out.trim()))))
+    left.push(pid)
+    return pid
+  }
+
+  /** The signals Kernel sent while `fn` ran: pid and signal, with existence checks (signal 0) left out. */
+  async function signalled(fn: () => Promise<void>) {
+    const kill = vi.spyOn(process, 'kill')
+    await fn()
+    return kill.mock.calls.filter(([, sig]) => sig !== 0).map(([pid, sig]) => [pid, sig])
+  }
+
+  it('ends one in its own group and one left with nohup, and leaves one in the room repo alone', async () => {
+    const { k, repo, ws } = await setup()
+    await mkdir(join(ws.path, 'web'))
+    const group = await leave(ws.path, 'group')
+    const nohup = await leave(join(ws.path, 'web'), 'nohup')
+    const mine = await leave(repo, 'nohup')
+    await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
+    expect(await gone(group)).toBe(true)
+    expect(await gone(nohup)).toBe(true)
+    expect(alive(mine)).toBe(true)
+    expect(existsSync(ws.path)).toBe(false)
+  })
+
+  it('ends them when the archive keeps the worktree too', async () => {
+    const { k, ws } = await setup()
+    const nohup = await leave(ws.path, 'nohup')
+    await k.archiveWorkspace(ws.id, false, { keepWorktree: true })
+    await k.archive.cleanedUp(ws.id)
+    expect(await gone(nohup)).toBe(true)
+    expect(existsSync(ws.path)).toBe(true)
+  })
+
+  it('signals nothing for a current-branch workspace, and never Kernel itself', async () => {
+    const { k, repo, room, ws } = await setup()
+    // Work on the room's checkout, as a current-branch workspace does, with the user's own program running there.
+    const current = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'On main' })
+    k.store.saveWorkspace({ ...k.store.workspace(current.id)!, mode: 'current', path: repo, branch: 'main' })
+    const mine = await leave(repo, 'nohup')
+    expect(await signalled(async () => { await k.archiveWorkspace(current.id); await k.archive.cleanedUp(current.id) })).toEqual([])
+    expect(alive(mine)).toBe(true)
+
+    // Kernel working inside the worktree is found there, and spared.
+    const here = process.cwd()
+    process.chdir(ws.path)
+    onTestFinished(() => process.chdir(here))
+    expect(await processesIn(ws.path)).toContain(process.pid)
+    const sent = await signalled(async () => { await k.archiveWorkspace(ws.id); await k.archive.cleanedUp(ws.id) })
+    process.chdir(here)
+    expect(sent.map(([pid]) => Math.abs(pid as number))).not.toContain(process.pid)
+    expect(sent.map(([pid]) => Math.abs(pid as number))).not.toContain(process.ppid)
+    expect(k.store.workspace(ws.id)?.status).toBe('archived')
   })
 })

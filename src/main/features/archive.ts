@@ -1,14 +1,16 @@
 import { basename, dirname } from 'node:path'
-import { rm, stat } from 'node:fs/promises'
+import { stat } from 'node:fs/promises'
 import type { Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
-import { branchExists, branchState, createWorktree, detachWorktree, dropBranch, folderGone, freeBranch, leadBase, restoreWorktree } from '../services/worktrees'
+import { branchExists, branchState, createWorktree, detachWorktree, dropBranch, folderGone, freeBranch, leadBase, restoreWorktree, roomWorktreeRoot } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
 import { dropCheckpoints, snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
 import { exec, git } from '../services/exec'
+import { removeTree } from '../services/removeTree'
+import { endProcessesIn } from '../services/processes'
 import { firstLine } from '../services/text'
 import { NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -33,6 +35,8 @@ export class Archive extends Feature {
    */
   private trash = new Set<string>()
   private emptying: Promise<void> = Promise.resolve()
+  /** Trash folders whose delete failed this launch, so each goes in the log once (KERNEL-810). */
+  private trashFailed = new Set<string>()
   /** The daily run that drops old checkpoints, and the run under way, so two never overlap (KERNEL-221). */
   private checkpointTimer?: NodeJS.Timeout
   private dropping?: Promise<void>
@@ -115,7 +119,8 @@ export class Archive extends Feature {
     const ws = await this.k.prs.syncBranch(id)
     // A plan card ends as archived before its session stops, which would end it without a reason.
     this.approvals.expireIds(this.store.approvals({ workspaceId: id, pendingOnly: true }).filter((a) => a.kind === 'plan').map((a) => a.id), 'archived')
-    this.sessions.stopWorkspace(id)
+    // What the agents started ends with them, so no dev server or test run outlives the workspace (KERNEL-810).
+    this.sessions.stopWorkspace(id, { tree: true })
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopRuns(id)
     // A setup still running would finish after the archive and report on a workspace that is gone.
@@ -199,6 +204,10 @@ export class Archive extends Feature {
       if (ahead === 0) bus.track({ name: 'handoff.no_commit' })
     }
     if (this.stopped) return
+    // Whatever still runs in the folder ends first, a kept one too: a dev server or test run an agent left, in its own
+    // group or started with nohup (KERNEL-810). Only in a worktree of the room's own folder, never in the room's repo.
+    if (!gone && ws.mode === 'worktree') await endProcessesIn(ws.path, { root: roomWorktreeRoot(this.settings.worktreeRoot, room), keep: [room.path] })
+    if (this.stopped) return
     // The folder only moves aside here, and is deleted after, without waiting (KERNEL-284).
     const moved = ws.mode === 'worktree' && !c.keepWorktree && !unmade ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     if (moved) this.throwAway(moved)
@@ -225,15 +234,22 @@ export class Archive extends Feature {
   }
 
   /**
-   * Queues a moved-aside worktree folder for deletion. `rm` unlinks a symlinked `node_modules` and leaves what it points
-   * to alone. A path leaves the saved list only once it is deleted; a failure stays for the next start, silently. Only a
-   * folder inside a `.trash` folder is deleted, whatever the saved list says.
+   * Queues a moved-aside worktree folder for deletion. `removeTree` unlinks a symlinked `node_modules` and leaves what it
+   * points to alone, and deletes a `.asar` file inside like any other file (KERNEL-810). A path leaves the saved list once
+   * it is deleted, or found gone. A failure stays for the next start, and goes in the log once per launch, with its code.
+   * Only a folder inside a `.trash` folder is deleted, whatever the saved list says.
    */
   private throwAway(path: string) {
     this.keepTrash(path)
     this.emptying = this.emptying.then(async () => {
       if (this.stopped) return
-      if (basename(dirname(path)) === '.trash') try { await rm(path, { recursive: true, force: true }) } catch { return }
+      if (basename(dirname(path)) === '.trash') try { await removeTree(path) } catch (e) {
+        if (!(await folderGone(path).catch(() => false))) {
+          if (!this.trashFailed.has(path)) console.warn(`[archive] couldn't delete ${path} (${(e as NodeJS.ErrnoException).code ?? 'unknown'}), trying again at the next start`)
+          this.trashFailed.add(path)
+          return
+        }
+      }
       // A quit closes the database, and the path is still saved for the next start.
       if (this.stopped) return
       this.trash.delete(path)

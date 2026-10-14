@@ -227,7 +227,8 @@ export class Chats extends Feature {
     // Before `stop`, which would end a plan card without a reason. A card a restart left up has no session for `stop` to end
     // with at all (plan-cards-survive-restart).
     this.approvals.expireIds(this.approvals.waitingPlans(chatId, ws.roomId).map((a) => a.id), 'closed')
-    this.sessions.stop(chatId)
+    // Closing the tab ends what its agent started too (KERNEL-810).
+    this.sessions.stop(chatId, { tree: true })
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return

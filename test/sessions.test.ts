@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { mkdtemp, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
@@ -827,4 +828,68 @@ describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
     expect(carried).toEqual([['chat', 'limit']])
     expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'Also add a test' }] })
   })
+})
+
+describe("what an agent started, on Stop, Close chat and archive (KERNEL-810)", () => {
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch { return false } }
+  const gone = async (pid: number) => { const t = Date.now(); while (alive(pid) && Date.now() - t < 5000) await new Promise((r) => setTimeout(r, 50)); return !alive(pid) }
+  /** The pid a shell prints first: the `sleep` it left in the background, in the shell's process group. */
+  const printed = (p: ChildProcess) => new Promise<number>((r) => p.stdout!.once('data', (d: Buffer) => r(Number(String(d).trim()))))
+  const left: number[] = []
+  afterEach(() => { for (const pid of left.splice(0)) try { process.kill(pid, 'SIGKILL') } catch { /* gone */ } })
+
+  async function setup() {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-tree-')), 'kernel.db'))
+    store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    /** Runs a turn whose process is a real shell, started through Kernel's spawn, that leaves a `sleep` running. */
+    const turn = async () => {
+      await sessions.send('chat', [{ type: 'text', text: 'Start the dev server' }])
+      const call = sdk.calls.at(-1)!
+      // Started with the SDK's abort signal, so closing the session ends the shell, as it ends Claude Code.
+      const proc = call.options.spawnClaudeCodeProcess!({ command: '/bin/sh', args: ['-c', 'sleep 300 & echo $!; wait'], env: process.env, signal: call.options.abortController!.signal }) as unknown as ChildProcess
+      proc.on('error', () => undefined)
+      const sleep = await printed(proc)
+      left.push(sleep)
+      call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+      call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+      await flush()
+      return sleep
+    }
+    return { store, sessions, turn }
+  }
+
+  it('leaves it running when a turn ends or the chat stops without the tree, and ends it on a stop with the tree', async () => {
+    const t = await setup()
+    const sleep = await t.turn()
+    expect(t.sessions.isRunning('chat')).toBe(false)
+    expect(alive(sleep)).toBe(true)
+    t.sessions.stop('chat', { tree: true })
+    expect(await gone(sleep)).toBe(true)
+
+    // An idle stop or a restart ends only the process, and a dev server it started keeps running.
+    const next = await t.turn()
+    t.sessions.stop('chat')
+    await new Promise((r) => setTimeout(r, 300))
+    expect(alive(next)).toBe(true)
+  })
+
+  it('ends the process group of a process a crash left behind', async () => {
+    const t = await setup()
+    // A stand-in for the claude binary the test can name: sh, through a link (macOS kills a copied system binary).
+    const claude = join(await mkdtemp(join(tmpdir(), 'kernel-pids-')), 'claude')
+    await symlink('/bin/sh', claude)
+    const leader = spawn(claude, ['-c', 'sleep 300 & echo $!; wait'], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] })
+    onTestFinished(() => { try { process.kill(-leader.pid!, 'SIGKILL') } catch { /* gone */ } })
+    const sleep = await printed(leader)
+    left.push(sleep)
+    t.store.saveMeta('claudePids', [{ pid: leader.pid, command: claude, arg: '-c' }])
+    expect(await t.sessions.endLeftovers()).toEqual([leader.pid])
+    expect(await gone(sleep)).toBe(true)
+  })
+
 })

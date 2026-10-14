@@ -1,7 +1,7 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { tempRepo, setUp, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
@@ -102,13 +102,38 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const outside = join(base, 'mine')
     await mkdir(outside)
     await writeFile(join(outside, 'notes.md'), 'mine\n')
-    k.store.saveMeta('trash', [left, stuck, outside])
+    // Deleted by hand since: it leaves the list (KERNEL-810).
+    const gone = join(base, '.trash', 'feat-gone-1')
+    k.store.saveMeta('trash', [left, stuck, outside, gone])
     await k.stop()
+    const warn = vi.spyOn(console, 'warn')
+    onTestFinished(() => warn.mockRestore())
     const next = await boot(dataDir, home)
     await next.trashEmptied()
     await expect(stat(left)).rejects.toThrow(/ENOENT/)
     expect(await readFile(join(outside, 'notes.md'), 'utf8')).toBe('mine\n')
     expect(trash(next)).toEqual([stuck])
+    // The failure goes in the log once per launch, with its code, however often it is tried (KERNEL-810).
+    next.archive['throwAway'](stuck)
+    await next.trashEmptied()
+    const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(stuck))
+    expect(lines).toEqual([expect.stringContaining('EACCES')])
+    expect(trash(next)).toEqual([stuck])
+  }, 30000)
+
+  it('leaves nothing in .trash for a worktree with Electron in its node_modules (KERNEL-810)', async () => {
+    const { k, room } = await setup()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    // Under Electron, Kernel's own fs reads this file as a folder. test/removeTree.mac.test.ts runs the delete there. The
+    // Linux Electron has no such file, so the test uses a stand-in there.
+    const res = join(ws.path, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'Resources')
+    await mkdir(res, { recursive: true })
+    await copyFile(resolve('node_modules/electron/dist/Electron.app/Contents/Resources/default_app.asar'), join(res, 'default_app.asar')).catch(() => writeFile(join(res, 'default_app.asar'), 'asar\n'))
+    await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
+    await k.trashEmptied()
+    expect(await readdir(join(dirname(ws.path), '.trash'))).toEqual([])
+    expect(trash(k)).toEqual([])
   }, 30000)
 
   it('restores right after archive, while the old folder is still being deleted', async () => {

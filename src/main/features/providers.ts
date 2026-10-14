@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
-import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountAuth, type AccountProfile, type ClaudePlan, type Effort, type McpAccountServer, type McpSignIn, type McpSignInStep, type MissingModel, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit, type Role, type SwitchReason } from '@shared/types'
 import { limitProvider } from '@shared/providers'
@@ -10,6 +10,7 @@ import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
 import { exec } from '../services/exec'
+import { removeTree } from '../services/removeTree'
 import { claudeAccountServers, codexAccountServers, codexServers } from '../services/mcp'
 import { blockingLimit } from '../services/health'
 import { LIMIT_NAME, type LimitPatch } from '../services/providers/limits'
@@ -712,7 +713,7 @@ export class Providers extends Feature {
       await this.save()
       return { id, provider: 'codex', label: stored.label, email: who.email, plan: who.plan, cli: false, auth: 'subscription', active: false, signedIn: true }
     } catch (e) {
-      await rm(home, { recursive: true, force: true }).catch(() => undefined)
+      await removeTree(home).catch(() => undefined)
       this.step({ provider: 'codex', step: 'failed', error: (e as Error).message })
       throw e
     }
@@ -1022,7 +1023,7 @@ export class Providers extends Feature {
       if (bin) for (const at of new Set([a.home, home])) await logoutClaude(bin, at).catch(() => undefined)
       await removeClaudeHome(home)
     }
-    if (provider === 'codex') await rm(this.codexHome(accountId)!, { recursive: true, force: true })
+    if (provider === 'codex') await removeTree(this.codexHome(accountId)!)
     this.mcpSignIns.delete(accountId)
     this.offered.delete(`${provider}:${accountId}`)
     const accounts = await this.list()
