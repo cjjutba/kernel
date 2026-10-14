@@ -121,13 +121,4 @@ describe('what the tab and the Team update share (KERNEL-411)', () => {
     expect(summaryText(0, 2)).toBe('2 open, none ready')
     expect(summaryText(0, 0)).toBe('No open PRs')
   })
-
-  it('says where Merge all stopped and why, and nothing when it merged everything', async () => {
-    const { stoppedText } = await import('../src/renderer/src/screens/workspace/pr/LeadPrs')
-    expect(stoppedText({ merged: [331, 330] })).toBeNull()
-    expect(stoppedText({ merged: [331], stopped: { workspaceId: 'w', prNumber: 330, reason: 'It has merge conflicts.' } }))
-      .toBe('Merged #331. Stopped at #330. It has merge conflicts.')
-    expect(stoppedText({ merged: [], stopped: { workspaceId: 'w', reason: 'It is not an open workspace in this room.' } }))
-      .toBe('Stopped at the next pull request. It is not an open workspace in this room.')
-  })
 })

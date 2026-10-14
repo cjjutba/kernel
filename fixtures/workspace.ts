@@ -812,7 +812,7 @@ const OVERRULED_PR: OpenPr = { ...BLOCKERS_PR, overruled: true }
 const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
   .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
 
-/** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
+/** Three open PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
@@ -1854,14 +1854,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Folded while the run script runs: the bar says Running, so you can tell the app is up without opening it (KERNEL-529).
   PanelCollapsedRunning: bottomFolded(headerScene('ready', [], { panel: true })),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
-  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar, Merge all and refresh, which takes the room the tabs need.
+  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar's refresh.
   // The bottom's two terminals past Run are stand-ins the shot adds.
   PanelTabsOverflow: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
     return { ...s, ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
   PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
-  // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has Merge all and refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
+  // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
   // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
   PanelToolbarPrs: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', LEAD_PRS_REPLY)
@@ -1885,12 +1885,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
   LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
-  // Merge all on the Ready to merge heading, its run one PR at a time, and a run that stopped at a conflict (KERNEL-411).
-  LeadPrsMergeAll: scene((f) => leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. #331 from Kai and #330 from Noor both have Theo\'s approval, and #333 is still running checks. Merge them from the PRs tab, or tell me which one and I will.')),
-  LeadPrsMergeAllRunning: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
-    [{ type: 'pr.queue', roomId: ids.roomA, queue: { ids: [MERGE_A.id, MERGE_B.id], current: MERGE_A.id } }])),
-  LeadPrsMergeAllStopped: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'conflict' }, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
-    [{ type: 'pr.queue', roomId: ids.roomA, result: { merged: [331], stopped: { workspaceId: MERGE_B.id, prNumber: 330, reason: 'It has merge conflicts.' } } }])),
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),

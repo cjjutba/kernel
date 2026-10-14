@@ -223,7 +223,7 @@ export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them wh
 /** overrule_blockers' refusal when the user's latest message doesn't hold go_ahead, or Kernel started the turn (KERNEL-732). */
 export const NO_OVERRULE = "Not overruled: only the user can overrule a review's blockers. Quote their words from their latest message in go_ahead, or tell them what the reviews found and ask."
 
-/** Why merge_workspace skips a PR in this state, shared with Merge all (KERNEL-411). */
+/** Why merge_workspace skips a PR in this state (KERNEL-411). */
 const NOT_MERGEABLE = notMergeable
 
 /**
