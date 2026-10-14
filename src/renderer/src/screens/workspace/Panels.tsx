@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
-import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
+import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptSuggestion, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { isLeadWorkspace, leadOf } from '../../lead'
+import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
-import { useRemote, useRoomSettings } from '../settings/useSettings'
+import { patchRoomSettings, useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
 import { OUTSIDE_THE_REPO, type LocalStand } from './pr/model'
@@ -386,6 +386,51 @@ function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: str
   return (s.scripts[workspaceId] ?? []).some((l) => l.kind === 'setup') && s.scriptExit[workspaceId]?.setup === undefined
 }
 
+/** What `scripts.suggest` found for the room (KERNEL-682). Empty until the first answer, and on a failed read. */
+function useSuggestions(roomId: string) {
+  const [found, setFound] = useState<ScriptSuggestion[]>([])
+  useEffect(() => {
+    let live = true
+    setFound([])
+    call('scripts.suggest', { roomId }).then((next) => { if (live) setFound(next) }, () => {})
+    return () => { live = false }
+  }, [roomId])
+  return found
+}
+
+/** The Setup tab of a room with no setup script: take Kernel's suggestion, ask the Lead to write one, or type it in Settings (KERNEL-685). */
+function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }) {
+  const found = useSuggestions(roomId)
+  const lead = useStore((s) => leadOf(s.agents, roomId)?.name ?? 'Rowan')
+  const [busy, doing] = useBusy<'use' | 'ask'>()
+  // The first suggestion that has a setup script, in the order the engine returns them.
+  const pick = found.find((s) => s.patch.scripts?.setup)
+  const ask = () => doing('ask', () => attempt(`Could not ask ${lead}`, async () => {
+    const chat = await call('scripts.askLead', { roomId })
+    await openLeadChat(roomId, chat.id)
+  }))
+  return (
+    <div className="script-empty add-setup">
+      <span className="ink2">Add setup script</span>
+      <span>Runs when a workspace is created, to install dependencies or set up the environment.</span>
+      {pick && (
+        <div className="add-setup-pick">
+          <div className="add-setup-head">
+            <span>{pick.source === 'detected' ? `Detected from ${pick.file}` : `From ${pick.file}`}</span>
+            <Button className="small" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchRoomSettings(roomId, pick.patch))}>Use</Button>
+          </div>
+          <pre className="add-setup-script">{pick.patch.scripts?.setup}</pre>
+          {pick.notes.map((n) => <span key={n}>{n}</span>)}
+        </div>
+      )}
+      <div className="add-setup-actions">
+        <Button busy={busy === 'ask'} busyLabel="Starting" disabled={busy !== null} onClick={() => void ask()}>Ask {lead}</Button>
+        <Button variant="ghost" disabled={busy !== null} onClick={onManual}>Add manually</Button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
  * pressing a tab opens it again. Rowan's chats and teammates' workspaces each remember whether it is folded.
@@ -445,11 +490,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
     )
     : noSetup ? (
-      <div className="script-empty">
-        <span className="ink2">No setup script</span>
-        <span>This room has no setup script. Add one and new workspaces run it before the agent starts.</span>
-        <Button onClick={addScript}>Add setup script</Button>
-      </div>
+      <AddSetup roomId={ws.roomId} onManual={addScript} />
     ) : (
       <div className="script-empty">
         <span className="ink2">No setup output yet</span>
