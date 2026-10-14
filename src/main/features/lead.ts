@@ -214,14 +214,26 @@ export class Lead extends Feature {
     await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)))
   }
 
-  /** Build here chats Kernel told it kept on a merged PR's branch, by workspace and PR, so each is told once. */
+  /**
+   * Commits on a merged Build here chat's branch that are neither in the PR, by its last head as GitHub read it or the commit a
+   * local merge made, nor on the base. A squash or rebase merge puts other commits on the base, so the base alone can't tell.
+   * A commit pushed to the branch after the merge isn't in the PR either, so the branch as pushed doesn't count.
+   */
+  private async unmerged(ws: Workspace, repo: string, base: string): Promise<number> {
+    const has = async (ref: string) => (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).code === 0
+    const shipped = []
+    for (const ref of [ws.prHead, ws.mergeCommit]) if (ref && await has(ref)) shipped.push(ref)
+    return Number((await git(ws.path, 'rev-list', '--count', 'HEAD', '--not', base, ...shipped)).trim())
+  }
+
+  /** Build here chats Kernel told it kept on a merged PR's branch, by workspace, PR and reason, so each is told once. */
   private keptMerged = new Set<string>()
 
   /**
    * A Build here chat whose PR merged goes on from a new branch, cut from `<remote>/<default>` in the same worktree and named
    * the way `nameChatBranch` names a chat's first one, so its next PR is a new one (KERNEL-778). Only while the chat is idle.
-   * The PR's number, state and reviews start over, and so does a linked issue. A worktree with uncommitted changes stays on
-   * the merged branch, and the chat hears why, once per PR.
+   * The PR's number, state and reviews start over, and so does a linked issue. A worktree with uncommitted changes, or with
+   * commits the PR didn't include, stays on the merged branch, and the chat hears why, once per PR and reason.
    */
   private async freshNow(id: string) {
     if (this.k.stopped) return
@@ -230,17 +242,21 @@ export class Lead extends Feature {
     if (!ws || !room || room.archived || !buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
     if (this.folderBusy(id) || await folderGone(ws.path).catch(() => true)) return
     const merged = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
-    const dirty = (await git(ws.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel')).trim() !== ''
-    if (dirty) {
-      const key = `${id} ${ws.prNumber ?? ws.branch}`
-      if (this.keptMerged.has(key)) return
-      this.keptMerged.add(key)
-      this.note(id, `${merged} merged, but this worktree has uncommitted changes, so Kernel kept it on ${ws.branch}. Commit or discard them, and the next turn starts a new branch.`)
-      return
-    }
     const repo = await loadRepoSettings(room.path)
     const remote = await this.k.config.remoteFor(room.path, repo)
     const base = await leadBase(room.path, remote) ?? ws.baseRef
+    // Work the merge left out stays where it is: uncommitted changes, and commits made after the PR's last head, which a new
+    // branch from the base would drop from the worktree.
+    const dirty = (await git(ws.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel')).trim() !== ''
+    const after = dirty ? 0 : await this.unmerged(ws, room.path, base)
+    const why = dirty ? 'this worktree has uncommitted changes' : after ? `${ws.branch} has ${after === 1 ? 'a commit' : `${after} commits`} the PR didn't include` : undefined
+    if (why) {
+      const key = `${id} ${ws.prNumber ?? ws.branch} ${why}`
+      if (this.keptMerged.has(key)) return
+      this.keptMerged.add(key)
+      this.note(id, `${merged} merged, but ${why}, so Kernel kept this chat on ${ws.branch}. It starts a new branch from ${base} once nothing here is left out of the merge.`)
+      return
+    }
     const lead = this.agentsSync(room.id).find((a) => a.lead)
     const title = (ws.threadId && this.store.thread(ws.threadId)?.title) || ws.title || ws.name
     const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, lead?.name)
@@ -253,7 +269,7 @@ export class Lead extends Feature {
       return free
     })
     if (!branch) return
-    this.keptMerged.delete(`${id} ${ws.prNumber ?? ws.branch}`)
+    for (const key of this.keptMerged) if (key.startsWith(`${id} `)) this.keptMerged.delete(key)
     this.updateWs(id, {
       branch, baseRef: base, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined, prHead: undefined, prBlocked: undefined,
       mergedAt: undefined, mergedWith: undefined, mergeCommit: undefined, reviews: undefined, reviewRound: undefined, reviewPending: undefined, overruled: undefined,

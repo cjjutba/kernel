@@ -276,14 +276,26 @@ describe("a Build here chat's pull requests (KERNEL-778)", () => {
 
   it('starts a new branch from the base once the PR merged and the worktree is clean, and says why it waits while it is not', async () => {
     const { k, room, c, ws, chat } = await building()
-    k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'merged', prUrl: 'https://x/54', prHead: 'abc', mergedAt: 2, source: { kind: 'issue', id: 'KERNEL-760', title: 'Retry button' } })
+    const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'merged', prUrl: 'https://x/54', prHead: head, mergedAt: 2, source: { kind: 'issue', id: 'KERNEL-760', title: 'Retry button' } })
     await writeFile(join(ws.path, 'README.md'), '# edited\n')
     await k.lead.syncLead(room.id, { workspaceId: ws.id })
     await k.lead.syncLead(room.id, { workspaceId: ws.id })
     expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prNumber: 54, prState: 'merged' })
-    expect(notes(k, c.id)).toEqual([`PR #54 merged, but this worktree has uncommitted changes, so Kernel kept it on ${ws.branch}. Commit or discard them, and the next turn starts a new branch.`])
+    expect(notes(k, c.id)).toEqual([`PR #54 merged, but this worktree has uncommitted changes, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
 
-    await git(ws.path, 'checkout', '--', 'README.md')
+    // Committed after the merge: the commit isn't in the PR, so the chat stays where it is, and hears why once.
+    await git(ws.path, 'commit', '-qam', 'after the merge')
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+    expect((await git(ws.path, 'log', '-1', '--format=%s')).trim()).toBe('after the merge')
+    expect(notes(k, c.id).slice(1)).toEqual([`PR #54 merged, but ${ws.branch} has a commit the PR didn't include, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
+    // Pushed to the merged branch, it still isn't in the PR. Dropping it lets the chat go on.
+    await git(room.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+    await git(ws.path, 'reset', '-q', '--hard', head)
     await k.lead.syncLead(room.id, { workspaceId: ws.id })
     const next = k.store.workspace(ws.id)!
     expect(next.branch).not.toBe(ws.branch)
