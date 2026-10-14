@@ -814,6 +814,27 @@ describe("a Build here chat's own PR (KERNEL-778)", () => {
     expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
   })
 
+  it("keeps sending a teammate's PR news to the chat that handed the work off, and the teammate gets the blockers and the fixes", async () => {
+    const { s, pr, own, ws, chat, u, store } = await buildSetup()
+    own('w1', 'bc')
+    pr('w1', 'cifail')
+    await wait()
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).'])
+    pr('bh', 'cifail')
+    await wait()
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Fix the failed checks on PR #54 in this chat's worktree, then push."])
+    ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'w1', leadChatId: 'bc' })
+    chat('rv-c', 'rv')
+    NAMES.theo = 'Theo'
+    s.reviewer = THEO
+    u.reviewed(store.workspace('rv')!, { ...store.workspace('w1')!, prNumber: 54 }, { workspaceId: 'rv', agentId: 'theo', verdict: 'blockers', summary: 'One thing.', blockers: [{ text: 'No test.' }], ts: 1 })
+    await wait()
+    expect(s.to.pop()).toBe('bc')
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Send Theo's blockers to Noor with message_agent (workspace w1). When Noor is done, ask Theo to review again with message_agent (workspace rv)."])
+  })
+
   it("keeps a chat in Hand off silent about its own PR", async () => {
     const { s, pr } = await buildSetup()
     pr('lead', 'cifail')
