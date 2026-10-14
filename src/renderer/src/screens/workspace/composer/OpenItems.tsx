@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Chat, OpenItem } from '@shared/types'
 import { call, onPush } from '../../../api'
+import { useStore } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
 import './composer.css'
 
@@ -30,11 +31,14 @@ export const openItemsLine = (items: OpenItem[]) => `${items.length} open: ${ite
 /**
  * What the Lead chat still owes (KERNEL-749), above the composer of its tabs: one line, opening to a row per item with Dismiss.
  * Shows nothing when nothing is owed. The list is `openItems.list` for the chat, read again on each `openItems.changed` for it.
- * A mention belongs to the tab that made it, so the other tabs leave it out.
+ * A mention belongs to the tab that made it, so the other tabs leave it out. A chat deleted or closed pushes no `openItems.changed`,
+ * so once the window no longer has the chat, or its thread closed, the list is empty (KERNEL-791).
  */
 export function OpenItems({ chat }: { chat: Chat }) {
   const threadId = chat.threadId ?? chat.id
-  const [items, setItems] = useState<OpenItem[]>([])
+  const [owed, setItems] = useState<OpenItem[]>([])
+  const gone = useStore((s) => !s.chats[chat.workspaceId]?.some((c) => c.id === chat.id) || !!(chat.threadId && s.threads[chat.threadId]?.closedAt))
+  const items = gone ? [] : owed
   const [open, setOpen] = useState(false)
   const [busy, run] = useBusy<string>()
   const load = useCallback(() => call('openItems.list', { threadId }).then((all) => setItems(all.filter((i) => i.kind !== 'mention' || i.chatId === chat.id)), () => undefined), [threadId, chat.id])
