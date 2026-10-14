@@ -49,3 +49,4 @@ export interface Notification {
   resolved?: string
   createdAt: number
 }
+// demo
