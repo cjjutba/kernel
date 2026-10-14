@@ -109,10 +109,10 @@ describe('resolveTeam', () => {
     const dir = join(__dirname, '..', '.claude', 'agents')
     const files = readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => agentFromFile(join(dir, f), readFileSync(join(dir, f), 'utf8')))
     const r = await team(files)
-    // This repo's rowan.md customizes Kernel, which runs its prompt and tools (KERNEL-692).
-    const rowan = files.find((a) => a.id === 'rowan')!
-    expect(r.agents[0]).toMatchObject({ id: 'kernel-lead', name: 'Kernel', lead: true, builtIn: 'lead', prompt: rowan.prompt, tools: rowan.tools, file: rowan.file })
-    expect(r.agents.some((a) => a.id === 'rowan')).toBe(false)
+    // This repo's kernel.md customizes Kernel, which runs its prompt and tools (KERNEL-692).
+    const kernel = files.find((a) => a.id === 'kernel')!
+    expect(r.agents[0]).toMatchObject({ id: 'kernel-lead', name: 'Kernel', lead: true, builtIn: 'lead', prompt: kernel.prompt, tools: kernel.tools, file: kernel.file })
+    expect(r.agents.some((a) => a.id === 'kernel')).toBe(false)
     expect(r.agents.find((a) => a.id === 'theo')).toMatchObject({ reviewer: true, member: false })
     expect(r.agents.filter((a) => a.member).map((a) => a.id).sort()).toEqual(['ivy', 'kai', 'noor'])
   })

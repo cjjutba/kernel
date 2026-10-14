@@ -23,11 +23,11 @@ Each repo you add is a room, and every agent in the repo's `.claude/agents/` fol
 
 ![The team: each agent with its model, status and workspace](docs/images/team.png)
 
-### Rowan plans and hands off
+### Kernel plans and hands off
 
-Rowan is the Lead. Open Rowan's chat from the sidebar and brief Rowan in a sentence or two. Rowan works out a plan in plan mode and brings it to you. You approve it or ask for changes. Once you approve, Rowan creates one workspace per task and hands each one to the right teammate.
+Kernel is the Lead. Open Kernel's chat from the sidebar and brief Kernel in a sentence or two. Kernel works out a plan in plan mode and brings it to you. You approve it or ask for changes. Once you approve, Kernel creates one workspace per task and hands each one to the right teammate.
 
-![Rowan's plan for four tasks, waiting for approval in Rowan's chat](docs/images/lead-plan.png)
+![Kernel's plan for four tasks, waiting for approval in Kernel's chat](docs/images/lead-plan.png)
 
 ### Workspaces and pull requests
 
