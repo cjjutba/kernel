@@ -34,6 +34,8 @@ export interface PrView {
   statusCheckRollup: RollupItem[]
   /** The PR's head commit. A reviewer's verdict on another commit is stale (KERNEL-130). */
   headRefOid?: string
+  /** The base branch's commit GitHub last compared the PR with. Older than the base's tip once the base moved since (KERNEL-835). */
+  baseRefOid?: string
   /** GitHub's verdict on merging it under the base branch's rules. Missing on a GitHub that doesn't report it. */
   mergeStateStatus?: 'BEHIND' | 'BLOCKED' | 'CLEAN' | 'DIRTY' | 'DRAFT' | 'HAS_HOOKS' | 'UNKNOWN' | 'UNSTABLE'
   /** When GitHub last saw the PR change: a push, a review, a comment. */
@@ -197,7 +199,7 @@ const REVIEW_FIELDS = 'reviewThreads(first:100){nodes{id isResolved path line or
 
 /** One PR's fields: its state, GitHub's merge verdict and its head commit's checks, each saying whether it is required. */
 export function prFields(n: number, o: { reviews?: boolean } = {}): string {
-  return 'number url title state isDraft mergeable mergeStateStatus reviewDecision headRefOid updatedAt baseRefName'
+  return 'number url title state isDraft mergeable mergeStateStatus reviewDecision headRefOid baseRefOid updatedAt baseRefName'
     + ` commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{${CHECK_FIELDS(n)}}}}}}}`
     + (o.reviews ? ` ${REVIEW_FIELDS}` : '')
 }
@@ -288,7 +290,7 @@ export function infoOf(workspaceId: string, view: PrView, comments: ReviewCommen
   return {
     workspaceId, number: view.number, url: view.url, title: view.title ?? '', state, baseRef: view.baseRefName ?? '',
     checks: checksOf(view.statusCheckRollup ?? [], o.optional), comments, conflicts, ...(decision ? { reviewDecision: decision } : {}),
-    ...(view.headRefOid ? { head: view.headRefOid } : {}), ...(conflictsUnknown(view) ? { conflictsUnknown: true } : {}),
+    ...(view.headRefOid ? { head: view.headRefOid } : {}), ...(view.baseRefOid ? { baseOid: view.baseRefOid } : {}), ...(conflictsUnknown(view) ? { conflictsUnknown: true } : {}),
     ...(blocked ? { blocked } : {}), ...(view.updatedAt ? { updatedAt: view.updatedAt } : {})
   }
 }
@@ -344,6 +346,23 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
   }
 }
 
+/** Why GitHub couldn't bring a PR's branch up to date with its base: the merge conflicts (KERNEL-835). */
+export class BranchConflict extends Error {}
+
+/**
+ * Brings the PR's branch up to date with its base on GitHub, by merging the base into it, never by rebasing (KERNEL-835).
+ * Rejects with BranchConflict when that merge conflicts.
+ */
+export async function prUpdateBranch(cwd: string, ref?: string) {
+  try {
+    await run('gh', ['pr', 'update-branch', ...(ref ? [ref] : [])], { cwd, timeoutMs: 60000 })
+  } catch (e) {
+    const said = e instanceof Error ? e.message : String(e)
+    if (/conflict/i.test(said)) throw new BranchConflict(said)
+    throw e
+  }
+}
+
 const ALLOWED: Record<MergeMethod, string> = { squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }
 
 /** The merge methods the repo gh finds at `cwd` allows, which anyone who can read the repo sees. Throws when gh couldn't read it. */
@@ -387,6 +406,11 @@ export interface CodeHost {
    * take Kernel's own changes.
    */
   create?: (cwd: string, o: { title: string; body: string; base: string; draft?: boolean }, remote: string) => Promise<{ number: number; url: string } | null>
+  /**
+   * Merges the PR's base into its branch on the host, for auto-merge on a PR whose checks ran against an older base (KERNEL-835).
+   * Rejects with BranchConflict when the merge conflicts. A host without it can't update a branch.
+   */
+  updateBranch?: (cwd: string, ref: string) => Promise<void>
 }
 
 /** The name `CodeHost` had while GitHub was the only host. */
@@ -403,6 +427,7 @@ export const gh: CodeHost = {
   mergeMethods: repoMergeMethods,
   ready: prReady,
   reopen: prReopen,
+  updateBranch: prUpdateBranch,
   create: async (cwd, o, remote) => {
     const view = await prCreate(cwd, o, remote)
     return view ? { number: view.number, url: view.url } : null
