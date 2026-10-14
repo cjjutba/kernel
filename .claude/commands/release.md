@@ -19,6 +19,7 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
 
 5. **Tag and publish.** After I confirm the merge:
    - `git checkout main && git pull --ff-only`. Check that `package.json` says `<version>` and that `site/content/releases/<version>.md` exists.
+   - Optional, for a release that touches the updater or signing: run `pnpm update:e2e` before tagging, detached with `nohup` like the release below, and show me its last lines. It must end with `passed`. Skip it if I say so.
    - `git tag -a v<version> -m "Kernel <version>"` on that merge commit, then `git push origin v<version>`.
    - Remind me to keep the Mac awake and on power: notarization usually takes a few minutes and sometimes much longer.
    - Start the release detached so it outlives this command: `nohup caffeinate -i pnpm release > /tmp/kernel-release-<version>.log 2>&1 &`.
