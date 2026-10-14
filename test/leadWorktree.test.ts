@@ -230,7 +230,7 @@ describe('a workspace per chat with Kernel (KERNEL-405)', () => {
     const room = await k.addRoom(repo)
     const chat = await k.lead.leadChat(room.id)
     await setUp(k, chat.id)
-    await expect(k.workspaces.forkWorkspace(chat.id)).rejects.toThrow("A chat with the Lead can't fork")
+    await expect(k.workspaces.forkWorkspace(chat.id)).rejects.toThrow("A chat with Kernel can't fork")
     expect(k.team.isLeadWorkspace(k.store.workspace(chat.workspaceId)!)).toBe(true)
   })
 })
@@ -395,7 +395,7 @@ describe('moving the open chats out of the shared Lead workspace at startup (KER
       }
       expect(k.store.meta('leadChatsMoved')).toBe(true)
       // The old record can't be deleted from History, and lead.open finds the newest chat.
-      expect((await k.history.deletePreview([old.id])).skipped).toEqual([{ id: old.id, name: 'lead', reason: "It is the Lead's workspace." }])
+      expect((await k.history.deletePreview([old.id])).skipped).toEqual([{ id: old.id, name: 'lead', reason: "It is Kernel's workspace." }])
       expect((await k.handlers()['lead.open']({ roomId: room.id }))?.id).toBe(moved[1].id)
       await k.stop()
 

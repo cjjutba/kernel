@@ -62,7 +62,7 @@ export class Archive extends Feature {
    */
   async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean; noScript?: boolean } = {}): Promise<void> {
     const ws = this.store.workspace(id)
-    if (ws?.lead && !ws.threadId && !o.removingRoom) throw new Error("The Lead's workspace stays as long as its room. Archive its chats instead.")
+    if (ws?.lead && !ws.threadId && !o.removingRoom) throw new Error("Kernel's workspace stays as long as its room. Archive its chats instead.")
     const running = this.archiving.get(id)
     if (running) {
       await running.done

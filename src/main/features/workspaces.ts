@@ -156,7 +156,7 @@ export class Workspaces extends Feature {
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
         if (later) {
           // git makes this one after, so a pattern git won't take is caught now, while New chat can still say so (KERNEL-542).
-          if (!asked && !(await validBranchName(room.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the Lead branch pattern in Settings.`)
+          if (!asked && !(await validBranchName(room.path, wanted))) throw new Error(`${wanted} is not a valid branch name. Change the branch names for chats with Kernel in Settings, Git.`)
           // The record is saved inside the room's lock, so the next pick sees its branch and folder taken before git makes them.
           return this.withBranchLock(room.id, async () => {
             const taken = this.pendingNames(roomId)
@@ -400,7 +400,7 @@ export class Workspaces extends Feature {
     // Current-branch workspaces share the main checkout, whose changes aren't only the agent's.
     if (src.mode !== 'worktree') throw new Error('Only a workspace with its own worktree can fork into a new workspace.')
     // A Lead chat plans and hands off. Its work isn't a task to fork (KERNEL-355, KERNEL-405).
-    if (this.isLeadWorkspace(src)) throw new Error("A chat with the Lead can't fork into a new workspace. Fork into a new chat instead.")
+    if (this.isLeadWorkspace(src)) throw new Error("A chat with Kernel can't fork into a new workspace. Fork into a new chat instead.")
     if (src.status === 'archived') throw new Error('Restore the workspace from History to fork it.')
     const room = this.mustRoom(src.roomId)
     const repo = await loadRepoSettings(room.path)

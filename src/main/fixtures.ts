@@ -127,6 +127,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.setTeam': async ({ roomId }) => f.agents[roomId] ?? [],
     'agents.customize': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), file: join('.claude', 'agents', KERNEL_FILE) }),
     'agents.resetLead': async ({ roomId }) => (f.agents[roomId] ?? []).filter((a) => !a.retired),
+    'agents.moveLead': async ({ roomId }) => (f.agents[roomId] ?? []).filter((a) => !a.retired),
     'agents.addStarter': async ({ id }) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), role: '', description: '', lead: false, prompt: '', file: join('.claude', 'agents', `${id}.md`), joinedAt: Date.now() }),
     'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
@@ -180,7 +181,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'linear.plan': async ({ roomId }) => {
       const ws = leadWs(roomId)
       const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
-      if (!ws || !c) throw new Error('This fixture has no chat for the Lead.')
+      if (!ws || !c) throw new Error('This fixture has no chat with Kernel.')
       return { chatId: c.id, workspaceId: ws.id }
     },
     // No fixture shows Jira yet. KERNEL-480 adds the screens and their data.
@@ -249,7 +250,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'notifications.playSound': async () => ({ ok: true }),
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
     'lead.open': async ({ roomId }) => {
-      if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Lead.')
+      if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
       return leadWs(roomId) ?? null
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },

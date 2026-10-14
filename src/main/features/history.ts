@@ -57,7 +57,7 @@ export class History extends Feature {
       if (!ws) { skip('Kernel no longer has it.'); continue }
       if (ws.status !== 'archived') { skip('It is not archived.'); continue }
       // The shared Lead workspace from before KERNEL-405. A Lead chat's own workspace deletes like any other.
-      if (ws.lead && !ws.threadId) { skip("It is the Lead's workspace."); continue }
+      if (ws.lead && !ws.threadId) { skip("It is Kernel's workspace."); continue }
       if (!this.store.room(ws.roomId)) { skip('Its room is gone.'); continue }
       const waiting = this.k.waits.waitersOn(id)
       if (waiting.length) { skip(waiting.length === 1 ? `${this.k.waits.nameOf(waiting[0])}'s workspace still waits on it.` : `${waiting.length} workspaces still wait on it.`); continue }

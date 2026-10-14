@@ -202,7 +202,7 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     expect(k.sessions['d'].agentFor(k.store.workspace(chat.workspaceId)!)).toMatchObject({ id: 'kernel-lead', name: 'Kernel', prompt: 'You are Planner.' })
     // Reset only deletes kernel.md, so it leaves a committed planner.md alone.
-    await expect(h['agents.resetLead']({ roomId: room.id })).rejects.toThrow('Kernel is customized in planner.md.')
+    await expect(h['agents.resetLead']({ roomId: room.id })).rejects.toThrow('Kernel is customized in planner.md. Move it to kernel.md first.')
     expect(await readFile(file, 'utf8')).toBe(planner)
   })
 
@@ -220,6 +220,59 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     await rm(join(repo, '.claude', 'agents', 'planner.md'))
+  })
+})
+
+// KERNEL-741: a room customized by a file other than kernel.md (an older rowan.md marked Lead, or the one `[team] lead` names)
+// moves that file to kernel.md, so Reset can delete it.
+describe('moving the file that customizes Kernel to kernel.md (KERNEL-741)', () => {
+  const ROWAN = '---\nname: rowan\ndescription: Lead. Plans.\nlead: true\ntools: Read, Bash\n---\nYou are Rowan.'
+
+  it('moves rowan.md with its content, keeps the chats with Kernel, and lets Reset delete it after', async () => {
+    const { k, h, repo, room } = await boot({ '.claude/agents/rowan.md': ROWAN, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
+    const dir = join(repo, '.claude', 'agents')
+    const { chat } = await leadTools(k, room.id)
+    const team = await h['agents.moveLead']({ roomId: room.id })
+    expect(team.find((a) => a.lead)).toMatchObject({ id: 'kernel-lead', name: 'Kernel', prompt: 'You are Rowan.', tools: ['Read', 'Bash'], file: join(dir, 'kernel.md') })
+    expect(team.find((a) => a.lead)?.warnings).toBeUndefined()
+    expect(team.map((a) => a.id)).toEqual(['kernel-lead', 'web'])
+    expect((await readdir(dir)).sort()).toEqual(['kernel.md', 'web.md'])
+    expect(await readFile(join(dir, 'kernel.md'), 'utf8')).toBe(ROWAN)
+    // Kernel's id is the same either way, so its chat carries on, on the moved file.
+    expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
+    expect((await k.leadChat(room.id)).id).toBe(chat.id)
+    expect(k.sessions['d'].agentFor(k.store.workspace(chat.workspaceId)!)).toMatchObject({ id: 'kernel-lead', prompt: 'You are Rowan.' })
+
+    const reset = await h['agents.resetLead']({ roomId: room.id })
+    expect(reset[0]).toMatchObject({ id: 'kernel-lead', file: '', prompt: expect.stringMatching(/^You are Kernel/) })
+    expect(await readdir(dir)).toEqual(['web.md'])
+    expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
+  })
+
+  it('moves the file [team] lead names and clears that setting', async () => {
+    const planner = '---\nname: planner\ndescription: Plans.\n---\nYou are Planner.'
+    const { k, h, repo, room } = await boot({ '.claude/agents/planner.md': planner, '.kernel/settings.toml': `${SETTINGS}\n[team]\nlead = "planner"\nreviewer = "none"\n` })
+    expect((await k.agents(room.id))[0]).toMatchObject({ prompt: 'You are Planner.', file: join(repo, '.claude', 'agents', 'planner.md') })
+    const team = await h['agents.moveLead']({ roomId: room.id })
+    expect(team[0]).toMatchObject({ id: 'kernel-lead', prompt: 'You are Planner.', file: join(repo, '.claude', 'agents', 'kernel.md') })
+    expect(await readdir(join(repo, '.claude', 'agents'))).toEqual(['kernel.md'])
+    const settings = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
+    expect(settings).not.toContain('lead =')
+    expect(settings).toContain('reviewer = "none"')
+  })
+
+  it('refuses with no file, with kernel.md already customizing Kernel, and with a kernel.md in the way', async () => {
+    const plain = await boot()
+    await expect(plain.h['agents.moveLead']({ roomId: plain.room.id })).rejects.toThrow('No file customizes Kernel in this room.')
+    await plain.h['agents.customize']({ roomId: plain.room.id, agentId: 'kernel-lead' })
+    await expect(plain.h['agents.moveLead']({ roomId: plain.room.id })).rejects.toThrow('Kernel is already customized in kernel.md.')
+
+    // A kernel.md Kernel can't read doesn't customize it, so rowan.md does, and the move would replace it.
+    const broken = '---\nname: -kernel\n---\nBroken.'
+    const { h, repo, room } = await boot({ '.claude/agents/rowan.md': ROWAN, '.claude/agents/kernel.md': broken })
+    await expect(h['agents.moveLead']({ roomId: room.id })).rejects.toThrow('.claude/agents already has a kernel.md. Remove it or rename it first.')
+    expect(await readFile(join(repo, '.claude', 'agents', 'rowan.md'), 'utf8')).toBe(ROWAN)
+    expect(await readFile(join(repo, '.claude', 'agents', 'kernel.md'), 'utf8')).toBe(broken)
   })
 })
 
