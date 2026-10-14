@@ -1,11 +1,8 @@
 name: Test on Ubuntu (spike)
 
 # KERNEL-737 spike: does the full suite pass on ubuntu-latest? Manual only, never required, never on other PRs.
-# The push trigger below exists only so the spike could run from its own branch, before this file reached main.
 on:
   workflow_dispatch:
-  push:
-    branches: [feat/spike-run-full-test-suite-on-ubuntu]
 
 permissions:
   contents: read
