@@ -32,7 +32,13 @@ export function UsageRow() {
     wasOpen.current = open
   }, [open])
 
-  const openUsage = (provider: FooterGroup['provider'], el: HTMLElement) => { opener.current = el; actions.ui.openUsage(provider) }
+  const expanded = useStore((s) => s.ui.usageOpen)
+  // A second press on a chip whose provider is already expanded closes the popover. A press on another provider's chip expands that provider alone.
+  const openUsage = (provider: FooterGroup['provider'], el: HTMLElement) => {
+    opener.current = el
+    if (open && expanded.includes(provider)) actions.ui.closeMenu()
+    else actions.ui.openUsage(provider)
+  }
   return (
     <div ref={anchor} className="ft-usage">
       {groups.map((g, i) => (
