@@ -297,7 +297,7 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
       {value.filter((t) => !locked.includes(t)).map((t) => (
         <span key={t} role="listitem" className="set-tag">
           <span className={['set-tag-text', mono && 'mono'].filter(Boolean).join(' ')} title={t}>{t}</span>
-          <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="x" size={12} /></button>
+          <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="close" size={12} /></button>
         </span>
       ))}
       {adding
