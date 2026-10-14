@@ -117,6 +117,19 @@ export function headBlockers(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHea
 }
 
 /**
+ * What Kernel's automatic review plans for the PR's `head` (KERNEL-717): `pending` while it works out the reviews, from the
+ * ready event until the round is saved, else the required kinds of the PR's round on that head, the ones it skipped near the
+ * usage limit and the optional ones left out. Nothing when no round of this PR is on the head, as when automatic review is off
+ * or the plan came back empty.
+ */
+export function plannedReviews(ws: Pick<Workspace, 'reviewRound' | 'reviewPending' | 'prNumber'>, head: string | undefined): 'pending' | ReviewKind[] {
+  if (ws.reviewPending !== undefined && ws.reviewPending === (head ?? '')) return 'pending'
+  const r = ws.reviewRound
+  if (!r || r.prNumber !== ws.prNumber || r.head !== (head ?? '')) return []
+  return r.kinds.filter((k) => !r.skipped?.includes(k) && !r.optional?.includes(k))
+}
+
+/**
  * Whether the merge can't go ahead without reading the PR from GitHub: for its checks, or for its head commit when a
  * reviewer looked at it, since blockers on the head commit hold the merge whatever the reviewer rule says (KERNEL-497). A
  * merge always reads GitHub first (KERNEL-376); when that read fails and nothing needs it, the merge goes ahead on what
@@ -133,7 +146,9 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
  * running holds it, required or not, and says its name (KERNEL-703). Its head commit wins
  * over the one the last poll saw. Blockers on the head commit, from any kind of review, hold the merge whatever the settings
  * say (KERNEL-497, KERNEL-549). With "require Reviewer approval" on, every required kind of review that looked at the PR
- * needs to have approved its head commit; a PR nobody reviewed merges as before. `override` is a person's Merge anyway: it
+ * needs to have approved its head commit, and so does every required kind Kernel's automatic review plans for that commit,
+ * from the ready event on, before any of them reports (KERNEL-717). A PR no review looked at or is planned for merges as
+ * before. `override` is a person's Merge anyway: it
  * skips the review and optional checks still running, and nothing else. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, _name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
@@ -150,10 +165,15 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
   if (pr && (pr.conflictsUnknown || !may(pr.state))) return 'This pull request is not ready to merge.'
   if (o.override) return undefined
-  const s = kindStates({ ...ws, prHead: pr?.head ?? ws.prHead })
+  const head = pr?.head ?? ws.prHead
+  const s = kindStates({ ...ws, prHead: head })
   if (s.blocking.length) return `${reviewsText(s.blocking)} found ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
-  if (!rules.requireReviewer || !s.waiting.length) return undefined
-  return `${reviewsText(s.waiting)} ${s.waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
+  if (!rules.requireReviewer) return undefined
+  const planned = plannedReviews(ws, head)
+  if (planned === 'pending') return 'The review of the latest commit is starting. Merging waits for every required review (Settings, Pull requests).'
+  const waiting = REVIEW_KINDS.map((k) => k.id).filter((k) => s.waiting.includes(k) || (planned.includes(k) && !s.approved.includes(k)))
+  if (!waiting.length) return undefined
+  return `${reviewsText(waiting)} ${waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
 }
 
 /** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
