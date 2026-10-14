@@ -58,8 +58,17 @@ export function SidebarToggle() {
   )
 }
 
-/** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
+/**
+ * The toggle of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B), rendered once, at a fixed spot in the screen's top right
+ * corner (`.panel-toggle` in workspace.css). It is positioned against the screen and not against the header or the PR band, so it never
+ * moves when the panel opens or closes. `name` is what the panel holds, for the label.
+ */
 export function RightPanelToggle({ name }: { name: string }) {
   const open = useStore((s) => panelShownIn(s.ui, inView(s.ui.route)))
   return <IconButton className="panel-toggle" icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+}
+
+/** The empty room the header or the PR band keeps for the toggle, which sits over it. */
+export function PanelToggleSlot() {
+  return <span className="panel-toggle-slot" aria-hidden="true" />
 }

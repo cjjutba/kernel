@@ -5,7 +5,7 @@ import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../
 import { Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { leadModeOf } from '@shared/leadMode'
-import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
+import { PanelToggleSlot, RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
@@ -245,8 +245,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
   // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
-  // chrome, not a PR action, so it stays in the window's top right corner: the header's last item while the panel is hidden, the end of
-  // the panel's head while it is open, at the same spot and in the same neutral colour, so it never moves or takes the band's tone (KERNEL-769).
+  // chrome, not a PR action: there is one, positioned against the screen's top right corner, so it is the same element at the same
+  // coordinates whether the panel is open or closed and never takes the band's tone. The header and the band each keep an empty slot
+  // under it (KERNEL-769).
   return (
     <div className="panel ws-panel">
       {newChatShown ? <NewChatHeader room={room} /> : <header className="header">
@@ -260,7 +261,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <span className="grow" />
         <OpenIn ws={ws} />
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule quiet={held} />)}
-        {!panels && <RightPanelToggle name="panels" />}
+        {!panels && <PanelToggleSlot />}
       </header>}
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
@@ -299,7 +300,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head">
-            {ownPr ? <PrHeader ws={ws} spread toggle={<RightPanelToggle name="panels" />} /> : <LeadPrSummary roomId={ws.roomId} spread toggle={<RightPanelToggle name="panels" />} />}
+            {ownPr ? <PrHeader ws={ws} spread toggle={<PanelToggleSlot />} /> : <LeadPrSummary roomId={ws.roomId} spread toggle={<PanelToggleSlot />} />}
           </div>
           {ownPr && <LocalMergeInfo ws={ws} />}
           {/* Below the PR band the panel is two panes, 2/3 over 1/3 until the bottom is dragged. The one fraction is every chat's (KERNEL-513). */}
@@ -309,6 +310,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           </div>
         </aside>
       )}
+      {!newChatShown && <RightPanelToggle name="panels" />}
     </div>
   )
 }
