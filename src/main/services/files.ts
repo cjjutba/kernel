@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
-import { extname, isAbsolute, join, posix, relative, resolve } from 'node:path'
+import { basename, extname, isAbsolute, join, posix, relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import type { ChangedFile, FileEntry, Skill } from '@shared/types'
 import { EXEC_TIMEOUT_MS, exec, git } from './exec'
@@ -102,24 +102,72 @@ export async function readImage(root: string, path: string, since?: string): Pro
 }
 
 /**
- * Files for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit together,
- * start a path segment or fall in the file name score higher, and shorter paths win ties. Saved plans are listed too,
- * though git ignores them, so a new chat can build from one (D-092).
+ * Files and folders for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit
+ * together, start a path segment or fall in the name score higher, and shorter paths win ties. Folders are the parent paths
+ * of the listed files, scored the same way, and one whose name is the query ranks above the files inside it. Saved plans are
+ * listed too, though git ignores them, so a new chat can build from one (D-092).
+ *
+ * Each of the room's `references` is searched the same way, as `<folder name>/<path>`, and its rows carry an absolute path
+ * and the folder's name (KERNEL-748). One that can't be listed is skipped.
  */
-export async function searchFiles(root: string, query: string, limit = 8): Promise<FileEntry[]> {
+export async function searchFiles(root: string, query: string, limit = 8, references: string[] = []): Promise<FileEntry[]> {
   const out = await git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')
   const plans = await readdir(join(root, PLANS_DIR)).then((names) => names.filter((n) => n.endsWith('.md')).map((n) => `${PLANS_DIR}/${n}`), () => [])
   const files = [...new Set([...out.split('\0').filter(Boolean), ...plans])].slice(0, MAX_ENTRIES)
   const q = query.trim().toLowerCase()
   if (!q) return files.slice(0, limit).map((path) => ({ path, dir: false }))
-  const scored: { path: string; score: number }[] = []
-  for (const path of files) {
-    const score = fuzzyScore(path, q)
-    if (score !== null) scored.push({ path, score })
+  const scored: (FileEntry & { score: number; length: number })[] = []
+  const score = (list: string[], row: (rel: string) => Pick<FileEntry, 'path' | 'reference'>, prefix = '') => {
+    for (const rel of list) {
+      const s = fuzzyScore(prefix + rel, q)
+      if (s !== null) scored.push({ ...row(rel), dir: false, score: s, length: (prefix + rel).length })
+    }
+    const dirs = new Set<string>()
+    for (const file of list) {
+      const parts = file.split('/')
+      for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'))
+    }
+    for (const rel of dirs) {
+      const s = fuzzyScore(prefix + rel, q)
+      if (s !== null) scored.push({ ...row(rel), dir: true, score: s + (rel.slice(rel.lastIndexOf('/') + 1).toLowerCase() === q ? EXACT_FOLDER : 0), length: (prefix + rel).length })
+    }
   }
-  scored.sort((a, b) => b.score - a.score || a.path.length - b.path.length || a.path.localeCompare(b.path))
-  return scored.slice(0, limit).map(({ path }) => ({ path, dir: false }))
+  score(files, (path) => ({ path }))
+  for (const folder of references) {
+    const name = basename(folder)
+    const list = await referenceFiles(folder).catch(() => [])
+    score(list, (rel) => ({ path: join(folder, rel), reference: name }), `${name}/`)
+  }
+  scored.sort((a, b) => b.score - a.score || a.length - b.length || a.path.localeCompare(b.path))
+  return scored.slice(0, limit).map(({ path, dir, reference }) => ({ path, dir, ...(reference ? { reference } : {}) }))
 }
+
+/** Folders a reference folder's walk never enters, when it isn't a git checkout. */
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'target', 'vendor'])
+
+/**
+ * The files in a reference folder, relative to it (KERNEL-748): what git lists in a checkout, else a walk that leaves out
+ * hidden entries and the usual build folders. At most MAX_ENTRIES either way.
+ */
+async function referenceFiles(folder: string): Promise<string[]> {
+  const listed = await git(folder, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').then((out) => out.split('\0').filter(Boolean), () => undefined)
+  if (listed) return listed.slice(0, MAX_ENTRIES)
+  const found: string[] = []
+  const walk = async (rel: string): Promise<void> => {
+    for (const e of await readdir(join(folder, rel), { withFileTypes: true }).catch(() => [])) {
+      if (found.length >= MAX_ENTRIES) return
+      if (e.name.startsWith('.')) continue
+      const path = rel ? `${rel}/${e.name}` : e.name
+      if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name)) await walk(path) }
+      else if (e.isFile()) found.push(path)
+    }
+  }
+  await walk('')
+  return found
+}
+
+/** Enough to put a folder named exactly like the query above any file inside it. */
+const EXACT_FOLDER = 30
 
 export function fuzzyScore(path: string, q: string): number | null {
   const p = path.toLowerCase()

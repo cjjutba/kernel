@@ -67,7 +67,7 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
                   <span>Restore files to {time}? Changes after this turn move to a backup branch.</span>
                   <div className="row" style={{ gap: 8 }}>
                     <button type="button" className="ck-cancel" onClick={() => setAsking(null)}>Cancel</button>
-                    <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <Spinner label={null} />}{busy ? 'Reverting' : 'Revert'}</button>
+                    <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <Spinner label={null} pattern="wave-back" />}{busy ? 'Reverting' : 'Revert'}</button>
                   </div>
                 </div>
               )}

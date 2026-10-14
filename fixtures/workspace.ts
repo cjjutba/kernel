@@ -257,7 +257,7 @@ const runningItems = (): ChatItem[] => {
 const rowsOpenItems: ChatItem[] = [
   userMsg('ro-u', 'Add a sort to the invoice table and run the tests.'),
   { kind: 'thinking', id: 'ro-th', ts: at(10, 28), text: 'The table already has a sortable header for the amount column, so the date and client columns can reuse it.\n\nThe sort state lives in the URL, which keeps a reload on the same order. I will keep that and only add the two keys.' },
-  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
+  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose', description: 'Run unit tests' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
   tool('ro-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')\nreturn <Table rows={rows} />", new_string: "const rows = sortBy(invoices, sort.key, sort.dir)\nreturn <Table rows={rows} sort={sort} />" } }),
   tool('ro-t3', 'Run Playwright', 'pnpm playwright test invoices', { status: 'running', durationMs: undefined, input: { command: 'pnpm playwright test invoices --project=chromium' } })
 ]
@@ -300,9 +300,58 @@ const longChat: ChatItem[] = [
   ].flatMap(([ask, answer], i): ChatItem[] => [userMsg(`lc-u${i}`, ask), { kind: 'text', id: `lc-x${i}`, ts: at(10, 32 + i), text: answer }])
 ]
 
+type ToolItem = Extract<ChatItem, { kind: 'tool' }>
+
+/** An MCP tool call the way the engine writes it: the stored label and detail are the raw `server · tool` and the arguments as JSON, which rows no longer show. */
+const mcpCall = (id: string, server: string, name: string, input: Record<string, unknown>, extra: Partial<ToolItem> = {}): ChatItem =>
+  tool(id, `${server} · ${name}`, JSON.stringify(input).slice(0, 120), { name: `mcp__${server}__${name}`, input, ...extra })
+
+const DENIED_OUTPUT = "The user doesn't want to proceed with this tool use. The tool use was rejected."
+
+const leadSteps: ChatItem[] = [
+  { kind: 'user', id: 'ls-u', ts: at(10, 20), parts: [{ type: 'text', text: 'Approved' }] },
+  { kind: 'thinking', id: 'ls-th1', ts: at(10, 21), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
+  tool('ls-t1', 'ToolSearch', '{"query":"select:mcp__linear__save_issue,mcp__linear__list_issue_labels","max_results":2}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue,mcp__linear__list_issue_labels', max_results: 2 }, output: 'Loaded 2 tools' }),
+  mcpCall('ls-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature\nWorkspace\nEngine\nPlatform\nTeam' }),
+  mcpCall('ls-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, { output: 'KERNEL-716 Room settings title misaligned and long Always allow commands overflow' }),
+  { kind: 'thinking', id: 'ls-th2', ts: at(10, 22), text: 'KERNEL-716 is already in review covering the room title misalignment and command overflow, which overlaps with the layout issue.' },
+  { kind: 'text', id: 'ls-x1', ts: at(10, 22), text: 'KERNEL-716, now in review, already fixes the room title alignment and the overflowing command tags, so I will leave both out of the layout issue. Filing the issues now.' },
+  mcpCall('ls-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
+  { kind: 'text', id: 'ls-x2', ts: at(10, 23), text: 'Now the sub-issues.' },
+  ...['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats'].map((title, i) =>
+    mcpCall(`ls-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, { output: `KERNEL-72${i + 1}` })),
+  { kind: 'thinking', id: 'ls-th3', ts: at(10, 24), text: 'Now I need to check list_workspaces for the limit and the KERNEL-716 workspace, then plan the new ones.' },
+  mcpCall('ls-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  { kind: 'thinking', id: 'ls-th4', ts: at(10, 25), text: 'KERNEL-721 and KERNEL-716 both touch kit.tsx and settings.css, since the title alignment logic lives in Page.' },
+  ...[['kai', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['noor', 'KERNEL-723', 'Room settings update when the TOML changes'], ['noor', 'KERNEL-724', 'Record when each setting takes effect'], ['kai', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
+    mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
+]
+
+const stepStates: ChatItem[] = (() => {
+  const bash = (id: string, input: Record<string, unknown>, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Run', String(input.command), { input, status, output, durationMs: status === 'running' ? undefined : 900 })
+  const edit = (id: string, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Edit', 'src/app/invoices/table.tsx', { name: 'Edit', status, output, input: { file_path: '/Users/you/kernel/worktrees/client-a/invoice-table/src/app/invoices/table.tsx', old_string: 'sortBy(rows)', new_string: 'sortBy(rows, sort.key)' } })
+  const read = (id: string, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Read', 'src/app/invoices/page.tsx', { name: 'Read', status, output, input: { file_path: 'src/app/invoices/page.tsx' } })
+  const mcp = (id: string, status: ToolItem['status'], output?: string) =>
+    mcpCall(id, 'context7', 'query_docs', { libraryId: '/vercel/next.js', query: 'route handlers' }, { status, output })
+  const described = { command: 'pnpm vitest run invoices', description: 'Run the invoice tests' }
+  const bare = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && pnpm tsc --noEmit' }
+  const sync = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && LINEAR_API_KEY=lin_api_Xk3fQ9dLm2Vb7TnRz4 GH_TOKEN=ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 node scripts/sync-issues.mjs' }
+  const FAIL = 'error TS2322: Type string is not assignable to type number.\n  src/app/invoices/table.tsx:41'
+  return [
+    bash('ss-b1', described, 'running'), bash('ss-b2', described, 'done', 'Tests  21 passed (21)'), bash('ss-b3', described, 'failed', 'FAIL  src/app/invoices/table.test.tsx\nTests  1 failed | 20 passed'), bash('ss-b4', described, 'failed', DENIED_OUTPUT),
+    bash('ss-c1', bare, 'running'), bash('ss-c2', sync, 'done', 'Synced 12 issues'), bash('ss-c3', bare, 'failed', FAIL), bash('ss-c4', bare, 'failed', DENIED_OUTPUT),
+    edit('ss-e1', 'running'), edit('ss-e2', 'done'), edit('ss-e3', 'failed', 'The old_string was not found in the file.'), edit('ss-e4', 'failed', DENIED_OUTPUT),
+    read('ss-r1', 'running'), read('ss-r2', 'done', "export default function Page() {\n  return <InvoiceTable />\n}"), read('ss-r3', 'failed', 'File does not exist.'), read('ss-r4', 'failed', DENIED_OUTPUT),
+    mcp('ss-m1', 'running'), mcp('ss-m2', 'done', 'Route handlers live in app/**/route.ts.'), mcp('ss-m3', 'failed', 'Library not found'), mcp('ss-m4', 'failed', DENIED_OUTPUT)
+  ]
+})()
+
 const toolCalls: ChatItem[] = [
   tableItems[0],
-  tool('c1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
+  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
   tool('c2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
   tool('c3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120 }),
   tool('c4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90 }),
@@ -444,6 +493,12 @@ const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
 }))
 
 /** What @inv finds, in the order the canvas lists it. */
+/** What @src finds: the folder first, then the folders and files under it. */
+const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src/app', dir: true }, { path: 'src/app/invoices', dir: true }, ...['src/app/index.ts', 'src/app/invoices/table.tsx'].map(file)]
+
+/** KERNEL-750: rows from a reference folder carry the folder's name, which the menu shows where a repo file shows its folder. */
+const mentionReferenceTree: FileEntry[] = [{ path: '/Users/you/Projects/client-a-api/src/invoices/routes.ts', dir: false, reference: 'client-a-api' }, { path: '/Users/you/Projects/design-system/src/invoice-table.tsx', dir: false, reference: 'design-system' }, ...mentionFolderTree.slice(1, 2), file('src/app/invoices/table.tsx')]
+
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
 const skills: Skill[] = [
@@ -701,6 +756,34 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * A teammate's question and a proposed hand-off (TeamUpdateAsk.png, KERNEL-747): Kai asked with ask_lead and ended the turn, and
+ * Noor proposed a task for Kai with propose_handoff and carries on. Both need the Lead, so both read brighter than the rest.
+ */
+const teamUpdateAsk = (f: Fixture): Partial<Fixture> => {
+  const row = tuRow, ev = tuEv
+  const rows = [
+    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('question', 'Asks: Should ⌘L focus the composer in every tab, or only in the tab that is open?', true), ev('turn', 'Finished a turn')]),
+      reply: 'The focus fix works for the open tab. I asked how far ⌘L should reach before I wire it.' },
+    row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('handoff.proposed', 'Proposes Kai for: Merge duplicate issues from the issue menu', true)])
+  ]
+  const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
+    { kind: 'result', id: 'tua-res0', ts: at(20, 41), durationMs: 6 * 60_000 + 12_000, ok: true },
+    tuCard('tua-1', 41, rows, "Answer Kai's question, and propose Noor's hand-off to the user."),
+    { kind: 'result', id: 'tua-res1', ts: at(20, 42), durationMs: 21_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    workspaces: [
+      ...(s.workspaces ?? f.workspaces),
+      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, ...issue('KERNEL-182', 0) }),
+      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prState: 'checks', ...issue('KERNEL-172', 1) })
+    ]
+  }
+}
+
 /** Kernel's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
 const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = {}): Partial<Fixture> => ({
   ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
@@ -718,8 +801,11 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
 /** What the Lead's PRs tab (KERNEL-354) reads for one open PR, in the words of LeadPrs.png. */
 interface OpenPr {
   id: string; agentId: string; key: string; n: number; title: string; state: Workspace['prState']; stat: [number, number]
-  /** Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head commit. None is not reviewed. */
-  review?: 'approved' | 'stale' | 'blockers'
+  /**
+   * Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head
+   * commit, `planned` a code review round started on the head that hasn't reported (KERNEL-717). None is not reviewed.
+   */
+  review?: 'approved' | 'stale' | 'blockers' | 'planned'
   overruled?: true
 }
 
@@ -736,6 +822,7 @@ const prFields = (p: OpenPr): Partial<Workspace> => {
   return {
     title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
     stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews,
+    ...(p.review === 'planned' ? { reviewRound: { n: 1, rounds: 2, head: `h${p.n}`, prNumber: p.n, kinds: ['code'] } } : {}),
     ...(p.overruled && { overruled: { head: `h${p.n}`, kinds: ['code' as const], by: 'user' as const, ts: at(20, 40) } })
   }
 }
@@ -805,10 +892,13 @@ const OVERRULED_PR: OpenPr = { ...BLOCKERS_PR, overruled: true }
 const LEAD_RUN: PushEvent[] = ['$ pnpm dev --port 4303', 'VITE v6.3.5  ready in 412 ms', 'Local:   http://localhost:4303/', 'Compiled /inbox in 1.2s', 'GET /api/requests 200 in 84ms', 'GET /inbox 200 in 31ms']
   .map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.lead, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
 
-/** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
+/** Three open PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
+
+/** Five PRs that can all merge, two of them not reviewed (KERNEL-757). */
+const ALL_READY: OpenPr[] = [LEAD_PRS[0], LEAD_PRS[1], MERGE_A, { ...MERGE_B, review: undefined }, { ...MERGE_C, state: 'ready', review: undefined }]
 
 /**
  * KERNEL-515: the panel's strip for each tab, as the PanelToolbar* fixtures and PanelFilter show it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
@@ -1524,6 +1614,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
+  /** Every row of a Lead turn reads as a sentence with its service's mark (KERNEL-782). The turn has no result, so nothing folds and every step shows. */
+  WorkspaceLeadSteps: scene((f) => {
+    // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+    const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' })
+    return rest
+  }),
+  /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
+  WorkspaceStepStates: scene(() => ({
+    items: { [ids.tableChat]: stepStates },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
@@ -1559,6 +1660,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({
     items: { [ids.tableChat]: longChat },
+    ui: open
+  })),
+  /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
+  ChatRestoredSpot: scene(() => ({
+    items: { [ids.tableChat]: [
+      ...longChat.slice(0, 6),
+      { kind: 'shared' as const, id: 'rs-i1', ts: at(10, 30), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i2', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i3', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      ...longChat.slice(6)
+    ] },
+    shared: sharedFiles().filter((x) => x.workspaceId === ids.table),
+    sharedData: sharedStills,
     ui: open
   })),
   // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
@@ -1847,14 +1961,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Folded while the run script runs: the bar says Running, so you can tell the app is up without opening it (KERNEL-529).
   PanelCollapsedRunning: bottomFolded(headerScene('ready', [], { panel: true })),
   PanelResize: idleRun(headerScene('ready', [], { panel: true })),
-  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar, Merge all and refresh, which takes the room the tabs need.
+  // The panel at its narrowest, 320px, where the strips scroll sideways (KERNEL-514). The top strip sits beside the PRs toolbar's refresh.
   // The bottom's two terminals past Run are stand-ins the shot adds.
   PanelTabsOverflow: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B], 'What can I merge?', LEAD_PRS_REPLY, LEAD_RUN)
     return { ...s, ui: { ...s.ui, bottomCollapsed: { lead: false, teammate: false } } }
   }),
   PanelSetup: scene((f) => setupWait(f, 'setup', [setupAsk], { right: 'files', collapsed: true })),
-  // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has Merge all and refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
+  // The right panel's strip carries the tab on show's own actions (KERNEL-515): PRs has refresh, All files a filter and collapse, Changes Review all, a filter and the tree toggle, Checks refresh and
   // open on GitHub. The filter's field opens under the strip from the search button, the way PanelFilter draws it with "inbox" typed.
   PanelToolbarPrs: scene((f) => {
     const s = leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', LEAD_PRS_REPLY)
@@ -1870,24 +1984,27 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...f, commits: { [ids.table]: PANEL_COMMITS }, branches: ['origin/main', 'origin/develop', 'origin/kernel-154-inbox-rows'] }
   })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
-  // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
+  LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'kai', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Kai is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
+  // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
   LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
+  // Every open PR ready: one Merge per row and nothing to merge them all at once (KERNEL-757).
+  LeadPrsAllReady: scene((f) => leadPrsScene(f, ALL_READY, 'What can I merge?', "All five are ready. Theo approved #162, #161 and #331. #330 and #333 haven't been reviewed. Tell me which ones to merge, or merge them from the PRs tab.")),
+  // The PRs tab at the panel's narrowest, 320px, with every list and a blocked PR's Merge anyway: titles end in an ellipsis and nothing overlaps (KERNEL-757).
+  LeadPrsNarrow: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[6], LEAD_PRS[7]], 'What can I merge?', LEAD_PRS_REPLY)),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
   LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
-  // Merge all on the Ready to merge heading, its run one PR at a time, and a run that stopped at a conflict (KERNEL-411).
-  LeadPrsMergeAll: scene((f) => leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. #331 from Kai and #330 from Noor both have Theo\'s approval, and #333 is still running checks. Merge them from the PRs tab, or tell me which one and I will.')),
-  LeadPrsMergeAllRunning: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
-    [{ type: 'pr.queue', roomId: ids.roomA, queue: { ids: [MERGE_A.id, MERGE_B.id], current: MERGE_A.id } }])),
-  LeadPrsMergeAllStopped: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'conflict' }, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
-    [{ type: 'pr.queue', roomId: ids.roomA, result: { merged: [331], stopped: { workspaceId: MERGE_B.id, prNumber: 330, reason: 'It has merge conflicts.' } } }])),
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
+  // A merged PR whose workspace isn't archived yet: the row reads the merged icon and Merged beside Open.
+  TeamUpdateMerged: scene((f) => { const m = teamUpdateMerge(f); return { ...m, workspaces: (m.workspaces ?? []).map((w) => (w.id === 'ws-163' ? { ...w, status: 'ready' as const, archivedAt: undefined } : w)) } }),
   // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
   TeamUpdateReview: scene((f) => teamUpdateReview(f)),
+  // KERNEL-747: a teammate's question and a hand-off another teammate proposed.
+  TeamUpdateAsk: scene((f) => teamUpdateAsk(f)),
   TeamUpdatePrStates: scene((f) => teamUpdatePrStates(f)),
   // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
   GroupedNewChat: scene((f) => {
@@ -2120,6 +2237,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
     ] }
   }),
+  /** KERNEL-771: picking another model in a chat that has run a turn warns about the cache. Title only, up about 6s. */
+  WorkspaceModelSwitchToast: prScene('merged', [], {
+    prs: prInfo('merged'),
+    ui: { toasts: [{ id: 't1', title: 'Switching models mid-chat makes the next reply slower and uses more tokens.' }] }
+  }),
   WorkspacePaste: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
@@ -2149,8 +2271,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...open, menu: 'model' }
     }
   }),
+  // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
+  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer: { parts: [], draft: '@no' } } } })),
+  ComposerMentionAgentSent: scene((f) => ({
+    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'text', text: 'take the invoice export, and ask Kai for the table first' }] }] },
+    chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead } }
+  })),
+  ComposerMentionFolders: composing({ parts: [], draft: '@src' }, { tree: { [ids.table]: mentionFolderTree } }),
+  ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
+  // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
+  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'newWorkspace', roomId: ids.lead } } })),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [

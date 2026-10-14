@@ -13,6 +13,7 @@ import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { forProvider, Handoffs, LEAD_RULE, planApproval } from './handoff'
+import { mentionNote, mentionsOf } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
 import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
@@ -112,6 +113,13 @@ export interface SessionDeps {
   settings: () => AppSettings
   /** The agent a workspace runs. With `chat`, the one that chat runs, which a review chat picks by its kind (KERNEL-549). */
   agentFor: (ws: Workspace, chat?: Chat) => AgentDef | undefined
+  /** The room's team as Kernel last read it, for the agents a Lead message mentions (KERNEL-745). Undefined when unread. */
+  teamOf?: (roomId: string) => AgentDef[] | undefined
+  /**
+   * What a Lead chat owes until the Lead acts on it (`features/openItems.ts`, KERNEL-749): a message's mentions open items,
+   * the user's own message closes the tab's mentions, and the Stop hook reads the reminder. Left out, nothing is held.
+   */
+  openItems?: { mentioned: (chat: Chat, mentioned: { agentId: string; name: string }[]) => void; userSent: (chatId: string) => void; atStop: (chatId: string) => string | undefined }
   /** The role Settings, Models reads for a chat in this workspace run by `agent` (`Team.roleFor`). Without it a chat has no compact window of its own. */
   roleFor?: (ws: Workspace, agent: AgentDef | undefined) => Role
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
@@ -128,6 +136,8 @@ export interface SessionDeps {
   aliasesFor?: (ws: Workspace) => Record<string, string> | undefined
   /** The room's `[agents]` table for the workspace's agent: `unlisted_tools` and its `allow` servers (KERNEL-537). */
   accessFor?: (ws: Workspace) => { unlisted: UnlistedTools; allow: string[] } | undefined
+  /** The room's reference folders that are there now, which a Claude chat may read but not edit (KERNEL-748). */
+  referencesFor?: (ws: Workspace) => string[] | undefined
   /**
    * A session reported how its MCP servers are doing. Returns every report the room holds for that provider since, which
    * may name servers this session's report doesn't yet, such as claude.ai connectors that join late (KERNEL-464).
@@ -158,6 +168,11 @@ export interface SessionDeps {
    * Personal", and why when a limit moved it (KERNEL-568). Without it the chat says nothing.
    */
   switchNote?: (provider: Provider, accountId: string) => string
+  /**
+   * A note the agent reads at the start of the chat's next turn, taken as the turn starts so it goes once, as after its files
+   * were reverted (KERNEL-764). The chat's row doesn't show it.
+   */
+  turnNote?: (chat: Chat) => string | undefined
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -170,8 +185,17 @@ export interface SessionDeps {
   onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
-  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it; `account` is the one it ran on, undefined for the CLI's own login. */
-  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string }) => void
+  /**
+   * A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started
+   * it; `account` is the one it ran on, undefined for the CLI's own login. `limit`: a usage limit Kernel knows cut it off, so
+   * the chat waits to carry on (KERNEL-777).
+   */
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy; account?: string; limit?: true }) => void
+  /**
+   * `carryOn` restarted a chat a usage limit or a quit cut off: its queue went, or Kernel's nudge did. After a limit, the
+   * chat runs on the account its provider uses now (KERNEL-777).
+   */
+  onCarriedOn?: (chatId: string, reason: CutOffReason) => void
   /**
    * The session's process ended without being stopped. `midTurn` is true when a turn was running, so the agent's work
    * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
@@ -676,7 +700,7 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     this.mustHaveFolder(chat)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
-    if (o.from !== 'kernel') this.handoffs.done(chatId)
+    if (o.from !== 'kernel') { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
     // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
     if (this.closing) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
@@ -700,7 +724,7 @@ export class Sessions {
     this.mustHaveFolder(this.mustChat(chatId))
     // One message with nothing ahead of it is an ordinary send.
     if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
-    if (messages.some((m) => m.from !== 'kernel')) this.handoffs.done(chatId)
+    if (messages.some((m) => m.from !== 'kernel')) { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
     this.setQueue(chatId, [...this.queued(chatId), ...messages.map((m) => ({ id: randomUUID(), chatId, parts: m.parts, ts: Date.now(), ...sender(m) }))])
     if (this.closing) return { queued: true }
     const why = this.waitsFor(chatId)
@@ -832,7 +856,7 @@ export class Sessions {
     const ws = this.mustWorkspace(chat.workspaceId)
     chat = this.unsuggest(chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
+    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.d.openItems?.userSent(chat.id); this.crashed.delete(chat.id) }
     // The user writing instead of answering ends a Codex plan still waiting after its turn (KERNEL-563).
     if ([o, ...more].some((m) => !m.from)) this.expireCards(this.turns.get(chat.id)?.plans)
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
@@ -857,9 +881,23 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = [...parts, ...more.flatMap((m) => m.parts)]
+    const note = this.d.turnNote?.(chat)
+    live.sent = [...(note ? [{ type: 'text' as const, text: note }] : []), ...this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+  }
+
+  /**
+   * A Lead message that mentions teammates opens a mention for each, and the Lead reads who the user addressed after it
+   * (KERNEL-745). The chat's row keeps the parts as they were.
+   */
+  private withMentions(chat: Chat, ws: Workspace, sent: ChatPart[]): ChatPart[] {
+    if (!sent.some((p) => p.type === 'agent') || !this.isLeadChat(chat.id)) return sent
+    const team = this.d.teamOf?.(ws.roomId)
+    const note = mentionNote(sent, team)
+    if (!note) return sent
+    this.d.openItems?.mentioned(chat, mentionsOf(sent, team))
+    return [...sent, { type: 'text', text: forProvider(note, chatProvider(chat)) }]
   }
 
   /**
@@ -998,6 +1036,8 @@ export class Sessions {
       }
       if (this.queued(id).length) this.drain(id)
       else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel' })
+      // A send that started clears the cut-off, so only a chat that really carried on is reported (KERNEL-777).
+      if (!this.cutOff.has(id)) this.d.onCarriedOn?.(id, reason)
     }
   }
 
@@ -1083,7 +1123,7 @@ export class Sessions {
     if (!live?.running) return
     // Stop is the user taking over. Send now isn't on its own: the message it sends first decides, so a Kernel update
     // sent again with Retry now leaves a pending hand-off reminder alone (KERNEL-116).
-    if (!sendNext) this.handoffs.done(chatId)
+    if (!sendNext) { this.handoffs.done(chatId); this.d.openItems?.userSent(chatId) }
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
@@ -1348,7 +1388,7 @@ export class Sessions {
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, apiKey: c?.apiKey, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic', disabled: this.d.disabledFor?.(ws)?.mcp, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), bypass: live.threadBypass })
     } else {
       live.bypass = bypass
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), mode, bypass })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, credential: this.d.claudeEnv?.() ?? {}, compact: this.compactFor(ws, agent), root, aliases: this.d.aliasesFor?.(ws), access: this.d.accessFor?.(ws), references: this.d.referencesFor?.(ws), mode, bypass })
     }
     this.live.set(chat.id, live)
     live.runner.start()
@@ -1430,7 +1470,13 @@ export class Sessions {
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
       afterPlan: () => { const t = this.approvedPlans.get(chatId); this.approvedPlans.delete(chatId); return t },
-      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t && forProvider(t, chatProvider(this.mustChat(chatId))) },
+      // A plan approved and not handed off reminds once, and so does what the chat owes, until a new item opens (KERNEL-745, KERNEL-749).
+      handoffAtStop: () => {
+        const t = this.handoffs.reminder(chatId)
+        if (t) bus.track({ name: 'handoff.reminder' })
+        const both = [t, this.d.openItems?.atStop(chatId)].filter(Boolean).join('\n\n')
+        return both ? forProvider(both, chatProvider(this.mustChat(chatId))) : undefined
+      },
       followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
   }
@@ -1530,7 +1576,8 @@ export class Sessions {
     if (interrupted) this.expireCards(live.cards)
     // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop. The limit is the
     // account's the turn ran on, which a switch at the limit may already have left (KERNEL-568).
-    if (live.limited && !stopped && this.limitHolds(chat, live)) this.setCutOff(chatId, 'limit')
+    const limit = live.limited && !stopped && this.limitHolds(chat, live)
+    if (limit) this.setCutOff(chatId, 'limit')
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
     // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
     if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')
@@ -1547,7 +1594,7 @@ export class Sessions {
     live.cleared = false
     this.setRunning(chat, ws, live, false)
     // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account })
+    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user', account: live.account, ...(limit ? { limit: true as const } : {}) })
     // Stop means stop: held messages are dropped, not sent. Send now keeps them.
     if (stopped) this.setQueue(chatId, [])
     else this.drain(chatId)
@@ -1573,7 +1620,7 @@ export class Sessions {
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
     o.placed?.(approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
-      void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
+      void savePlan(ws.path, plan, { reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
     this.turns.get(chatId)?.plans?.delete(approval.id)

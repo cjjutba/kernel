@@ -4,13 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tool, type SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Chat, ChatItem, RateLimit, Tracker, TrackerIssue, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, OpenItem, RateLimit, Tracker, TrackerIssue, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import { mentionNote } from '../src/main/services/mentions'
+import { OpenItems, openReminder } from '../src/main/features/openItems'
+import type { Kernel } from '../src/main/kernel'
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
@@ -37,7 +40,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -52,12 +55,15 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const pings: unknown[] = []
   const reached = { count: 0 }
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } }), ...(o.tools ?? [])]
+  const openItems = new OpenItems({ store } as unknown as Kernel)
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
+    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
     ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
-    disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp
+    disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp,
+    // What a Lead chat owes, on the same store (KERNEL-749).
+    openItems
   })
   const items = () => store.items(chat.id)
   const of = <K extends ChatItem['kind']>(kind: K) => items().filter((i): i is Extract<ChatItem, { kind: K }> => i.kind === kind)
@@ -65,7 +71,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const answers = async (method: string) => (await fake.messages()).filter((m) => m.answer === method).map((m) => m.result)
   const idle = () => until(() => !sessions.isRunning(chat.id))
   const pending = () => until(() => store.approvals({ pendingOnly: true })[0])
-  return { fake, store, sessions, approvals, chat, ws, allow, allowTools, items, of, sent, answers, idle, pending, pings, settings, repo, reached }
+  return { fake, store, sessions, approvals, chat, ws, allow, allowTools, items, of, sent, answers, idle, pending, pings, settings, repo, reached, openItems }
 }
 
 let open: Sessions[] = []
@@ -599,6 +605,36 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: APPROVED }], approvalId: card.id })
     // The settled card says the plan was approved, so the chat adds no note.
     expect(t.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
+  })
+
+  it('tells a Codex Lead who the user addressed, and reminds it once with the tools named as Codex calls them (KERNEL-745)', async () => {
+    const helper = { ...noor, id: 'mira', name: 'Mira', member: false } as AgentDef
+    const t = track(await setup({ agent: kernel, team: [kernel, noor, helper] }))
+    await t.sessions.send('chat', [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }, { type: 'text', text: 'take the Stop hook' }])
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
+    expect(inputs[0]).toBe(`@Noor @Mira take the Stop hook ${forProvider(mentionNote([{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }], [kernel, noor, helper])!, 'codex')}`)
+    expect(inputs[0]).toContain("Mira doesn't take tasks in this room, so tell the user or ask with kernel_ask_user")
+    expect(inputs[1]).toBe(forProvider(openReminder(['Noor', 'Mira'].map((name) => ({ kind: 'mention', name }) as OpenItem)), 'codex'))
+    expect(inputs[1]).toContain('kernel_create_workspace')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(await t.sent('turn/start')).toHaveLength(2)
+  })
+
+  it("reminds a Codex Lead once of a teammate's open question, with the tools named as Codex calls them (KERNEL-749)", async () => {
+    const t = track(await setup({ agent: kernel }))
+    const kai = { ...t.ws, id: 'ws-kai', agentId: 'kai', name: 'invoice-export' }
+    t.store.saveWorkspace(kai)
+    t.openItems.delivered(t.chat, [{ ws: kai, name: 'Kai', events: [{ n: 1, workspaceId: kai.id, kind: 'question', question: { text: 'Keep drafts per tab?' } }] }])
+    await t.sessions.send('chat', [{ type: 'text', text: 'how is it going' }])
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    const [, reminder] = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
+    expect(reminder).toBe(forProvider(openReminder(t.openItems.owed('chat')), 'codex'))
+    expect(reminder).toContain('Kai asked you: "Keep drafts per tab?" (workspace ws-kai). Answer with kernel_message_agent to it.')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(await t.sent('turn/start')).toHaveLength(2)
   })
 
   it("asks once when the Lead already asked with request_plan_approval in the same turn", async () => {

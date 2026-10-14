@@ -65,19 +65,19 @@ export function Hooks({ s }: { s: AppSettings }) {
           icon={status && !status.listening ? 'xCircle' : 'checkCircle'} tone={status && !status.listening ? 'warn' : undefined}
           title={status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}
           sub={status && `${seen ? `Last event ${seenAgo(seen).toLowerCase()}` : 'No event yet'} · ${count} hook${count === 1 ? '' : 's'} installed`}
-          action={<Button busy={busy === 'test'} busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
+          action={<Button busy={busy === 'test'} busyPattern="arrow-right" busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
         />
       </Section>
       <Section title="Maintenance">
         {workspaceRun
           ? <Row label="Hooks are off in a workspace run" desc={`This copy of Kernel never changes ${SETTINGS_FILE}.`} />
           : (
-            <Row label="Kernel’s hooks" desc={`Its entries in ${SETTINGS_FILE}, nothing else.`}>
-              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
+            <Row id="kernel-hooks" label="Kernel’s hooks" desc={`Its entries in ${SETTINGS_FILE}, nothing else.`}>
+              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
               <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
             </Row>
           )}
-        <Row label="Settings file">
+        <Row id="settings-file" label="Settings file">
           <span className="set-actions">
             <span className="set-value">{SETTINGS_FILE}</span>
             {!workspaceRun && <Button disabled={!status} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy snippet'}</Button>}
@@ -91,8 +91,8 @@ export function Hooks({ s }: { s: AppSettings }) {
         </Section>
       )}
       {status && (
-        <Section title="Advanced" collapsible>
-          <Row label="Hook server port" desc="Moving it restarts the server and rewrites the hooks.">
+        <Section title="Advanced" collapsible holds={['hook-port']}>
+          <Row id="hook-port" label="Hook server port" desc="Moving it restarts the server and rewrites the hooks.">
             <span className="set-actions">
               <input className="set-token sys-port" aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
               <Button busy={busy === 'port'} busyLabel="Moving" disabled={!newPort || newPort === status.port || busy !== null} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>

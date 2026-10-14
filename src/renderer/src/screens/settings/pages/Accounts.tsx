@@ -18,7 +18,7 @@ import './accounts.css'
 
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
 const EXECUTABLES = [{ value: 'bundled', label: 'Bundled with Kernel' }, { value: 'system', label: 'System, from your PATH' }]
-const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your Lead chat is never held.'
+const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your chats with Kernel are never held.'
 
 /** Both providers use account id `cli` for their own login, so every state is keyed by provider and id. */
 const keyOf = (a: Pick<AccountProfile, 'provider' | 'id'>) => `${a.provider}:${a.id}`
@@ -129,7 +129,7 @@ export function Accounts({ s }: { s: AppSettings }) {
   const row = (a: AccountProfile, third: string | undefined) => {
     const k = keyOf(a)
     const view = accountRow(a, usage, now)
-    const { cells } = rowCells(a, usage, now)
+    const { cells } = rowCells(a, usage, now, third)
     const { blocked, at } = blockedUntil(a, usage, now)
     const out = !a.signedIn
     const key = a.auth === 'apiKey'
@@ -145,7 +145,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       if (view.sub && a.plan) details.push({ k: 'Sign-in', v: view.sub })
       if (five?.reset) details.push({ k: '5-hour', v: `Resets ${five.reset}` })
       if (week?.reset) details.push({ k: 'Weekly', v: `Resets ${week.reset}` })
-      if (model && third) details.push({ k: third, v: `Its own weekly limit${model.reset ? `, resets ${model.reset}` : ''}` })
+      if (model && !model.absent && third) details.push({ k: third, v: `Its own weekly limit${model.reset ? `, resets ${model.reset}` : ''}` })
       if (view.asOf) details.push({ k: 'Usage', v: view.asOf })
       if (a.signedIn && !a.keychainWait && (!!needs(a) || !!signInAll.of(a.provider, a.id).run)) {
         details.push({
@@ -206,7 +206,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       {holds.map((h) => (
         <div key={h.provider} className="ac-hold" role="status">
           <span><b>{NAME[h.provider]} is on hold.</b> Every subscription is at a limit{h.until ? ` until ${h.until}` : ''}.</span>
-          {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
+          {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyPattern="wave-back" busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
         </div>
       ))}
       {PROVIDERS.map((p) => {
@@ -237,16 +237,17 @@ export function Accounts({ s }: { s: AppSettings }) {
         )
       })}
       <Section title="Limits">
-        <Row label="Switch accounts at a limit" desc="Move agents to the subscription with the most room.">
+        <Row id="switch-at-limit" label="Switch accounts at a limit" desc="Move agents to the subscription with the most room.">
           <Toggle label="Switch accounts at a limit" disabled={!canSwitch} checked={canSwitch && switching} onChange={(v) => void patchSettings({ accounts: { switchAtLimit: { claude: v, codex: v } } })} />
         </Row>
         <Row
+          id="pause-near-limit"
           label={<>Pause new work near a limit<button type="button" className="icon-btn ac-info" data-tip={PAUSE_HELP} aria-label="About pausing new work"><Icon name="info" size={14} /></button></>}
           desc="Hold new tasks so running ones can finish."
         >
           <Toggle label="Pause new work near a limit" checked={s.usage.pauseNearLimit} onChange={(v) => void patchSettings({ usage: { pauseNearLimit: v } })} />
         </Row>
-        <Row label="Weekly limit warning" desc="Notify me at 80% of a weekly limit.">
+        <Row id="weekly-limit-warning" label="Weekly limit warning" desc="Notify me at 80% of a weekly limit.">
           <Toggle label="Weekly limit warning" checked={s.usage.warnBeforeWeekly} onChange={(v) => void patchSettings({ usage: { warnBeforeWeekly: v } })} />
         </Row>
       </Section>
@@ -260,7 +261,7 @@ export function Accounts({ s }: { s: AppSettings }) {
         <ConfirmDialog
           title={`Remove ${removing.label}?`}
           body={`${removing.auth === 'apiKey' ? `Kernel deletes the saved key for ${removing.label}.` : `Kernel signs out of ${removing.label} and deletes its saved login.`}${removing.active ? ` Agents move to ${accounts.find((x) => x.provider === removing.provider && x.cli)?.label ?? `${NAME[removing.provider]}’s own login`}.` : ''} You can add it again later.`}
-          confirmLabel="Remove" danger busy={busy === `remove:${keyOf(removing)}`} busyLabel="Removing"
+          confirmLabel="Remove" danger busy={busy === `remove:${keyOf(removing)}`} busyPattern="scatter" busyLabel="Removing"
           onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
       )}
@@ -299,7 +300,7 @@ function CliRows({ provider, s, status, busy, act, setStatus }: {
             <span className="set-label">Kernel can't run {NAME[provider]}</span>
             <span className="set-desc">{status.error}</span>
           </div>
-          {exe !== 'bundled' && <Button busy={busy === `${provider}:bundled`} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
+          {exe !== 'bundled' && <Button busy={busy === `${provider}:bundled`} busyPattern="wave-back" busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
         </div>
       )}
       <Row label="Executable" labelId={`ac-exe-${provider}`} desc={<><span className="ac-mono">{version}</span>{exePath && <span className="ac-path">{tilde(exePath)}</span>}</>}>

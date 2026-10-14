@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { REVIEW_KINDS, type AgentDef, type AppSettings, type MergeMethod, type PrInstructions, type ReviewKind, type ReviewKindConfig } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { loadRoom, useStore } from '../../../store'
-import { Button, IconButton, Select, Toggle } from '../../../ui'
+import { Button, IconButton, SegmentedControl, Select, Toggle } from '../../../ui'
 import { modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
-import { isOverride, NoRoom, Row, RoomPage, Section, TagList, useRoomPage } from '../kit'
+import { isOverride, NoRoom, Row, RoomPage, roomValue, Section, TagList, useRoomPage, useSaveNote, SaveNote } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { INSTRUCTIONS, InstructionSheet } from './InstructionSheet'
 import { NO_REVIEW, patchAlwaysReview, patchReview } from './reviewSettings'
@@ -59,15 +59,16 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const pool = agents.filter((a) => !a.lead && !a.retired && !a.builtIn)
   const reviewer = pool.find((a) => a.reviewer)
   const models = [...claude, ...codex]
-  const save = (kind: ReviewKind, own: { [K in keyof ReviewKindConfig]?: ReviewKindConfig[K] | null }) => void patchReview(roomId, { kinds: { [kind]: own } })
+  const save = (kind: ReviewKind, own: { [K in keyof ReviewKindConfig]?: ReviewKindConfig[K] | null }) => void shared.track(patchReview(roomId, { kinds: { [kind]: own } }))
   // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
   const saveOptional = (lines: string[]) => patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
   const rounds = [...new Set([...ROUNDS, review.rounds])].sort((a, b) => a - b)
   const method = rs?.pr?.mergeMethod
+  const shared = useSaveNote()
   const sheet = INSTRUCTIONS.find((i) => i.key === editing)
   return (
-    <RoomPage room={room} rs={rs} shared title="Pull requests">
-      <Section title="Reviews" scope="repo">
+    <RoomPage room={room} rs={rs} shared title="Pull requests" note={<SaveNote state={shared.state} shared />}>
+      <Section title="Reviews">
         {REVIEW_KINDS.map(({ id, label }) => {
           const c = review.kinds[id]
           const runBy = c.agent ?? (id === 'code' ? reviewer?.id : undefined) ?? KERNEL
@@ -83,7 +84,7 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
           ]
           const by = id === 'code' && reviewer ? ` Run by ${reviewer.name}.` : ''
           return (
-            <Row key={id} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`${DESC[id]}${by}`}
+            <Row key={id} id={`review-${id}`} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`${DESC[id]}${by}`}
               full={details === id && (
                 <div className="rv-line">
                   <span className="rv-line-label" aria-hidden="true">Runs on</span>
@@ -101,21 +102,20 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
         })}
       </Section>
       <Section title="Rules">
-        <Row label="Stop after" desc="Then the pull request comes to you.">
-          <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void patchReview(roomId, { rounds: Number(v) })} options={rounds.map((n) => ({ value: String(n), label: `${n} ${n === 1 ? 'round' : 'rounds'}` }))} />
+        <Row id="stop-after" label="Stop after" desc="Then the pull request comes to you.">
+          <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void shared.track(patchReview(roomId, { rounds: Number(v) }))} options={rounds.map((n) => ({ value: String(n), label: `${n} ${n === 1 ? 'round' : 'rounds'}` }))} />
         </Row>
-        <Row label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(roomId, paths)} />} />
-        <Row label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." onReset={isOverride(rs, 'pr.optionalChecks') ? () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }) : undefined} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
-        <Row label="Merge method" onReset={method ? () => void patchRoomSettings(roomId, { pr: { mergeMethod: null } }) : undefined}>
-          <Select label="Merge method" align="right" value={method ?? USE_DEFAULT} onChange={(v) => void patchRoomSettings(roomId, { pr: { mergeMethod: v ? (v as MergeMethod) : null } })}
-            options={[{ value: USE_DEFAULT, label: `Default (${METHOD[s.pr.mergeMethod]})` }, ...(Object.keys(METHOD) as MergeMethod[]).map((m) => ({ value: m, label: METHOD[m] }))]} />
+        <Row id="always-review" shared label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(roomId, paths)} />} />
+        <Row id="optional-checks" label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." {...roomValue(rs, 'pr.optionalChecks', () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }))} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
+        <Row id="merge-method" label="Merge method" {...roomValue(rs, 'pr.mergeMethod', () => void patchRoomSettings(roomId, { pr: { mergeMethod: null } }), { to: { page: 'prs' }, label: 'Settings, Pull requests' })}>
+          <SegmentedControl label="Merge method" value={method ?? s.pr.mergeMethod} onChange={(v) => void patchRoomSettings(roomId, { pr: { mergeMethod: v as MergeMethod } })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
         </Row>
       </Section>
       <Section title="Instructions" scope="mac">
         {INSTRUCTIONS.map(({ key, label }) => {
           const custom = isOverride(rs, `pr.${key}`)
           return (
-            <Row key={key} label={label}>
+            <Row key={key} id={`instructions-${key.replace(/Instructions$/, '')}`} label={label}>
               {custom ? <span className="rm-custom">Custom for this room</span> : <span className="set-desc">App default</span>}
               <Button aria-label={`${custom ? 'Edit' : 'Customize'} the ${label} instructions`} onClick={() => setEditing(key)}>{custom ? 'Edit' : 'Customize'}</Button>
             </Row>

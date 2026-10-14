@@ -12,16 +12,17 @@ import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
-import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
+import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ModeMenu } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
+import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
-import { MODE_ICON, buttonName, modeAria, modePatch, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { MODE_ICON, buttonName, modeAria, cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
@@ -70,6 +71,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
+  const run = useRef<CycleRun | null>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const modeAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
@@ -79,9 +81,13 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const slash = slashAt(d.before, !d.first)
   const acKey = mention ? `@${mention.query}` : slash ? `/${slash.query}` : ''
   const acOpen = !!acKey && dismissed !== acKey && !blocked
-  const groups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
-  const slashRows = groups.flatMap((g) => g.rows)
-  const rows = mention ? files : slashRows
+  const slashGroups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
+  const slashRows = slashGroups.flatMap((g) => g.rows)
+  // Only the Lead's chat can @ a teammate (KERNEL-746): its message goes to the Lead, who acts for them.
+  const mentionAgents = useMemo(() => (agent?.lead && mention ? filterAgents(team, mention.query) : EMPTY_TEAM), [agent?.lead, team, mention?.query])
+  const mentionGroups = useMemo(() => mentionMenu(files, mentionAgents), [files, mentionAgents])
+  const mentionRows = mentionGroups.flatMap((g) => g.rows)
+  const rows = mention ? mentionRows : slashRows
   const roomId = ws?.roomId
 
   // The queue and what it waits for are also pushed as events; this reads what was queued before the screen opened.
@@ -120,7 +126,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
   const pickRow = (i: number, run: boolean) => {
-    if (mention) { const f = files[i]; if (f) d.insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
+    if (mention) { const r = mentionRows[i]; if (r) d.insert(mentionPart(r), mention.query.length + 1) }
     else if (slash) {
       const s = slashRows[i]
       if (!s) return
@@ -146,6 +152,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) } })
       }
       else await call('chats.send', { chatId: chat.id, parts })
+      noteSent(id, chat.model)
     }
     catch (e) {
       // Back into the chat it came from, ahead of anything typed there since.
@@ -155,7 +162,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
   }
 
-  const pickModel = (m: string, effort: Effort) => void configure({ model: m, effort })
+  noteOpened(chat.id, chat.model)
+  const pickModel = (m: string, effort: Effort) => {
+    const warn = warnsOnSwitch(!!chat.sessionId, lastRanOn(chat.id), m)
+    void configure({ model: m, effort }, warn ? () => actions.ui.toast(SWITCH_TOAST, SWITCH_TOAST_MS) : undefined)
+  }
   // KERNEL-406: the chat's provider, its models, and a new tab on the other provider for a chat that has started.
   const provider = chatProvider(chat)
   const grouped = useCodexInUse(provider)
@@ -170,12 +181,16 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }, [chat.id])
   const shown = shownMode(chat.plan, runMode, chat.mode ?? roomMode ?? appMode ?? 'default')
   /** Plan sets `plan` and leaves the chat's `mode`. Every other mode sets `mode` and leaves plan. Bypass permissions asks once first, and what it saves is this chat's mode. */
-  const setMode = (mode: ComposerMode) => {
+  const setMode = (mode: ComposerMode, patch: (m: ComposerMode) => ReturnType<typeof modePatch> | ReturnType<typeof cyclePatch> = modePatch) => {
     if (mode === shown.picked) return
-    if (mode === 'bypassPermissions' && !bypassConfirmed()) { setMenu(null); return actions.ui.openModal({ name: 'confirm', kind: 'bypass', chatId: chat.id }) }
-    void configure(modePatch(mode))
+    if (mode === 'bypassPermissions' && !bypassConfirmed()) { run.current = null; setMenu(null); return actions.ui.openModal({ name: 'confirm', kind: 'bypass', chatId: chat.id }) }
+    void configure(patch(mode))
   }
-  const cycleMode = () => setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)))
+  const pickMode = (mode: ComposerMode) => { run.current = null; setMode(mode) }
+  const cycleMode = () => {
+    const { before } = (run.current = cycleRun(run.current, chat.id, chat.mode))
+    setMode(nextMode(shown.picked, (m) => !offLine(m, provider, availability)), (m) => cyclePatch(before, m))
+  }
   const providerModels = useProviderModels(provider)
   const efforts = effortsOf(chat.model, providerModels)
   const newChatOn = (p: Provider, m: string, x: Effort) => void attempt('Could not open a tab', async () => {
@@ -200,11 +215,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
+    if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
+  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
     const id = chat.id
     void attempt('Could not edit the message', async () => {
@@ -269,14 +285,26 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         {banner}
         <div className="cmp-box">
           {acOpen && rows.length > 0 && (
-            <div role="listbox" aria-label={mention ? 'Files' : groups.map((g) => g.label).join(' and ')} className="cmp-ac">
+            <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
               {mention
-                ? <><p>Files</p>{files.map((f, i) => (
-                  <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                    <FileIcon path={f.path} /><span className="mono">{baseName(f.path)}</span><span className="sub ellipsis">{dirName(f.path)}</span>
-                  </button>
-                ))}</>
-                : groups.map((g) => (
+                ? mentionGroups.map((g) => (
+                  <Fragment key={g.label}>
+                    <p>{g.label}</p>
+                    {g.rows.map((r) => {
+                      const i = mentionRows.indexOf(r)
+                      return r.kind === 'agent' ? (
+                        <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <Icon name="user" size={14} /><span className="mono">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
+                        </button>
+                      ) : (
+                        <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{r.entry.reference ?? dirName(r.entry.path)}</span>
+                        </button>
+                      )
+                    })}
+                  </Fragment>
+                ))
+                : slashGroups.map((g) => (
                   <Fragment key={g.label}>
                     <p>{g.label}</p>
                     {g.rows.map((s) => {
@@ -291,7 +319,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 ))}
             </div>
           )}
-          {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
+          {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
             <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
           )}
           <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} data-blocked={blocked || undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
@@ -308,7 +336,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
                   <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
                 </Button>
-                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); setMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
+                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
               </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}

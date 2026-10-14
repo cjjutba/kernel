@@ -130,7 +130,7 @@ export function Permissions() {
               })}
             </div>
           ) : (
-            <div className="ob-list ob-modes" aria-busy="true"><div className="ob-check"><Spinner label="Checking" /><span className="muted">Checking</span></div></div>
+            <div className="ob-list ob-modes" aria-busy="true"><div className="ob-check"><Spinner label="Checking" pattern="arrow-down" /><span className="muted">Checking</span></div></div>
           )}
           <div className="ob-bar ob-modes-bar">
             <span role="status">{error ?? (avail ? foot : '')}</span>

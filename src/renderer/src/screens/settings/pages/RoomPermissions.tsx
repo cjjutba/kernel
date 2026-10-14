@@ -25,14 +25,14 @@ export function RoomPermissions({ roomId }: { roomId?: string }) {
   const modes = PERMISSION_MODES.map((mode) => ({ value: mode, label: MODE_INFO[mode].label, disabled: unavailable(mode, availability).dim && mode !== current }))
   return (
     <RoomPage room={room} rs={rs} title="Permissions">
-      <Section label="Mode" scope="mac">
-        <Row label="Mode" labelId="rp-mode" desc="Chats in this room start in this mode." onReset={current ? () => void pickMode(undefined, roomId) : undefined}>
-          <Select label="Mode" labelledBy="rp-mode" align="right" value={current ?? USE_DEFAULT} onChange={(v) => void pickMode(v ? (v as PermissionMode) : undefined, roomId)} options={[{ value: USE_DEFAULT, label: `Default (${appMode ? MODE_INFO[appMode].label : 'App mode'})` }, ...modes]} {...menu} />
+      <Section label="Mode">
+        <Row id="mode" label="Mode" labelId="rp-mode" desc="Chats in this room start in this mode." {...(current ? { changed: true, onReset: () => void pickMode(undefined, roomId) } : { inherited: { to: { page: 'permissions' as const }, label: 'Settings, Permissions' } })}>
+          <Select label="Mode" labelledBy="rp-mode" align="right" value={current ?? appMode ?? USE_DEFAULT} onChange={(v) => void pickMode(v as PermissionMode, roomId)} options={modes} {...menu} />
         </Row>
       </Section>
-      <Section title="Always allowed" scope="mac" footnote={<>Never allow and protected branches apply in every room, from <SettingsLink to={{ page: 'permissions' }}>Settings, Permissions</SettingsLink>.</>}>
-        <Row label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => save({ allow })} />} />
-        <Row label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => save({ allowTools })} />} />
+      <Section title="Always allowed" footnote={<>Never allow and protected branches apply in every room, from <SettingsLink to={{ page: 'permissions' }}>Settings, Permissions</SettingsLink>.</>}>
+        <Row id="commands" label="Commands" desc="Saved when you choose Always allow in this room." full={<TagList label="Commands always allowed" value={room.allow ?? []} addLabel="Add command" onChange={(allow) => save({ allow })} />} />
+        <Row id="tools" label="Tools" desc="MCP tools and web fetches, saved the same way." full={<TagList label="Tools always allowed" value={room.allowTools ?? []} addLabel="Add tool" onChange={(allowTools) => save({ allowTools })} />} />
       </Section>
     </RoomPage>
   )

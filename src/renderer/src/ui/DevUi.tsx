@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
+import { spinnerPatterns } from './dotPatterns'
 
 const kinds = Object.keys(bannerIcon) as BannerKind[]
 const bannerCopy: Record<BannerKind, string> = {
@@ -26,6 +27,18 @@ function Controls() {
           <Button variant="danger">Discard</Button><Button variant="merged" icon="pr">Merged</Button><Button disabled>Disabled</Button>
           <Button variant="primary" busy busyLabel="Archiving">Archive</Button>
           <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" /><IconButton icon="archive" label="Archive" busy busyLabel="Archiving" />
+        </div>
+      </Section>
+      <Section title="Busy buttons">
+        <div className="devui-row">
+          <Button variant="primary" busy busyLabel="Sending" busyPattern="arrow-right">Send</Button>
+          <Button busy busyLabel="Merging" busyPattern="ripple-in">Merge</Button>
+          <Button variant="primary" busy busyLabel="Approving" busyPattern="pulse">Approve</Button>
+          <Button variant="danger" busy busyLabel="Archiving" busyPattern="scatter">Archive</Button>
+          <Button busy busyLabel="Refreshing" busyPattern="rotate">Refresh</Button>
+          <Button busy busyLabel="Starting" busyPattern="snake">Run</Button>
+          <Button busy busyLabel="Restoring" busyPattern="wave-back">Restore</Button>
+          <Button busy busyLabel="Saving">Save</Button>
         </div>
       </Section>
       <Section title="Pills, tabs, segmented control, toggle, select">
@@ -65,6 +78,9 @@ function Display() {
       <Section title="Banners">
         <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
       </Section>
+      <Section title="Loader patterns">
+        <div className="devui-row">{spinnerPatterns.map((p) => <span key={p} className="row" style={{ gap: 6 }}><Spinner pattern={p} />{p}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
+      </Section>
       <Section title={`Icons (${iconNames().length})`}>
         <div className="devui-icons">{iconNames().map((n) => <span key={n} title={n}><Icon name={n} /></span>)}</div>
       </Section>
@@ -80,7 +96,7 @@ function Overlays() {
       <Section title="Menu with shortcuts and a submenu">
         <div className="devui-stage" style={{ minHeight: 190 }}>
           <Menu label="Workspace" initiallyOpen="open" onClose={noop} style={{ position: 'relative', width: 240 }} items={[
-            { id: 'new', label: 'New workspace', icon: 'compose', shortcut: '⇧⌘N' },
+            { id: 'new', label: 'New workspace', icon: 'pen', shortcut: '⇧⌘N' },
             { id: 'open', label: 'Open in', icon: 'ext', children: [{ id: 'term', label: 'Terminal', icon: 'term' }, { id: 'code', label: 'Editor', icon: 'code' }] },
             MENU_SEPARATOR,
             { id: 'arch', label: 'Archive', icon: 'trash', shortcut: '⌘⌫' },
@@ -94,7 +110,7 @@ function Overlays() {
           <Popover open onClose={noop} label="Branch" anchorRef={anchor}>Base branch <span className="mono">origin/main</span></Popover>
         </div>
       </Section>
-      <Section title="Toast, bottom right, 2.6s">
+      <Section title="Toast, bottom right, 5s">
         <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" action={{ label: 'Undo' }} /></div></div>
       </Section>
     </>

@@ -66,8 +66,8 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   return (
     <ConfirmDialog
       title={`Archive ${ws.name}?`} body={body} busy={busy === 'main'} disabled={busy !== null || (!git && !unread)}
-      confirmLabel={unpushed ? 'Push and archive' : 'Archive'} busyLabel={unpushed ? 'Pushing and archiving' : 'Archiving'}
-      extra={unpushed ? <Button variant="ghost" size="lg" className="wsc-anyway" busy={busy === 'anyway'} busyLabel="Archiving" disabled={busy !== null} onClick={() => void archive('anyway')}>Archive anyway</Button> : undefined}
+      confirmLabel={unpushed ? 'Push and archive' : 'Archive'} busyPattern="scatter" busyLabel={unpushed ? 'Pushing and archiving' : 'Archiving'}
+      extra={unpushed ? <Button variant="ghost" size="lg" className="wsc-anyway" busy={busy === 'anyway'} busyPattern="scatter" busyLabel="Archiving" disabled={busy !== null} onClick={() => void archive('anyway')}>Archive anyway</Button> : undefined}
       onConfirm={() => void archive('main')} onCancel={actions.ui.closeModal}
     >
       <div className="wsc-facts mono">

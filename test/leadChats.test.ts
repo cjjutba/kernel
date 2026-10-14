@@ -323,7 +323,7 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     // The hand-off read it to see who else is on it (KERNEL-479) and again for the brief, then each get_issue read it again.
     expect(asked).toEqual(['KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-99'])
     // Codex gets the same tools as dynamic tools. teammateWait.test.ts checks the `kernel` server Claude gets.
-    expect(k.tools.codexTools(work, agents.find((a) => a.id === 'kai'), k.store.chats(work.id)[0]).tools.map((t) => t.name)).toEqual(['wait_for_merge', 'get_issue', 'share_file'])
+    expect(k.tools.codexTools(work, agents.find((a) => a.id === 'kai'), k.store.chats(work.id)[0]).tools.map((t) => t.name)).toEqual(['wait_for_merge', 'ask_lead', 'propose_handoff', 'get_issue', 'share_file'])
   })
 })
 

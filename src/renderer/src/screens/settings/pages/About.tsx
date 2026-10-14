@@ -39,19 +39,19 @@ export function About() {
           <span className="sys-about-name">Kernel</span>
           <span className="sys-about-sub">Version <span className="mono">{info?.version ?? ''}</span>{sub && ` · ${sub}`}</span>
         </span>
-        <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => { setUpdate(u); actions.ui.toast(checkResult(u)) }).catch(fail('Could not check for updates')))}>Check for updates</Button>
+        <Button busy={busy === 'check'} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => { setUpdate(u); actions.ui.toast(checkResult(u)) }).catch(fail('Could not check for updates')))}>Check for updates</Button>
       </section>
       <Section label="Data and support">
-        <Row label="Data folder">
+        <Row id="data-folder" label="Data folder">
           <span className="set-actions">
             <span className="set-value selectable">{home(info?.dataDir ?? '')}</span>
             <Button busy={busy === 'reveal'} busyLabel="Opening" disabled={!info || busy !== null} onClick={() => info && void run('reveal', () => call('system.openInEditor', { path: info.dataDir }).then(() => undefined).catch(fail('Could not open the folder')))}>Reveal</Button>
           </span>
         </Row>
-        <Row label="Logs" desc="For a bug report.">
+        <Row id="logs" label="Logs" desc="For a bug report.">
           <Button busy={busy === 'logs'} busyLabel="Exporting" disabled={busy !== null} onClick={() => void run('logs', () => call('app.exportLogs', undefined).then((r) => actions.ui.toast({ title: 'Logs exported', sub: r.path })).catch(fail('Could not export logs')))}>Export logs</Button>
         </Row>
-        <Row label="Onboarding" desc="Walk through setup again."><Button onClick={() => go({ name: 'onboarding', step: 'welcome' })}>Show again</Button></Row>
+        <Row id="onboarding" label="Onboarding" desc="Walk through setup again."><Button onClick={() => go({ name: 'onboarding', step: 'welcome' })}>Show again</Button></Row>
       </Section>
     </Page>
   )

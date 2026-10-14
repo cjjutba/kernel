@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, PrBlocked, PrState, ReviewKind, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrBlocked, PrState, Provider, ReviewKind, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -8,6 +8,7 @@ import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
 import { blockedWhy, kindsText, reviewPhrase, reviewsText } from '@shared/merge'
+import { resetPhrase } from '@shared/usage'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, the Lead hands off and never hears back: nobody passes a
@@ -46,6 +47,8 @@ export interface LeadUpdateDeps {
   holdOf?: (chatId: string) => string | undefined
   /** Called after a delivered update, for the room log. */
   delivered?: (roomId: string, chat: Chat, update: TeamUpdate) => void
+  /** Called after a delivered update with each workspace's events as it told them, for what the Lead now owes (KERNEL-749). */
+  opened?: (chat: Chat, rows: { ws: Workspace; name: string; events: TeamEvent[] }[]) => void
   /** What Kernel knows about reviews of the workspace's PR. Unknown until reviews are linked (KERNEL-130). */
   reviewState?: (ws: Workspace) => ReviewState | undefined
   /** The team's reviewer, the first agent with a review role that isn't the Lead. */
@@ -97,6 +100,32 @@ export interface TeamEvent {
   blocked?: PrBlocked
   /** `pr.merged` by Kernel itself, and why auto-merge allowed it (KERNEL-556): `why` for the Lead, `card` for the card. */
   auto?: AutoMerged
+  /** `question`: what the teammate asked the Lead with ask_lead, and the answers it offered (KERNEL-747). */
+  question?: { text: string; options?: string[] }
+  /** `handoff.proposed`: the agent the teammate proposed for part of its work, by id and name, the task and why (KERNEL-747). */
+  proposal?: { agentId: string; agent: string; task: string; why: string }
+  /** `limit`: the usage limit that cut the turn off and what Kernel does about it. `limit.lifted`: the account it carries on on (KERNEL-777). */
+  limit?: LimitNews
+}
+
+/**
+ * A usage limit that cut a teammate off, as `Account.limitNews` reads it (KERNEL-777). `window` names it as the limit banner
+ * does ("5-hour limit"), `model` the model on a limit of that model alone, and `account` the account that ran out, or on
+ * `limit.lifted` the one the teammate runs on now. `resetsAt` is in seconds (KERNEL-50), the earliest across accounts when
+ * none has room. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
+ * carries the teammate on before the reset. `full`: no account has room, and one that is signed out or waits on a Keychain
+ * prompt counts as having none. `off`: the switch is off or was undone. `signIn`: the switch failed. `model`: the limit is on
+ * its model alone. `carried`: the `limit.lifted` that followed in the same update, by its account (`foldLimits`).
+ */
+export interface LimitNews {
+  provider: Provider
+  window?: string
+  model?: string
+  account?: string
+  resetsAt?: number
+  switching?: { to?: string }
+  stuck?: 'full' | 'off' | 'signIn' | 'model'
+  carried?: string
 }
 
 /** Why Kernel merged a PR by itself (`autoMergeWhy`, KERNEL-556). */
@@ -117,7 +146,7 @@ interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
  * What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). `toldBlocked` is
  * what the Lead last heard about GitHub's block on each ready PR, so an unblock after a restart still reaches it (KERNEL-401).
  */
-interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[]; toldBlocked?: [string, PrBlocked][] }
+interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[]; toldBlocked?: [string, PrBlocked][]; toldLimit?: string[] }
 const SAVED = 'leadUpdates'
 
 /** PR states GitHub reports. Moving into one of these from none or creating means the PR was just opened. */
@@ -155,8 +184,64 @@ const BLOCKER_MAX = 300
 /** What a teammate says it needs from the PR it waits for, kept this long (KERNEL-262). */
 const WHY_MAX = 300
 
+/** A question or a proposed hand-off is kept this long, and each of a question's options this long (KERNEL-747). */
+const ASK_MAX = 1500
+const OPTION_MAX = 200
+const OPTIONS_MAX = 6
+
+/** The card's words for a question or a proposed task, cut short so the row stays one or two lines. */
+const CARD_MAX = 140
+
 /** A crash event for a teammate Kernel's own quit or crash cut off, which carries on at the next launch (KERNEL-215). */
 const relaunched = (e: TeamEvent) => e.kind === 'crash' && !!e.resumed && (e.reason === QUIT_REASON || e.reason === CRASH_REASON)
+
+/** "its 5-hour limit", "its Opus limit", or "a usage limit" when Kernel can't name it (KERNEL-777). */
+const limitName = (l?: LimitNews) => (l?.window ? `its ${l.window}` : 'a usage limit')
+
+/**
+ * " until 6:20 PM", " until tomorrow at 4:00 AM", " until Friday at 9:00 AM": when the limit resets in the user's time zone,
+ * as the limit banner says it, or nothing when Kernel doesn't know. `resetsAt` is in seconds (KERNEL-50).
+ */
+const until = (l?: LimitNews) => (l?.resetsAt ? ` until ${resetPhrase(l.resetsAt, Date.now()).replace(/^at /, '')}` : '')
+
+/** A `limit` event as a sentence for the Lead: what ran out, then what Kernel does about it (KERNEL-777). */
+function limitSentence(l?: LimitNews): string {
+  const hit = `Hit ${limitName(l)}${l?.model && l.stuck === 'model' ? ` for ${l.model}` : ''}${l?.account ? ` on ${l.account}` : ''}.`
+  if (l?.carried !== undefined) return `${hit} ${l.carried && l.carried !== l.account ? `Kernel moved it to ${l.carried} and it carries on.` : 'It carries on now that the limit reset.'}`
+  if (l?.switching) return `${hit} Kernel is moving it to ${l.switching.to ?? 'another account'}, where it carries on.`
+  if (l?.stuck === 'full') return `${hit} Every account is at its limit, so it is paused${until(l)}.`
+  if (l?.stuck === 'signIn') return `${hit} Kernel couldn't move it to another account, so it is paused${until(l)}.`
+  return `${hit} It is paused${until(l)}.`
+}
+
+/**
+ * The To do line for a teammate a limit stopped with nothing to carry it on before the reset (KERNEL-777). Kernel carries it
+ * on by itself then, and a message the Lead sent waits in its chat, so the Lead never sends it again.
+ */
+function pausedTodo(name: string, l?: LimitNews): string {
+  const when = until(l)
+  const why = l?.stuck === 'full' ? ' because every account is at its limit'
+    : l?.stuck === 'model' ? ` because ${l.model ?? 'its model'} is at its limit${l.account ? ` on ${l.account}` : ''}`
+    : ` by ${limitName(l)}${l?.account ? ` on ${l.account}` : ''}`
+  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without room, so the user may free one.
+  const signIn = l?.stuck === 'full' || l?.stuck === 'signIn' ? ` If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves ${name} there.` : ''
+  return `${name} is paused${when}${why}.${signIn} Kernel carries ${name} on by itself ${when ? 'then' : 'once the limit resets'}, and any message you sent waits in its chat, so don't send it again.`
+}
+
+/** The To do line once a teammate the Lead heard was paused carries on (KERNEL-777). */
+const liftedTodo = (name: string, account?: string) => `${name} is working again${account ? ` on ${account}` : ''}. If you told the user it was paused, correct that in one line.`
+
+/**
+ * A limit and the carry-on that followed it in one update read as one event, the limit, with `carried` naming the account
+ * the teammate carries on on (KERNEL-777). The pair wakes the Lead only to correct a pause it heard about before.
+ */
+export function foldLimits(events: TeamEvent[]): TeamEvent[] {
+  const limit = events.find((e) => e.kind === 'limit')
+  const lifted = events.find((e) => e.kind === 'limit.lifted')
+  if (!limit || !lifted || lifted.n < limit.n) return events
+  const { switching: _s, stuck: _t, ...was } = limit.limit ?? { provider: lifted.limit?.provider ?? 'claude' }
+  return events.filter((e) => e !== lifted).map((e) => (e === limit ? { ...e, limit: { ...was, carried: lifted.limit?.account ?? '' } } : e))
+}
 
 /** How the Lead's text names each kind of shared file. */
 const KIND_LABEL: Record<SharedKind, string> = { html: 'HTML', image: 'image', pdf: 'PDF', markdown: 'Markdown' }
@@ -195,10 +280,23 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
     case 'wait.rebase_missing': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged and Kernel asked ${name} to rebase onto ${e.wait?.onto ?? 'it'}, but the turn ended with ${name}'s branch still missing it.`
+    case 'question': {
+      const q = e.question
+      if (!q) return `Asked you a question. ${name} ended the turn and waits for your answer.`
+      const options = q.options?.length ? `\n  Options: ${q.options.map((o) => `"${o}"`).join(', ')}.` : ''
+      return `Asked you: "${q.text}"${options}\n  ${name} ended the turn and waits for your answer.`
+    }
+    case 'handoff.proposed': {
+      const p = e.proposal
+      if (!p) return 'Proposed handing part of the work to another teammate.'
+      return `Proposed handing a task to ${p.agent} (${p.agentId}): "${p.task}". Why: ${p.why} ${name} carries on with the rest.`
+    }
     case 'shared': {
       const f = e.shared
       return f ? `Shared "${f.title}" v${f.version} (${KIND_LABEL[f.kind]}, ${f.source}, id ${f.sharedId}). The user can open it from this update.` : 'Shared a file.'
     }
+    case 'limit': return limitSentence(e.limit)
+    case 'limit.lifted': return `Working again${e.limit?.account ? ` on ${e.limit.account}` : ''}.`
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review.'
@@ -241,6 +339,16 @@ function cardText(e: TeamEvent, held = false): string {
     case 'wait.broken': return `${upper(e.wait?.label ?? 'the PR it waited for')} ${e.wait?.gone ?? 'closed'} without merging`
     case 'wait.rebase_missing': return `Didn't rebase onto ${e.wait?.label ?? 'the PR it waited for'}`
     case 'shared': return e.shared ? `Shared "${e.shared.title}"` : 'Shared a file'
+    case 'question': return e.question ? `Asks: ${capText(e.question.text, CARD_MAX)}` : 'Asked a question'
+    case 'handoff.proposed': return e.proposal ? `Proposes ${e.proposal.agent} for: ${capText(e.proposal.task, CARD_MAX)}` : 'Proposed a hand-off'
+    case 'limit': {
+      const l = e.limit
+      const hit = `Hit ${limitName(l)}`
+      if (l?.carried !== undefined) return l.carried && l.carried !== l.account ? `${hit}, now on ${l.carried}` : `${hit}, working again`
+      if (l?.switching) return `${hit}, moving to ${l.switching.to ?? 'another account'}`
+      return `Paused by ${limitName(l)}${until(l)}`
+    }
+    case 'limit.lifted': return `Working again${e.limit?.account ? ` on ${e.limit.account}` : ''}`
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review'
@@ -270,6 +378,8 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   const block = last((e) => e.kind === 'pr.blocked' || e.kind === 'pr.unblocked')
   const shares = new Map<string, TeamEvent>()
   for (const e of sorted) if (e.kind === 'shared' && e.shared) shares.set(e.shared.sharedId, e)
+  const limit = last((e) => e.kind === 'limit')
+  const lifted = last((e) => e.kind === 'limit.lifted')
   // Once per PR: after Continue moved the workspace on, its new PR's opening is news too.
   const seen = new Set<string>()
   return sorted.filter((e) => {
@@ -280,6 +390,9 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     if (e.kind === 'review') return reviews.get(e.review?.lens ?? 'code') === e
     if (e.kind.startsWith('wait.')) return e === wait
     if (e.kind === 'shared') return !!e.shared && shares.get(e.shared.sharedId) === e
+    // The last limit, and a carry-on only after it: one from before a new limit is over (KERNEL-777).
+    if (e.kind === 'limit') return e === limit
+    if (e.kind === 'limit.lifted') return e === lifted && (!limit || e.n > limit.n)
     // GitHub's block on a ready PR: the last word only, and only while the PR still reads that way (KERNEL-401).
     if (e.kind === 'pr.blocked' || e.kind === 'pr.unblocked') {
       if (e !== block) return false
@@ -431,6 +544,8 @@ export class LeadUpdates {
   private toldReady = new Map<string, string>()
   /** GitHub's block on each ready PR as the Lead last heard it, until it hears the block lifted or the PR leaves ready and checks (KERNEL-401). */
   private toldBlocked = new Map<string, PrBlocked>()
+  /** Teammate workspaces whose limit woke the Lead with the paused line, until it hears they carry on (KERNEL-777). */
+  private toldLimit = new Set<string>()
   /**
    * Lead chats the user stopped. Stop means stop: their updates wait for the chat's next turn that ends normally,
    * usually the user's next message, instead of starting a Kernel turn right after the Stop (KERNEL-122).
@@ -498,22 +613,23 @@ export class LeadUpdates {
       }
       for (const id of saved.stopped ?? []) { const chat = this.d.store.chat(id); if (chat && !chat.closed) this.stopped.add(id) }
       for (const [id, blocked] of saved.toldBlocked ?? []) if (this.d.store.workspace(id)) this.toldBlocked.set(id, blocked)
+      for (const id of saved.toldLimit ?? []) if (this.d.store.workspace(id)) this.toldLimit.add(id)
     } catch (e) {
       this.warn('could not read the saved updates, so they were dropped', e)
-      this.pending.clear(); this.ready.clear(); this.stopped.clear(); this.toldBlocked.clear()
+      this.pending.clear(); this.ready.clear(); this.stopped.clear(); this.toldBlocked.clear(); this.toldLimit.clear()
     }
     this.save()
   }
 
   private save() {
-    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped], ...(this.toldBlocked.size ? { toldBlocked: [...this.toldBlocked] } : {}) })
+    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped], ...(this.toldBlocked.size ? { toldBlocked: [...this.toldBlocked] } : {}), ...(this.toldLimit.size ? { toldLimit: [...this.toldLimit] } : {}) })
   }
 
   /**
    * A turn ended. A teammate's finished turn is news for the Lead; the end of the Lead's own turn is a chance to deliver,
    * unless the user stopped it.
    */
-  turnDone(ws: Workspace, chat: Chat, t: TurnDone) {
+  turnDone(ws: Workspace, chat: Chat, t: TurnDone, limit?: LimitNews) {
     if (t.lead || this.d.isLead(ws)) {
       if (t.interrupted) { this.stopped.add(chat.id); this.save(); return }
       if (this.stopped.delete(chat.id)) this.save()
@@ -523,7 +639,11 @@ export class LeadUpdates {
     this.waitTurns.delete(ws.id)
     // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130).
     const verdictTurn = this.submitted.delete(chat.id) || this.submitted.delete(ws.id)
-    if (t.interrupted || t.queued || verdictTurn) return
+    if (t.interrupted || verdictTurn) return
+    // A limit cut the turn off, and its reply is the limit's text. What Kernel does about it is the news (KERNEL-777). Messages
+    // that wait in the chat wait for its carry-on.
+    if (t.limit) { this.add(ws, { kind: 'limit', by: t.by, ...(limit ? { limit } : {}) }); return }
+    if (t.queued) return
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
@@ -594,6 +714,26 @@ export class LeadUpdates {
     this.add(ws, { kind: 'shared', shared: { sharedId: file.id, version: version.n, title: file.title, kind: file.kind, source: file.source } })
   }
 
+  /**
+   * A teammate asked the Lead with ask_lead (KERNEL-747). It ends its turn right after, so the question waits for that turn
+   * to end, the way a wait it set does, and both wake the Lead once, together.
+   */
+  asked(ws: Workspace, text: string, options?: string[]) {
+    if (this.d.isLead(ws)) return
+    this.waitTurns.add(ws.id)
+    const kept = options?.map((o) => capText(o.trim(), OPTION_MAX)).filter(Boolean).slice(0, OPTIONS_MAX)
+    this.add(ws, { kind: 'question', question: { text: capText(text.trim(), ASK_MAX), ...(kept?.length ? { options: kept } : {}) } })
+  }
+
+  /**
+   * A teammate proposed handing part of its work to another agent with propose_handoff (KERNEL-747). The teammate carries on,
+   * so it doesn't wait for the turn: the Lead can take it to the user while the work goes on. Kernel never creates the workspace.
+   */
+  proposed(ws: Workspace, p: { agentId: string; agent: string; task: string; why: string }) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, { kind: 'handoff.proposed', proposal: { ...p, task: capText(p.task.trim(), ASK_MAX), why: capText(p.why.trim(), ASK_MAX) } })
+  }
+
   /** A reviewer's submit_review from the chat `chatId` (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
   reviewed(reviewer: Workspace, of: Workspace, v: ReviewVerdict, chatId?: string) {
     if (this.d.isLead(reviewer)) return
@@ -616,6 +756,36 @@ export class LeadUpdates {
     this.waitTurns.delete(ws.id)
     const said = firstLine(reason, 120).replace(/[.!?]+$/, '')
     this.add(ws, { kind: 'crash', ...(said ? { reason: said } : {}), ...(o.resumed ? { resumed: true } : {}) })
+  }
+
+  /**
+   * A teammate a usage limit cut off carries on, on `account`: another account Kernel moved its provider to, or the same one
+   * after the reset (KERNEL-777). It wakes the Lead only to correct a pause the Lead heard about.
+   */
+  limitLifted(ws: Workspace, limit: Pick<LimitNews, 'provider' | 'account'>) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, { kind: 'limit.lifted', limit: { provider: limit.provider, ...(limit.account ? { account: limit.account } : {}) } })
+  }
+
+  /**
+   * Kernel's move of `provider` off a limit waits: no account has room, or the one that does needs a sign-in or Keychain
+   * access, or the switch failed (KERNEL-777). Limits held back while it moved now wake the Lead with the paused line.
+   */
+  limitStuck(provider: Provider, o: { stuck: 'full' | 'signIn'; resetsAt?: number }) {
+    for (const [key, p] of this.pending) {
+      let changed = false
+      p.events = p.events.map((e) => {
+        if (e.kind !== 'limit' || e.limit?.provider !== provider || !e.limit.switching) return e
+        // A teammate that already carried on has nothing to wait for.
+        if (p.events.some((x) => x.kind === 'limit.lifted' && x.workspaceId === e.workspaceId && x.n > e.n)) return e
+        changed = true
+        const { switching: _, ...was } = e.limit
+        return { ...e, limit: { ...was, stuck: o.stuck, ...(o.resetsAt ? { resetsAt: o.resetsAt } : {}) } }
+      })
+      if (!changed) continue
+      this.save()
+      this.arm(key, p.roomId)
+    }
   }
 
   private onPr(workspaceId: string, state: PrState) {
@@ -810,7 +980,15 @@ export class LeadUpdates {
           changed.any = true
         }
       }
+      // What the Lead now knows of each teammate a limit stopped: paused, or carrying on again (KERNEL-777).
+      message.told.forEach((t, i) => {
+        for (const e of t.events) {
+          if (e.kind === 'limit.lifted' || (e.kind === 'limit' && e.limit?.carried !== undefined)) { if (this.toldLimit.delete(t.ws.id)) changed.any = true }
+          else if (e.kind === 'limit' && message.update.rows[i]?.events.some((x) => x.kind === 'limit' && x.actionable)) { this.toldLimit.add(t.ws.id); changed.any = true }
+        }
+      })
       this.d.delivered?.(roomId, g.chat, message.update)
+      this.d.opened?.(g.chat, message.told)
     }
   }
 
@@ -820,7 +998,7 @@ export class LeadUpdates {
    * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
    * whether any of it needs the Lead now.
    */
-  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent> } | undefined {
+  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[] } | undefined {
     const blocks: Block[] = []
     // Events the message carries, or that have nothing left to say. The rest wait for the next update (KERNEL-637).
     const sent = new Set<TeamEvent>()
@@ -833,7 +1011,7 @@ export class LeadUpdates {
         // A verdict is current while the reviewed PR's head is the commit it reviewed, as of now, not as of the verdict.
         // A wait that broke and came back, as when its PR reopened, says nothing (KERNEL-259).
         // Blockers on the head after the last review round Kernel runs say so (KERNEL-552).
-        const kept = collapse(events, ws).filter((e) => e.kind !== 'wait.broken' || stillBroken(ws, e, (id) => this.d.store.workspace(id))).map((e) => {
+        const kept = foldLimits(collapse(events, ws)).filter((e) => e.kind !== 'wait.broken' || stillBroken(ws, e, (id) => this.d.store.workspace(id))).map((e) => {
           if (!e.review) return e
           const of = this.d.store.workspace(e.review.of)
           const current = e.review.sha ? !of?.prHead || of.prHead === e.review.sha : e.review.current
@@ -855,7 +1033,7 @@ export class LeadUpdates {
           const decided = decide({ ws, name, events: block.events, fromChat: source.from?.tab ? undefined : source.from?.title }, {
             review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id),
             stateOf: (id) => { const of = this.d.store.workspace(id); return of && this.d.reviewState?.(of) },
-            refused: (id) => this.refused.get(id)
+            refused: (id) => this.refused.get(id), toldLimit: this.toldLimit.has(ws.id)
           })
           block.wake = decided.wake
           block.todo = decided.todo
@@ -906,7 +1084,7 @@ export class LeadUpdates {
       }
     })
     const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
-    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent }
+    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent, told: order.map((b) => ({ ws: b.ws, name: b.name, events: b.events })) }
   }
 
   /**
@@ -930,9 +1108,9 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
  * What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer (for usage data), whether Kernel
  * starts reviews of a PR that passed checks by itself (on when unset), whether this merge was the last, and the reviews of
  * another workspace's PR by its id, for a verdict about it (KERNEL-549), and why Kernel didn't merge a workspace's ready PR by
- * itself with auto-merge on (KERNEL-556).
+ * itself with auto-merge on (KERNEL-556). `toldLimit`: the Lead last heard this workspace's teammate was paused by a limit (KERNEL-777).
  */
-export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined; refused?: (id: string) => string | undefined }
+export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined; stateOf?: (id: string) => ReviewState | undefined; refused?: (id: string) => string | undefined; toldLimit?: boolean }
 
 /**
  * The To do line for a PR that passed checks and every review approved. The review's own line says the same, so it shows once.
@@ -1089,6 +1267,20 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
       case 'wait.released': break
+      // A limit wakes the Lead only when nothing carries the teammate on before the reset. A carry-on, or a limit and its carry-on
+      // in one update, wakes it only to correct a pause it heard about (KERNEL-777).
+      case 'limit':
+        if (e.limit?.carried !== undefined) { if (c.toldLimit) wake(liftedTodo(name, e.limit.carried || undefined)); break }
+        if (e.by !== 'user' && !e.limit?.switching) wake(pausedTodo(name, e.limit))
+        break
+      case 'limit.lifted': if (c.toldLimit) wake(liftedTodo(name, e.limit?.account)); break
+      case 'question':
+        wake(`Answer ${name}'s question with message_agent ${at}: from the approved plan if it covers it, otherwise ask the user with ask_user first. ${name} waits until you do.`)
+        break
+      // Only the user can approve new work, so the Lead proposes it as it would its own hand-off (KERNEL-747).
+      case 'handoff.proposed':
+        wake(`${name} proposes handing "${e.proposal?.task ?? 'a task'}" to ${e.proposal?.agent ?? 'another teammate'}. Propose it to the user and ask for a go-ahead. Call create_workspace for it only on a go-ahead that approves it.`)
+        break
       case 'pr.merged':
         // Kernel merged it by itself, so the user hears it from the Lead, even once the work is archived (KERNEL-556).
         if (e.auto) wake(autoMergedTodo(pr, ws.prUrl), true)
@@ -1132,8 +1324,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
         // An unblock that rides along says nothing for the turn, so it doesn't count (KERNEL-401).
         if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && ((x.kind.startsWith('pr.') && x.kind !== 'pr.unblocked') || x.kind === 'review'))) break
-        // The turn ended by waiting for another PR. Its wait line already wakes the Lead, once (KERNEL-262).
-        if (b.events.some((x) => x.kind === 'wait.started' && !x.wait?.told)) break
+        // The turn ended by waiting for another PR, or by asking the Lead. That line already wakes the Lead, once (KERNEL-262, KERNEL-747).
+        if (b.events.some((x) => (x.kind === 'wait.started' && !x.wait?.told) || x.kind === 'question')) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
         break
       default: break

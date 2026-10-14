@@ -9,8 +9,8 @@ import { REVIEW_KINDS, type AppSettings, type AutoMerge, type PrBlocked, type Pr
 export const mergeableState = (state: PrState): state is 'ready' | 'open' => state === 'ready' || state === 'open'
 
 /**
- * Why a PR in this state can't merge, in a few lowercase words for a sentence: the Lead's merge_workspace and Merge all
- * (KERNEL-411) both say it. Nothing for the states a merge can start from, which `mergeBlock` checks.
+ * Why a PR in this state can't merge, in a few lowercase words for a sentence: the Lead's merge_workspace
+ * says it (KERNEL-411). Nothing for the states a merge can start from, which `mergeBlock` checks.
  */
 export const notMergeable: Partial<Record<PrState, string>> = {
   none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',
@@ -130,6 +130,19 @@ export function headBlockers(ws: ReviewFacts): { agentId: string; count: number;
 }
 
 /**
+ * What Kernel's automatic review plans for the PR's `head` (KERNEL-717): `pending` while it works out the reviews, from the
+ * ready event until the round is saved, else the required kinds of the PR's round on that head, the ones it skipped near the
+ * usage limit and the optional ones left out. Nothing when no round of this PR is on the head, as when automatic review is off
+ * or the plan came back empty.
+ */
+export function plannedReviews(ws: Pick<Workspace, 'reviewRound' | 'reviewPending' | 'prNumber'>, head: string | undefined): 'pending' | ReviewKind[] {
+  if (ws.reviewPending !== undefined && ws.reviewPending === (head ?? '')) return 'pending'
+  const r = ws.reviewRound
+  if (!r || r.prNumber !== ws.prNumber || r.head !== (head ?? '')) return []
+  return r.kinds.filter((k) => !r.skipped?.includes(k) && !r.optional?.includes(k))
+}
+
+/**
  * Whether the merge can't go ahead without reading the PR from GitHub: for its checks, or for its head commit when a
  * reviewer looked at it, since blockers on the head commit hold the merge whatever the reviewer rule says (KERNEL-497). A
  * merge always reads GitHub first (KERNEL-376); when that read fails and nothing needs it, the merge goes ahead on what
@@ -146,7 +159,9 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
  * running holds it, required or not, and says its name (KERNEL-703). Its head commit wins
  * over the one the last poll saw. Blockers on the head commit, from any kind of review, hold the merge whatever the settings
  * say (KERNEL-497, KERNEL-549). With "require Reviewer approval" on, every required kind of review that looked at the PR
- * needs to have approved its head commit; a PR nobody reviewed merges as before. `override` is a person's Merge anyway: it
+ * needs to have approved its head commit, and so does every required kind Kernel's automatic review plans for that commit,
+ * from the ready event on, before any of them reports (KERNEL-717). A planned kind overruled on that head waits for nothing (KERNEL-732). A PR no review looked at or is planned for merges as
+ * before. `override` is a person's Merge anyway: it
  * skips the review and optional checks still running, and nothing else. `name` is no longer read: the reasons name the kinds of review since KERNEL-549.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, _name: (agentId: string) => string = (id) => id, o: { override?: boolean } = {}): string | undefined {
@@ -163,10 +178,15 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
   if (pr && (pr.conflictsUnknown || !may(pr.state))) return 'This pull request is not ready to merge.'
   if (o.override) return undefined
-  const s = kindStates({ ...ws, prHead: pr?.head ?? ws.prHead })
+  const head = pr?.head ?? ws.prHead
+  const s = kindStates({ ...ws, prHead: head })
   if (s.blocking.length) return `${reviewsText(s.blocking)} found ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} on the latest commit. Merge anyway to go ahead.`
-  if (!rules.requireReviewer || !s.waiting.length) return undefined
-  return `${reviewsText(s.waiting)} ${s.waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
+  if (!rules.requireReviewer) return undefined
+  const planned = plannedReviews(ws, head)
+  if (planned === 'pending') return 'The review of the latest commit is starting. Merging waits for every required review (Settings, Pull requests).'
+  const waiting = REVIEW_KINDS.map((k) => k.id).filter((k) => s.waiting.includes(k) || (planned.includes(k) && !s.approved.includes(k) && !s.overruled.includes(k)))
+  if (!waiting.length) return undefined
+  return `${reviewsText(waiting)} ${waiting.length === 1 ? "hasn't" : "haven't"} approved the latest commit. Merging waits for every required review (Settings, Pull requests).`
 }
 
 /** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
@@ -263,6 +283,34 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
   return rest.length
     ? `It changes ${first} and ${rest.length} other ${rest.length === 1 ? 'file' : 'files'} that always need a person's review.`
     : `It changes ${first}, which always needs a person's review.`
+}
+
+/**
+ * Whether Kernel weighs the PR again soon after `autoMergeBlock` refused it, or merged nothing (KERNEL-768). True when the
+ * refusal is GitHub or Kernel not having settled yet: no read of the PR or its head, GitHub still working out whether it
+ * merges, a check or a review still running, its reviews or changes unread. A refusal from the user's own rules is false:
+ * auto-merge off, a local room, green checks off, a failed or missing check, GitHub's block, missing approvals, blockers,
+ * overrules, the line limit and the always-review paths. Their facts change the PR, which weighs it again anyway.
+ */
+export function autoMergeRetry(f: AutoMergeFacts): boolean {
+  if (!f.rules.on || f.local) return false
+  const pr = f.pr
+  if (!pr?.head) return true
+  if (!f.requireGreen) return false
+  const checks = gatingChecks(pr.checks)
+  if (!checks.length) return false
+  const running = runningChecks(pr.checks).length > 0
+  // A required check that failed is final. One still running isn't.
+  if (!allGreen(checks)) return checks.every((c) => allGreen([c]) || runningChecks([c]).length > 0)
+  if (running) return true
+  if (pr.blocked) return false
+  if (pr.state !== 'ready' || pr.conflictsUnknown) return true
+  const r = f.reviews
+  if (!r) return true
+  if (r.blocking.length || r.overruled?.length || !r.required.length) return false
+  if (r.required.some((k) => !r.approved.includes(k))) return false
+  if (r.running) return true
+  return !f.diff
 }
 
 /**

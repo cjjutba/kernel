@@ -75,25 +75,35 @@ describe('two rooms keep their own scripts', () => {
 })
 
 describe('a personal override in a room', () => {
-  it('is labelled "Overriding settings.toml" while it differs, and Reset brings back "From settings.toml"', async () => {
-    const { sourceLine } = await import('../src/renderer/src/screens/settings/kit')
+  it('is Changed for this room while it differs, and Reset brings back the shared value', async () => {
+    const { isOverride } = await import('../src/renderer/src/screens/settings/kit')
     const { h, rooms: [room] } = await kernelWith('[scripts]\nsetup = "pnpm install"\n')
     const path = 'scripts.setup'
-    expect(sourceLine(await h['settings.room']({ roomId: room.id }), path)).toBe('From settings.toml')
+    expect(isOverride(await h['settings.room']({ roomId: room.id }), path)).toBe(false)
 
     const overridden = await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { setup: 'npm ci' } } })
     expect(overridden.scripts.setup).toBe('npm ci')
-    expect(sourceLine(overridden, path)).toBe('Overriding settings.toml')
+    expect(isOverride(overridden, path)).toBe(true)
 
     // Reset is a null on the personal file.
     const reset = await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { setup: null } } })
     expect(reset.scripts.setup).toBe('pnpm install')
-    expect(sourceLine(reset, path)).toBe('From settings.toml')
+    expect(isOverride(reset, path)).toBe(false)
   })
 
-  it('says nothing for a value that only the personal file sets, or for no room', async () => {
-    const { sourceLine } = await import('../src/renderer/src/screens/settings/kit')
-    expect(sourceLine(null, 'scripts.setup')).toBeUndefined()
-    expect(sourceLine({ sources: { 'scripts.setup': 'local' } } as never, 'scripts.setup')).toBeUndefined()
+  it('shows the app value and where it is set for a room that sets nothing, and no row state without a room', async () => {
+    const { roomValue } = await import('../src/renderer/src/screens/settings/kit')
+    const from = { to: { page: 'git' as const }, label: 'Settings, Git' }
+    expect(roomValue(null, 'workspace.mode', () => undefined, from)).toEqual({ inherited: from })
+    expect(roomValue(null, 'scripts.setup', () => undefined)).toEqual({})
+    const reset = () => undefined
+    expect(roomValue({ sources: { 'workspace.mode': 'local' } } as never, 'workspace.mode', reset, from)).toEqual({ changed: true, onReset: reset })
+    expect(roomValue({ sources: { 'workspace.mode': 'override' } } as never, 'workspace.mode', reset, from)).toEqual({ changed: true, onReset: reset })
+  })
+
+  it('reads a value from settings.toml as changed for the room, never as the app default, and offers no Reset for it', async () => {
+    const { roomValue } = await import('../src/renderer/src/screens/settings/kit')
+    const from = { to: { page: 'prs' as const }, label: 'Settings, Pull requests' }
+    expect(roomValue({ sources: { 'pr.mergeMethod': 'shared' } } as never, 'pr.mergeMethod', () => undefined, from)).toEqual({ changed: true })
   })
 })

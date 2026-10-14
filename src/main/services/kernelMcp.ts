@@ -105,6 +105,14 @@ export interface KernelToolDeps {
    */
   planApproved?: () => string | void | Promise<string | void>
   handedOff?: () => void
+  /**
+   * The Lead acted on what the chat owes (KERNEL-745, KERNEL-749): message_agent reached `messaged`, create_workspace handed
+   * work to the agent `created`, or ask_user asked the user about the workspace or agent ids in `asked`, none for the
+   * teammates the user addressed.
+   */
+  acted?: (a: { messaged: Workspace } | { created: string } | { asked: string[] }) => void
+  /** What list_workspaces adds after each workspace this chat owes something, by id (KERNEL-749). Left out, nothing. */
+  openMarks?: () => Map<string, string>
   /** Saves set_room_scripts' patch to the room's `.kernel/settings.local.toml` as Settings does. Left out, the tool refuses (KERNEL-683). */
   saveRoomScripts?: (patch: RoomSettingsPatch) => Promise<unknown>
 }
@@ -218,7 +226,7 @@ export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them wh
 /** overrule_blockers' refusal when the user's latest message doesn't hold go_ahead, or Kernel started the turn (KERNEL-732). */
 export const NO_OVERRULE = "Not overruled: only the user can overrule a review's blockers. Quote their words from their latest message in go_ahead, or tell them what the reviews found and ask."
 
-/** Why merge_workspace skips a PR in this state, shared with Merge all (KERNEL-411). */
+/** Why merge_workspace skips a PR in this state (KERNEL-411). */
 const NOT_MERGEABLE = notMergeable
 
 /**
@@ -417,10 +425,11 @@ export function kernelTools(d: KernelToolDeps) {
   }
   return [
     tool('list_agents', 'List the agents in this room with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
-    tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
+    tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
-      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${waits(w, all)}${owner(w)}`).join('\n') || 'No open workspaces.')
+      const marks = d.openMarks?.()
+      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${waits(w, all)}${owner(w)}${marks?.get(w.id) ?? ''}`).join('\n') || 'No open workspaces.')
     }),
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
@@ -441,13 +450,16 @@ export function kernelTools(d: KernelToolDeps) {
     tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {
       question: z.string(),
       options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional(), recommended: z.boolean().optional() })])).optional()
-        .describe(`Each option: label is the answer in a few words (${LABEL_MAX} characters at most), description says what it means or why. Set recommended: true on the option you recommend instead of writing it in the text`)
-    }, async ({ question, options }, extra) => {
+        .describe(`Each option: label is the answer in a few words (${LABEL_MAX} characters at most), description says what it means or why. Set recommended: true on the option you recommend instead of writing it in the text`),
+      about: z.array(z.string()).optional().describe("When the question settles a teammate's question or a proposed hand-off, the ids of those workspaces, or of the agents, from list_workspaces")
+    }, async ({ question, options, about }, extra) => {
       const asked = options?.map((o) => (typeof o === 'string' ? { label: o } : o))
       // A paragraph in a label squeezes the card's answer row, so the explanation has to go in description (KERNEL-415).
       const long = asked?.find((o) => o.label.length > LABEL_MAX)
       if (long) return { ...text(`Not asked: the label "${long.label.slice(0, 40)}..." is over ${LABEL_MAX} characters. Keep each label to a few words and move the rest into description.`), isError: true }
       const questions = asked && [{ question, options: asked }]
+      // The user decides now, for what `about` names, or for every teammate the message was addressed to.
+      d.acted?.({ asked: about ?? [] })
       const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions }, signalOf(extra))
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
@@ -548,6 +560,7 @@ export function kernelTools(d: KernelToolDeps) {
       const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
+      d.acted?.({ created: pick.id })
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
@@ -599,6 +612,7 @@ export function kernelTools(d: KernelToolDeps) {
       // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
       if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
+      if (ws) d.acted?.({ messaged: ws })
       // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
       if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).

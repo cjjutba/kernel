@@ -23,7 +23,7 @@ export function ConfirmIssueTaken({ issue, findings, onStart, onCancel }: { issu
   const rows = findings.map(rowOf)
   return (
     <ConfirmDialog
-      title={`Someone may already be on ${issue}`} confirmLabel="Start anyway" busy={!!busy} busyLabel="Starting"
+      title={`Someone may already be on ${issue}`} confirmLabel="Start anyway" busy={!!busy} busyPattern="pulse" busyLabel="Starting"
       body="Kernel found work on this issue by someone else. A new workspace may repeat it."
       onConfirm={() => void run('start', async () => { await onStart() })} onCancel={onCancel}
     >

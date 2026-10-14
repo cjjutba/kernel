@@ -1,6 +1,8 @@
 import './settings.css'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { AppSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
+import { useStore } from '../../store'
+import { landWhenThere } from './landOnRow'
 import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { AgentEdit } from './pages/AgentEdit'
@@ -53,7 +55,12 @@ export function Settings({ page, roomId, section, agentId }: { page: SettingsPag
   else if (page === 'hooks') body = <Hooks s={settings} />
   else if (page === 'integrations') body = <Integrations />
   else if (page === 'room') body = <RoomBody roomId={roomId} section={section} agentId={agentId} s={settings} />
-  return <div className="panel">{body}</div>
+  // A search result or a link names a row: land on it once the page has drawn it. The route is a new object for every move, so picking the same result twice lands twice.
+  const route = useStore((s) => s.ui.route)
+  const panel = useRef<HTMLDivElement>(null)
+  const row = route.name === 'settings' ? route.row : undefined
+  useEffect(() => (row ? landWhenThere(row, panel.current) : undefined), [route, row, !!settings])
+  return <div className="panel" ref={panel}>{body}</div>
 }
 
 /** One of a room's pages. Each reads and writes its own room only. */

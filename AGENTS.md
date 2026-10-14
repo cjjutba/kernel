@@ -8,6 +8,7 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 - `pnpm dev` runs the app with hot reload
 - `pnpm test:changed` runs only the test files your changes (committed or not) affect, compared with `origin/main`. Use this one while you work. It runs everything if you touched `package.json` or the vitest config
 - `pnpm test` runs the full suite on plain Node (engine tests use real git repos in temp folders). CI runs it on every PR, so run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts` or `pnpm exec vitest run test/kernel.test.ts`. Tests open SQLite with a Node build of better-sqlite3, see KERNEL-735
+- Test runs queue across the Mac: `pnpm test` and `pnpm test:changed` wait for a free slot, so at most 2 run at once (`KERNEL_TEST_SLOTS` changes the number, CI takes no slot)
 - `pnpm typecheck` checks main, preload and renderer
 - `pnpm build` builds all three bundles
 - `pnpm shots <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture, `--no-build` reuses the last build

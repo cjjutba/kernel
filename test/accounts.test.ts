@@ -777,6 +777,29 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
+  it('tells the Lead what Kernel does about a limit: waits with the earliest reset, then moves (KERNEL-777)', async () => {
+    const { k, ids, folder } = await setUp(['Personal'])
+    const stuck = vi.spyOn(k.leadUpdates, 'limitStuck')
+    sdk.usage = { '': 100, [folder('Personal')]: 100 }
+    reject(k)
+    // The switch is off, so the chat waits for this account's own reset.
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ provider: 'claude', window: '5-hour limit', account: 'Work', stuck: 'off' })
+    reject(k, { accountId: ids.Personal })
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+    await until(() => moving(k).includes('waiting'))
+    // No account has room: the Lead hears it once, with the reset that comes first across them.
+    const sooner = Math.min(...(k.store.meta<RateLimit[]>('limits') ?? []).filter((l) => l.type === 'five_hour' && l.status === 'rejected').map((l) => l.resetsAt!))
+    expect(stuck.mock.calls).toEqual([['claude', { stuck: 'full', resetsAt: sooner }]])
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', stuck: 'full', resetsAt: sooner })
+    // Personal resets and Kernel moves there: a chat cut off on Work is on its way to Personal.
+    k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
+    await until(() => k.providers.active('claude') === ids.Personal)
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', switching: { to: 'Personal' } })
+    expect(stuck).toHaveBeenCalledTimes(1)
+    await k.stop()
+  })
+
   it('moves Codex off a limit too, and the chat the limit cut off carries on on the new account with a note', async () => {
     const { k, h, repo } = await setUp()
     const added = await h['accounts.add']({ provider: 'codex' })

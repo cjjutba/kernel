@@ -62,7 +62,7 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
         <div className="pm-head">
           <span className="pm-mark"><ProviderMark provider={s.provider} size={14} /></span>
           <span className="pm-who"><span className="pm-line"><span className="pm-name">{s.name}</span><span className="pm-acct">Not signed in</span></span></span>
-          <Button className="plan-signin" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
+          <Button className="plan-signin" aria-label={`Sign in to ${s.name}`} busy={busy === `signin:${s.provider}`} busyPattern="wave-back" busyLabel="Signing in" disabled={busy !== null} onClick={() => onSignIn(s.provider, !s.signedOut || s.signedOut.cli)}>Sign in</Button>
         </div>
       </section>
     )
@@ -116,7 +116,7 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
                     <span className="plan-other-name">{o.label}</span>
                     <span className="plan-other-plan ellipsis">{o.plan}</span>
                     {switching
-                      ? <span className="plan-other-use"><Spinner label={null} />Switching</span>
+                      ? <span className="plan-other-use"><Spinner label={null} pattern="wave-back" />Switching</span>
                       : !compact && o.nums.length > 0
                         ? <span className="plan-other-use">{o.nums.map((n, i) => <span key={n.short} className="plan-num">{i > 0 && <span className="plan-sep" aria-hidden="true">·</span>}{n.short} <span className="pm-mp" data-tone={tone(n.value)}>{pct(n.value)}</span></span>)}</span>
                         : o.use && <span className="plan-other-use">{o.use}</span>}

@@ -58,6 +58,8 @@ export class Setup extends Feature {
     if (o.note) this.note(ws.id, o.note)
     if (this.settings.scripts.runAfterSetup && repo.scripts.run && !(await this.k.trust.untrusted(room, repo))) this.startRun(done, room, repo)
     await start()
+    // Linked once the brief is a message in the chat, so the transcript can revert to before it (KERNEL-764).
+    if (start0) this.k.checkpoints.linkStart(chat.id, start0.id)
     return done
   }
 

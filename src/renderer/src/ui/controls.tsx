@@ -1,6 +1,7 @@
 import { useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react'
 import { Icon, type IconName, type IconSize } from '../icons'
 import { Spinner } from './display'
+import type { SpinnerPattern } from './dotPatterns'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'merged'
 
@@ -12,24 +13,26 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   busy?: boolean
   /** What it says while busy, such as "Archiving". Without one it keeps its label. */
   busyLabel?: ReactNode
+  /** The dot loader's pattern while busy. It matches the action (DESIGN.md, Busy buttons) and defaults to `ripple-out`. */
+  busyPattern?: SpinnerPattern
 }
 
 /** Primary is ink on canvas. Danger is red and belongs on the final confirm button only. Merged is purple, for merged PRs only. */
-export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, disabled, className, children, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, busyPattern = 'ripple-out', disabled, className, children, type = 'button', ...rest }: ButtonProps) {
   const cls = ['btn', variant !== 'secondary' && variant, size === 'lg' && 'lg', className].filter(Boolean).join(' ')
   return (
     <button type={type} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} /> : icon && <Icon name={icon} size={14} />}
+      {busy ? <Spinner label={null} pattern={busyPattern} /> : icon && <Icon name={icon} size={14} />}
       {busy && busyLabel !== undefined ? busyLabel : children}
     </button>
   )
 }
 
 /** `label` is required: it is the accessible name and the tooltip. `busy` swaps the icon for a spinner and the label for `busyLabel`. */
-export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; busy?: boolean; busyLabel?: string }) {
+export function IconButton({ icon, label, size = 16, busy, busyLabel, busyPattern = 'ripple-out', disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern }) {
   return (
     <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} /> : <Icon name={icon} size={size} />}
+      {busy ? <Spinner label={null} pattern={busyPattern} /> : <Icon name={icon} size={size} />}
     </button>
   )
 }
@@ -70,7 +73,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
  * One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's
  * label, for a script that is running. Every option is the same width, so none looks like the default (KERNEL-680).
  */
-export function SegmentedControl({ options, value, onChange, label }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string }) {
+export function SegmentedControl({ options, value, onChange, label, busyPattern = 'ripple-out' }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string; busyPattern?: SpinnerPattern }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
@@ -83,7 +86,7 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   return (
     <div role="radiogroup" aria-label={label} className="segmented">
       {options.map((o, i) => (
-        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} />}{o.label}</button>
+        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} pattern={busyPattern} />}{o.label}</button>
       ))}
     </div>
   )

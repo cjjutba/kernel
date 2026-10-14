@@ -9,18 +9,16 @@ import { ReviewerPicker } from '../../rooms/ReviewerPicker'
 import './rooms.css'
 import { shortFile, warningText } from '../../agent/model'
 import { STARTER_TEAMMATES } from '../../rooms/draft'
-import { NoRoom, Row, RoomPage, Section, SettingsLink, sourceLine, useRoomPage } from '../kit'
+import { NoRoom, Row, RoomPage, roomValue, Section, SettingsLink, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-import { agentGroup, cleanDescription } from './agentRows'
+import { agentGroup, cleanDescription, shownRole } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
-const SAME_AS_APP = ''
 
 /** The open-workspace choices: the app's number first, then 1 to 8, a saved number outside them, and No limit (KERNEL-493). */
 function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
-  const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : [])])].sort((a, b) => a - b)
+  const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : []), ...(appLimit > 0 ? [appLimit] : [])])].sort((a, b) => a - b)
   return [
-    { value: SAME_AS_APP, label: `Default (${appLimit > 0 ? appLimit : 'No limit'})` },
     ...counts.map((n) => ({ value: String(n), label: String(n) })),
     { value: '0', label: 'No limit' }
   ]
@@ -102,6 +100,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
   const customized = !!lead?.file
+  const leadFile = lead?.file ? lead.file.split(/[\\/]/).pop() ?? '' : ''
+  const elsewhere = !!leadFile && leadFile !== 'kernel.md'
   const customize = () => run('customize', async () => {
     try {
       const def = await call('agents.customize', { roomId, agentId: lead?.id ?? KERNEL_LEAD })
@@ -115,6 +115,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       actions.agents.set(roomId, await call('agents.resetLead', { roomId }))
       setResetting(false)
     } catch (e) { actions.ui.toast({ title: 'Could not reset Kernel', sub: cleanError(e) }) }
+  })
+  const move = () => run('move', async () => {
+    try {
+      actions.agents.set(roomId, await call('agents.moveLead', { roomId }))
+      actions.ui.toast({ title: 'Kernel is in kernel.md now' })
+    } catch (e) { actions.ui.toast({ title: 'Could not move Kernel’s file', sub: cleanError(e) }) }
   })
   const reviewerPick = reviewerChoice(team, rs?.team)
   const repoAgents = team.filter((a) => agentGroup(a) === 'repo' && a.builtIn !== 'lead')
@@ -134,7 +140,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const agentRow = (a: AgentDef) => {
     const reviewsOnly = a.id === reviewerPick && !a.member && !a.lead
     return (
-      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && a.role.trim().toLowerCase() !== a.name.trim().toLowerCase() && <span className="rm-role">{a.role}</span>}</>} desc={rowDesc(a)}>
+      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{shownRole(a) && <span className="rm-role">{shownRole(a)}</span>}</>} desc={rowDesc(a)}>
         {a.lead
           ? <span className="set-desc">Hands out tasks</span>
           : reviewsOnly
@@ -146,15 +152,19 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   }
   return (
     <RoomPage room={room} rs={rs} title="Agents" shared>
-      <Section title="Roles" scope="repo">
-        <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" desc="Plans with you and hands out tasks.">
-          <span className="set-desc" role="status">{customized ? 'Customized' : 'Default'}</span>
-          {customized
+      <Section title="Roles">
+        <Row id="lead" lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
+        <span className="set-actions">
+          <span className="set-desc" role="status">{elsewhere ? `Customized in ${leadFile}` : customized ? 'Customized' : 'Default'}</span>
+          {elsewhere
+            ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button busy={busy === 'move'} busyLabel="Moving" disabled={busy !== null} onClick={() => void move()}>Move to kernel.md</Button></>
+            : customized
             ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button disabled={busy !== null} onClick={() => setResetting(true)}>Reset to default</Button></>
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
+        </span>
         </Row>
         {!!files.length && (
-          <Row label="Reviewer" labelId="rm-reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request.">
+          <Row id="reviewer" label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
             <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
           </Row>
         )}
@@ -177,7 +187,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {repoAgents.length > 0 && (
         <Section
-          title="In this repo" count={repoAgents.length} scope="repo" note="Switches pick who takes tasks." action={repoActions}
+          title="In this repo" count={repoAgents.length} note="Switches pick who takes tasks." action={repoActions}
           footnote={outside > 0 ? <>Your own and plugin agents are on <SettingsLink to={{ page: 'agents' }}>Settings, Agents</SettingsLink>.</> : undefined}
         >
           {repoAgents.map(agentRow)}
@@ -185,8 +195,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {!!files.length && (
         <Section label="Limits">
-          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`Workspaces ${lead?.name ?? 'the Lead'} keeps open here. Reviews don’t count.`}>
-            <Select label="Open workspaces" align="right" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: v === SAME_AS_APP ? null : Number(v) } })} />
+          <Row id="open-workspaces" label="Open workspaces" {...roomValue(rs, 'agents.openWorkspaces', () => void patchRoomSettings(roomId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
+            <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: Number(v) } })} />
           </Row>
         </Section>
       )}
@@ -194,7 +204,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Section title="Retired" count={retired.length} collapsible>
           {retired.map((a) => (
             <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && <span className="rm-role">{a.role}</span>}</>} desc={`Kept in ${shortFile(a.file)}.`}>
-              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
+              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyPattern="wave-back" busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
             </Row>
           ))}
         </Section>
@@ -202,7 +212,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       {resetting && (
         <ConfirmDialog
           title="Reset Kernel to default?" body={<>This deletes <span className="mono">{lead?.file ? shortFile(lead.file) : '.claude/agents/kernel.md'}</span>. Kernel goes back to the instructions it ships with.</>}
-          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
+          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyPattern="wave-back" busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
         />
       )}
     </RoomPage>

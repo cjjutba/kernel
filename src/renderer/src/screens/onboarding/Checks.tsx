@@ -21,7 +21,7 @@ function Fix({ check, busy, onFix, onRecheck }: { check: PreflightCheck; busy: s
   const [showProcess, setShowProcess] = useState(false)
   const { fix } = check
   if (!fix) return null
-  const recheck = <Button variant={check.blocking ? 'primary' : 'secondary'} busy={busy === `recheck:${check.id}`} busyLabel="Checking" disabled={busy !== null} onClick={onRecheck}>Check again</Button>
+  const recheck = <Button variant={check.blocking ? 'primary' : 'secondary'} busy={busy === `recheck:${check.id}`} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={onRecheck}>Check again</Button>
   if (fix.command) {
     return (
       <>
@@ -82,7 +82,7 @@ export function Checks() {
           <div className="ob-list" aria-busy={busy !== null}>
             {(checks ?? []).map((c) => (
               <div key={c.id} className="ob-check" data-ok={c.ok} data-blocking={c.blocking}>
-                <span className="ob-ico"><Icon name={c.ok ? 'check' : c.blocking ? 'x' : 'warning'} size={16} /></span>
+                <span className="ob-ico"><Icon name={c.ok ? 'check' : c.blocking ? 'close' : 'warning'} size={16} /></span>
                 <div className="ob-body">
                   <span className="ob-name">{c.title}</span>
                   <span className="ob-detail"><Ticks text={c.detail} /></span>
@@ -92,7 +92,7 @@ export function Checks() {
                 {c.ok && c.meta && <span className="ob-meta">{c.meta}</span>}
               </div>
             ))}
-            {!checks && <div className="ob-check"><Spinner label="Checking" /><span className="muted">Checking</span></div>}
+            {!checks && <div className="ob-check"><Spinner label="Checking" pattern="arrow-down" /><span className="muted">Checking</span></div>}
           </div>
           <div className="ob-bar">
             <span role="status">{error ?? (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>

@@ -228,6 +228,16 @@ async function narrowPanel(page: Page) {
   await page.waitForTimeout(400)
 }
 
+// LeadPrsNarrow is the PRs tab with the panel at its narrowest, 320px (KERNEL-757). Home on the panel's handle takes it there.
+async function panelAtNarrowest(page: Page) {
+  const handle = page.getByRole('separator', { name: 'Resize panel' })
+  await handle.focus()
+  await page.keyboard.press('Home')
+  await handle.blur()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+
 // PanelFilter is Changes with the filter open and "inbox" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
 async function filterChanges(page: Page) {
   await page.getByRole('button', { name: 'Filter changed files' }).click()
@@ -358,6 +368,7 @@ async function openOverrule(page: Page) {
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
+  AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
@@ -380,6 +391,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   PanelResize: hoverSplitHandle,
   WorkspaceHistoryButtonsNarrow: narrowSidebar,
   PanelTabsOverflow: narrowPanel,
+  LeadPrsNarrow: panelAtNarrowest,
   NewWorkspaceFromGitHub: openIssuesTab,
   NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,
@@ -397,8 +409,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionStates: questionStates,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
-  WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
-  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
+  WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edited']),
+  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edited']),
   WorkspaceDiffImageInlineOpen: async (page) => {
     await page.getByRole('button', { name: 'Open public/logo.png' }).click()
     await page.mouse.move(0, 0)
@@ -407,10 +419,12 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceScrolledUp: scrollUp,
+  ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
+  SettingsRoomPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },

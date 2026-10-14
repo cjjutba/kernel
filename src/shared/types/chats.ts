@@ -126,14 +126,18 @@ export type ChatItem =
   /**
    * `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111).
    * `approvalId` is the plan approval a Kernel message answers, so the chat can show the user's answer instead of Kernel's text.
+   * `checkpointId` is on the chat's first message only: the start checkpoint, taken before it went out (KERNEL-764).
    */
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string }
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
-  /** End of a turn. `files` is the "Changed" chip row under the reply. */
-  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
+  /**
+   * End of a turn. `files` is the "Changed" chip row under the reply. `checkpointId` is the checkpoint taken as the turn ended,
+   * set on every turn that wrote a result, with or without files (KERNEL-764). Both arrive a moment after the row, in a `chat.item` push.
+   */
+  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[]; checkpointId?: string }
   /**
    * `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none.
    * `refs` are spans of `text`, in the order they appear, that open another workspace, such as the PRs a held brief waits for.
@@ -181,13 +185,16 @@ export interface SharedComment { id: string; sharedId: string; version: number; 
  */
 export type ChatPart =
   | { type: 'text'; text: string }
-  | { type: 'file'; name: string; path?: string; lines?: number; text?: string }
+  /** `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it. */
+  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
   | { type: 'issue'; name: string; title: string; url?: string; source: TrackerKind }
   /** + > Link workspaces: another workspace the agent can read and diff. */
   | { type: 'workspace'; name: string; workspaceId: string; branch: string; path: string; prNumber?: number; prUrl?: string }
+  /** @agent in a Lead chat's composer: the user addresses the message to that teammate, and the Lead acts for them (KERNEL-745). */
+  | { type: 'agent'; name: string; agentId: string }
 
 /** A message typed while the agent is busy (WorkspaceQueued.png). */
 export interface QueuedMessage {
@@ -253,6 +260,10 @@ export type TeamEventKind =
   // A turn Kernel started to rebase onto a merge ended without the merge in the branch (KERNEL-691).
   | 'wait.rebase_missing'
   | 'shared'
+  // A teammate asked the Lead with ask_lead, or proposed handing part of its work to another agent with propose_handoff (KERNEL-747).
+  | 'question' | 'handoff.proposed'
+  // A usage limit cut a teammate's turn off, and Kernel carried it on after, on another account or at the reset (KERNEL-777).
+  | 'limit' | 'limit.lifted'
 
 /**
  * One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead.
@@ -290,6 +301,36 @@ export interface TeamUpdate {
   omitted?: number
   /** Every task this chat handed off has merged. */
   allMerged?: boolean
+}
+
+/**
+ * Something a Lead chat owes until the Lead acts on it (KERNEL-749): a teammate's question, a review's blockers not passed on
+ * yet, a hand-off a teammate proposed, or a teammate the user addressed with @. Kernel opens one from the real event and
+ * closes it when the Lead messages that workspace, creates its workspace or asks the user about it, or when the user dismisses it.
+ */
+export type OpenItemKind = 'question' | 'blockers' | 'handoff.proposed' | 'mention'
+
+export interface OpenItem {
+  id: string
+  kind: OpenItemKind
+  roomId: string
+  /** The Lead chat it belongs to, and the tab it opened in. */
+  threadId: string
+  chatId: string
+  /** The teammate workspace it is about: the one that asked or proposed, or the work the review blocked. A mention has none. */
+  workspaceId?: string
+  /** That teammate, or the one the user addressed, by id and name. */
+  agentId: string
+  name: string
+  /** A question's text, or the task a proposed hand-off names. */
+  text?: string
+  /** The teammate a hand-off was proposed for. */
+  proposed?: { agentId: string; name: string }
+  /** How many blockers the review found. */
+  blockers?: number
+  /** Kernel has listed it in a reminder at Stop. A reminder goes again only once a new item opens. */
+  reminded?: true
+  createdAt: number
 }
 
 /**

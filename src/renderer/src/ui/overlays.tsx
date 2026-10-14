@@ -4,6 +4,7 @@ import { call } from '../api'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
 import { useLayer } from './hooks'
+import type { SpinnerPattern } from './dotPatterns'
 
 export interface MenuEntry {
   id: string
@@ -141,7 +142,7 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) latest.current()
     else setClosing(true)
   }, [])
-  useLayer({ onEscape: dismiss })
+  useLayer({ onEscape: dismiss, blocking: true })
   useEffect(() => {
     if (closing) ref.current?.setAttribute('inert', '')
   }, [closing])
@@ -185,12 +186,12 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
 }
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
-export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, busyLabel, disabled, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** The confirm action is running: its button spins and says `busyLabel`, such as "Archiving". */ busy?: boolean; busyLabel?: string; /** The confirm button can't be pressed yet, such as while the dialog reads the branch. */ disabled?: boolean; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, busyLabel, busyPattern, disabled, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** The confirm action is running: its button spins and says `busyLabel`, such as "Archiving". */ busy?: boolean; busyLabel?: string; busyPattern?: SpinnerPattern; /** The confirm button can't be pressed yet, such as while the dialog reads the branch. */ disabled?: boolean; onConfirm: () => void; onCancel: () => void }) {
   const id = useId()
   return (
     <Modal
       title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" data-dismiss>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
+      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" data-dismiss>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} busyPattern={busyPattern} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>
@@ -202,7 +203,7 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
 }
 
 /** How long a toast stays (DESIGN.md). */
-export const TOAST_MS = 2600
+export const TOAST_MS = 5000
 /** A leaving toast slides out, then its gap closes. `toast-out-*` and `toast-close` in ui.css end by then. */
 const LEAVE_MS = 360
 /** Let go this far right or down of where a swipe started, or past `FLICK_PX` while moving that way faster than `FLICK` px per ms, and the toast leaves. */
@@ -223,7 +224,7 @@ type Leave = 'sink' | 'right' | 'down'
 type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: 'x' | 'y'; x: number; v: number; at: number; end?: ReturnType<typeof setTimeout> }
 
 /**
- * One toast (WorkspaceToast.png, title over sub, toast-motion-and-swipe). It rises from the bottom, and after 2.6s sinks and
+ * One toast (WorkspaceToast.png, title over sub, toast-motion-and-swipe). It rises from the bottom, and after 5s sinks and
  * fades, then calls `onDismiss` once its gap has closed. It stays while hovered or focused. Dragging it right or down, a
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.

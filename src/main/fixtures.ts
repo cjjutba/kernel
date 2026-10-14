@@ -62,7 +62,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, review: rs.review ?? reviewOf(undefined), merge: rs.merge ?? { alwaysReview: [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, references: rs.references ?? [], review: rs.review ?? reviewOf(undefined), merge: rs.merge ?? { alwaysReview: [] }, sources: rs.sources ?? {} }
   }
   /** A provider's status table: the fixture's, else Kernel's bundled copy, signed in (KERNEL-406). */
   const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }
@@ -70,7 +70,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
 
-  return {
+  const handlers: Handlers = {
     'preflight.run': async () => f.preflight,
     'preflight.fix': async () => f.preflight,
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
@@ -146,7 +146,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.commits': async ({ workspaceId }) => f.commits?.[workspaceId] ?? [],
     'workspaces.compareBranches': async ({ workspaceId }) => [...new Set([workspace(workspaceId).baseRef, ...(f.branches ?? [])])],
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
-    'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => !e.dir && e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
+    'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
     'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
     'workspaces.readImage': async ({ workspaceId, path, at }) => f.images?.[workspaceId]?.[`${at}:${path}`] ?? null,
     'workspaces.hunks': async ({ workspaceId, path }) => (f.hunks?.[workspaceId] ?? []).filter((h) => !path || h.path === path),
@@ -232,6 +232,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'terminal.resize': async () => ok,
     'terminal.replay': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
+    'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false },
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
     'approvals.list': async ({ roomId }) => f.approvals.filter((a) => !roomId || a.roomId === roomId).sort((a, b) => b.createdAt - a.createdAt),
     'approvals.decide': async ({ id, decision }) => {
@@ -265,11 +266,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { threadId, title: t?.title ?? '', workspaces: [...rows.filter((w) => !w.lead), ...rows.filter((w) => w.lead)].map((w) => ({ id: w.id, name: w.name, own: !!w.lead, running: running(w.id), ...(w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? { pr: w.prNumber } : {}), dirty: w.stat?.files ?? 0, unpushed: 0 })) }
     },
     'threads.archive': async () => { throw new Error('Fixture mode does not archive chats.') },
+    'openItems.list': async ({ threadId }) => (f.openItems ?? []).filter((i) => i.threadId === threadId),
+    'openItems.dismiss': async () => ({ ok: true }),
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),
     'pr.merge': async ({ workspaceId }) => workspace(workspaceId),
-    'pr.mergeAll': async () => ({ merged: [] }),
     'reviews.overrule': async ({ workspaceId }) => workspace(workspaceId),
     'pr.resolve': async () => ({ ok: true }),
     'pr.update': async () => ({ ok: true }),
@@ -447,6 +449,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'telemetry.recent': async () => f.telemetry?.recent ?? [],
     'telemetry.track': async () => ok
   }
+  for (const channel of f.hold ?? []) (handlers as Record<string, unknown>)[channel] = () => new Promise<never>(() => undefined)
+  return handlers
 }
 
 /**

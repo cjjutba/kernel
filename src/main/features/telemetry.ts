@@ -23,7 +23,7 @@ export class Telemetry extends Feature {
   private recent: TelemetryRecord[] = []
   private queue: Queued[] = []
   private timer?: NodeJS.Timeout
-  private sending = false
+  private inflight?: Promise<void>
   private loaded = false
   private writing: Promise<void> = Promise.resolve()
   private saving = false
@@ -88,12 +88,20 @@ export class Telemetry extends Feature {
 
   /** Sends what waits, in one batch. Events that go out are marked sent in the list Settings, Privacy shows. */
   async send(): Promise<void> {
-    if (!this.on || this.sending || !this.queue.length || !this.o.telemetry) return
-    this.sending = true
+    // A send already under way carries the events it took; wait for it, then send what came in meanwhile.
+    while (this.inflight) await this.inflight
+    if (!this.on || !this.queue.length || !this.o.telemetry) return
+    const run = this.sendBatch(this.o.telemetry)
+    this.inflight = run
+    try { await run } finally { this.inflight = undefined }
+    await this.writing
+  }
+
+  private async sendBatch(telemetry: NonNullable<Telemetry['o']['telemetry']>): Promise<void> {
     const batch = this.queue.slice()
     try {
-      const body = batchBody({ key: this.o.telemetry.key, installId: await this.installId(), base: { app: this.o.version ?? '0.0.0', os: this.o.telemetry.os ?? 'unknown', arch: this.o.telemetry.arch ?? process.arch }, events: batch })
-      const r = await (this.o.fetch ?? fetch)(`${this.o.telemetry.host.replace(/\/$/, '')}/batch/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
+      const body = batchBody({ key: telemetry.key, installId: await this.installId(), base: { app: this.o.version ?? '0.0.0', os: telemetry.os ?? 'unknown', arch: telemetry.arch ?? process.arch }, events: batch })
+      const r = await (this.o.fetch ?? fetch)(`${telemetry.host.replace(/\/$/, '')}/batch/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15_000) })
       if (!r.ok) return
       const gone = new Set(batch)
       this.queue = this.queue.filter((q) => !gone.has(q))
@@ -102,8 +110,6 @@ export class Telemetry extends Feature {
       this.save()
     } catch {
       // Offline or the service is down: the events wait for the next minute.
-    } finally {
-      this.sending = false
     }
   }
 

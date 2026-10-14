@@ -185,6 +185,7 @@ const kernelFiles: RoomSettings = {
   pr: { createInstructions: '# Create a pull request\n1. Rebase on origin/dev and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk\n4. Link the Linear issue in the description' },
   preview: { urls: [] },
   env: { files: [] },
+  references: [],
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
@@ -409,6 +410,17 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-406, KERNEL-665: both providers' accounts and status, with Claude's own login active, a second Claude account, a key, and Fable's weekly window on Work.
   SettingsAccounts: providersPage('claude', { accounts: [workClaude, personalClaude, keyAccount('claude'), ownCodex], usage: [...providerUsage(), fableWindow] }),
   // KERNEL-701: Work is added in Kernel and is also Claude Code's own login in Terminal, so it shows once, with its details open.
+  // KERNEL-774: Main account has Fable, 2nd account (Pro) has none and says Not in plan, and 3rd account's 5-hour window has reset and sits at 0%.
+  SettingsAccountsReset: providersPage('claude', {
+    accounts: [secondClaude, mainClaude, thirdClaude, footerKey(), footerCodex],
+    usage: [
+      window5('claude', 'cli', 18, next(23, 0)), windowWeek('claude', 'cli', 32, nextOn(1, 3, 0)),
+      window5('claude', 'main', 9, next(22, 0)), windowWeek('claude', 'main', 9, nextOn(2, 3, 0)),
+      { type: 'seven_day_opus', status: 'allowed', utilization: 0, resetsAt: secs(nextOn(2, 3, 0)), accountId: 'main', model: 'claude-fable-5-1' },
+      window5('claude', 'third', 100, Date.now() - 3600_000), windowWeek('claude', 'third', 49, nextOn(3, 3, 0)),
+      window5('codex', 'cli', 0, next(18, 36)), windowWeek('codex', 'cli', 24, inDays(8, 13, 36))
+    ]
+  }),
   SettingsAccountsAlsoCli: providersPage('claude', { accounts: [{ ...workClaude, cli: false, alsoCli: true }, personalClaude, keyAccount('claude'), ownCodex] }),
   SettingsAccountsCodex: providersPage('codex'),
   SettingsAccountsCodexSignedOut: providersPage('codex', { accounts: [workClaude, { ...ownCodex, signedIn: false }, personalCodex], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
@@ -478,6 +490,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  // KERNEL-759: a click on the other account holds main's answer, so its chip shows the swap loader.
+  AccountSwitching: usageHome({ hold: ['accounts.switch'] }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
@@ -564,7 +578,10 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomPermissions: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } } })),
   // KERNEL-455: the room's mode menu is open, over Use app default.
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
-  SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the room.
+  SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
+  // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
+  SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
@@ -585,6 +602,8 @@ export const platformFixtures: Record<string, Fixture> = {
     production: { [ids.roomA]: [{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }, { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
   })),
+  // KERNEL-727: a search for "hook server port" lands inside the folded Advanced section, which opens first.
+  SettingsHooksLanded: scene(() => ({ hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') }, ui: { route: { name: 'settings', page: 'hooks', row: 'hook-port' } } })),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
   // KERNEL-679: a dev run started inside a workspace says hooks are off in place of Install, with no snippet. No PNG.
   SettingsHooksWorkspaceRun: settingsPage('hooks', { hooks: { port: 4669, listening: true, installed: false, build: 'run', problem: { kind: 'workspace-run' }, events: hookEvents.map((e) => ({ ...e, installed: false, lastSeen: undefined })) } }),
@@ -593,6 +612,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-696: Kernel row in Roles as it ships (Default, Customize), and with the room's kernel.md (Customized, Open file, Reset to default).
   SettingsTeamKernelDefault: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   SettingsTeamKernelCustomized: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/kernel.md' } : a)) }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  // KERNEL-742: the room's Lead file is rowan.md, so Kernel's row reads "Customized in rowan.md" with Open file and Move to kernel.md.
+  SettingsTeamKernelElsewhere: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/rowan.md' } : a)) }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // An empty room with another room that has agents: Add the team, Copy from another room and New agent. No PNG, built from the Settings kit.
   SettingsTeamEmpty: scene((f) => ({ ...clientA(), ...empty, rooms: f.rooms, agents: { ...f.agents, [ids.roomA]: [] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // KERNEL-639: the room's agents grouped by where they come from, scrolled to In this repo. Yours has a personal agent, and From plugins two with View, one with a long description cleaned to two lines.
@@ -615,7 +636,48 @@ export const platformFixtures: Record<string, Fixture> = {
         }
       },
       // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
-      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] }
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
+    }),
+    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+  })),
+  // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
+  // KERNEL-726: settings.toml sets the merge method, so the row says Changed for this room and has no Reset.
+  SettingsRoomPrsShared: scene((f) => ({
+    ...clientA({
+      review: {
+        rounds: 2,
+        kinds: {
+          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+        }
+      },
+      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'shared' }
+    }),
+    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+  })),
+  // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
+  SettingsRoomPrsSaved: scene((f) => ({
+    ...clientA({
+      review: {
+        rounds: 2,
+        kinds: {
+          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+        }
+      },
+      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
     }),
     agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
@@ -653,6 +715,13 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomTracker: trackerRoom(ids.roomB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
   SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  // KERNEL-750: Client A's General page with no reference folders, then with two, one of them gone from this Mac.
+  SettingsReferenceFoldersEmpty: scene(settingsRoom),
+  SettingsReferenceFolders: scene((f) => {
+    const room = settingsRoom(f)
+    const rs = room.roomSettings![ids.roomA]
+    return { ...room, roomSettings: { [ids.roomA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
+  }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),

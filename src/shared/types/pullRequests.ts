@@ -77,18 +77,6 @@ export interface LocalMerge {
 /** GitHub's mergeStateStatus on a ready PR: BLOCKED with a review required, BEHIND, or BLOCKED for another rule (KERNEL-388). */
 export type PrBlocked = 'review' | 'behind' | 'rules'
 
-/** A room's Merge all run (KERNEL-411): the PRs it merges in order, by workspace id, and the one merging now. */
-export interface MergeQueue {
-  ids: string[]
-  current?: string
-}
-
-/** How a Merge all run ended: the PR numbers it merged, and where it stopped and why, when it stopped. */
-export interface MergeAllResult {
-  merged: number[]
-  stopped?: { workspaceId: string; prNumber?: number; reason: string }
-}
-
 /**
  * The PR action Kernel is running on a workspace, from the press until it ends, whichever button or tool started it. Every
  * place showing the PR spins from it (KERNEL-519). The same names as the PR band's buttons.

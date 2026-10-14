@@ -3,10 +3,11 @@ import type { BannerKind } from '@shared/types'
 import { Icon, type IconName } from '../icons'
 import { Button, IconButton } from './controls'
 import { useSwipeDismiss } from './useSwipeDismiss'
+import { dotPatterns, type SpinnerPattern } from './dotPatterns'
 
 /** One icon per failure type (DESIGN.md Patterns). */
 export const bannerIcon: Record<BannerKind, IconName> = {
-  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history', trust: 'shield'
+  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'close', hooks: 'plug', retry: 'history', trust: 'shield'
 }
 
 /**
@@ -17,7 +18,7 @@ export function Banner({ kind, title, children, actions, onDismiss }: { kind: Ba
   const { ref, leaving, leave, handlers } = useSwipeDismiss<HTMLDivElement>(onDismiss)
   return (
     <div role="alert" className="banner" data-kind={kind} data-dismissible={onDismiss ? '' : undefined} data-leaving={leaving || undefined} ref={ref} {...handlers}>
-      {kind === 'retry' ? <Spinner label={null} /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
+      {kind === 'retry' ? <Spinner label={null} pattern="rotate" /> : <Icon name={kind === 'warn' ? 'warning' : bannerIcon[kind]} />}
       <div className="grow"><div className="banner-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
       {actions}
       {onDismiss && <IconButton className="banner-close" icon="close" label="Dismiss" size={12} onClick={leave} />}
@@ -81,18 +82,25 @@ export function Avatar({ name, size = 20, solid }: { name: string; size?: number
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
 }
 
-const wave = Array.from({ length: 9 }, (_, i) => Math.floor(i / 3) + (i % 3))
+/** A stable offset into the 1s loop from an id, so a row keeps its rhythm across renders and rows run out of step. */
+function phaseOf(seed: string) {
+  let h = 0
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return `${((h % 10) / 10).toFixed(1)}s`
+}
 
 /**
- * The loader: a 3x3 grid of dots whose opacity loops in a diagonal wave. It is sized in em, so it follows the text beside it, and it always sits beside words.
- * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. Still and graded under reduced motion (KERNEL-714, KERNEL-740).
+ * The loader: a 3x3 grid of round dots that swell and sink in a 0.8s loop, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 13px grid, and it always sits beside words.
+ * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. `seed` starts the loop at a point taken from an id. Under reduced motion it holds a still frame that shows the pattern's shape (KERNEL-714, KERNEL-740, KERNEL-759).
  */
-export function Spinner({ label = 'Loading', className }: { label?: string | null; className?: string }) {
+export function Spinner({ label = 'Loading', pattern = 'wave', seed, className }: { label?: string | null; pattern?: SpinnerPattern; seed?: string; className?: string }) {
   const a11y = label === null ? { 'aria-hidden': true as const } : { role: 'status', 'aria-label': label }
   const cls = `dots${className ? ` ${className}` : ''}`
+  const { n, short, dots, still } = dotPatterns[pattern]
+  const style = { '--n': n, ...(seed ? { '--phase': phaseOf(seed) } : null) } as CSSProperties
   return (
-    <span className={cls} {...a11y}>
-      {wave.map((k, i) => <i key={i} style={{ '--k': k } as CSSProperties} />)}
+    <span className={cls} data-pattern={pattern} data-swell={short ? 'short' : undefined} style={style} {...a11y}>
+      {dots.map((d, i) => <i key={i} style={{ '--k': d.at, '--a': d.peak, '--s': still.includes(i) ? 1 : undefined } as CSSProperties} />)}
     </span>
   )
 }

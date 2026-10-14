@@ -1,6 +1,6 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -30,6 +30,8 @@ export interface Fixture {
   tasks?: Record<string, Task[]>
   /** By workspace id. */
   checkpoints?: Record<string, Checkpoint[]>
+  /** What reverting would do, by workspace id, then checkpoint id (KERNEL-764). A missing one reads as no files and no commits. */
+  checkpointPreviews?: Record<string, Record<string, CheckpointPreview>>
   /** What the Delete confirm in History counts (KERNEL-333). A missing field reads as fixed numbers. */
   deletePreview?: DeletePreview
   notifications?: Notification[]
@@ -38,6 +40,8 @@ export interface Fixture {
   overlaps?: Overlap[]
   /** Lead chats, each holding the Lead tabs whose `threadId` names it (KERNEL-337). */
   threads?: Thread[]
+  /** What each Lead chat still owes, by `threadId` (KERNEL-749). */
+  openItems?: OpenItem[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
   /** Recent project folders (OpenFolder.png). */
@@ -73,12 +77,14 @@ export interface Fixture {
   /** By room id, the open issues of a GitHub room, each with the description and comments the Issues pane reads (KERNEL-471). */
   githubIssues?: Record<string, GithubIssueDetail[]>
   settings?: AppSettings
+  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
+  hold?: string[]
   /**
    * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
    * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,
    * and `env`, which reads as no env files.
    */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'>>>
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env' | 'references'>>>
   /** By room id, what `scripts.suggest` returns. None when unset (KERNEL-682). */
   scriptSuggestions?: Record<string, ScriptSuggestion[]>
   /**

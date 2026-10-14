@@ -214,13 +214,80 @@ describe('review rounds', () => {
   })
 })
 
+describe('a PR waiting for its reviews to approve (KERNEL-717)', () => {
+  const rules = { requireGreen: false, requireReviewer: true }
+
+  it('holds the merge from the ready event until every kind approves the head, and again on the next commit', async () => {
+    const { k, push, of, verdict } = await setup({ settings: UX_ON })
+    const started = k.reviews.onReady(of().id)
+    // Marked before Kernel reads `[review]` with git, so nothing merges in between.
+    expect(of().reviewPending).toBe(of().prHead)
+    expect(mergeBlock(of(), info(of()), rules)).toContain('The review of the latest commit is starting.')
+    await started
+    expect(of().reviewPending).toBeUndefined()
+    expect(mergeBlock(of(), info(of()), rules)).toContain("The code and UX reviews haven't approved the latest commit.")
+    await verdict('code', 'approved')
+    expect(mergeBlock(of(), info(of()), rules)).toContain("The UX review hasn't approved the latest commit.")
+    await verdict('ux', 'approved')
+    expect(mergeBlock(of(), info(of()), rules)).toBeUndefined()
+    // A new commit outside the UX review's paths: only the code review runs again, and the merge waits for it alone.
+    await push({ 'src/main/a.ts': 'more\n' })
+    await k.reviews.onReady(of().id)
+    expect(mergeBlock(of(), info(of()), rules)).toContain("The code review hasn't approved the latest commit.")
+    await verdict('code', 'approved')
+    expect(mergeBlock(of(), info(of()), rules)).toBeUndefined()
+  })
+
+  it('holds nothing when no review is planned, with automatic review off, or with the approval switch off', async () => {
+    const none = await setup({ settings: '[team]\nreviewer = "none"\n' })
+    await none.k.reviews.onReady(none.of().id)
+    expect(none.of().reviewPending).toBeUndefined()
+    expect(none.of().reviewRound).toBeUndefined()
+    expect(mergeBlock(none.of(), info(none.of()), rules)).toBeUndefined()
+
+    const off = await setup()
+    off.k.settings.pr.autoReview = false
+    // A marker a quit left behind goes once automatic review is off.
+    off.k.store.saveWorkspace({ ...off.of(), reviewPending: off.of().prHead })
+    await off.k.reviews.onReady(off.of().id)
+    expect(off.of().reviewPending).toBeUndefined()
+    expect(mergeBlock(off.of(), info(off.of()), rules)).toBeUndefined()
+
+    const on = await setup()
+    await on.k.reviews.onReady(on.of().id)
+    expect(mergeBlock(on.of(), info(on.of()), { requireGreen: false, requireReviewer: false })).toBeUndefined()
+  })
+
+  it("never waits for an optional kind skipped near the usage limit", async () => {
+    const { k, of, verdict } = await setup({ settings: '[review.ux]\nrequired = false\n' })
+    const near: RateLimit = { type: 'five_hour', status: 'allowed', utilization: 0.95, resetsAt: Math.round(Date.now() / 1000) + 3600 }
+    ;(k.sessions as unknown as { mergeLimits: (l: RateLimit[]) => void }).mergeLimits([near])
+    await k.reviews.onReady(of().id)
+    // The code review is held for usage and still counts as waiting.
+    expect(mergeBlock(of(), info(of()), rules)).toContain("The code review hasn't approved the latest commit.")
+    await verdict('code', 'approved')
+    expect(mergeBlock(of(), info(of()), rules)).toBeUndefined()
+  })
+
+  it('takes up a review a quit left pending at the next start', async () => {
+    const { k, of, rws } = await setup()
+    k.store.saveWorkspace({ ...of(), reviewPending: of().prHead })
+    expect(mergeBlock(of(), info(of()), rules)).toContain('is starting')
+    k.reviews.start()
+    await vi.waitFor(() => expect(of().reviewRound?.head).toBe(of().prHead), { timeout: 10_000, interval: 20 })
+    expect(of().reviewPending).toBeUndefined()
+    expect(rws()).toHaveLength(1)
+    expect(mergeBlock(of(), info(of()), rules)).toContain("The code review hasn't approved the latest commit.")
+  })
+})
+
 describe('review rounds near the usage limit', () => {
   it('skips an optional kind and names it, and a required kind waits for usage to drop', async () => {
     const { k, of, rws, chatOf } = await setup({ settings: '[review.ux]\nrequired = false\n' })
     const near: RateLimit = { type: 'five_hour', status: 'allowed', utilization: 0.95, resetsAt: Math.round(Date.now() / 1000) + 3600 }
     ;(k.sessions as unknown as { mergeLimits: (l: RateLimit[]) => void }).mergeLimits([near])
     await k.reviews.onReady(of().id)
-    expect(of().reviewRound).toEqual({ n: 1, rounds: 2, head: of().prHead, prNumber: 101, kinds: ['code', 'ux'], skipped: ['ux'] })
+    expect(of().reviewRound).toEqual({ n: 1, rounds: 2, head: of().prHead, prNumber: 101, kinds: ['code', 'ux'], skipped: ['ux'], optional: ['ux'] })
     expect(k.store.chats(rws()[0].id).map((c) => c.lens?.kind)).toEqual(['code'])
     // Setup passed, and the code review's brief waits for usage instead of starting.
     await vi.waitFor(() => expect(k.sessions.queueReason(chatOf('code').id)).toBe('limit'), { timeout: 10_000, interval: 20 })

@@ -76,6 +76,13 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
       out.runScripts = applyRunScripts(rs.runScripts ?? [], sources, (values ?? {}) as Record<string, string | null>)
       continue
     }
+    if (group === 'references') {
+      // The folders are one top-level list in the personal file: a patch replaces all of it, and an empty list or null removes the key.
+      const next = (values as unknown as string[] | null) ?? []
+      out.references = next
+      out.missingReferences = (rs.missingReferences ?? []).filter((p) => next.includes(p))
+      continue
+    }
     if (group === 'preview') {
       out.preview = { urls: applyPreviewUrls(rs.preview?.urls ?? [], sources, (values as RoomSettingsPatch['preview'])?.urls) }
       continue

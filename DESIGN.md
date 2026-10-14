@@ -119,7 +119,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Unread is a bold title, never a dot. A chat row, workspace row, collapsed room and chat tab take 600 weight in `--ink`, and the icon keeps its state, so a row that needs you shows its plan or question icon in ink and the bold title together. The chat on screen is read (KERNEL-508).
 - Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/dot loader, trust/shield: the room's scripts wait for you to trust them). Never red backgrounds.
 - Check rows (KERNEL-437): a readiness check, a room setup step and a room's Push access row say their result with an icon and a word. A green check passes, a red x-circle fails, and a triangle in ink, with no color, warns. A failing row gives its one fix under it, a command in a code box with Copy or a single button. A warning never blocks. Continue stays on and the row's own button is bordered, so the one ink button is the way forward. A line that passes with more to say, like the gh login's source or Bedrock, adds a muted note under its detail. A warning about files names the file and the variable, never the value. A failed hooks install in Check hooks follows the same shape in its own card. `docs/decisions/KERNEL-437.md` lists the copy.
-- Toasts: bottom right of the main panel, 12px in from its right and bottom edges, 360px wide, with no close button. The title is row 1 and the sub row 2, with the action on the right. The surface, hairline and radius are the Usage popover's. A toast leaves by itself after 2.6s, or sooner when you swipe it right or down (toast-motion-and-swipe). A toast is for something you can't see on screen: (1) a call that failed ("Could not ..."), (2) something Kernel or an agent did without your click, like a PR created or merged, an archive after a merge, a config mistake or the window reloading after a crash, (3) an action that changes nothing on screen, like Path copied, Branch copied, Logs exported or the Check for updates result. A click whose result you can see gets no toast: the archived row is gone, the restored workspace opens (KERNEL-495).
+- Toasts: bottom right of the main panel, 12px in from its right and bottom edges, 360px wide, with no close button. The title is row 1 and the sub row 2, with the action on the right. The surface, hairline and radius are the Usage popover's. A toast leaves by itself after 5s (6s for a heads-up, see (4)), or sooner when you swipe it right or down (toast-motion-and-swipe). A toast is for something you can't see on screen: (1) a call that failed ("Could not ..."), (2) something Kernel or an agent did without your click, like a PR created or merged, an archive after a merge, a config mistake or the window reloading after a crash, (3) an action that changes nothing on screen, like Path copied, Branch copied, Logs exported or the Check for updates result. (4) a heads-up about a cost you just took on that the screen doesn't show, like switching models in a chat that has run a turn (KERNEL-771). That kind stays up about 6s. A click whose result you can see gets no toast: the archived row is gone, the restored workspace opens (KERNEL-495).
 - Icon buttons: hover brightens the icon to `--ink` with no fill behind it, because a fill around a small glyph reads louder than the glyph. A fill means the button is on or its menu is open (`aria-pressed`, `aria-expanded`), never hover. Buttons with a label, menu items, rows, and the filled send and stop circles keep their hover fills.
 - Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.
 - Danger: red only on the final confirm button, never on the trigger.
@@ -139,9 +139,22 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
 
-- The dot loader (one size, `faint` dots at 0.3 to 0.8 opacity) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
+- The dot loader (one 13px size, small round `faint` dots that swell and sink, rippling out from the center as `pattern="ripple-out"`, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
-- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color at the same dim range, so it never reads as a hole in the band (KERNEL-274).
+- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color, so it never reads as a hole in the band (KERNEL-274).
+- The pattern says what kind of action is waiting. `Button`, `IconButton` and `ConfirmDialog` take `busyPattern`, which defaults to `ripple-out`, and the inline action links and the segmented control pick from the same table. A new busy button picks its row here and falls back to `ripple-out` when none fits (KERNEL-759).
+
+  | Action | `busyPattern` |
+  | --- | --- |
+  | Send (messages, answers, plans, tests) | `arrow-right` |
+  | Merge | `ripple-in` |
+  | Approve, allow, deny, trust | `pulse` |
+  | Archive, discard, remove, delete, close, disconnect, cancel | `scatter` |
+  | Refresh, retry, reload, restart, recheck | `rotate` |
+  | Run and stop scripts | `snake` |
+  | Restore, revert, reset, switch account, sign in to a usage account | `wave-back` |
+  | Everything else (save, create, open, copy, add, install, connect, export, move, compact, commit, link) | `ripple-out` |
+
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
@@ -162,9 +175,26 @@ A button that waits on the main process shows it is working until the call retur
   - Overlap. Archiving again while a fold runs starts that row's fold at once. The destination row's fill fade that starts over another one jumps the earlier one to its end.
   - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears and the selected fill changes. The screen swaps at once either way.
 - Only opacity and transform loop, and nothing on a button loops.
-- Dot loader (KERNEL-714, KERNEL-740): one 3x3 grid sized in `em` (dots 0.23em, gap 0.08em, rounded to whole pixels), about 11px next to 12 to 13px text, so it follows the text beside it. Each dot's opacity goes 0.3 to 0.8 to 0.3 over 1.6s `ease-in-out`, delayed 0.12s per row plus column, so a slow shimmer crosses it diagonally. Dots take `--spin-ink`, default `faint`. Reduced motion stops it and leaves the dots graded from 0.8 to 0.4.
+- Dot loader (KERNEL-714, KERNEL-759, revised): one 3x3 grid of round dots, 13px square everywhere (3px dots, 2px gaps, in the 16px icon slot, so it matches the 12 to 13px icons beside it and does not scale with the text), in `faint` or `--spin-ink`, one steady gray. The dots do not fade, they swell: each scales from a pinpoint (0.18) up to full size and back in a 0.8s loop, on a sine-like ease with no flat hold, and the swells overlap so the motion rolls through the grid, with most dots visibly large at any moment. Only transform animates. `Spinner` takes a `pattern`, one per kind of wait, so a person can tell a wait apart at a glance. The arrows swell for a shorter part of the loop, so each `>` and `v` can be read for a moment. Running sidebar rows take a `seed` from their id, which shifts the loop so rows run out of step. Reduced motion draws no animation: a pattern's still-frame dots show at full size and the rest at 0.35 scale. Dots are numbered row by row (0 1 2 / 3 4 5 / 6 7 8), and the patterns are data in `ui/dotPatterns.ts`, shown in DevUi under Loader patterns.
+
+| Pattern | Order | Still frame | Used for |
+| --- | --- | --- | --- |
+| `wave` | diagonals, top left to bottom right | middle diagonal | agent working: sidebar rows, hover card (default) |
+| `wave-back` | the same, bottom right to top left | middle diagonal | switching accounts, a Settings field saving |
+| `arrow-right` | a `>` chevron moving right, with a shorter swell | the chevron | not used yet |
+| `arrow-down` | a `v` chevron moving down, with a shorter swell | the chevron | loading data: issue lists, onboarding checks, Starting |
+| `ripple-out` | center, edges, corners | center | busy buttons and inline action links |
+| `ripple-in` | corners, edges, center | corners | not used yet |
+| `spiral` | clockwise around the ring, then center | first three dots | the transcript Working line |
+| `rotate` | corners turn clockwise, edges trail dim, then center | one corner | Banner retrying |
+| `checker` | the X, then the plus, alternating | the X | PR checks running: PRs rows, PR band status |
+| `pulse` | center swells, then the ring | center | not used yet |
+| `scatter` | one dot at a time in a fixed shuffle | three dots | not used yet |
+| `twinkle` | two or three dots at once, fixed uneven delays | three dots | chat tabs working |
+| `snake` | one dot at a time tracing the grid | first three dots | setup and run scripts |
+
 - Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
-- Respect reduced motion: jump instead of walk, the dot loader holds still as a graded grid, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
+- Respect reduced motion: jump instead of walk, the dot loader holds a still frame of its pattern, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 
 ## Accessibility
 

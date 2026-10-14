@@ -15,7 +15,7 @@ export interface PrHeaderView {
   /** A branch that merges on the Mac has no number to link, so a plain `→ main` pill stands in, with the base branch's name (KERNEL-478). */
   pill?: string
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
-  state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
+  state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prReady' | 'prDraft' | 'prCifail' | 'prChanges' | 'prConflict' | 'prClosed' | 'merged' }
   /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). `override` asks first, as Merge anyway does (KERNEL-501). */
   button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction; override?: boolean }
   /** Create PR's caret menu (squared right edge on the button). */
@@ -203,12 +203,12 @@ function stateView(state: PrState, changed: boolean, blocked: boolean, local: { 
   if (local) return localHeaderView(local.stand, local.base, changed)
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
-  const conflicts = { label: PR_STATUS.conflict.label, tone: 'fail', glyph: 'pr' } as const
-  const mergeable = { label: 'Ready to merge', tone: 'ready', glyph: 'pr' } as const
+  const conflicts = { label: PR_STATUS.conflict.label, tone: 'fail', glyph: 'prConflict' } as const
+  const mergeable = { label: 'Ready to merge', tone: 'ready', glyph: 'prReady' } as const
   // What runs spins in its own word, as every other place showing the PR draws it (KERNEL-417).
   const running = (s: 'creating' | 'checks' | 'resolving' | 'merging') => ({ label: PR_STATUS[s].label, kind: 'busy' }) as const
   if (mergeableState(state)) {
-    if (held) return { ...base, state: { label: BLOCKERS_STATUS.label, tone: BLOCKERS_STATUS.tone, glyph: 'pr' }, button: { label: 'Merge anyway', kind: 'secondary', action: 'merge', override: true } }
+    if (held) return { ...base, state: { label: BLOCKERS_STATUS.label, tone: BLOCKERS_STATUS.tone, glyph: 'prChanges' }, button: { label: 'Merge anyway', kind: 'secondary', action: 'merge', override: true } }
     return { ...base, state: state === 'ready' && !blocked ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
   }
   switch (state) {
@@ -222,8 +222,8 @@ function stateView(state: PrState, changed: boolean, blocked: boolean, local: { 
     case 'merging': return { ...base, state: mergeable, button: running('merging') }
     case 'merged': return { ...base, state: { label: 'Merged', tone: 'merged', glyph: 'merged' }, merged: true }
     case 'draft': return { ...base, state: { label: PR_STATUS.draft.label, tone: 'idle', glyph: 'prDraft' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
-    case 'cifail': return { ...base, state: { label: PR_STATUS.cifail.label, tone: 'fail', glyph: 'pr' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
-    case 'changes': return { ...base, state: { label: PR_STATUS.changes.label, tone: 'fail', glyph: 'pr' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
+    case 'cifail': return { ...base, state: { label: PR_STATUS.cifail.label, tone: 'fail', glyph: 'prCifail' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
+    case 'changes': return { ...base, state: { label: PR_STATUS.changes.label, tone: 'fail', glyph: 'prChanges' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
     case 'closed': return { ...base, state: { label: 'Closed', tone: 'idle', glyph: 'prClosed' }, button: { label: 'Reopen', kind: 'secondary', action: 'reopen' }, archive: true }
   }
 }

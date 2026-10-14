@@ -133,7 +133,7 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'privacy.telemetry': 'now'
 }
 
-type Room = Omit<Required<RoomSettings>, 'sources'>
+type Room = Omit<Required<RoomSettings>, 'sources' | 'missingReferences'>
 
 /** Every room setting by dotted path: a list or table of names by its own key, the rest one level down (`pr.mergeMethod`). */
 export type RoomSettingPath = {
@@ -190,6 +190,8 @@ export const ROOM_SETTING_TIMING: Record<RoomSettingPath, SettingTiming> = {
   'preview.urls': 'now',
   // envFor() in features/env.ts builds a chat's env when its process starts. Scripts read it when they start.
   'env.files': 'newChats',
+  // referencesFor() in features/sessionDeps.ts, when a chat's process starts. The @ menu reads them on each search.
+  references: 'newChats',
   // features/team.ts reads the roster each time it lists the team.
   'team.lead': 'now',
   'team.reviewer': 'now',

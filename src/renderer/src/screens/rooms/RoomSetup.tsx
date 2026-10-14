@@ -101,8 +101,8 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 <span className="ob-ico rs-ico" data-state={s.state}>
                   {s.state === 'ok' && <Icon name="check" size={16} />}
                   {s.state === 'warn' && <Icon name="warning" size={16} />}
-                  {s.state === 'fail' && <Icon name="x" size={16} />}
-                  {s.state === 'run' && <Spinner label={`${s.title} is running`} />}
+                  {s.state === 'fail' && <Icon name="close" size={16} />}
+                  {s.state === 'run' && <Spinner label={`${s.title} is running`} pattern="snake" />}
                   {s.state === 'wait' && <span aria-label="Waiting" className="rs-dash">–</span>}
                 </span>
                 <div className="ob-body">
@@ -113,7 +113,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   {s.fix?.command && <div className="ob-fix"><CodeBlock inline>{s.fix.command}</CodeBlock></div>}
                   {s.fix?.action === 'recheck' && (
                     <div className="ob-acts rs-acts">
-                      <Button variant="secondary" busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
+                      <Button variant="secondary" busy={busy === 'recheck'} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
                     </div>
                   )}
                   {s.state === 'warn' && !!s.production?.length && (
@@ -126,7 +126,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 {s.meta && s.state !== 'warn' && <span className="ob-meta">{s.meta}</span>}
               </div>
             ))}
-            {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
+            {!steps && <div className="ob-check"><Spinner label="Starting" pattern="arrow-down" /><span className="muted">Starting</span></div>}
           </div>
           {showTeam && (
             <section className="rs-team" aria-labelledby="rs-team">

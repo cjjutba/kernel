@@ -1,25 +1,46 @@
 import { chatProvider } from '@shared/providers'
 import type { Kernel } from '../kernel'
+import { bus } from '../bus'
 import type { SessionDeps } from '../services/sessions'
-import { agentAccessInRoom, aliasesInRoom, disabledInRoom } from '../services/settings'
+import { agentAccessInRoom, aliasesInRoom, disabledInRoom, referencesInRoom } from '../services/settings'
 
 /**
  * What Sessions calls back into Kernel for (KERNEL-324). A new reaction to a finished turn goes in `onTurnDone`, where the
  * order matters: the Lead hears about a turn only after Kernel has read the PR it may have opened.
  */
 export function sessionDeps(k: Kernel): SessionDeps {
+  // Reference folders the room log already warned about, by room and path, so each warns once per run (KERNEL-748).
+  const warned = new Set<string>()
   return {
     store: k.store,
     approvals: k.approvals,
     settings: () => k.settings,
     // A review chat runs its kind's agent, which isn't always its workspace's (KERNEL-549).
     agentFor: (ws, chat) => (chat && k.reviews.agentForChat(ws, chat)) || k.team.agentOf(ws.roomId, ws.agentId),
+    teamOf: (roomId) => k.team.agentCache.get(roomId),
+    openItems: {
+      mentioned: (chat, mentioned) => k.openItems.mentioned(chat, mentioned),
+      userSent: (chatId) => k.openItems.userSent(chatId),
+      atStop: (chatId) => k.openItems.atStop(chatId)
+    },
     roleFor: (ws, agent) => k.team.roleFor(ws, agent),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
     codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), apiKey: k.providers.apiKey('codex'), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     aliasesFor: (ws) => { const room = k.store.room(ws.roomId); return room ? aliasesInRoom(room.path) : undefined },
     accessFor: (ws) => { const room = k.store.room(ws.roomId); return room ? agentAccessInRoom(room.path, ws.agentId) : undefined },
+    // A folder that isn't there is skipped, so the chat still starts, and the room log says so once (KERNEL-748).
+    referencesFor: (ws) => {
+      const room = k.store.room(ws.roomId)
+      if (!room) return undefined
+      const { present, missing } = referencesInRoom(room.path)
+      for (const path of missing) {
+        if (warned.has(`${room.id}\0${path}`)) continue
+        warned.add(`${room.id}\0${path}`)
+        bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: 'skipped a reference folder that is missing:', object: path, warn: true })
+      }
+      return present
+    },
     onMcp: (ws, provider, servers) => k.mcp.reported(ws.roomId, provider, servers),
     rulesFor: (ws, agent, chat) => k.tools.rulesFor(ws, agent, chat),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
@@ -50,7 +71,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // takes.
       const teammate = !k.team.isLeadWorkspace(ws)
       if (teammate) k.leadUpdates.readingPr(ws.id)
-      k.leadUpdates.turnDone(ws, chat, done)
+      // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
+      k.leadUpdates.turnDone(ws, chat, done, turn.limit ? k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
       // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
       void k.workspaces.changes(ws.id).catch(() => undefined)
@@ -77,6 +99,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     switchNote: (provider, accountId) => k.providers.switchNote(provider, accountId),
+    turnNote: (chat) => k.checkpoints.turnNote(chat.id),
     onFailure: (failure, _ws, provider, account) => {
       if (failure === 'auth') k.account.signedOut(provider, { account })
       else if (failure === 'network') void k.account.network?.lost()
@@ -86,6 +109,14 @@ export function sessionDeps(k: Kernel): SessionDeps {
       if (midTurn) k.leadUpdates.crashed(k.store.workspace(ws.id) ?? ws, reason, { resumed })
       // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
+    },
+    // A teammate a limit stopped carries on, on the account its provider runs on now. The Lead hears it when it heard of the pause (KERNEL-777).
+    onCarriedOn: (chatId, reason) => {
+      const chat = k.store.chat(chatId)
+      const ws = chat && k.store.workspace(chat.workspaceId)
+      if (reason !== 'limit' || !chat || !ws) return
+      const provider = chatProvider(chat)
+      k.leadUpdates.limitLifted(ws, { provider, account: k.providers.label(provider, k.providers.active(provider)) })
     },
     onLimits: (limits) => k.account.applyLimits(limits),
     onCutOff: (chatIds) => k.store.saveMeta('cutOff', chatIds),

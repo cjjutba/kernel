@@ -81,12 +81,16 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-token { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: var(--r); border: 1px solid var(--input-line); background: var(--surface-2); color: var(--ink-2); font: 12.5px var(--mono); outline: none; user-select: text; }
 .set-token:focus { border-color: var(--ink-3); }
 .set-actions { display: inline-flex; gap: 8px; align-items: center; }
+.rm-kernel .set-text { flex-basis: 160px; }
+.rm-kernel .set-actions { margin-left: auto; }
 
 /* Room pages in the nav and the room page header (KERNEL-191). The hairline starts under the room avatar's center (8px pad + 8px) and the pages sit one step past it (KERNEL-534). */
 .set-room { gap: 10px; }
 .set-room .grow { text-align: left; }
 .set-pages { margin-left: 15px; padding-left: 4px; border-left: 1px solid var(--line-3); }
 .nav-item.set-sub { padding-left: 6px; }
+.nav-item.set-hit-item { height: 26px; padding-left: 34px; color: var(--muted); }
+.set-pages .nav-item.set-hit-item { padding-left: 28px; }
 .set-head { display: flex; align-items: center; gap: 24px; }
 .set-head h1 { flex: 1; min-width: 0; }
 .set-files { position: relative; flex-shrink: 0; }
@@ -315,3 +319,14 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-field-inline { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .set-tags > .set-save { align-self: center; padding-left: 4px; }
 @media (prefers-reduced-motion: reduce) { .set-save { transition: none; } }
+
+.set-where { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.set-from .set-link { color: var(--muted); text-decoration: none; }
+.set-from .set-link:hover { color: var(--ink-2); text-decoration: underline; }
+.set-where .set-save { margin-left: 8px; }
+
+.set-row[data-hit], .set-section[data-hit] { animation: set-hit 1.6s ease-out forwards; }
+@keyframes set-hit { from { background: var(--surface-3); } to { background: transparent; } }
+html[data-reduce-motion='true'] .set-row[data-hit], html[data-reduce-motion='true'] .set-section[data-hit] { animation: none; background: var(--surface-3); }
+@media (prefers-reduced-motion: reduce) { .set-row[data-hit], .set-section[data-hit] { animation: none; background: var(--surface-3); } }
+.set-row[data-hit='held'], .set-section[data-hit='held'] { animation: none; background: var(--surface-3); }

@@ -249,10 +249,10 @@ describe('PR header and toasts', () => {
     expect(label('creating')).toBe('No PR yet/idle/branch')
     expect(label('open')).toBe('Open/ready/pr')
     expect(label('checks')).toBe('Open/idle/pr')
-    expect(label('conflict')).toBe('Merge conflicts/fail/pr')
-    expect(label('resolving')).toBe('Merge conflicts/fail/pr')
-    expect(label('ready')).toBe('Ready to merge/ready/pr')
-    expect(label('merging')).toBe('Ready to merge/ready/pr')
+    expect(label('conflict')).toBe('Merge conflicts/fail/prConflict')
+    expect(label('resolving')).toBe('Merge conflicts/fail/prConflict')
+    expect(label('ready')).toBe('Ready to merge/ready/prReady')
+    expect(label('merging')).toBe('Ready to merge/ready/prReady')
     expect(label('merged')).toBe('Merged/merged/merged')
     expect(label('draft')).toBe('Draft/idle/prDraft')
   })
@@ -501,42 +501,6 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     }
   })
 
-  it('merges the PRs of a room in order with Merge all, says each step, and stops at the first that cannot merge (KERNEL-411)', async () => {
-    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
-    const queues: PushEvent[] = []
-    const onPush = (e: PushEvent) => { if (e.type === 'pr.queue') queues.push(e) }
-    bus.on('push', onPush)
-    try {
-      gh.pr = info({ state: 'ready' })
-      await k.prs.refreshPr(ws.id)
-      const result = await k.prs.mergeAll(ws.roomId, [ws.id, 'gone'])
-      expect(result).toEqual({ merged: [42], stopped: { workspaceId: 'gone', reason: 'It is not an open workspace in this room.' } })
-      expect(gh.merged).toEqual(['squash'])
-      // One push per step, then one that ends the run.
-      expect(queues).toEqual([
-        { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: ws.id } },
-        { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: 'gone' } },
-        { type: 'pr.queue', roomId: ws.roomId, result }
-      ])
-    } finally {
-      bus.off('push', onPush)
-      await k.stop()
-    }
-  })
-
-  it('refuses a second Merge all in a room while one runs (KERNEL-411)', async () => {
-    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
-    try {
-      gh.pr = info({ state: 'ready' })
-      await k.prs.refreshPr(ws.id)
-      const first = k.prs.mergeAll(ws.roomId, [ws.id])
-      await expect(k.prs.mergeAll(ws.roomId, [ws.id])).rejects.toThrow('Merge all is already running in this room.')
-      expect(await first).toEqual({ merged: [42] })
-    } finally {
-      await k.stop()
-    }
-  })
-
   describe('a PR action says when it starts and ends (KERNEL-519)', () => {
     /** The `pr.pending` and `pr` pushes, in order: "pending merge", a state, or "clear". */
     function watch(name: (id: string) => string | undefined) {
@@ -545,7 +509,6 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
         const who = 'workspaceId' in e ? name(e.workspaceId) : undefined
         if (e.type === 'pr.pending' && who !== undefined) seen.push(`${who}${e.action ? `pending ${e.action}` : 'clear'}`)
         if (e.type === 'pr' && who !== undefined) seen.push(`${who}${e.state}`)
-        if (e.type === 'pr.queue') seen.push(e.queue ? `queue ${name(e.queue.current ?? '')}` : 'queue ends')
       }
       bus.on('push', onPush)
       return { seen, off: () => bus.off('push', onPush) }
@@ -608,33 +571,6 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
       }
     })
 
-    it('marks each PR pending as its Merge all turn starts, and reads one that cannot merge before clearing it', async () => {
-      const { k, ws } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
-      const other = await k.createWorkspace(ws.roomId, { prompt: 'Build the chart', agentId: 'kai', title: 'Revenue chart' })
-      const states: Record<string, PrState> = { [ws.id]: 'ready', [other.id]: 'ready' }
-      k.github = {
-        ...k.github,
-        info: async (_cwd, _ref, workspaceId) => ({ ...info({ number: workspaceId === ws.id ? 42 : 43 }), workspaceId, state: states[workspaceId] }),
-        // The first merge moves main, and the second PR now conflicts with it.
-        merge: async () => { states[ws.id] = 'merged'; states[other.id] = 'conflict' }
-      }
-      await k.prs.refreshPr(ws.id)
-      await k.prs.refreshPr(other.id)
-      const w = watch((id) => (id === ws.id ? 'a ' : id === other.id ? 'b ' : undefined))
-      try {
-        const result = await k.prs.mergeAll(ws.roomId, [ws.id, other.id])
-        expect(result).toEqual({ merged: [42], stopped: { workspaceId: other.id, prNumber: 43, reason: 'It has merge conflicts.' } })
-        expect(w.seen).toEqual([
-          'queue a ', 'a pending merge', 'a merging', 'a merged', 'a clear',
-          // The read that finds the conflict comes before the clear, so the PR never shows Merge again in between.
-          'queue b ', 'b pending merge', 'b conflict', 'b clear',
-          'queue ends'
-        ])
-      } finally {
-        w.off()
-        await k.stop()
-      }
-    })
   })
 
   it('drops the quick read on stop (KERNEL-283)', async () => {
@@ -723,6 +659,21 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.stop()
   })
 
+  it('with Reviewer approval required, refuses a PR whose planned reviews have not approved its latest commit yet (KERNEL-717)', async () => {
+    const { k, ws, gh } = await setup()
+    const head = 'b'.repeat(40)
+    gh.pr = { ...info({ state: 'ready', checks: [{ name: 'e2e', state: 'pass' }] }), head }
+    await k.prs.refreshPr(ws.id)
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviewPending: head })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('The review of the latest commit is starting.')
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviewPending: undefined, reviewRound: { n: 1, rounds: 2, head, prNumber: 42, kinds: ['code'] } })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow("The code review hasn't approved the latest commit.")
+    expect(gh.merged).toEqual([])
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'approved', summary: '', sha: head, prNumber: 42, lens: 'code', ts: 1 }] })
+    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+    await k.stop()
+  })
+
   it('merges a PR nobody reviewed, and one with no approval of its latest commit with the setting off (KERNEL-115)', async () => {
     const { k, ws, gh } = await setup()
     gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }
@@ -783,15 +734,6 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
       }
     })
 
-    it('stop Merge all, which never overrides', async () => {
-      const { k, ws, gh } = await blocked()
-      try {
-        expect(await k.prs.mergeAll(ws.roomId, [ws.id])).toEqual({ merged: [], stopped: { workspaceId: ws.id, prNumber: 42, reason: found } })
-        expect(gh.merged).toEqual([])
-      } finally {
-        await k.stop()
-      }
-    })
   })
 
   it("leaves starting reviews out of the Lead's prompt, since Kernel starts them itself (KERNEL-115, KERNEL-549)", async () => {

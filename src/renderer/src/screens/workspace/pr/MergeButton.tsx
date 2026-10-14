@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { MergeQueue, PrInfo, Workspace } from '@shared/types'
+import type { PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, useBusy } from '../../../ui'
+import { Button, Icon, Spinner, useBusy } from '../../../ui'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrAction, type PrStatus, type Rules } from './model'
 import { request } from './PrHeader'
@@ -12,21 +12,19 @@ import './pr.css'
 
 /**
  * What a PR's Merge button place shows (KERNEL-351, KERNEL-411): nothing, the button, why it can't, the merge running, the
- * merge done, its turn still to come in a Merge all run (`next`), or where an open PR that can't merge yet stands (`state`),
- * in the words and tone every place uses (KERNEL-417). `override` is a PR that only blockers on its latest commit hold back:
- * a soft Merge anyway takes the Merge button's place (KERNEL-501).
+ * merge done, or where an open PR that can't merge yet stands (`state`), in the words and tone every place uses (KERNEL-417).
+ * `override` is a PR that only blockers on its latest commit hold back: a quiet outline Merge anyway takes the Merge button's
+ * place (KERNEL-501, KERNEL-757).
  */
-export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'override'; reviewer: string; count: number } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | { kind: 'next' } | ({ kind: 'state' } & PrStatus)
+export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'override'; reviewer: string; count: number } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | ({ kind: 'state' } & PrStatus)
 
 /**
- * Decides from the same rule as the header's Merge PR (`mergeBlock`, KERNEL-349). A PR a Merge all run will get to reads
- * Next until its turn (`queue`, KERNEL-411). A merge pending on the PR reads merging before GitHub's state moves, whoever
- * pressed it, so a row never offers Merge while one runs, such as the PR Merge all is on (`pending`, KERNEL-520).
+ * Decides from the same rule as the header's Merge PR (`mergeBlock`, KERNEL-349). A merge pending on the PR reads merging
+ * before GitHub's state moves, whoever pressed it, so a row never offers Merge while one runs (`pending`, KERNEL-520).
  */
-export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name?: (agentId: string) => string, queue?: MergeQueue, pending?: PrAction): MergeView {
+export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: Rules, name?: (agentId: string) => string, pending?: PrAction): MergeView {
   if (ws.prState === 'merged') return { kind: 'merged' }
   if (ws.prState === 'merging' || pending === 'merge') return { kind: 'merging' }
-  if (queue && queue.current !== ws.id && queue.ids.indexOf(ws.id) > queue.ids.indexOf(queue.current ?? '')) return { kind: 'next' }
   const status = prStatus(ws.prState)
   if (status) return ws.prNumber ? { kind: 'state', ...status } : { kind: 'none' }
   if (!mergeableState(ws.prState)) return { kind: 'none' }
@@ -50,7 +48,6 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
   const reviewer = useStore((s) => s.agents[ws.roomId])
-  const queue = useStore((s) => s.mergeQueues[ws.roomId])
   const pending = useStore((s) => s.prPending[ws.id])
   const [busy, run] = useBusy()
   const [confirm, setConfirm] = useState<{ reviewer: string; count: number } | null>(null)
@@ -66,7 +63,7 @@ export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   }, [needsPr, ws.id])
   if (needsPr && !read) return null
 
-  const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, queue, pending)
+  const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id, pending)
   const merge = () => (view.kind === 'override' ? setConfirm({ reviewer: view.reviewer, count: view.count }) : void run(busyLabel.merge, () => mergeAndToast(ws.id)))
   return (
     <>
@@ -83,35 +80,35 @@ export async function mergeAndToast(workspaceId: string) {
 
 /**
  * What `MergeButton` draws for a view. `busy` is the label while this button's own merge call runs, such as "Merging". A PR
- * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button, the Lead or
- * Merge all (KERNEL-417, KERNEL-520).
+ * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button or the Lead
+ * (KERNEL-417, KERNEL-520).
  */
 export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
   switch (view.kind) {
     case 'none': return null
-    case 'merged': return <span className="tucard-merged">Merged</span>
+    case 'merged': return <span className="tucard-merged"><Icon name="merged" size={14} />Merged</span>
     case 'blocked': return <span className="tucard-why" data-tip={view.reason}>{firstSentence(view.reason)}</span>
-    case 'next': return <span className="tucard-why">Next</span>
     case 'state': return <PrStatusTag status={view} />
     case 'merging': return <PrStatusTag status={PR_STATUS.merging} />
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
-        <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
+        <Button className="pr-soft tucard-merge" busy={!!busy} busyPattern="ripple-in" busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
       </span>
     )
     case 'override': return (
-      <span className="pr-tone" data-tone="fail">
-        <Button className="pr-soft tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
+      <span className="pr-tone" data-tone="idle">
+        <Button className="pr-outline tucard-merge" aria-label={ws.prNumber ? `Merge anyway, PR #${ws.prNumber}` : 'Merge anyway'} onClick={onMerge}>Merge anyway</Button>
       </span>
     )
   }
 }
 
 /**
- * An open PR's state in a PRs tab or Team update row, drawn as the PR band draws it (KERNEL-417): while something runs, a spinner
- * with the word in the band's tone, as the band's own busy button; otherwise the word, red for what needs fixing. `why` is its tooltip.
+ * An open PR's state in a PRs tab or Team update row, in the words and tone the PR band uses (KERNEL-417): the word, red for what
+ * needs fixing, and while something runs the spinner before it. It is never a button, so nothing looks pressable but the one
+ * button a person pressed (KERNEL-757). `why` is its tooltip.
  */
 export function PrStatusTag({ status, why }: { status: PrStatus; why?: string }) {
-  if (status.spin) return <span className="pr-tone" data-tone={status.tone}><Button className="pr-soft tucard-merge" busy>{status.label}</Button></span>
+  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} pattern="checker" />{status.label}</span>
   return <span className="pr-word" data-tone={status.tone} data-tip={why}>{status.label}</span>
 }

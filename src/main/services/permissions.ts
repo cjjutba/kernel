@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, Chat, ChatRunMode, Decision, ModeReason, ModeScope, PermissionMode, Room, RunMode, Workspace } from '@shared/types'
 import { PERMISSION_MODES } from '@shared/types'
@@ -119,6 +121,8 @@ export interface Rules {
   roomTools: () => string[]
   /** The workspace's branch, which the refusal of a push in Bypass permissions names as the one to push. */
   branch?: string
+  /** The room's reference folders, which a file edit may not touch (KERNEL-748). */
+  references?: string[]
 }
 
 /** The rules for a runner's next step: Settings, Permissions and the room as they stand now, in `mode`, else the chat's mode now. */
@@ -153,11 +157,44 @@ export function guardVerdict(command: string, rules: Rules, cwd?: string): Verdi
  */
 export function decide(step: Step, rules: Rules): Verdict {
   if (step.tool.startsWith('mcp__kernel__')) return ALLOW
+  const reference = referenceWrite(step, rules.references)
+  if (reference) return reference
   if (networkOff(step, rules)) return { behavior: 'deny', message: NETWORK_OFF }
   return (step.command ? guardVerdict(step.command, rules, step.cwd) : roomTool(step, rules)) ?? byMode(step, rules)
 }
 
 const WEB_TOOLS = new Set(['WebFetch', 'WebSearch'])
+
+/** What a file edit under one of the room's reference folders gets (KERNEL-748). */
+export const REFERENCE_READ_ONLY = 'Reference folders are read-only.'
+
+/** The tools that change a file, by the input key that names it. */
+const FILE_WRITES: Record<string, string> = { Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path' }
+
+/** A path with its symlinks resolved, as far up as it exists, so a file Write is about to create still resolves. */
+function realish(path: string): string {
+  try { return realpathSync(path) } catch {
+    const parent = dirname(path)
+    return parent === path ? path : join(realish(parent), basename(path))
+  }
+}
+
+const inside = (path: string, folder: string) => path === folder || path.startsWith(folder.endsWith(sep) ? folder : folder + sep)
+
+/**
+ * Denies Edit, Write, MultiEdit and NotebookEdit on a file under one of the room's reference folders (KERNEL-748), in every
+ * mode, symlinks resolved on both sides. A relative path counts from the step's `cwd`. Reading them stays open.
+ */
+export function referenceWrite(step: Pick<Step, 'tool' | 'input' | 'cwd'>, references: string[] | undefined): Verdict {
+  const key = FILE_WRITES[step.tool]
+  if (!key || !references?.length) return undefined
+  const target = (step.input as Record<string, unknown> | undefined)?.[key]
+  if (typeof target !== 'string' || !target.trim()) return undefined
+  const full = resolve(step.cwd ?? '/', target)
+  const paths = [full, realish(full)]
+  const hit = references.some((r) => { const folder = resolve(r); return [folder, realish(folder)].some((f) => paths.some((p) => inside(p, f))) })
+  return hit ? { behavior: 'deny', message: REFERENCE_READ_ONLY } : undefined
+}
 
 const networkOff = (step: Step, rules: Rules) => rules.permissions.network === false && (WEB_TOOLS.has(step.tool) || !!step.network || (!!step.command && usesNetwork(step.command)))
 

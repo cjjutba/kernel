@@ -121,6 +121,7 @@ export function toCodexInput(parts: ChatPart[]): UserInput[] {
     else if (p.type === 'skill') text.push(`$${p.name}`)
     else if (p.type === 'file') text.push(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'workspace') text.push(linkText(p))
+    else if (p.type === 'agent') text.push(`@${p.name}`)
     else if (p.type === 'image' && p.path) text.push(imageMarker(++images, { ...p, path: p.path }))
     else if (p.type === 'image' && p.dataUrl && IMAGE_DATA_URL.test(p.dataUrl)) { flush(); input.push({ type: 'image', url: p.dataUrl }) }
   }

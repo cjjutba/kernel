@@ -324,12 +324,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); vertical-align: middle; }
-/* The dot loader (KERNEL-714, KERNEL-740). One 3x3 grid sized in em, so it follows the text beside it: about 11px at 12 to 13px. Only opacity loops, between 0.3 and 0.8. At rest the dots are graded by --k, which is what reduced motion keeps. Negative delays start the loop mid-wave. */
-.dots { --d: round(0.23em, 1px); --g: round(0.08em, 1px); display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
-.dots > i { display: block; border-radius: 0.5px; background: var(--spin-ink, var(--faint)); opacity: calc(0.8 - var(--k) * 0.1); }
-@keyframes dots-wave { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+/* The dot loader (KERNEL-714, KERNEL-740, KERNEL-755, KERNEL-759, revised below). One 3x3 grid of round dots, 13px square everywhere (3px dots, 2px gaps) in one steady gray, in the 16px icon slot. The dots do not fade, they swell: each one scales from a pinpoint (`--lo`) up to `--a` of full size and back on a sine ease, with no hold at either end, and the color stays one steady gray. A pattern (ui/dotPatterns.ts) splits the 0.8s `--loop` into `--n` steps and gives every dot the step `--k` where its swell starts, so the swells overlap and roll through the grid. The arrows set `data-swell='short'`, a shorter swell with a rest, so each chevron can be read. Only transform and opacity animate. Reduced motion draws no animation, the pattern's `still` dots at full size and the rest at `--s`. `--phase` shifts the loop for rows that must not run in step. Negative delays start the loop mid-wave. */
+.dots { --d: 3px; --g: 2px; --loop: 0.8s; --lo: 0.18; --n: 3; --step: calc(var(--loop) / var(--n)); --anim: dots-swell; display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
+.dots[data-swell='short'] { --anim: dots-swell-short; }
+.dots > i { display: block; border-radius: 50%; background: var(--spin-ink, var(--faint)); transform: scale(var(--s, 0.35)); will-change: transform; }
+@keyframes dots-swell { 0%, 100% { transform: scale(var(--lo)); animation-timing-function: cubic-bezier(0.3, 0.3, 0.4, 1); } 50% { transform: scale(var(--a, 1)); animation-timing-function: cubic-bezier(0.6, 0, 0.7, 0.7); } }
+@keyframes dots-swell-short { 0%, 70%, 100% { transform: scale(var(--lo)); animation-timing-function: cubic-bezier(0.3, 0.3, 0.4, 1); } 35% { transform: scale(var(--a, 1)); animation-timing-function: cubic-bezier(0.6, 0, 0.7, 0.7); } }
 @media (prefers-reduced-motion: no-preference) {
-  .dots > i { animation: dots-wave 1.6s ease-in-out infinite; animation-delay: calc(var(--k) * 0.12s - 0.8s); }
+  .dots > i { animation: var(--anim) var(--loop) linear infinite; animation-delay: calc(var(--k) * var(--step) - var(--loop) - var(--phase, 0s)); }
 }
 .menu { position: absolute; z-index: 60; min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: 13px; }

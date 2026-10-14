@@ -567,7 +567,7 @@ export class Lead extends Feature {
         // `update` skips an approval that is gone. The catch covers a store closed while the file was written, as on quit
         // (KERNEL-383).
         if (o.kind === 'plan' && o.detail?.trim() && ws && existsSync(ws.path)) {
-          void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
+          void savePlan(ws.path, o.detail, { reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
         }
         // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125). It isn't a send, so
         // the chat keeps its place in the sidebar (KERNEL-498).
@@ -592,6 +592,12 @@ export class Lead extends Feature {
       unsaved: (id) => this.k.archive.unsavedOf(id),
       planApproved: () => this.sessions.planApproved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
+      acted: (a) => {
+        if ('messaged' in a) this.k.openItems.messaged(chat.id, a.messaged)
+        else if ('created' in a) this.k.openItems.created(chat.id, a.created)
+        else this.k.openItems.asked(chat.id, a.asked)
+      },
+      openMarks: () => this.k.openItems.marks(chat.id),
       hireAgent: async (a, scope) => {
         const was = this.k.team.agentCache.get(roomId) ?? await this.k.team.agents(roomId)
         const { agent, pr } = await this.k.agentChanges.hire(roomId, { id: a.id, text: renderAgentFile(a) }, scope)
