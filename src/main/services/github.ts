@@ -327,8 +327,21 @@ export async function prCreate(cwd: string, o: { title: string; body: string; ba
 export async function prReady(cwd: string, ref?: string) { await run('gh', ['pr', 'ready', ...(ref ? [ref] : [])], { cwd, timeoutMs: 30000 }) }
 export async function prReopen(cwd: string, ref?: string) { await run('gh', ['pr', 'reopen', ...(ref ? [ref] : [])], { cwd, timeoutMs: 30000 }) }
 
-export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase', o: { ref?: string; deleteBranch?: boolean } = {}) {
-  await run('gh', ['pr', 'merge', ...(o.ref ? [o.ref] : []), `--${method}`, ...(o.deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
+/** Why a merge held to a head commit stopped: the PR has another one now (KERNEL-556, KERNEL-829). */
+export const HEAD_MOVED = 'The pull request has new commits since Kernel checked it.'
+
+/**
+ * Merges the PR. `head` holds GitHub to the commit Kernel checked, so a push after the check makes GitHub refuse the merge
+ * rather than land a commit nobody weighed (KERNEL-829).
+ */
+export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase', o: { ref?: string; deleteBranch?: boolean; head?: string } = {}) {
+  try {
+    await run('gh', ['pr', 'merge', ...(o.ref ? [o.ref] : []), `--${method}`, ...(o.head ? ['--match-head-commit', o.head] : []), ...(o.deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
+  } catch (e) {
+    // GitHub answers "Head branch was modified" when the PR's head isn't the one passed.
+    if (o.head && /Head branch was modified/i.test(e instanceof Error ? e.message : String(e))) throw new Error(HEAD_MOVED)
+    throw e
+  }
 }
 
 const ALLOWED: Record<MergeMethod, string> = { squash: 'squashMergeAllowed', merge: 'mergeCommitAllowed', rebase: 'rebaseMergeAllowed' }
@@ -360,9 +373,10 @@ export interface CodeHost {
   rateLimit?: (cwd: string) => Promise<RateLimit | undefined>
   /**
    * Merges the PR. `base` and `title` are for a local merge, which also returns the commit it left on the base: a merge on
-   * GitHub is known once a read says so (KERNEL-467).
+   * GitHub is known once a read says so (KERNEL-467). `head` is the commit Kernel checked: GitHub merges only that one
+   * (KERNEL-829). A local merge reads the branch as it merges it, so it goes without.
    */
-  merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase', o?: { base?: string; title?: string }) => Promise<void | { sha: string; base: string }>
+  merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase', o?: { base?: string; title?: string; head?: string }) => Promise<void | { sha: string; base: string }>
   /** The merge methods the repo at `cwd` allows. Rejects when the host couldn't say. A host without it takes any (KERNEL-468). */
   mergeMethods?: (cwd: string) => Promise<MergeMethod[]>
   ready: (cwd: string, ref: string) => Promise<void>
@@ -385,7 +399,7 @@ export const gh: CodeHost = {
     return { infos: new Map([...views].map(([n, v]) => [n, infoOf('', v, [], [], o)])), ...(rate ? { rate } : {}) }
   },
   rateLimit: ghRateLimit,
-  merge: (cwd, ref, method) => prMerge(cwd, method, { ref }),
+  merge: (cwd, ref, method, o = {}) => prMerge(cwd, method, { ref, ...(o.head ? { head: o.head } : {}) }),
   mergeMethods: repoMergeMethods,
   ready: prReady,
   reopen: prReopen,

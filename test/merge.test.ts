@@ -7,6 +7,7 @@ import { autoMergeBlock, blockedText, gatingChecks, headBlockers, kindStates, me
 import { Kernel } from '../src/main/kernel'
 import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
+import { HEAD_MOVED, prMerge } from '../src/main/services/github'
 import { land, localMerge, LocalMergeError, localStatus, prepareMerge, type Refusal } from '../src/main/services/localMerge'
 import { setUp, tempRepo, freePort } from './helpers'
 import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
@@ -714,5 +715,57 @@ describe("the room's merge method (KERNEL-468)", () => {
     await k.prs.mergePr(b.id)
     expect(gh.asked).toBe(2)
     expect(gh.merges).toEqual([`${b.branch} merge`])
+  })
+
+  // KERNEL-829: GitHub merges only the head Kernel checked, and a merge gh lost track of counts once GitHub reads it merged.
+  describe('the merge call', () => {
+    /** GitHub reads the PR at `A`, and merged once `merged` is set. `merge` stands in for gh's merge. */
+    function host(k: Kernel, merge: (o: { head?: string }, gh: { merged: boolean }) => Promise<void>) {
+      const gh = { merged: false, heads: [] as (string | undefined)[] }
+      stub(k, ['squash'])
+      k.github = {
+        ...k.github,
+        info: async (_cwd, _ref, workspaceId) => info({ workspaceId, head: A, state: gh.merged ? 'merged' : 'ready' }),
+        merge: async (_cwd, _ref, _method, o = {}) => { gh.heads.push(o.head); await merge(o, gh) }
+      }
+      return gh
+    }
+
+    it("holds a person's Merge to the head GitHub read just before", async () => {
+      const k = await kernel()
+      const gh = host(k, async (_o, gh) => { gh.merged = true })
+      const [ws] = await room(k, ['Invoice table'])
+      expect((await k.prs.mergePr(ws.id)).prState).toBe('merged')
+      expect(gh.heads).toEqual([A])
+    })
+
+    it('shows the Merge button no error when gh timed out after GitHub merged', async () => {
+      const k = await kernel()
+      host(k, async (_o, gh) => { gh.merged = true; throw new Error("gh pr merge --squash didn't finish in 60 seconds") })
+      const [ws] = await room(k, ['Invoice table'])
+      expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged', mergedWith: 'squash' })
+    })
+
+    it('still fails a merge that failed when GitHub has not merged it', async () => {
+      const k = await kernel()
+      host(k, async () => { throw new Error("gh pr merge --squash didn't finish in 60 seconds") })
+      const [ws] = await room(k, ['Invoice table'])
+      await expect(k.prs.mergePr(ws.id)).rejects.toThrow("didn't finish")
+      expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+    })
+
+    it('passes the head to gh pr merge, and reads a moved head as new commits', async () => {
+      const bin = await mkdtemp(join(tmpdir(), 'kernel-gh-'))
+      const log = join(bin, 'calls.log')
+      // GitHub's answer to a merge whose expected head isn't the PR's.
+      await writeFile(join(bin, 'gh'), ['#!/bin/sh', `echo "$*" >> "${log}"`, 'echo "GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)" >&2', 'exit 1', ''].join('\n'), { mode: 0o755 })
+      vi.stubEnv('PATH', `${bin}:${process.env.PATH}`)
+      try {
+        await expect(prMerge(bin, 'squash', { ref: 'feat/table', head: A })).rejects.toThrow(HEAD_MOVED)
+        // Without a head the error stays gh's own.
+        await expect(prMerge(bin, 'squash', { ref: 'feat/table' })).rejects.toThrow('Head branch was modified')
+      } finally { vi.unstubAllEnvs() }
+      expect((await readFile(log, 'utf8')).trim().split('\n')).toEqual([`pr merge feat/table --squash --match-head-commit ${A}`, 'pr merge feat/table --squash'])
+    })
   })
 })
