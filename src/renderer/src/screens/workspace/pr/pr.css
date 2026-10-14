@@ -14,13 +14,11 @@
 .ws-aside-head > .pr-tone > .lp-summary { padding: 0 0 0 14px; }
 /* The Lead's band is one row: the summary button, then the toggle beside it. */
 .ws-aside-head > .pr-tone:has(> .lp-summary) { flex-direction: row; align-items: center; padding-right: 12px; }
-/* No fill, no border. The panel toggle keeps the colour and hover it has in the chat header and sits where it does there, 10px from the
-   window edge (the band's 12px padding less 2px), so it doesn't move or change colour when the panel opens or closes. Any other icon
-   button in the band takes the band's tone, with its 28px box pulled in 6px so the 16px glyph meets the 12px padding. */
-.ws-aside-head > .pr-tone .icon-btn, .pr-r1 .icon-btn { margin-right: -6px; }
-.ws-aside-head > .pr-tone .icon-btn:not(.panel-toggle), .pr-r1 .icon-btn:not(.panel-toggle) { color: var(--b-text); }
-.ws-aside-head > .pr-tone .icon-btn:not(.panel-toggle):hover, .pr-r1 .icon-btn:not(.panel-toggle):hover { color: var(--b-fg); }
-.ws-aside-head > .pr-tone .icon-btn.panel-toggle, .pr-r1 .icon-btn.panel-toggle { margin-right: -2px; }
+/* The panel toggle is not in the band: it floats over the slot at the band's end (workspace.css), 10px from the window edge, the band's
+   12px padding less 2px. Any icon button in the band takes the band's tone, with its 28px box pulled in 6px so the 16px glyph meets the padding. */
+.ws-aside-head > .pr-tone .panel-toggle-slot, .pr-r1 .panel-toggle-slot { margin-right: -2px; }
+.ws-aside-head > .pr-tone .icon-btn, .pr-r1 .icon-btn { margin-right: -6px; color: var(--b-text); }
+.ws-aside-head > .pr-tone .icon-btn:hover, .pr-r1 .icon-btn:hover { color: var(--b-fg); }
 
 .pr-tone > :not(.pr-state):not(.grow) { flex-shrink: 0; }
 .pr-cap > .pr-state { flex-shrink: 0; }
