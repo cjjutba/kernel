@@ -461,7 +461,7 @@ export const actions = {
     toggleMenu: (menu: MenuId) => setState((s) => ({ ui: { ...s.ui, menu: s.ui.menu === menu ? null : menu } })),
     closeMenu: () => setUi({ menu: null }),
     /**
-     * Shows a toast. Returns its id. `components/Toasts.tsx` drops it after 2.6s (DESIGN.md) and holds it while hovered,
+     * Shows a toast. Returns its id. `components/Toasts.tsx` drops it after 5s (DESIGN.md) and holds it while hovered,
      * so the store sets no timer of its own unless `ms` asks for one.
      */
     toast: (t: Omit<Toast, 'id'>, ms?: number) => {

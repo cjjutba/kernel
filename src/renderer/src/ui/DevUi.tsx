@@ -94,7 +94,7 @@ function Overlays() {
           <Popover open onClose={noop} label="Branch" anchorRef={anchor}>Base branch <span className="mono">origin/main</span></Popover>
         </div>
       </Section>
-      <Section title="Toast, bottom right, 2.6s">
+      <Section title="Toast, bottom right, 5s">
         <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" action={{ label: 'Undo' }} /></div></div>
       </Section>
     </>

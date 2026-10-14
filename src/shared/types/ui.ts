@@ -121,7 +121,7 @@ export interface Banner {
   chatId?: string
 }
 
-/** Bottom-right toast, auto-dismissed after 2.6s (WorkspaceToast.png). */
+/** Bottom-right toast, auto-dismissed after 5s (WorkspaceToast.png). */
 export interface Toast {
   id: string
   title: string
