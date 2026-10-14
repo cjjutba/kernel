@@ -70,7 +70,7 @@ export function Room({ roomId }: { roomId?: string }) {
       )}
       <Section title="Danger zone">
         <Row label="Archive room" desc="Stops every agent and archives its workspaces. You can restore it.">
-          <Button variant="danger" disabled={!!room.archived} onClick={() => setConfirming(true)}>Archive room</Button>
+          <Button disabled={!!room.archived} onClick={() => setConfirming(true)}>Archive room</Button>
         </Row>
       </Section>
       {confirming && (

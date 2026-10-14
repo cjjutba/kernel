@@ -23,7 +23,7 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
   const drop = (name: string) => void patchRoomSettings(roomId, { runScripts: { [name]: null } })
   return (
     <>
-      <Section title="Run scripts" scope="mac" plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
+      <Section title="Run scripts" count={scripts.length} scope="mac" plain action={<Button onClick={() => setEditing('new')}>Add run script</Button>}>
         <DataTable
           label="Run scripts" columns={['Name', 'Command']} grid="140px minmax(0, 1fr)" empty="No run scripts. Add one to start the app from a workspace."
           rows={scripts.map((s) => {
