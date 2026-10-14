@@ -82,7 +82,7 @@ export function Checks() {
           <div className="ob-list" aria-busy={busy !== null}>
             {(checks ?? []).map((c) => (
               <div key={c.id} className="ob-check" data-ok={c.ok} data-blocking={c.blocking}>
-                <span className="ob-ico"><Icon name={c.ok ? 'check' : c.blocking ? 'x' : 'warning'} size={16} /></span>
+                <span className="ob-ico"><Icon name={c.ok ? 'check' : c.blocking ? 'close' : 'warning'} size={16} /></span>
                 <div className="ob-body">
                   <span className="ob-name">{c.title}</span>
                   <span className="ob-detail"><Ticks text={c.detail} /></span>

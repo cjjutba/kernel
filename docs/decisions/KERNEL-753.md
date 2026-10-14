@@ -1,6 +1,6 @@
 # KERNEL-753: Kernel's own PR state glyphs
 
-**Decision.** The PR state glyphs and the archive box are drawn by hand in `icons.tsx` (the `K` table), not taken from Hugeicons. `Icon` draws them like any other name, with the same API and the typed size scale `12 | 14 | 16 | 20`. This lifts the "No hand-drawn SVG beside `Icon`" rule in `icon-sizes-and-stroke.md` for these glyphs only. Every other icon stays on Hugeicons until KERNEL-754 redraws them in this style.
+**Decision.** The PR state glyphs and the archive box are drawn by hand in `icons.tsx` (the `K` table), not taken from Hugeicons. `Icon` draws them like any other name, with the same API and the typed size scale `12 | 14 | 16 | 20`. This lifts the "No hand-drawn SVG beside `Icon`" rule in `icon-sizes-and-stroke.md` for these glyphs only. KERNEL-754 then redrew the icons that read badly at app size in the same style, so what stays on Hugeicons is only what already read well.
 
 **Why.** `branch` and `pr` looked alike, conflict, checks failed, changes requested and blockers all drew `pr` in red, `prDraft` read as a colon, `merged` looked small and sideways, and `archive` read as a face. Each state now has its own shape, so it reads without its color at 12, 14 and 16px.
 
@@ -17,3 +17,9 @@
 - **Legibility.** Check every new glyph at 12px at 1x before it ships. A detail that closes up at 12px is cut, not shrunk.
 
 **How to apply.** Add a glyph to `K` in `icons.tsx` with the same rules and add its name to the callers. The sidebar picks it in `workspaceGlyph.ts`, the PR header in `pr/model.ts` (`glyph`), chat notes in `NOTE_GLYPH` and History in `prGlyph`.
+
+## KERNEL-754: the weak icons redrawn
+
+`plan` (a folded map, no longer a clipboard), `keyboard`, `lock`, `eyeoff`, `link`, `plug`, `chip`, `collapse`, `swap`, `comment`, `env`, `bulb` and `sparkle` moved into `K` under the rules above. One glyph per name now: `x` is gone (use `close`), `bigterm` is gone (use `term`, the boxed prompt), `compose` is gone (use `pen`), and the unused `gear` and `chevrons` are deleted.
+
+A rule learned: two strokes that point at each other need a gap of at least one stroke width between their tips, or they fuse at 12px (the first `collapse` drew an asterisk). Dots in a glyph are zero-length strokes (`M4.8 6.4V6.5`) so the round caps draw them.

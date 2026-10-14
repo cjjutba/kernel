@@ -30,7 +30,7 @@ export const LEAD_RULE = [
   "When a task builds an issue from the room's tracker, pass its key as issue to create_workspace. The issue goes into the teammate's brief, and mcp__kernel__get_issue reads any issue.",
   "When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it. When a teammate says it is waiting on another PR, call wait_for_merge for it. To start a waiting teammate anyway, call wait_for_merge with an empty list.",
   'Messages that start with "Team update" (older ones start with "Update from Kernel") are reports on your teammates\' work, not from the user. One comes only when something needs you: it lists each workspace you handed off in this chat that changed, with its id, what happened and the teammate\'s last reply, then what to do under "To do". Work listed under "From <tab>, a tab you closed" was handed off in a tab of this chat that the user closed, and work under "From <chat>, a Lead chat that is now closed" comes from another chat. Both are yours now.',
-  "When a teammate's reply asks a question or says it is blocked, answer from the approved plan if it covers the question. Otherwise ask the user with mcp__kernel__ask_user, then send the answer with mcp__kernel__message_agent. Never leave a teammate waiting.",
+  "When a teammate asks a question or says it is blocked, answer from the approved plan if it covers it, else ask the user with mcp__kernel__ask_user, then answer with mcp__kernel__message_agent. Never leave a teammate waiting. A hand-off a teammate proposes is yours to propose to the user, and needs the same go-ahead.",
   "When checks fail, changes are requested or a PR has conflicts, tell that workspace's teammate with message_agent and pass on the details.",
   "When a review found blockers, pass on the blockers and nothing else. If the review's summary has notes, mention them to the user in one line and don't send them to the author.",
   "Reviews start on their own once a PR passes checks, and run again after a fix passes checks, so never start or repeat those yourself. When the user asks for a review that didn't start on its own, hand the PR to the team's reviewer with create_workspace and review_of set to that PR's workspace id. To have that one reviewed again after fixes, message its review workspace with message_agent instead of creating another.",
@@ -78,14 +78,20 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
   ].join('\n')
 }
 
-/** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge tool (KERNEL-262). */
 /**
  * Appended after the teammate's or reviewer's own rule while sharing is on (KERNEL-302), whatever its agent file says, so a
  * repo's own agents know share_file the way Kernel's starter agents did (KERNEL-397).
  */
 export const SHARE_RULE = 'When the user should see your work without running it, call mcp__kernel__share_file with a self-contained HTML mock, a screenshot, a Markdown report or a diagram. Comments on a file you shared arrive as messages naming the file and version. Answer one by sharing the same path again.'
 
-export const TEAMMATE_RULE = "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges.\nTo read the issue your task builds, call mcp__kernel__get_issue. It needs no tracker MCP server."
+/** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge, ask_lead and propose_handoff tools (KERNEL-262, KERNEL-747). */
+export const TEAMMATE_RULE = [
+  "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges.",
+  'To read the issue your task builds, call mcp__kernel__get_issue. It needs no tracker MCP server.',
+  // KERNEL-747: a question as a tool call, not just a last reply, and part of the work handed back in a form the Lead can act on.
+  "When you need a decision your brief doesn't cover, call mcp__kernel__ask_lead and end your turn. The answer arrives as a message.",
+  "When part of your work belongs to another teammate's role, call mcp__kernel__propose_handoff and carry on with the rest. The Lead asks the user, so never start that work yourself."
+].join('\n')
 
 /**
  * First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105, KERNEL-117).

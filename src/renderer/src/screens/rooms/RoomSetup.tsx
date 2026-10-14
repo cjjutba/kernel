@@ -101,7 +101,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 <span className="ob-ico rs-ico" data-state={s.state}>
                   {s.state === 'ok' && <Icon name="check" size={16} />}
                   {s.state === 'warn' && <Icon name="warning" size={16} />}
-                  {s.state === 'fail' && <Icon name="x" size={16} />}
+                  {s.state === 'fail' && <Icon name="close" size={16} />}
                   {s.state === 'run' && <Spinner label={`${s.title} is running`} kind="process" />}
                   {s.state === 'wait' && <span aria-label="Waiting" className="rs-dash">–</span>}
                 </span>

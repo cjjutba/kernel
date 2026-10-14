@@ -83,7 +83,7 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   return (
     <div role="radiogroup" aria-label={label} className="segmented">
       {options.map((o, i) => (
-        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} />}{o.label}</button>
+        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} kind="action" />}{o.label}</button>
       ))}
     </div>
   )

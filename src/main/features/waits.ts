@@ -289,7 +289,10 @@ export class Waits extends Feature {
       isLead: (w) => this.isLeadWorkspace(w),
       nameOf: (w) => this.nameOf(w),
       setWait: (on, why) => this.setWait(id, on, { told: false, why }),
-      remote: () => this.k.config.remoteOfWs(this.mustWs(id))
+      remote: () => this.k.config.remoteOfWs(this.mustWs(id)),
+      team: () => this.agentsSync(this.mustWs(id).roomId),
+      ask: (question, options) => this.leadUpdates.asked(this.mustWs(id), question, options),
+      propose: (p) => this.leadUpdates.proposed(this.mustWs(id), p)
     }
   }
 
