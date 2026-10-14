@@ -297,6 +297,7 @@ describe('Kernel env', () => {
 
     // The archive script gets the room's variable too. The worktree goes, so it writes to the main checkout.
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     expect((await readFile(join(room.path, 'archive.txt'), 'utf8')).trim()).toBe('archive=room-secret-42')
 
     // No value reaches the data folder in plain text, the activity log, its export, or the console.

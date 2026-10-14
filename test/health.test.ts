@@ -483,6 +483,7 @@ describe('kernel recovery paths', () => {
     const chat = k.store.chats(ws.id)[0]
     k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
     await k.archiveWorkspace(other.id)
+    await k.archive.cleanedUp(other.id)
     await k.stop()
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
@@ -496,6 +497,7 @@ describe('kernel recovery paths', () => {
     const ws = await vi.waitFor(() => { const w = k.store.workspaces(room.id).find((x) => x.title === 'Invoice table' && x.status === 'setup'); if (!w || !k.store.meta<Record<string, { brief?: unknown }>>('setups')?.[w.id]?.brief) throw new Error('not yet'); return w })
     expect(k.store.meta<Record<string, { brief: unknown }>>('setups')![ws.id].brief).toEqual([{ type: 'text', text: 'Build T-14' }])
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     await made
     expect(k.store.meta('setups')).toEqual({})
     await k.stop()
@@ -549,6 +551,7 @@ describe('kernel recovery paths', () => {
     const rerun = k.retrySetup(ws.id)
     await new Promise((r) => setTimeout(r, 200))
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     await rerun
     expect(waiting()).toEqual(before)
     await k.stop()
@@ -867,10 +870,12 @@ describe('kernel recovery paths', () => {
     await run('git', ['-C', ws.path, 'commit', '-q', '-m', 'only here'])
     expect((await h['workspaces.gitStatus']({ workspaceId: ws.id })).ahead).toBe(1)
     await h['workspaces.archive']({ workspaceId: ws.id, deleteBranch: true })
+    await k.archive.cleanedUp(ws.id)
     expect((await run('git', ['-C', room.path, 'branch', '--list', ws.branch])).trim()).toContain(ws.branch)
     // With nothing unpushed, the branch goes as asked.
     const empty = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
     await h['workspaces.archive']({ workspaceId: empty.id, deleteBranch: true })
+    await k.archive.cleanedUp(empty.id)
     expect((await run('git', ['-C', room.path, 'branch', '--list', empty.branch])).trim()).toBe('')
     await k.stop()
   })

@@ -51,6 +51,7 @@ describe('workspace saves read the store, not a stale copy', () => {
     const refresh = k.refreshPr(ws.id)
     await vi.waitFor(() => expect(gh.release).toBeDefined(), SLOW)
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     gh.release!()
     await refresh
     expect(k.store.workspace(ws.id)).toMatchObject({ status: 'archived', prState: 'none' })
@@ -88,6 +89,7 @@ describe('workspace saves read the store, not a stale copy', () => {
       return ws!.id
     }, SLOW)
     await k.archiveWorkspace(id)
+    await k.archive.cleanedUp(id)
     await creating
     expect(k.store.workspace(id)?.status).toBe('archived')
     await k.stop()
@@ -97,6 +99,7 @@ describe('workspace saves read the store, not a stale copy', () => {
     const { k, room } = await setup()
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Come back' })
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     const back = await k.restoreWorkspace(ws.id)
     expect(back.status).toBe('setup')
     expect(back.archivedAt).toBeUndefined()
@@ -117,6 +120,7 @@ describe('the archive branch guard', () => {
     await run('git', ['-C', ws.path, 'checkout', '-q', '--detach', 'main'])
     expect(await unpushedCommits(room.path, ws.branch, ws.baseRef)).toBe(1)
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     expect(await branches(room.path, ws.branch)).toContain(ws.branch)
     await k.stop()
   })
@@ -128,6 +132,7 @@ describe('the archive branch guard', () => {
     k.store.saveWorkspace({ ...ws, baseRef: 'origin/nowhere' })
     expect(await unpushedCommits(room.path, ws.branch, 'origin/nowhere')).toBeNull()
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     expect(await branches(room.path, ws.branch)).toContain(ws.branch)
     expect(k.store.activity(room.id).some((a) => a.kind === 'note' && a.object === ws.branch && a.text.includes('could not be counted'))).toBe(true)
     await k.stop()
@@ -138,6 +143,7 @@ describe('the archive branch guard', () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
     expect(await unpushedCommits(room.path, ws.branch, ws.baseRef)).toBe(0)
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     expect(await branches(room.path, ws.branch)).toBe('')
     await k.stop()
   })

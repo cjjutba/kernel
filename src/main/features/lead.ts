@@ -333,6 +333,7 @@ export class Lead extends Feature {
     for (const c of this.chatTabs(old.id)) if (c.kind === 'terminal') this.saveChat({ ...c, closed: true })
     // On the checkout nothing is removed. A worktree goes, with no archive script: it ran none of the room's scripts.
     await this.k.archive.archiveWorkspace(old.id, false, { removingRoom: true, noScript: true })
+    await this.k.archive.cleanedUp(old.id)
     // Its checkpoints were snapshots of a folder no chat works in any more, and History doesn't list it to delete them.
     await dropCheckpoints(room.path, old.id).catch(() => undefined)
   }
