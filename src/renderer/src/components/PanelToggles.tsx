@@ -61,5 +61,5 @@ export function SidebarToggle() {
 /** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
 export function RightPanelToggle({ name }: { name: string }) {
   const open = useStore((s) => panelShownIn(s.ui, inView(s.ui.route)))
-  return <IconButton icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
+  return <IconButton className="panel-toggle" icon="panelRight" size={16} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
 }
