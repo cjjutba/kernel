@@ -305,11 +305,11 @@
   stop-color: var(--color-track);
 }
 
-/* The mark stands in for the K: its top meets the l and its round nodes sit on the baseline. */
+/* The wordmark K stands in for the K: Inter's cap height (1490 of 2048 units), sitting on the baseline. */
 @utility wordmark-k {
-  height: 0.78em;
+  height: 0.7275em;
   width: auto;
-  margin-right: 0.02em;
+  margin-right: 0.045em;
   flex-shrink: 0;
 }
 
