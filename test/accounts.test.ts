@@ -50,6 +50,16 @@ const cipher = { encrypt: (t: string) => `enc:${[...t].reverse().join('')}`, dec
 /** The starter agents the app ships, for Kernel's own use. */
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
+/**
+ * Adding an account starts a usage read of it that nothing awaits. It reads the fake CLI's login and readies the account's
+ * folder, so a test that changes the fake's env or the folder's files right after the add races it, which only a slow
+ * machine shows. Wait for the reads that are running.
+ */
+async function settleReads(k: Kernel) {
+  const reading = (k.providers as unknown as { reading: Map<string, Set<Promise<void>>> }).reading
+  await Promise.allSettled([...reading.values()].flatMap((set) => [...set]))
+}
+
 async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {
   const end = Date.now() + ms
   for (;;) {
@@ -1522,6 +1532,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     await mkdir(join(root, 'plugins'), { recursive: true })
     await writeFile(join(root, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {} }))
     const side = await h['accounts.add']({ provider: 'claude' })
+    await settleReads(k)
     const folder = k.providers.claudeHome(side.id)
     k.providers.claudeEnv(side.id)
     const own = join(folder, 'plugins', 'installed_plugins.json')
@@ -1727,7 +1738,9 @@ describe('One login, one row (KERNEL-701)', () => {
     const add = async (provider: 'claude' | 'codex', email: string) => {
       if (provider === 'claude') process.env.FAKE_EMAIL = email
       else process.env.FAKE_CODEX_LOGIN_EMAIL = email
-      return h['accounts.add']({ provider })
+      const added = await h['accounts.add']({ provider })
+      await settleReads(t.k)
+      return added
     }
     /** Run login: Claude Code's own login in Terminal signs in as `email`. */
     const runLogin = async (email: string, org?: string) => {
