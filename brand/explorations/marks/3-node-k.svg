@@ -1,0 +1,8 @@
+<!-- Direction 3, Node K. 120 unit grid. The current node K with links at 24 and nodes at r20, drawn as one solid shape. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="currentColor">
+  <path d="M30 26 V94 M30 60 L90 26 M30 60 L90 94" fill="none" stroke="currentColor" stroke-width="24" stroke-linejoin="round"/>
+  <circle cx="30" cy="26" r="20"/>
+  <circle cx="30" cy="94" r="20"/>
+  <circle cx="90" cy="26" r="20"/>
+  <circle cx="90" cy="94" r="20"/>
+</svg>
