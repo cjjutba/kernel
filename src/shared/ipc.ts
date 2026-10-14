@@ -683,6 +683,12 @@ export type PushEvent =
   | { type: 'account'; account: ClaudeAccount }
   /** Accounts changed: one added, removed, signed out or switched to (KERNEL-406). */
   | { type: 'accounts'; accounts: AccountProfile[] }
+  /**
+   * The provider's account in use changed, from `from` to `to` (account ids, `cli` for the CLI's own login), and `reason`
+   * says who switched. `limit` is the window the old account hit, on a switch from the limit banner or by Kernel at a limit
+   * (KERNEL-694). Never sent when the account stayed the same.
+   */
+  | { type: 'accountSwitched'; provider: Provider; from: string; to: string; reason: SwitchReason; limit?: RateLimit['type'] }
   /** Where Add account is, for its sheet (KERNEL-406). */
   | { type: 'account.add'; add: AccountAddStep }
   /** Where a sign-in to an MCP server on an account is (`accounts.mcpSignIn`, KERNEL-616). */
