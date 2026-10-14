@@ -157,6 +157,59 @@ describe('the trigger', () => {
     expect(gh.merged).toEqual(['squash'])
     expect(weighed).toHaveBeenCalledTimes(1)
   })
+
+  // KERNEL-703: a check the repo doesn't require, still running, holds the merge, and its run finishing weighs the PR again.
+  it('refuses while a check the repo does not require runs, and weighs again once it finishes', async () => {
+    const { k, gh, pr } = await setup()
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    const weighed = vi.spyOn(k.prs, 'autoMerge')
+    const lint = (state: PrCheck['state']): PrCheck[] => [...GREEN, { name: 'Lint', state, optional: true }]
+    // The poll read it ready before Lint started; the weigh's own read sees Lint running.
+    gh.pr = { ...gh.pr!, checks: lint('running') }
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    expect(await weighed.mock.results[0].value).toEqual({ refused: 'Lint is still running.' })
+    gh.pr = { ...gh.pr!, state: 'checks' }
+    expect((await k.prs.refreshPr(ws.id)).prState).toBe('checks')
+    expect(gh.merged).toEqual([])
+    gh.pr = { ...gh.pr!, state: 'ready', checks: lint('pass') }
+    expect((await k.prs.refreshPr(ws.id)).prState).toBe('ready')
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(weighed).toHaveBeenCalledTimes(2)
+    expect(gh.merged).toEqual(['squash'])
+  })
+
+  it('weighs again when checks ran between two reads that both read ready', async () => {
+    const { k, gh, pr } = await setup()
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    const weighed = vi.spyOn(k.prs, 'autoMerge')
+    gh.pr = { ...gh.pr!, checks: [...GREEN, { name: 'Lint', state: 'running', optional: true }] }
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    gh.pr = { ...gh.pr!, checks: [...GREEN, { name: 'Lint', state: 'pass', optional: true }] }
+    await k.prs.refreshPr(ws.id)
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(weighed).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('Merge PR while a check the repo does not require runs (KERNEL-703)', () => {
+  it('refuses, naming the check, and merges on Merge anyway', async () => {
+    const { k, gh, pr } = await setup({ app: {} })
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    gh.pr = { ...gh.pr!, checks: [...GREEN, { name: 'Test e2e', state: 'running', optional: true }] }
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('Test e2e is still running.')
+    expect(gh.merged).toEqual([])
+    expect((await k.prs.mergePr(ws.id, { override: true })).prState).toBe('merged')
+    expect(gh.merged).toEqual(['squash'])
+  })
+
+  it('merges past a check the repo does not require that failed', async () => {
+    const { k, gh, pr } = await setup({ app: {} })
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    gh.pr = { ...gh.pr!, checks: [...GREEN, { name: 'Test e2e', state: 'fail', optional: true }] }
+    expect((await k.prs.mergePr(ws.id)).prState).toBe('merged')
+  })
 })
 
 describe('the rule', () => {
@@ -180,6 +233,9 @@ describe('the rule', () => {
     expect(autoMergeBlock({ ...clean, pr: null })).toBe("Kernel couldn't read the pull request from GitHub.")
     expect(autoMergeBlock({ ...clean, pr: { ...pr, checks: [{ name: 'Vercel', state: 'pass', optional: true }] } })).toBe('It has no required checks, and auto-merge needs at least one to pass.')
     expect(autoMergeBlock({ ...clean, pr: { ...pr, checks: [...GREEN, { name: 'e2e', state: 'running' }] } })).toBe('Not every required check has passed.')
+    // KERNEL-703: an optional check holds it while it runs, and doesn't once it failed (KERNEL-388).
+    expect(autoMergeBlock({ ...clean, pr: { ...pr, checks: [...GREEN, { name: 'e2e', state: 'queued', optional: true }] } })).toBe('e2e is still running.')
+    expect(autoMergeBlock({ ...clean, pr: { ...pr, checks: [...GREEN, { name: 'e2e', state: 'fail', optional: true }] } })).toBeUndefined()
     expect(autoMergeBlock({ ...clean, pr: { ...pr, blocked: 'review' } })).toBe('GitHub needs an approving review before this pull request can merge.')
     expect(autoMergeBlock({ ...clean, pr: { ...pr, conflictsUnknown: true } })).toBe("GitHub doesn't read it as ready to merge.")
     expect(autoMergeBlock({ ...clean, reviews: undefined })).toBe("Kernel couldn't tell which reviews it needs.")
