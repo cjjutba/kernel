@@ -80,8 +80,9 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const cycle = useRef<CycleRun | null>(null)
 
   // The sidebar's Lead row, ⌘⇧L, + and ⌘T ask for the caret in the workspace's composer. This box is it while no chat is open.
-  const focusAsked = () => { if (takeComposerFocus({ id: '', workspaceId: focusIn ?? leadNewKey(roomId) })) d.focus() }
-  useEffect(() => { focusAsked() }, [])
+  const focusAsked = () => { if (takeComposerFocus({ id: '', workspaceId: focusIn ?? leadNewKey(routeRoom) })) d.focus() }
+  // The route's room names the request. The page stays mounted when the route moves to another room, so a request made for that room is taken here.
+  useEffect(() => { focusAsked() }, [routeRoom])
   useEffect(() => onComposerFocusAsked(focusAsked))
 
   // ⌘L puts the caret back in the box, as in a chat's composer. ⌘⇧L is the Lead chat (App.tsx).
