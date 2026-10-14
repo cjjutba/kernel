@@ -420,7 +420,7 @@ function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }
             <Button className="small" aria-label="Use the suggested setup script" busy={busy === 'use'} busyLabel="Saving" disabled={busy !== null} onClick={() => void doing('use', () => patchRoomSettings(roomId, pick.patch))}>Use</Button>
           </div>
           <pre className="add-setup-script">{pick.patch.scripts?.setup}</pre>
-          {pick.notes.map((n) => <span key={n}>{n}</span>)}
+          {pick.notes.slice(0, 1).map((n) => <span key={n} className="add-setup-note" title={n}>{n}</span>)}
         </div>
       )}
       <div className="add-setup-actions">

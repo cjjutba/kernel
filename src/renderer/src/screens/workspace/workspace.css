@@ -350,12 +350,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .script-empty .btn { margin: 4px 0; }
 /* The Run button under the play icon has the 4px above it and nothing under it, as PanelSplit.png draws it (KERNEL-512). */
 .script-empty .btn.idle-run { margin-bottom: 0; }
-.add-setup { gap: 6px; justify-content: safe center; overflow-y: auto; }
+.add-setup { gap: 2px; padding: 6px 24px; justify-content: safe center; overflow-y: auto; }
 .add-setup > * { flex: none; }
-.add-setup-pick { display: flex; flex-direction: column; gap: 6px; align-items: stretch; width: min(420px, 100%); margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); text-align: left; }
+.add-setup-pick { display: flex; flex-direction: column; gap: 2px; align-items: stretch; width: min(420px, 100%); margin: 4px 0 4px; padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--r-md); text-align: left; }
 .add-setup-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.add-setup-script { margin: 0; max-height: 64px; overflow: auto; font-family: var(--mono); font-size: 12px; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
-.add-setup-actions { display: flex; gap: 8px; margin-top: 4px; }
+.add-setup-script { margin: 0; max-height: 36px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 18px; color: var(--ink); white-space: pre; }
+.add-setup-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add-setup-actions { display: flex; gap: 8px; }
 .add-setup-actions .btn { margin: 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
 .script-empty-icon path { fill: currentColor; }
