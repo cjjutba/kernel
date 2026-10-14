@@ -9,6 +9,7 @@ import { PROVIDERS } from '@shared/types'
 import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
+import { startupTheme } from './ui/theme'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
@@ -208,7 +209,7 @@ let state: State = {
   prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
+  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
 }
 const listeners = new Set<() => void>()
 
