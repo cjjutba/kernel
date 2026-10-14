@@ -1,5 +1,6 @@
 import type { ChangedFile, Chat, ChatItem, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
+import { isSentItem } from '@shared/approvalAnswer'
 import { newId } from '../db'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -32,7 +33,7 @@ export class Checkpoints extends Feature {
     // Found as the turn ends, since the chat's next turn may have ended too by the time the save is done (KERNEL-584).
     const result = turnResult(items)
     // A first turn that carried several messages is titled for the one that started it, the brief (KERNEL-393).
-    const user = this.sessions.turnRow(chat.id) ?? [...items].reverse().find((i) => i.kind === 'user')
+    const user = this.sessions.turnRow(chat.id) ?? [...items].reverse().find(isSentItem)
     // A turn Kernel's team update started is titled for what it is, not for the update's first line (KERNEL-116).
     const text = user?.kind !== 'user' ? '' : isKernelUpdate(user) ? 'Team update' : user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ')
     const { checkpoint: c, files } = await snapshotWithFiles(ws, { chatId: chat.id, title: text || chat.title })

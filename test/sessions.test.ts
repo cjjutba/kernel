@@ -626,6 +626,92 @@ describe('a card whose turn or session is gone, on Claude (KERNEL-563)', () => {
   })
 })
 
+describe("the user's answer to a card is their message, never the agent's prompt (KERNEL-836)", () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+  const image = { type: 'image' as const, name: 'mock.png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', path: '.kernel/attachments/mock.png' }
+
+  async function setup() {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-answers-')), 'kernel.db'))
+    store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const approvals = new Approvals(store)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const sessions = new Sessions({ store, approvals, settings: () => settings, agentFor: () => noor, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    /** A card in the chat, placed as its process places one, then settled the way the user settles it. */
+    const card = (kind: 'plan' | 'question' | 'agent' | 'tool') => {
+      const { approval } = approvals.request({ kind, source: 'sdk', roomId: 'room', workspaceId: 'ws', chatId: 'chat', title: kind })
+      sessions.placeApproval('chat', approval.id)
+      return approval
+    }
+    const users = () => store.items('chat').filter((i) => i.kind === 'user')
+    return { store, sessions, approvals, card, users }
+  }
+
+  it('adds one answer row right after each plan, question and agent card, with its text and images', async () => {
+    const t = await setup()
+    const answer = (a: ReturnType<typeof t.approvals.decide>) => { t.sessions.placeAnswer(a!); return a! }
+    const decided = [
+      answer(t.approvals.decide(t.card('plan').id, { behavior: 'allow' })),
+      answer(t.approvals.decide(t.card('plan').id, { behavior: 'deny', message: 'Split it' }, { notes: 'Split it', images: [image] })),
+      answer(t.approvals.decide(t.card('question').id, { behavior: 'answer', text: 'S3' })),
+      answer(t.approvals.decide(t.card('agent').id, { behavior: 'allow' })),
+      answer(t.approvals.decide(t.card('agent').id, { behavior: 'deny', message: 'Please change the agent file.' }))
+    ]
+    expect(t.users().map((i) => i.kind === 'user' && i.parts)).toEqual([
+      [{ type: 'text', text: 'Approved' }],
+      [{ type: 'text', text: 'Split it' }, image],
+      [{ type: 'text', text: 'S3' }],
+      [{ type: 'text', text: 'Approve' }],
+      [{ type: 'text', text: 'Not now' }]
+    ])
+    // Each sits under its own card, as the user's (no `from`), keyed by the approval.
+    const items = t.store.items('chat')
+    for (const a of decided) {
+      const at = items.findIndex((i) => i.id === `approval-${a.id}`)
+      expect(items[at + 1]).toMatchObject({ kind: 'user', id: `answer-${a.id}`, approvalId: a.id })
+      expect(items[at + 1]).not.toHaveProperty('from')
+    }
+    // Settling the same card again keeps one row.
+    t.sessions.placeAnswer(decided[0])
+    expect(t.users()).toHaveLength(5)
+  })
+
+  it('adds nothing for a tool permission, an expired card or a closed chat', async () => {
+    const t = await setup()
+    t.sessions.placeAnswer(t.approvals.decide(t.card('tool').id, { behavior: 'allow' })!)
+    t.sessions.placeAnswer(t.approvals.decide(t.card('tool').id, { behavior: 'deny', message: 'Denied in Kernel.' })!)
+    const plan = t.card('plan')
+    t.sessions.placeAnswer(t.approvals.expireIds([plan.id], 'replaced')[0])
+    const question = t.card('question')
+    t.store.saveChat({ ...t.store.chat('chat')!, closed: true })
+    t.sessions.placeAnswer(t.approvals.decide(question.id, { behavior: 'answer', text: 'S3' })!)
+    expect(t.users()).toEqual([])
+  })
+
+  it("never sends the answer to the agent: Retry on the reply after it sends the user's message", async () => {
+    const t = await setup()
+    await t.sessions.send('chat', [{ type: 'text', text: 'Add a pdf_url column' }])
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const answer = (call.options.canUseTool as CanUseTool)('AskUserQuestion', { questions: [{ question: 'Which store?', header: 'Store', multiSelect: false, options: [{ label: 'S3', description: '' }] }] }, { signal: new AbortController().signal, toolUseID: 'q1' } as never)
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    t.sessions.placeAnswer(t.approvals.decide(card.id, { behavior: 'answer', text: 'S3' })!)
+    // The agent gets the answer in the tool's own field, as before.
+    expect(await answer).toMatchObject({ behavior: 'allow', updatedInput: { answers: { 'Which store?': 'S3' } } })
+    call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Using S3.' }] } })
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    await flush()
+    const reply = t.store.items('chat').find((i) => i.kind === 'text')!
+    await t.sessions.retry('chat', reply.id)
+    await flush()
+    expect(t.users().map((i) => i.kind === 'user' && (i.parts[0] as { text: string }).text)).toEqual(['Add a pdf_url column', 'S3', 'Add a pdf_url column'])
+  })
+})
+
 describe('switching accounts while a chat waits on the user, on Claude (KERNEL-618)', () => {
   afterEach(() => { bus.removeAllListeners('push') })
 
