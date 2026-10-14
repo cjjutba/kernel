@@ -85,6 +85,8 @@ export class ClaudeRunner implements Runner {
   private readonly toolItems = new Map<string, ChatItem & { kind: 'tool' }>()
   /** Agent rows whose label already names the subagent's model, by tool use id. The call's own `model` is final (KERNEL-158). */
   private readonly agentModels = new Set<string>()
+  /** This turn's notification notes by the SDK's key, so a repeat updates its line. The key is fixed across chats and turns, so the id is the first event's uuid (KERNEL-808). */
+  private readonly notices = new Map<string, string>()
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   private readonly commands = new Map<string, string>()
   /** The folder each Bash command runs in, from the hook, for the push guard in canUseTool (KERNEL-687). */
@@ -328,7 +330,27 @@ export class ClaudeRunner implements Runner {
           const why = (msg.decision_reason ?? msg.message ?? '').trim()
           host.item({ kind: 'note', id: `denied-${msg.tool_use_id}`, ts: now, text: `Auto mode refused ${row ? `"${row.label}"` : msg.tool_name}${why ? `: ${why}` : '.'}` })
         }
-        if (msg.subtype === 'compact_boundary') void this.context()
+        // Events that can end a turn with no reply say what happened, so the turn doesn't look empty (KERNEL-808).
+        if (msg.subtype === 'compact_boundary') {
+          const { trigger, pre_tokens: pre, post_tokens: post } = msg.compact_metadata
+          const span = post === undefined ? `from ${kTokens(pre)}` : `${kTokens(pre)} to ${kTokens(post)}`
+          host.item({ kind: 'note', id: msg.uuid, ts: now, text: trigger === 'auto' ? `Context was full, so the conversation was compacted (${span} tokens).` : `Compacted the conversation${post === undefined ? '' : ','} ${span} tokens.` })
+          void this.context()
+        }
+        // A hook's block reason or a prominent status line. Progress lines for one tool share an id, so each replaces the last.
+        if (msg.subtype === 'informational' && msg.content.trim() && (msg.prevent_continuation || msg.level === 'warning' || msg.level === 'suggestion')) {
+          host.item({ kind: 'note', id: msg.tool_use_id ? `info-${msg.tool_use_id}` : msg.uuid, ts: now, text: msg.content.trim() })
+        }
+        if (msg.subtype === 'notification' && msg.text.trim() && (msg.priority === 'high' || msg.priority === 'immediate')) {
+          const id = this.notices.get(msg.key) ?? msg.uuid
+          this.notices.set(msg.key, id)
+          host.item({ kind: 'note', id, ts: now, text: msg.text.trim() })
+        }
+        if (msg.subtype === 'model_refusal_no_fallback') host.item({ kind: 'note', id: msg.uuid, ts: now, text: msg.content.trim() || 'Claude declined to answer.' })
+        if (msg.subtype === 'model_refusal_fallback') {
+          const scope = msg.scope === 'local' ? ' The switch covers only this reply.' : ''
+          host.item({ kind: 'note', id: msg.uuid, ts: now, text: `Claude declined on ${msg.original_model}, so the reply came from ${msg.fallback_model}.${scope}` })
+        }
         // Most commands answer with an assistant message; some print here instead.
         if (msg.subtype === 'local_command_output' && msg.content.trim()) host.item({ kind: 'text', id: msg.uuid, ts: now, text: msg.content })
         return
@@ -390,6 +412,7 @@ export class ClaudeRunner implements Runner {
         return
       }
       case 'result': {
+        this.notices.clear()
         const ok = msg.subtype === 'success'
         // A turn that ended on an API error is `success` with `is_error`, so it never says the API was reached.
         if (ok && !msg.is_error) host.reached()
@@ -983,6 +1006,11 @@ export function limitsFromUsage(res: SDKControlGetUsageResponse): LimitPatch[] {
 }
 
 /** The SDK adds the end of stderr to a process's exit error only when it spawned the process itself. */
+// 142000 reads as 142k.
+function kTokens(n: number): string {
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n)
+}
+
 function withStderr(message: string, stderr: string): string {
   const tail = stderr.trim().slice(-500)
   return tail && !message.includes('stderr:') ? `${message}. stderr: ${tail}` : message
