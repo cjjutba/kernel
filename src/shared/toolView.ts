@@ -28,6 +28,8 @@ export interface ToolView {
   detail?: string
   service?: ToolService
   hidden?: boolean
+  /** The name is neither an MCP tool nor a built-in the label rules know, so the row says "Used a tool" and not the name. */
+  unknown?: boolean
   state: ToolState
   /** The object is a raw command, which keeps its mono face. */
   mono?: boolean
@@ -191,7 +193,7 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
       const description = str(i.description)
       if (description) return { ...say('run', 'Running', 'Ran'), fixed: description.replace(/[.\s]+$/, '') }
       const command = str(i.command) ?? str(stored)
-      return { ...say('run', 'Running', 'Ran'), object: command && firstLine(stripCd(command)), mono: true }
+      return { ...say('run', 'Running', 'Ran', ' a command'), object: command && firstLine(stripCd(command)), mono: true }
     }
     case 'Read': return withFile(say('read', 'Reading', 'Read'))
     case 'Edit': case 'MultiEdit': case 'NotebookEdit': return withFile(say('edit', 'Editing', 'Edited'))
@@ -204,6 +206,8 @@ function builtIn(name: string, i: Record<string, unknown>, ctx: ToolCtx, stored?
     default: return undefined
   }
 }
+
+const UNKNOWN = say('use', 'Using', 'Used', ' a tool')
 
 const DENIED = /doesn't want to proceed|tool use was rejected|permission to use .* has been denied|request interrupted by user|you denied|user denied|denied in kernel/i
 
@@ -218,7 +222,7 @@ function stateOf(item: ToolLike): ToolState {
 function verbOf(s: Say, state: ToolState): string {
   const rest = s.rest ?? ''
   if (s.fixed !== undefined) {
-    if (state === 'denied') return `You denied "${s.fixed}"`
+    if (state === 'denied') return `Denied: ${s.fixed}`
     return state === 'stopped' ? `Stopped: ${s.fixed}` : s.fixed
   }
   switch (state) {
@@ -246,11 +250,13 @@ export function toolView(item: ToolLike, ctx: ToolCtx = {}): ToolView {
     s = service === 'linear' ? linear(mcp.tool, input) : service === 'kernel' ? kernel(mcp.tool, input, ctx) : undefined
     s ??= service === 'mcp' ? humanized(mcp.tool) : generic(mcp.tool, service, input)
   } else s = builtIn(item.name, input, ctx, item.detail)
+  const unknown = !s && !mcp
+  if (unknown) s = UNKNOWN
   const failedLine = state === 'failed' && item.output ? firstLine(stripAnsi(item.output)) : undefined
   const named = service === 'mcp' && mcp ? serverTitle(mcp.server) : undefined
   const verb = s ? verbOf(s, state) : item.label || item.name
   const object = s ? (s.object ?? named) : undefined
-  const fallback = !s && !mcp ? item.detail : undefined
+  const fallback = unknown ? item.detail : undefined
   const detail = failedLine ?? fallback
   const view: ToolView = {
     verb: maskSecrets(verb),
@@ -258,6 +264,7 @@ export function toolView(item: ToolLike, ctx: ToolCtx = {}): ToolView {
     dir: s?.dir && maskSecrets(s.dir),
     detail: detail ? clip(maskSecrets(detail)) : undefined,
     service,
+    unknown: unknown || undefined,
     state,
     mono: s?.mono && object ? true : undefined,
     file: s?.file,

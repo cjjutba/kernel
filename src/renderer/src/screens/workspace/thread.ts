@@ -56,6 +56,7 @@ function keyOf(item: Tool, view: ToolView): string {
     if (view.service === 'kernel') return mcp.tool === 'create_workspace' ? 'kernel:hand' : mcp.tool === 'message_agent' ? 'kernel:message' : `kernel:${mcp.tool}`
     return `${view.service ?? 'mcp'}:${mcp.tool}`
   }
+  if (view.unknown) return 'unknown'
   switch (item.name) {
     case 'Edit': case 'MultiEdit': case 'NotebookEdit': return 'edit'
     case 'Grep': case 'Glob': return 'search'
@@ -76,6 +77,8 @@ const PHRASES: Record<string, Phrase> = {
   'linear:file': phrase('Filed', 'Filing', 'file', 'issue'), 'linear:update': phrase('Updated', 'Updating', 'update', 'issue'), 'linear:comment': phrase('Commented on', 'Commenting on', 'comment on', 'issue'),
   'kernel:hand': phrase('Handed off', 'Handing off', 'hand off', 'task'), 'kernel:message': phrase('Sent', 'Sending', 'send', 'message'), 'kernel:share_file': phrase('Shared', 'Sharing', 'share', 'file')
 }
+
+PHRASES.unknown = phrase('Used', 'Using', 'use', 'tool')
 
 const OTHER = phrase('Made', 'Making', 'make', 'call')
 
@@ -141,11 +144,15 @@ export function summarize(items: ChatItem[]): Summary {
   return { text, bad: trouble(all.reduce((n, t) => n + t.failed, 0), all.reduce((n, t) => n + t.denied, 0)) }
 }
 
+/** Thinking with no text has nothing to show, so it never takes a row. */
+const hasContent = (i: ChatItem) => i.kind !== 'thinking' || i.text.trim() !== ''
+
 /**
  * The rows of a fold: the steps in order, with calls that read as the same verb on the same service folded into one run.
  * Thinking between two such calls doesn't break the run and stays inside it. A message does. Hidden calls aren't listed.
  */
-export function entriesOf(items: ChatItem[]): Entry[] {
+export function entriesOf(all: ChatItem[]): Entry[] {
+  const items = all.filter(hasContent)
   const entries: Entry[] = []
   let run: Run | undefined
   let thoughts: ChatItem[] = []
@@ -181,17 +188,20 @@ function countOf(run: Run) {
   return { done, failed, denied }
 }
 
-/** A fold's entries as blocks. A fold of one row isn't a fold, so a lone run or step is drawn as it is. */
-function foldBlocks(steps: ChatItem[], blocks: ThreadBlock[]) {
+/**
+ * A fold's steps as blocks. A fold of one row isn't a fold, so a lone run or step is drawn as it is. Inside a fold every call is a
+ * plain row in one flat list, and the summary line is the only tally.
+ */
+function foldBlocks(all: ChatItem[], blocks: ThreadBlock[]) {
+  const steps = all.filter(hasContent)
   const entries = entriesOf(steps)
   if (entries.length > 1 && steps.some((i) => i.kind === 'tool' && !viewOf(i).hidden)) {
-    blocks.push({ kind: 'group', id: `group-${steps[0].id}`, items: steps, entries, summary: summarize(steps) })
+    const rows = steps.filter((i) => i.kind !== 'tool' || !viewOf(i).hidden)
+    blocks.push({ kind: 'group', id: `group-${steps[0].id}`, items: steps, entries: rows.map((item): Entry => ({ kind: 'item', item })), summary: summarize(steps) })
     return
   }
   for (const e of entries) blocks.push(e.kind === 'run' ? { kind: 'run', id: e.run.id, run: e.run } : { kind: 'item', item: e.item })
 }
-
-const work = (i: ChatItem) => i.kind === 'tool' || i.kind === 'thinking' || i.kind === 'text'
 
 /** The tools whose call is a question to the user: Claude's, and the Lead's through Claude or Codex. Their card shows the question, so a row of raw JSON would say it twice. */
 const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
@@ -199,14 +209,14 @@ const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
 const isStep = (i: ChatItem): i is Tool | Extract<ChatItem, { kind: 'thinking' }> => i.kind === 'tool' || i.kind === 'thinking'
 
 /**
- * A turn still running: each stretch of steps between messages, approvals and notes folds like a finished turn's work, and the step
- * in flight stays out of the fold as the `live` line (KERNEL-784). Replies, notes, approvals and questions are never folded.
+ * Each stretch of steps between messages, approvals and notes folds into one row, and with `open` the step in flight stays out of
+ * the fold as the `live` line (KERNEL-784). Messages, notes, approvals and questions are never folded, in a running turn or a finished one (KERNEL-800).
  */
-function runningBlocks(turn: ChatItem[], blocks: ThreadBlock[]) {
+function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
   let steps: ChatItem[] = []
   const flush = (last: boolean) => {
     const tail = steps[steps.length - 1]
-    const live = last && tail && ((tail.kind === 'tool' && tail.status === 'running') || tail.kind === 'thinking') ? tail : undefined
+    const live = open && last && tail && ((tail.kind === 'tool' && tail.status === 'running') || tail.kind === 'thinking') ? tail : undefined
     foldBlocks(live ? steps.slice(0, -1) : steps, blocks)
     if (live && isStep(live)) blocks.push({ kind: 'live', id: live.id, item: live })
     steps = []
@@ -220,7 +230,8 @@ function runningBlocks(turn: ChatItem[], blocks: ThreadBlock[]) {
 
 /**
  * Split items into turns at each user message. A turn that finished well (it has an ok `result`) shows
- * its reply, the files it changed and how long it took, and folds everything before the reply into one group.
+ * its reply, the files it changed and how long it took, and folds each stretch of steps before the reply into one group, with the
+ * agent's messages, notes and approvals between them left as they are (KERNEL-800).
  * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line.
  * A turn still running folds its finished steps (`running` says whether the chat's turn is). A stopped or failed one shows every item,
  * so nothing is hidden while it matters.
@@ -231,7 +242,7 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
   const finish = (open = false) => {
     const result = turn.find((i): i is Extract<ChatItem, { kind: 'result' }> => i.kind === 'result')
     if (open && !result && !turn.some((i) => i.kind === 'interrupted')) {
-      runningBlocks(turn, blocks)
+      foldTurn(turn, blocks, true)
       turn = []
       return
     }
@@ -253,13 +264,8 @@ export function buildThread(items: ChatItem[], running = false): ThreadBlock[] {
     let lastText = -1
     body.forEach((i, n) => { if (i.kind === 'text') lastText = n })
     const before = body.slice(0, lastText < 0 ? body.length : lastText)
-    const folded = before.filter(work)
-    // A note the turn began with ("Now on Personal", KERNEL-568) stays above the work it announces, not below its folded row.
-    const first = before.findIndex(work)
-    const opening: ChatItem[] = first < 0 ? [] : before.slice(0, first).filter((i) => i.kind === 'note')
-    const rest = [...before.filter((i) => !work(i) && !opening.includes(i)), ...body.slice(lastText < 0 ? body.length : lastText)]
-    for (const item of opening) blocks.push({ kind: 'item', item })
-    foldBlocks(folded, blocks)
+    const rest = body.slice(lastText < 0 ? body.length : lastText)
+    foldTurn(before, blocks, false)
     const meta = `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}`
     const reply = rest[rest.length - 1]
     if (reply?.kind === 'text') {
