@@ -641,6 +641,11 @@ export type PushEvent =
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
   /** The room's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
+  /**
+   * A room's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
+   * git pull. `settings` is what `settings.room` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
+   */
+  | { type: 'settings.roomChanged'; roomId: string; settings: RoomSettings }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
   /** The agents that join every room, as `agents.listGlobal` returns them, after ~/.claude/agents or the plugin list changed (KERNEL-640). */

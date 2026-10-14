@@ -798,6 +798,7 @@ export function apply(e: PushEvent) {
     case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
+    case 'settings.roomChanged': return actions.settings.setRoom(e.roomId, e.settings)
     case 'toast': return void actions.ui.toast(e.toast)
   }
 }

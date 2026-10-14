@@ -1,8 +1,12 @@
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 import type { ClaudePlan, DeepPartial, ProductionHint, Room, RoomSettingsPatch, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
+import { watchTeamSettings } from '../services/agents'
 import { discoverSkills } from '../services/files'
 import { productionInCopy, resolveFilesToCopy } from '../services/filesToCopy'
 import { listBranches } from '../services/worktrees'
@@ -26,6 +30,11 @@ export class Config extends Feature {
   readonly roomRemotes = new Map<string, string | undefined>()
 
   get settingsFile() { return join(this.o.dataDir, 'settings.json') }
+
+  /** Each room's watcher on its `.kernel/settings*.toml`, from the first time the window reads the room's settings (KERNEL-723). */
+  private roomWatchers = new Map<string, () => void>()
+  /** The room's settings the window last had from Kernel, as JSON. A file event that reads the same is Kernel's own save. */
+  private roomShown = new Map<string, string>()
 
   /**
    * What the user chose, which is all settings.json holds: the keys they changed, or that an older file carried and still
@@ -115,12 +124,61 @@ export class Config extends Feature {
   async setRoom(roomId: string, patch: RoomSettingsPatch, shared?: boolean): Promise<RepoSettings> {
     const room = this.mustRoom(roomId)
     const before = await this.k.trust.trustState(room)
-    const next = await saveRepoSettings(room.path, patch, shared)
+    const next = this.wrote(roomId, await saveRepoSettings(room.path, patch, shared))
     this.roomRemotes.set(room.path, next.workspace.remote)
     await this.k.trust.trustSaved(room, before, patch, !!shared, next)
     // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
     await this.k.trust.untrusted(room, next)
     return next
+  }
+
+  /** Settings Kernel saved or read for the window. The watcher sends nothing for them, so a save doesn't echo back (KERNEL-723). */
+  wrote(roomId: string, rs: RepoSettings): RepoSettings {
+    this.roomShown.set(roomId, JSON.stringify(rs))
+    this.watchRoom(roomId)
+    return rs
+  }
+
+  /**
+   * Watches the room's settings files, so a hand edit, Open settings.toml or a git pull reaches its Settings pages as
+   * `settings.roomChanged`. Debounced at 200 ms, as an editor's save is often several events.
+   */
+  watchRoom(roomId: string) {
+    if (this.stopped || this.roomWatchers.has(roomId)) return
+    const room = this.store.room(roomId)
+    if (!room || room.archived || !existsSync(room.path)) return
+    this.roomWatchers.set(roomId, watchTeamSettings(room.path, () => void this.roomFileChanged(roomId).catch(() => undefined), 200))
+  }
+
+  /**
+   * An archived or removed room, or a repo folder that's gone, stops its watcher. A gone folder is noticed at the next event
+   * the watcher hears, as macOS sends none when the whole folder is deleted. Quit closes it in any case.
+   */
+  unwatchRoom(roomId: string) {
+    this.roomWatchers.get(roomId)?.()
+    this.roomWatchers.delete(roomId)
+    this.roomShown.delete(roomId)
+  }
+
+  watching(roomId: string): boolean { return this.roomWatchers.has(roomId) }
+
+  /** Quit, or a test done with this Kernel: every room's watcher stops. */
+  stopWatching() {
+    for (const roomId of [...this.roomWatchers.keys()]) this.unwatchRoom(roomId)
+  }
+
+  private async roomFileChanged(roomId: string) {
+    if (this.stopped) return this.stopWatching()
+    const room = this.store.room(roomId)
+    if (!room || room.archived || !existsSync(room.path)) return this.unwatchRoom(roomId)
+    // A file that stopped parsing raises `settingsError` here (KERNEL-231). The pages keep the last good values, so nothing is sent.
+    const rs = await loadRepoSettings(room.path)
+    if (!(await parses(room.path)) || !this.roomWatchers.has(roomId)) return
+    const json = JSON.stringify(rs)
+    if (this.roomShown.get(roomId) === json) return
+    this.roomShown.set(roomId, json)
+    this.roomRemotes.set(room.path, rs.workspace.remote)
+    bus.push({ type: 'settings.roomChanged', roomId, settings: rs })
   }
 
   handlers() {
@@ -142,7 +200,7 @@ export class Config extends Feature {
         const rs = await loadRepoSettings(path)
         // A read refreshes the room's remote as a save does, so a file edited outside Kernel takes effect (KERNEL-244).
         this.roomRemotes.set(path, rs.workspace.remote)
-        return rs
+        return this.wrote(roomId, rs)
       },
       'settings.setRoom': async ({ roomId, patch, shared }) => this.setRoom(roomId, patch, shared),
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
@@ -165,4 +223,14 @@ export class Config extends Feature {
       }
     } satisfies Partial<Handlers>
   }
+}
+
+/** Whether both settings files parse. A missing file counts, since the room reads it as empty. */
+async function parses(repo: string): Promise<boolean> {
+  for (const name of ['settings.toml', 'settings.local.toml']) {
+    const text = await readFile(join(repo, '.kernel', name), 'utf8').catch(() => undefined)
+    if (text === undefined) continue
+    try { parseToml(text) } catch { return false }
+  }
+  return true
 }
