@@ -174,6 +174,9 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
     if (id === roomId) return
     moveDraft(draftKey, newChatDraftOf(id))
     setRoomId(id)
+    // The route follows, so the breadcrumb and the sidebar selection name the room the chat will start in. It replaces the entry, so Back still leaves the page.
+    const at = getState().ui.route
+    if (at.name === 'leadNew') actions.ui.go({ ...at, roomId: id }, { history: 'replace' })
     d.focus()
   }
 

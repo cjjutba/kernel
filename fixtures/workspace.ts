@@ -2150,6 +2150,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
   NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
+  NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene((f) => ({
     ...noPlan(leadNoChats(f)),
     branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
