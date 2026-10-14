@@ -113,7 +113,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   {s.fix?.command && <div className="ob-fix"><CodeBlock inline>{s.fix.command}</CodeBlock></div>}
                   {s.fix?.action === 'recheck' && (
                     <div className="ob-acts rs-acts">
-                      <Button variant="secondary" busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
+                      <Button variant="secondary" busy={busy === 'recheck'} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={() => void recheck()}>Check again</Button>
                     </div>
                   )}
                   {s.state === 'warn' && !!s.production?.length && (

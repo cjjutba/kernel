@@ -29,7 +29,7 @@ export function ConfirmBypass({ roomId, chatId }: { roomId?: string; chatId?: st
   })
   return (
     <ConfirmDialog
-      title="Turn on Bypass permissions?" danger busy={busy !== null} busyLabel="Saving" confirmLabel="Use Bypass permissions"
+      title="Turn on Bypass permissions?" danger busy={busy !== null} busyPattern="pulse" busyLabel="Saving" confirmLabel="Use Bypass permissions"
       body="Agents will edit files and run commands without asking, including the commands on your Always ask list. Kernel asks this once."
       onConfirm={() => void use()} onCancel={actions.ui.closeModal}
     >

@@ -78,7 +78,7 @@ export function Room({ roomId }: { roomId?: string }) {
       {confirming && (
         <ConfirmDialog
           title={`Archive ${room.name}?`} body="Every agent stops and all of the room’s workspaces are archived. You can restore the room later." danger
-          confirmLabel="Archive room" busy={!!busy} busyLabel="Archiving" onConfirm={() => void archive()} onCancel={() => setConfirming(false)}
+          confirmLabel="Archive room" busy={!!busy} busyPattern="scatter" busyLabel="Archiving" onConfirm={() => void archive()} onCancel={() => setConfirming(false)}
         />
       )}
     </RoomPage>

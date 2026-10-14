@@ -257,7 +257,7 @@ const runningItems = (): ChatItem[] => {
 const rowsOpenItems: ChatItem[] = [
   userMsg('ro-u', 'Add a sort to the invoice table and run the tests.'),
   { kind: 'thinking', id: 'ro-th', ts: at(10, 28), text: 'The table already has a sortable header for the amount column, so the date and client columns can reuse it.\n\nThe sort state lives in the URL, which keeps a reload on the same order. I will keep that and only add the two keys.' },
-  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
+  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose', description: 'Run unit tests' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
   tool('ro-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')\nreturn <Table rows={rows} />", new_string: "const rows = sortBy(invoices, sort.key, sort.dir)\nreturn <Table rows={rows} sort={sort} />" } }),
   tool('ro-t3', 'Run Playwright', 'pnpm playwright test invoices', { status: 'running', durationMs: undefined, input: { command: 'pnpm playwright test invoices --project=chromium' } })
 ]
@@ -300,9 +300,58 @@ const longChat: ChatItem[] = [
   ].flatMap(([ask, answer], i): ChatItem[] => [userMsg(`lc-u${i}`, ask), { kind: 'text', id: `lc-x${i}`, ts: at(10, 32 + i), text: answer }])
 ]
 
+type ToolItem = Extract<ChatItem, { kind: 'tool' }>
+
+/** An MCP tool call the way the engine writes it: the stored label and detail are the raw `server · tool` and the arguments as JSON, which rows no longer show. */
+const mcpCall = (id: string, server: string, name: string, input: Record<string, unknown>, extra: Partial<ToolItem> = {}): ChatItem =>
+  tool(id, `${server} · ${name}`, JSON.stringify(input).slice(0, 120), { name: `mcp__${server}__${name}`, input, ...extra })
+
+const DENIED_OUTPUT = "The user doesn't want to proceed with this tool use. The tool use was rejected."
+
+const leadSteps: ChatItem[] = [
+  { kind: 'user', id: 'ls-u', ts: at(10, 20), parts: [{ type: 'text', text: 'Approved' }] },
+  { kind: 'thinking', id: 'ls-th1', ts: at(10, 21), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
+  tool('ls-t1', 'ToolSearch', '{"query":"select:mcp__linear__save_issue,mcp__linear__list_issue_labels","max_results":2}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue,mcp__linear__list_issue_labels', max_results: 2 }, output: 'Loaded 2 tools' }),
+  mcpCall('ls-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature\nWorkspace\nEngine\nPlatform\nTeam' }),
+  mcpCall('ls-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, { output: 'KERNEL-716 Room settings title misaligned and long Always allow commands overflow' }),
+  { kind: 'thinking', id: 'ls-th2', ts: at(10, 22), text: 'KERNEL-716 is already in review covering the room title misalignment and command overflow, which overlaps with the layout issue.' },
+  { kind: 'text', id: 'ls-x1', ts: at(10, 22), text: 'KERNEL-716, now in review, already fixes the room title alignment and the overflowing command tags, so I will leave both out of the layout issue. Filing the issues now.' },
+  mcpCall('ls-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
+  { kind: 'text', id: 'ls-x2', ts: at(10, 23), text: 'Now the sub-issues.' },
+  ...['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats'].map((title, i) =>
+    mcpCall(`ls-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, { output: `KERNEL-72${i + 1}` })),
+  { kind: 'thinking', id: 'ls-th3', ts: at(10, 24), text: 'Now I need to check list_workspaces for the limit and the KERNEL-716 workspace, then plan the new ones.' },
+  mcpCall('ls-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  { kind: 'thinking', id: 'ls-th4', ts: at(10, 25), text: 'KERNEL-721 and KERNEL-716 both touch kit.tsx and settings.css, since the title alignment logic lives in Page.' },
+  ...[['kai', 'KERNEL-721', 'Settings say Saving and Saved next to the control'], ['noor', 'KERNEL-723', 'Room settings update when the TOML changes'], ['noor', 'KERNEL-724', 'Record when each setting takes effect'], ['kai', 'KERNEL-722', 'Settings pages line up']].map(([agent, issue, title], i) =>
+    mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
+]
+
+const stepStates: ChatItem[] = (() => {
+  const bash = (id: string, input: Record<string, unknown>, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Run', String(input.command), { input, status, output, durationMs: status === 'running' ? undefined : 900 })
+  const edit = (id: string, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Edit', 'src/app/invoices/table.tsx', { name: 'Edit', status, output, input: { file_path: '/Users/you/kernel/worktrees/client-a/invoice-table/src/app/invoices/table.tsx', old_string: 'sortBy(rows)', new_string: 'sortBy(rows, sort.key)' } })
+  const read = (id: string, status: ToolItem['status'], output?: string) =>
+    tool(id, 'Read', 'src/app/invoices/page.tsx', { name: 'Read', status, output, input: { file_path: 'src/app/invoices/page.tsx' } })
+  const mcp = (id: string, status: ToolItem['status'], output?: string) =>
+    mcpCall(id, 'context7', 'query_docs', { libraryId: '/vercel/next.js', query: 'route handlers' }, { status, output })
+  const described = { command: 'pnpm vitest run invoices', description: 'Run the invoice tests' }
+  const bare = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && pnpm tsc --noEmit' }
+  const sync = { command: 'cd /Users/you/kernel/worktrees/client-a/invoice-table && LINEAR_API_KEY=lin_api_Xk3fQ9dLm2Vb7TnRz4 GH_TOKEN=ghp_a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8 node scripts/sync-issues.mjs' }
+  const FAIL = 'error TS2322: Type string is not assignable to type number.\n  src/app/invoices/table.tsx:41'
+  return [
+    bash('ss-b1', described, 'running'), bash('ss-b2', described, 'done', 'Tests  21 passed (21)'), bash('ss-b3', described, 'failed', 'FAIL  src/app/invoices/table.test.tsx\nTests  1 failed | 20 passed'), bash('ss-b4', described, 'failed', DENIED_OUTPUT),
+    bash('ss-c1', bare, 'running'), bash('ss-c2', sync, 'done', 'Synced 12 issues'), bash('ss-c3', bare, 'failed', FAIL), bash('ss-c4', bare, 'failed', DENIED_OUTPUT),
+    edit('ss-e1', 'running'), edit('ss-e2', 'done'), edit('ss-e3', 'failed', 'The old_string was not found in the file.'), edit('ss-e4', 'failed', DENIED_OUTPUT),
+    read('ss-r1', 'running'), read('ss-r2', 'done', "export default function Page() {\n  return <InvoiceTable />\n}"), read('ss-r3', 'failed', 'File does not exist.'), read('ss-r4', 'failed', DENIED_OUTPUT),
+    mcp('ss-m1', 'running'), mcp('ss-m2', 'done', 'Route handlers live in app/**/route.ts.'), mcp('ss-m3', 'failed', 'Library not found'), mcp('ss-m4', 'failed', DENIED_OUTPUT)
+  ]
+})()
+
 const toolCalls: ChatItem[] = [
   tableItems[0],
-  tool('c1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
+  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
   tool('c2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
   tool('c3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120 }),
   tool('c4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90 }),
@@ -1597,6 +1646,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
   })),
+  /** Every row of a Lead turn reads as a sentence with its service's mark (KERNEL-782). The turn has no result, so nothing folds and every step shows. */
+  WorkspaceLeadSteps: scene((f) => {
+    // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+    const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', leadSteps, {}, { model: 'claude-opus-5-5' })
+    return rest
+  }),
+  /** Running, done, failed and denied steps of Bash with and without a description, Edit, Read and an MCP tool the app has no mark for, and a command with tokens in it (KERNEL-782). */
+  WorkspaceStepStates: scene(() => ({
+    items: { [ids.tableChat]: stepStates },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
@@ -1632,6 +1692,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({
     items: { [ids.tableChat]: longChat },
+    ui: open
+  })),
+  /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
+  ChatRestoredSpot: scene(() => ({
+    items: { [ids.tableChat]: [
+      ...longChat.slice(0, 6),
+      { kind: 'shared' as const, id: 'rs-i1', ts: at(10, 30), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i2', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      { kind: 'shared' as const, id: 'rs-i3', ts: at(10, 31), sharedId: 'sh-image', version: 1 },
+      ...longChat.slice(6)
+    ] },
+    shared: sharedFiles().filter((x) => x.workspaceId === ids.table),
+    sharedData: sharedStills,
     ui: open
   })),
   // KERNEL-599: the chat rail. A teammate's chat read from its 14th message with the right panel hidden, the same with the list open, Kernel's chat with Team updates listed, and the chat at its
@@ -1959,6 +2032,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
+  // A merged PR whose workspace isn't archived yet: the row reads the merged icon and Merged beside Open.
+  TeamUpdateMerged: scene((f) => { const m = teamUpdateMerge(f); return { ...m, workspaces: (m.workspaces ?? []).map((w) => (w.id === 'ws-163' ? { ...w, status: 'ready' as const, archivedAt: undefined } : w)) } }),
   // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
   TeamUpdateReview: scene((f) => teamUpdateReview(f)),
   // KERNEL-747: a teammate's question and a hand-off another teammate proposed.
@@ -2194,6 +2269,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { id: 't1', title: 'PR #42 merged', sub: 'Squashed into main', action: { label: 'View', href: pr.prUrl } },
       { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
     ] }
+  }),
+  /** KERNEL-771: picking another model in a chat that has run a turn warns about the cache. Title only, up about 6s. */
+  WorkspaceModelSwitchToast: prScene('merged', [], {
+    prs: prInfo('merged'),
+    ui: { toasts: [{ id: 't1', title: 'Switching models mid-chat makes the next reply slower and uses more tokens.' }] }
   }),
   WorkspacePaste: composing({
     parts: [

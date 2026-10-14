@@ -1,7 +1,8 @@
 import type { ChatArchivePreview, Thread } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions } from '../../store'
+import { actions, getState } from '../../store'
 import { archiveChatByHand } from './byHand'
+import { dropPlace } from './chatPlace'
 
 /** Whether archiving would stop this workspace's work or lose something on it, which the confirm then names (KERNEL-405). */
 export const stopsSomething = (w: ChatArchivePreview['workspaces'][number]) => w.running || !!w.pr || w.dirty > 0 || w.unpushed > 0 || !!w.unknown
@@ -19,7 +20,11 @@ export const archivingChat = (threadId: string) => archiving.has(threadId)
  */
 export async function archiveChatNow(threadId: string, workspaceIds: string[]): Promise<void> {
   archiving.add(threadId)
-  try { await archiveChatByHand(threadId, workspaceIds) } finally { archiving.delete(threadId) }
+  try {
+    const chats = workspaceIds.flatMap((id) => getState().chats[id] ?? [])
+    await archiveChatByHand(threadId, workspaceIds)
+    for (const c of chats) dropPlace(c.id)
+  } finally { archiving.delete(threadId) }
 }
 
 /**

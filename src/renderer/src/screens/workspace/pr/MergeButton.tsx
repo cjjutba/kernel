@@ -4,7 +4,7 @@ import type { PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Spinner, useBusy } from '../../../ui'
+import { Button, Icon, Spinner, useBusy } from '../../../ui'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
 import { NO_RULES, PR_STATUS, blockersHold, busyLabel, failTitle, prStatus, type PrAction, type PrStatus, type Rules } from './model'
 import { request } from './PrHeader'
@@ -86,13 +86,13 @@ export async function mergeAndToast(workspaceId: string) {
 export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
   switch (view.kind) {
     case 'none': return null
-    case 'merged': return <span className="tucard-merged">Merged</span>
+    case 'merged': return <span className="tucard-merged"><Icon name="merged" size={14} />Merged</span>
     case 'blocked': return <span className="tucard-why" data-tip={view.reason}>{firstSentence(view.reason)}</span>
     case 'state': return <PrStatusTag status={view} />
     case 'merging': return <PrStatusTag status={PR_STATUS.merging} />
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
-        <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
+        <Button className="pr-soft tucard-merge" busy={!!busy} busyPattern="ripple-in" busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
       </span>
     )
     case 'override': return (
