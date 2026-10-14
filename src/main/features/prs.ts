@@ -435,7 +435,8 @@ export class Prs extends Feature {
   considerAutoMerge(ws: Workspace) {
     if (this.stopped || ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber) return
     const s = kindStates(ws)
-    if (!s.approved.length || s.blocking.length) return
+    // An overrule clears the way for a merge a person starts, never for Kernel's own (KERNEL-732).
+    if (!s.approved.length || s.blocking.length || s.overruled.length) return
     // The checks as the last read settled them, so a check that ran after a weigh refused it brings a new one (KERNEL-703).
     const checks = (this.infos.get(ws.id)?.info.checks ?? []).map((c) => `${c.name}=${c.state}${c.url ? `@${c.url}` : ''}`).join(',')
     const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? '', checks].join(':')
@@ -500,7 +501,7 @@ export class Prs extends Feature {
     await this.k.team.agents(ws.roomId)
     const { plan } = await this.k.reviews.planFor(at)
     const s = kindStates(at)
-    const reviews = { required: plan.filter((p) => !p.optional).map((p) => p.kind), approved: s.approved, blocking: s.blocking, running: this.k.reviews.reviewState(at).inProgress }
+    const reviews = { required: plan.filter((p) => !p.optional).map((p) => p.kind), approved: s.approved, blocking: s.blocking, overruled: s.overruled, running: this.k.reviews.reviewState(at).inProgress }
     const { base } = await this.k.reviews.policyFor(at)
     return { ...facts, pr, reviews, ...(base ? { diff: await this.diffOf(room, base, pr.head, rules) } : {}) }
   }

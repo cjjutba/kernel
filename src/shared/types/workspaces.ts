@@ -86,6 +86,12 @@ export interface Workspace {
   reviews?: ReviewVerdict[]
   /** The latest review round Kernel started on this workspace's PR (KERNEL-552). */
   reviewRound?: ReviewRound
+  /**
+   * The user's overrule of the reviews' blockers on one head commit of the PR, or the Lead's on the user's quoted words
+   * (KERNEL-732). Everything that reads blockers treats `kinds` as overruled while `head` is the PR's head, so a new commit
+   * brings back whatever its reviews find. `note` is why, as the user put it.
+   */
+  overruled?: Overrule
   /** The PR's head commit as GitHub last reported it. */
   prHead?: string
   prNumber?: number
@@ -108,6 +114,9 @@ export interface Workspace {
   /** The setup script's last run, for the chat's setup line and the note when it passes (KERNEL-430). */
   setupRun?: SetupRun
 }
+
+/** An overrule of the reviews' blockers on one head commit (KERNEL-732). */
+export interface Overrule { head: string; kinds: ReviewKind[]; by: 'user' | 'lead'; ts: number; note?: string }
 
 /**
  * A review round: one set of review runs on one head commit of a PR (KERNEL-552). Kernel saves the kinds it chose as the

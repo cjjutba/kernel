@@ -369,6 +369,7 @@ export class Reviews extends Feature {
     const skipped = round && round.head === ws.prHead ? round.skipped ?? [] : []
     return {
       approved: s.approved, blocking: s.blocking, blockers: s.blocking.length > 0,
+      ...(s.overruled.length ? { overruled: s.overruled } : {}),
       reviewing: ordered(reviewing),
       inProgress,
       ...(this.starting.has(ws.id) ? { starting: true } : {}),
@@ -383,8 +384,40 @@ export class Reviews extends Feature {
     }
   }
 
+  /**
+   * Overrules the blockers the reviews found on the PR's head commit, or with `clear` takes the overrule back (KERNEL-732).
+   * The user does it, or the Lead on the user's quoted words (`by`). It records the head and the kinds blocking it, together
+   * with any kind already overruled on that head, so every read of the blockers lets a merge a person starts through until a
+   * new commit. It refuses when nothing blocks the head or Kernel doesn't know it.
+   */
+  overrule(id: string, o: { by: 'user' | 'lead'; note?: string; clear?: boolean }): Workspace {
+    const ws = this.mustWs(id)
+    if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
+    const what = ws.prNumber ? `PR #${ws.prNumber}` : ws.name
+    const lead = o.by === 'lead' ? this.agentsSync(ws.roomId).find((a) => a.lead) : undefined
+    const who = { actor: o.by === 'lead' ? ('agent' as const) : ('you' as const), agentId: lead?.id ?? ws.agentId }
+    if (o.clear) {
+      if (!ws.overruled) return ws
+      const { overruled: _overruled, ...rest } = ws
+      const saved = this.saveWs(rest)
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, ...who, text: 'took back the overrule of the blockers in', object: what })
+      return saved
+    }
+    if (!ws.prNumber || !ws.prHead) throw new Error(`Kernel doesn't know the latest commit of ${what} yet, so there is nothing to overrule.`)
+    const s = kindStates(ws)
+    if (!s.blocking.length) throw new Error(`No review found blockers on the latest commit of ${what}, so there is nothing to overrule.`)
+    const kinds = REVIEW_KINDS.map((k) => k.id).filter((k) => s.blocking.includes(k) || s.overruled.includes(k))
+    const note = o.note?.trim()
+    const saved = this.updateWs(id, { overruled: { head: ws.prHead, kinds, by: o.by, ts: Date.now(), ...(note ? { note } : {}) } })
+    const whose = `${reviewsText(s.blocking).replace(/^The/, 'the')}${s.blocking.length > 1 ? "'" : "'s"}`
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, ...who, text: `overruled ${whose} ${s.count} ${s.count === 1 ? 'blocker' : 'blockers'} in`, object: what, ...(note ? { quote: note } : {}) })
+    return saved
+  }
+
   handlers() {
     return {
+      // The PR header's Overrule and its Undo (KERNEL-732).
+      'reviews.overrule': async ({ workspaceId, note, clear }) => this.overrule(workspaceId, { by: 'user', note, clear }),
       // Kai's Settings page for reviews writes through this (KERNEL-549).
       'settings.setReview': async ({ roomId, review }) => this.k.config.wrote(roomId, await saveReviewSettings(this.mustRoom(roomId).path, review)),
       // The Reviews page's always-review box writes through this (KERNEL-594).
