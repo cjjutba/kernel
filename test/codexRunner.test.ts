@@ -375,11 +375,14 @@ describe('permission modes on Codex (KERNEL-447)', () => {
         { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
         { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } },
         // Only the second file is under the reference folder.
-        ...change('f2', 'src/app.ts', '/tmp/client-a-api/package.json')
+        ...change('f2', 'src/app.ts', '/tmp/client-a-api/package.json'),
+        // A rename from the worktree into the reference folder, with no grantRoot.
+        { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f3', changes: [{ path: 'src/app.ts', kind: { type: 'update', move_path: '/tmp/client-a-api/src/app.ts' }, diff: '' }], status: 'inProgress' } } },
+        { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f3', startedAtMs: 1 } }
       ) }])
       await t.idle()
-      expect(await t.answers('item/fileChange/requestApproval'), mode).toEqual([{ decision: 'decline' }, { decision: 'decline' }])
-      expect(t.of('note').map((n) => n.text), mode).toEqual([REFERENCE_READ_ONLY, REFERENCE_READ_ONLY])
+      expect(await t.answers('item/fileChange/requestApproval'), mode).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }])
+      expect(t.of('note').map((n) => n.text), mode).toEqual([REFERENCE_READ_ONLY, REFERENCE_READ_ONLY, REFERENCE_READ_ONLY])
       expect(t.store.approvals({}), mode).toEqual([])
       if (mode === 'default') expect((await t.sent('thread/start'))[0].params.developerInstructions).toContain('- /tmp/client-a-api')
     }

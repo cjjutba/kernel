@@ -559,14 +559,15 @@ export class CodexRunner implements Runner {
   /**
    * File edits accept in Accept edits, Auto and Bypass permissions, and ask in Manual, as Claude's do. Writes outside the
    * workspace ask, except in Bypass permissions (KERNEL-447). A change that touches a reference folder anywhere, in any of its
-   * files or its `grantRoot`, declines in every mode (KERNEL-790).
+   * files, a rename's destination or its `grantRoot`, declines in every mode (KERNEL-790).
    */
   private async approveFiles(p: FileChangeRequestApprovalParams, signal: AbortSignal): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'
-    const touched = [...(change?.changes.map((c) => c.path) ?? []), ...(p.grantRoot ? [p.grantRoot] : [])]
+    // A rename writes its destination too, so `move_path` counts as a file the change touches.
+    const touched = [...(change?.changes.flatMap((c) => [c.path, ...(c.kind.type === 'update' && c.kind.move_path ? [c.kind.move_path] : [])]) ?? []), ...(p.grantRoot ? [p.grantRoot] : [])]
     const cwd = this.host.workspace.path
     if (touched.some((file) => referenceWrite({ tool: 'Edit', input: { file_path: file }, cwd }, this.o.references))) return this.declined(REFERENCE_READ_ONLY)
     // A review only reads, whatever its agent's file says (KERNEL-549).
