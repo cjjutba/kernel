@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, githubRepoOf, listWorktrees, mergeBase, overlaps, remoteBranches, remoteRepo, removeWorktree, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
+import { branchExists, branchName, branchType, capBranch, changedFiles, checkedOutBranch, createWorktree, detachWorktree, freeBranch, githubRepoOf, listWorktrees, mergeBase, overlaps, remoteBranches, remoteRepo, removeWorktree, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 // Lets a test make the next N branch checks fail as if git couldn't start. Everything else runs for real.
@@ -121,6 +121,33 @@ describe('worktrees', () => {
     expect(await freeBranch(repo, branch)).toBe(branch + '-2')
     await removeWorktree(repo, path, { force: true, deleteBranch: branch })
     expect((await listWorktrees(repo)).some((w) => w.branch === branch)).toBe(false)
+  })
+
+  it('starts a branch from origin/main with no upstream, and its first push -u sets it to the same name (KERNEL-687)', async () => {
+    const repo = await tempRepo()
+    const remote = await mkdtemp(join(tmpdir(), 'kernel-origin-'))
+    await git(remote, 'init', '-q', '--bare')
+    await git(repo, 'remote', 'add', 'origin', remote)
+    await git(repo, 'push', '-q', 'origin', 'main')
+    await git(repo, 'fetch', '-q', 'origin')
+    const path = await createWorktree({ repo, root: join(repo, '..', 'wt-track-' + Date.now()), branch: 'feat/own', baseRef: 'origin/main' })
+    const upstream = () => git(path, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}').then((s) => s.trim(), () => undefined)
+    expect(await upstream()).toBeUndefined()
+    await git(path, 'push', '-q', '-u', 'origin', 'HEAD')
+    expect(await upstream()).toBe('origin/feat/own')
+    expect((await git(remote, 'branch', '--list')).trim()).toContain('feat/own')
+  })
+
+  it('reads the branch checked out in a folder of a checkout or a worktree, and nothing when detached (KERNEL-687)', async () => {
+    const repo = await tempRepo({ 'src/a.ts': 'x\n' })
+    expect(checkedOutBranch(repo)).toBe('main')
+    expect(checkedOutBranch(join(repo, 'src'))).toBe('main')
+    const root = join(repo, '..', 'wt-head-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/head', baseRef: 'main' })
+    expect(checkedOutBranch(join(path, 'src'))).toBe('feat/head')
+    await git(path, 'checkout', '-q', '--detach')
+    expect(checkedOutBranch(path)).toBeUndefined()
+    expect(checkedOutBranch(await mkdtemp(join(tmpdir(), 'kernel-nogit-')))).toBeUndefined()
   })
 
   it('treats a deleted worktree folder as removed, and still deletes its branch when asked (KERNEL-109)', async () => {

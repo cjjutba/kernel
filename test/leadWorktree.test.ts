@@ -210,6 +210,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     await vi.waitFor(() => expect(callIn(kai.path)).toHaveLength(1))
     expect(callIn(kai.path)[0].options).not.toHaveProperty('projectConfigRoot')
     expect(agentPrompt(undefined, kai)).not.toContain('It is not the main checkout')
+    expect(agentPrompt(undefined, kai)).toContain(`Push with \`git push -u origin ${kai.branch}\` (or \`HEAD\`), never a bare \`git push\`.`)
   })
 
   it("reads the room's env files from the chat's own worktree, where files.copy put them", async () => {
