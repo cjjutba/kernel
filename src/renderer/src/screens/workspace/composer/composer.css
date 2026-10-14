@@ -257,8 +257,8 @@
 .cmp-where .room-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 9px; font-weight: 600; color: var(--ink-2); }
 .cmp-where .cmp-model { margin-left: -8px; color: var(--muted); font-size: 12.5px; }
 
-/* The where row's menus (KERNEL-786). They open upward and end 8px above the box (WherePop), so the toolbar is never covered. */
-.where-pop { left: -8px; display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
+/* The where row's menus (KERNEL-786). They open upward from their own button and may cover the box (KERNEL-805). */
+.where-pop { left: -8px; bottom: calc(100% + 8px); display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
 .where-pop > * { flex-shrink: 0; }
 .where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
 .where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
