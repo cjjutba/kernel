@@ -910,6 +910,7 @@ export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, stri
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  env[ARTIFACT] ??= '1'
   // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
   Object.assign(env, NO_PROMPTS)
   // The chat's role in Settings, Models decides where it compacts, whatever the Mac exports: 200k, or the model's whole
@@ -925,6 +926,12 @@ const COMPACT_AT_200K = '200000'
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
+
+/**
+ * Claude Code's switch for its Artifact tools, which draw Claude Design canvases. SDK sessions default them off and the CLI
+ * on, so Kernel gives its sessions the CLI's default. The Mac's value and `enableArtifact: false` still win (KERNEL-795).
+ */
+export const ARTIFACT = 'CLAUDE_CODE_ARTIFACT'
 
 /**
  * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
