@@ -1,4 +1,6 @@
+import type { Toast as ToastType } from '@shared/types'
 import { actions, useStore } from '../store'
+import { useUsageActions } from './footer/useUsageActions'
 import { Toast, ToastStack } from '../ui'
 import { usePrToasts } from '../screens/workspace/pr/usePrToasts'
 import { runToastAction } from './toastAction'
@@ -13,6 +15,11 @@ import './toasts.css'
 export function Toasts() {
   usePrToasts()
   const toasts = useStore((s) => s.ui.toasts)
+  const accounts = useStore((s) => s.accounts)
+  const { switchTo } = useUsageActions()
+  // Undo goes through the footer's own switch. It's left out once the account it returns to is removed or signed out (KERNEL-699).
+  const undoable = (a: NonNullable<ToastType['action']>) => !a.switchAccount || accounts.some((x) => x.provider === a.switchAccount?.provider && x.id === a.switchAccount.accountId && x.signedIn)
+  const press = (a: NonNullable<ToastType['action']>) => a.switchAccount ? void switchTo(a.switchAccount.provider, a.switchAccount.accountId) : runToastAction(a)
   return (
     <div className="app-toasts">
       <ToastStack>
@@ -20,7 +27,7 @@ export function Toasts() {
           <Toast
             key={t.id} title={t.title} sub={t.sub} onDismiss={() => actions.ui.dismissToast(t.id)}
             // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
-            action={t.action && { label: t.action.label, boxed: !!t.action.tab, onClick: () => { if (t.action) runToastAction(t.action) } }}
+            action={t.action && undoable(t.action) ? { label: t.action.label, boxed: !!t.action.tab, onClick: () => { if (t.action) press(t.action) } } : undefined}
           />
         ))}
         <UpdateCard />

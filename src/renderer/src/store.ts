@@ -5,6 +5,7 @@ import type { AccountAddStep, AccountProfile, Provider,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
+import { PROVIDERS } from '@shared/types'
 import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
@@ -729,6 +730,24 @@ async function mcpNeededToast(n: McpNeeded) {
   actions.ui.toast({ title: mcpNeedYou(count || n.servers.length), action: { label: 'Set up', modal: { name: 'mcpSetUp', provider: n.provider, accountId: n.accountId } } })
 }
 
+let switchToastId: string | undefined
+
+/**
+ * One notice for each account switch, with Undo back to the account it left. A newer switch replaces the last notice, so Undo
+ * always reverses the latest one. `accounts` arrives before this event, so the names are current (KERNEL-699).
+ */
+function accountSwitchedToast(e: Extract<PushEvent, { type: 'accountSwitched' }>) {
+  const accounts = getState().accounts
+  const name = (id: string) => accounts.find((a) => a.provider === e.provider && a.id === id)?.label ?? 'another account'
+  const provider = PROVIDERS.find((p) => p.id === e.provider)?.label ?? e.provider
+  const window = e.limit === 'five_hour' ? '5-hour limit' : e.limit ? 'weekly limit' : 'limit'
+  const title = e.reason === 'limit'
+    ? `Kernel switched ${provider} to ${name(e.to)}, ${name(e.from)} hit its ${window}`
+    : `${provider} now uses ${name(e.to)}`
+  if (switchToastId) actions.ui.dismissToast(switchToastId)
+  switchToastId = actions.ui.toast({ title, action: { label: 'Undo', switchAccount: { provider: e.provider, accountId: e.from } } })
+}
+
 /** Apply one push event from main. Exported for tests and fixtures. */
 export function apply(e: PushEvent) {
   switch (e.type) {
@@ -771,6 +790,7 @@ export function apply(e: PushEvent) {
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
     case 'accounts': return actions.accounts.set(e.accounts)
+    case 'accountSwitched': return accountSwitchedToast(e)
     case 'account.add': return actions.accounts.adding(e.add)
     case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
