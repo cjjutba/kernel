@@ -302,6 +302,7 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
       // A shell a signal ended has no exit code, as a stopped script had none before.
       const code = signal ? null : exitCode
+      if (code !== 0) console.error(`TMPDEBUG script exit code=${exitCode} signal=${signal} kind=${o.kind} script=${o.script}`)
       bus.push({ type: 'script.exit', ...tag, code })
       resolve(timedOut ? 'timeout' : code)
     })

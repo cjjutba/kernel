@@ -1,0 +1,26 @@
+name: tmp debug
+on:
+  push:
+    paths: ['.github/workflows/tmp-debug.yml']
+jobs:
+  t:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    env:
+      KERNEL_HEADLESS: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          for i in 1 2 3 4 5 6; do
+            node node_modules/vitest/vitest.mjs run test/waits.test.ts test/leadWorktree.test.ts test/accounts.test.ts 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "TMPDEBUG|FAIL|Tests  |Setup log|Setup (failed|was)" | head -20
+          done
