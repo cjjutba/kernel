@@ -5,7 +5,7 @@
  *   3 4 5
  *   6 7 8
  *
- * A pattern splits the 1.2s loop into `n` equal steps. Every dot rests at full size and dips out once per loop (shrinks, stays gone, grows back), the dip starting at its `at` step (fractions allowed).
+ * A pattern splits the 0.8s loop into `n` equal steps. Every dot rests at full size and dips out once per loop (shrinks, stays gone, grows back), the dip starting at its `at` step (fractions allowed).
  * The center (dot 4) never shows or dips alone: its dip must overlap a neighbor's at every moment (test/spinnerGuard.test.ts). `still` is what reduced motion holds at full size, and it keeps a neighbor with the center.
  */
 export type SpinnerPattern =
