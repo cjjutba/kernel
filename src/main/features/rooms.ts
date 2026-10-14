@@ -149,9 +149,8 @@ export class Rooms extends Feature {
     await step('install', async () => {
       const { command, reason, runsRepoCode } = await installCommand(room.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
-      // A repo whose settings have nothing to trust never asks, so an install that runs its code is left to the user (KERNEL-444).
-      if (runsRepoCode && !(await this.k.trust.trustState(room)).subject) return { detail: `Skipped: ${command} runs this repo's code, so run it yourself if you trust it` }
-      // The install would run the repo's install scripts, or its own code. Trusting them runs it (KERNEL-260).
+      // The install would run the repo's install scripts, or its own code. Then the command waits for trust, and trusting it
+      // runs it (KERNEL-260, KERNEL-444, KERNEL-682).
       if (await this.k.trust.holdInstall(room, runsRepoCode)) return { detail: runsRepoCode ? "Skipped until you trust this repo's scripts" : "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })

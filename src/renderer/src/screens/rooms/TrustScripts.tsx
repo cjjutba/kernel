@@ -53,9 +53,12 @@ export function TrustScripts({ roomId }: { roomId: string }) {
   ]
   // The repo's own package.json scripts that a package install runs (KERNEL-260). Shown apart, since they come from another file.
   const installs = trust.installScripts?.length ? [{ label: 'Install scripts in package.json', text: trust.installScripts.map((i) => `${i.name}: ${i.command}`).join('\n') }] : []
+  // The room's one-time install, which runs the repo's own code (KERNEL-682).
+  const install = trust.install ? [{ label: 'Install dependencies', text: trust.install }] : []
   const body = [
     entries.length ? `These come from .kernel/settings.toml in ${room.name}. Kernel runs them in your login shell for each new workspace.` : '',
-    installs.length ? `The install scripts come from package.json in ${room.name}. A package install runs them.` : ''
+    installs.length ? `The install scripts come from package.json in ${room.name}. A package install runs them.` : '',
+    install.length ? `Kernel runs the install once in ${room.name}, and it runs code from the repo.` : ''
   ].filter(Boolean).join(' ')
 
   return (
@@ -64,7 +67,7 @@ export function TrustScripts({ roomId }: { roomId: string }) {
       body={body}
     >
       <div ref={list} className="ts-list">
-        {[...entries, ...installs].map((e) => (
+        {[...entries, ...installs, ...install].map((e) => (
           <section key={e.label} className="ts-item" aria-label={e.label}>
             <h3 className="ts-label">{e.label}</h3>
             <CodeBlock>{e.text}</CodeBlock>
