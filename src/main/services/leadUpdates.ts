@@ -113,9 +113,9 @@ export interface TeamEvent {
  * does ("5-hour limit"), `model` the model on a limit of that model alone, and `account` the account that ran out, or on
  * `limit.lifted` the one the teammate runs on now. `resetsAt` is in seconds (KERNEL-50), the earliest across accounts when
  * none has room. `switching`: Kernel is moving the provider to another account, `to` once it picked one. `stuck`: nothing
- * carries the teammate on before the reset, because every account is at its limit, the switch is off or was undone, an
- * account with room needs a sign-in or Keychain access, or the limit is on its model alone. `carried`: the `limit.lifted` that
- * followed in the same update, by its account (`foldLimits`).
+ * carries the teammate on before the reset. `full`: no account has room, and one that is signed out or waits on a Keychain
+ * prompt counts as having none. `off`: the switch is off or was undone. `signIn`: the switch failed. `model`: the limit is on
+ * its model alone. `carried`: the `limit.lifted` that followed in the same update, by its account (`foldLimits`).
  */
 export interface LimitNews {
   provider: Provider
@@ -210,7 +210,7 @@ function limitSentence(l?: LimitNews): string {
   if (l?.carried !== undefined) return `${hit} ${l.carried && l.carried !== l.account ? `Kernel moved it to ${l.carried} and it carries on.` : 'It carries on now that the limit reset.'}`
   if (l?.switching) return `${hit} Kernel is moving it to ${l.switching.to ?? 'another account'}, where it carries on.`
   if (l?.stuck === 'full') return `${hit} Every account is at its limit, so it is paused${until(l)}.`
-  if (l?.stuck === 'signIn') return `${hit} Kernel can't move it to another account until the user signs in to one or allows Keychain access, so it is paused${until(l)}.`
+  if (l?.stuck === 'signIn') return `${hit} Kernel couldn't move it to another account, so it is paused${until(l)}.`
   return `${hit} It is paused${until(l)}.`
 }
 
@@ -223,7 +223,8 @@ function pausedTodo(name: string, l?: LimitNews): string {
   const why = l?.stuck === 'full' ? ' because every account is at its limit'
     : l?.stuck === 'model' ? ` because ${l.model ?? 'its model'} is at its limit${l.account ? ` on ${l.account}` : ''}`
     : ` by ${limitName(l)}${l?.account ? ` on ${l.account}` : ''}`
-  const signIn = l?.stuck === 'signIn' ? ` Kernel can move ${name} to another account once the user signs in to it or allows Keychain access there, so tell the user.` : ''
+  // Kernel counts an account that is signed out or waits on a Keychain prompt as one without room, so the user may free one.
+  const signIn = l?.stuck === 'full' || l?.stuck === 'signIn' ? ` If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves ${name} there.` : ''
   return `${name} is paused${when}${why}.${signIn} Kernel carries ${name} on by itself ${when ? 'then' : 'once the limit resets'}, and any message you sent waits in its chat, so don't send it again.`
 }
 

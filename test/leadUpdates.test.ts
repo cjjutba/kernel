@@ -1587,7 +1587,7 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
   const L: LimitNews = { provider: 'claude', window: '5-hour limit', account: 'Account 3', resetsAt: S(Date.now() + 3600_000) }
   /** When it resets, as the limit banner says it, without the "at " of a time later today. */
   const until = (resetsAt: number) => resetPhrase(resetsAt, Date.now()).replace(/^at /, '')
-  const PAUSED = (at: number) => `Noor is paused until ${until(at)} because every account is at its limit. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`
+  const PAUSED = (at: number) => `Noor is paused until ${until(at)} because every account is at its limit. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Noor there. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`
   const LIFTED = 'Noor is working again on Account 2. If you told the user it was paused, correct that in one line.'
 
   it('stays quiet while Kernel moves the teammate to another account, and the next update says it carried on there', async () => {
@@ -1659,10 +1659,10 @@ describe('a teammate a usage limit stopped (KERNEL-777)', () => {
     expect(s.updates[0].rows[0].events).toEqual([{ kind: 'limit', text: `Paused by its weekly limit until ${until(weekly)}`, actionable: true }])
   })
 
-  it('asks for a sign-in when the account with room needs one, and names the model on a limit of the model alone', () => {
+  it('asks for a sign-in when the switch failed, and names the model on a limit of the model alone', () => {
     const ws = { id: 'w1', status: 'ready', prState: 'none' } as Workspace
     const todo = (limit: LimitNews) => decide({ ws, name: 'Noor', events: [{ n: 1, workspaceId: 'w1', kind: 'limit', limit }] }, { allMerged: () => false }).todo
-    expect(todo({ ...L, stuck: 'signIn' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} by its 5-hour limit on Account 3. Kernel can move Noor to another account once the user signs in to it or allows Keychain access there, so tell the user. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
+    expect(todo({ ...L, stuck: 'signIn' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} by its 5-hour limit on Account 3. If an account is signed out or waits for Keychain access, tell the user to sign in or allow it, and Kernel moves Noor there. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
     expect(todo({ ...L, window: 'Opus limit', model: 'Opus 5.5', stuck: 'model' })).toEqual([`Noor is paused until ${until(L.resetsAt!)} because Opus 5.5 is at its limit on Account 3. Kernel carries Noor on by itself then, and any message you sent waits in its chat, so don't send it again.`])
     // A switch under way, and a limit the user's own message in the teammate's chat met, don't wake the Lead.
     expect(todo({ ...L, switching: { to: 'Account 2' } })).toEqual([])

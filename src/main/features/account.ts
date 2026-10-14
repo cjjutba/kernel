@@ -310,7 +310,7 @@ export class Account extends Feature {
     void this.k.providers.spareFor(p, limits).catch(() => undefined).then((to) => {
       if (!still() || move.state !== 'reading') return
       if (!to) {
-        this.moveWaits(p, move, limits, this.k.providers.spareAfterSignIn(p, limits) ? 'signIn' : 'full')
+        this.moveWaits(p, move, limits, 'full')
         return
       }
       move.state = 'done'
@@ -321,7 +321,8 @@ export class Account extends Feature {
   }
 
   /**
-   * Nothing moves `p` off the limit for now: no account has room, or the one that does needs a sign-in or Keychain access.
+   * Nothing moves `p` off the limit for now: no account has room, which counts accounts that need a sign-in or wait on a
+   * Keychain prompt (`spareFor`), or the switch failed.
    * The Lead hears it once, with the earliest reset across the provider's accounts, for the teammates the limit cut off
    * (KERNEL-777). A later reading that finds room still moves it.
    */
