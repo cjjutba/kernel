@@ -43,9 +43,12 @@ export class Chats extends Feature {
     return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
   }
 
-  /** Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). */
+  /**
+   * Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). A turn that only
+   * waits on a plan card isn't work: the card survives the quit (KERNEL-827).
+   */
   workingAgents(): number {
-    const workspaces = [...this.runningChats].map((id) => this.store.chat(id)?.workspaceId).filter(Boolean)
+    const workspaces = [...this.runningChats].filter((id) => !this.approvals.waitsOnPlan(id)).map((id) => this.store.chat(id)?.workspaceId).filter(Boolean)
     return new Set(workspaces).size
   }
 

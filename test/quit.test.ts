@@ -201,6 +201,56 @@ describe('Kernel on quit', () => {
     await k.stop()
   })
 
+  /** A kernel with these chats saved and running, one per id, in the workspace named after its first letter. */
+  async function busy(ids: string[]) {
+    const k = await kernel()
+    for (const id of ids) {
+      k.store.saveChat(chat(id, `ws${id[0].toUpperCase()}`))
+      bus.push({ type: 'chat.running', chatId: id, running: true })
+    }
+    const wait = (chatId: string, kind: 'plan' | 'tool' | 'question') =>
+      k.approvals.request({ kind, source: 'sdk', roomId: 'r', workspaceId: `ws${chatId[0].toUpperCase()}`, chatId, title: kind })
+    const done = async () => { for (const id of ids) bus.push({ type: 'chat.running', chatId: id, running: false }); await k.stop({ budgetMs: 0 }) }
+    return { k, wait, done }
+  }
+
+  it('quits at once when every busy agent only waits on a plan approval', async () => {
+    const { k, wait, done } = await busy(['a1', 'b1'])
+    wait('a1', 'plan')
+    wait('b1', 'plan')
+    expect(k.chats.workingAgents()).toBe(0)
+    expect(quitStep(k.chats.workingAgents(), 'user', false)).toBe('quit')
+    await done()
+  })
+
+  it('counts only the agents really working when some wait on a plan approval', async () => {
+    const { k, wait, done } = await busy(['a1', 'b1', 'c1', 'd1'])
+    wait('a1', 'plan')
+    wait('c1', 'plan')
+    expect(k.chats.workingAgents()).toBe(2)
+    expect(quitDialog(k.chats.workingAgents(), 'user').message).toBe('2 agents are working')
+    await done()
+  })
+
+  it('still counts an agent waiting on a tool permission or a question, and one with a plan and a permission up', async () => {
+    const { k, wait, done } = await busy(['a1', 'b1', 'c1'])
+    wait('a1', 'tool')
+    wait('b1', 'question')
+    wait('c1', 'plan')
+    wait('c1', 'tool')
+    expect(k.chats.workingAgents()).toBe(3)
+    await done()
+  })
+
+  it('counts a Lead with one chat on a plan approval and one working as one agent', async () => {
+    const { k, wait, done } = await busy(['a1', 'a2'])
+    wait('a1', 'plan')
+    expect(k.chats.workingAgents()).toBe(1)
+    bus.push({ type: 'chat.running', chatId: 'a2', running: false })
+    expect(k.chats.workingAgents()).toBe(0)
+    await done()
+  })
+
   it('reads no database when a chat starts or stops, so a push never throws from the counting', async () => {
     const k = await kernel()
     // Every Store query prepares its statement, so this fails any read. Closing the database would prove the same, but

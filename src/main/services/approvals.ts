@@ -4,7 +4,8 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import { toolAsk, toolView } from '@shared/toolView'
 
-type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
+/** A live waiter, with the chat and kind of its approval so the quit prompt can tell a plan card from work (KERNEL-827). */
+type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout; chatId?: string; plan: boolean }
 
 /** Request changes on a plan as the user wrote it: the notes before Kernel's lines for the images, and the images. */
 export type Typed = { notes?: string; images?: Approval['images'] }
@@ -36,7 +37,7 @@ export class Approvals {
     bus.push({ type: 'approval', approval })
     bus.activity({ kind: 'approval.requested', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, text: a.title, object: a.toolName })
     const decision = new Promise<Decision | null>((resolve) => {
-      const entry: Pending = { resolve }
+      const entry: Pending = { resolve, chatId: a.chatId, plan: a.kind === 'plan' }
       if (opts.timeoutMs) entry.timer = setTimeout(() => this.finish(approval.id, null, 'expired'), opts.timeoutMs)
       opts.signal?.addEventListener('abort', () => this.finish(approval.id, null, 'expired'), { once: true })
       this.pending.set(approval.id, entry)
@@ -54,6 +55,16 @@ export class Approvals {
   }
 
   isPending(id: string) { return this.pending.has(id) }
+
+  /**
+   * The chat's open turn only waits on a plan card: it has a live plan waiter and no other. A quit keeps that card for the
+   * next launch, so the quit prompt doesn't count the chat as working. A tool permission or a question expires on quit,
+   * so a chat waiting on one still counts (KERNEL-827).
+   */
+  waitsOnPlan(chatId: string): boolean {
+    const mine = [...this.pending.values()].filter((p) => p.chatId === chatId)
+    return mine.length > 0 && mine.every((p) => p.plan)
+  }
 
   /**
    * A plan card that waits with no waiter, as one from before a restart. `decide` can't answer it, so the caller delivers
