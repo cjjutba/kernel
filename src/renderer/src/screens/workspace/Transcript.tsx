@@ -44,6 +44,16 @@ export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user'
 /** The numbers a scroll position is read from, so the rule below runs without a layout engine. */
 export interface ScrollView { scrollTop: number; scrollHeight: number; clientHeight: number }
 
+/** The gap between the top of the view and the message a send anchors there (KERNEL-803). */
+export const ANCHOR_GAP = 16
+
+/**
+ * The padding under the thread while a sent message sits at the top of the view (KERNEL-803): what is left of the view below the message and everything
+ * after it, so the reply fills in under the message. `anchorTop` and `endBottom` are viewport coordinates of the message and of the end of the thread's rows.
+ * It shrinks as the reply grows and is 0 once the message and its reply fill the view.
+ */
+export const anchorPad = (clientHeight: number, anchorTop: number, endBottom: number) => Math.max(0, Math.round(clientHeight - ANCHOR_GAP - (endBottom - anchorTop)))
+
 const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
 
 const rangeOf = (v: ScrollView) => v.scrollHeight - v.clientHeight
@@ -768,7 +778,11 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // Only the reader's own scrolling can unpin a small move, so layout that shifts the view doesn't. Input arms it, and the scroll landing disarms it.
   const byHand = useRef(false)
   const seen = useRef<ScrollView>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
-  const remember = (el: ScrollView) => { seen.current = { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight } }
+  // The padding under a sent message isn't part of the thread: the end is where the rows end, so the Scroll to bottom button and following measure to that.
+  const padNow = useRef(0)
+  const anchored = useRef<string | null>(null)
+  const flat = (el: ScrollView): ScrollView => ({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight - padNow.current, clientHeight: el.clientHeight })
+  const remember = (el: ScrollView) => { seen.current = flat(el) }
   const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
   letGo.current ??= lapse(HAND_MS, () => { byHand.current = false })
   useEffect(() => () => letGo.current?.cancel(), [])
@@ -776,9 +790,12 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const el = scroller.current
     if (!el) return
     if (byHand.current) letGo.current?.()
-    pinned.current = followsAfterScroll(pinned.current, el, seen.current, byHand.current)
+    const view = flat(el)
+    const next = followsAfterScroll(pinned.current, view, seen.current, byHand.current)
+    // The anchor's own scroll leaves the end inside the padding, which isn't the reader arriving at the end. Only their scrolling follows again.
+    pinned.current = anchored.current && !byHand.current ? pinned.current : next
     remember(el)
-    show(!pinned.current && distFromEnd(el) > PIN_PX)
+    show(!pinned.current && distFromEnd(view) > PIN_PX)
   }
   // A smooth scroll the page runs itself (the button's, or a jump from the chat rail) must not be cut short by following. It ends when the scroll
   // lands, or when the reader takes over. The button's scroll passes through "away" on its way down, which never unpins since it only moves toward the end.
@@ -793,7 +810,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // Rows far above the end are measured a frame after they first show, so the end moves once. Following again next frame lands on it.
   const follow = () => {
     if (gliding.current) return 0
-    const move = () => { const el = scroller.current; if (!el || movesToEnd(el, byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
+    const move = () => { const el = scroller.current; if (!el || movesToEnd(flat(el), byHand.current)) end.current?.scrollIntoView({ block: 'end' }) }
     move()
     return requestAnimationFrame(() => { if (pinned.current && !gliding.current) move() })
   }
@@ -841,7 +858,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
         el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
         remember(el)
-        show(distFromEnd(el) > PIN_PX)
+        show(distFromEnd(flat(el)) > PIN_PX)
       }
       put()
       // Rows far above are measured a frame after they first show, so their heights move the spot once.
@@ -864,6 +881,31 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     opening.current = true
     requestAnimationFrame(() => requestAnimationFrame(() => { opening.current = false }))
   }
+  // Sets the padding under the thread from where the anchored message and the end of the rows are now. Called as the thread changes size, which is how it shrinks as the reply grows.
+  const padReply = () => {
+    const el = scroller.current
+    const box = thread.current
+    const mark = anchored.current && box?.querySelector(`[data-jump="${CSS.escape(anchored.current)}"]`)
+    const next = el && mark && end.current ? anchorPad(el.clientHeight, mark.getBoundingClientRect().top, end.current.getBoundingClientRect().bottom) : 0
+    if (!box || next === padNow.current) return
+    padNow.current = next
+    box.style.paddingBottom = next ? `${next}px` : ''
+  }
+  // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
+  const anchorSend = (id: string) => {
+    release()
+    byHand.current = false
+    anchored.current = id
+    pinned.current = false
+    padReply()
+    const el = scroller.current
+    const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
+    if (!el || !mark) return
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
+    gliding.current = smooth
+    el.scrollTo({ top: el.scrollTop + mark.getBoundingClientRect().top - el.getBoundingClientRect().top - ANCHOR_GAP, behavior: smooth ? 'smooth' : 'auto' })
+    show(false)
+  }
   // The thread grows without gaining a row: a reply streaming text into the one it has, a step opening, a turn folding into its summary. Follow its size, not its row count.
   const height = useRef(0)
   useEffect(() => {
@@ -874,19 +916,24 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       if (opening.current && h > height.current) pinned.current = false
       opening.current = false
       height.current = h
+      padReply()
       if (pinned.current) followNow()
-      else if (scroller.current) show(distFromEnd(scroller.current) > PIN_PX)
+      else if (scroller.current) show(distFromEnd(flat(scroller.current)) > PIN_PX)
     })
     watch.observe(el)
     return () => watch.disconnect()
   }, [])
-  // Sending a message follows it even from further up, since the reader just asked for something.
+  // Sending a message anchors it at the top of the view even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const sent = followsSend(last)
   const arrived = useRef(false)
+  const wasRunning = useRef(running)
   useEffect(() => {
     // The first run is the chat opening, which the effect above has placed already.
-    if (sent && arrived.current) { release(); byHand.current = false; pin(true) }
+    if (sent && arrived.current && last) anchorSend(last.id)
+    // The turn ending takes the padding with it, so a thread never ends in a blank gap.
+    if (wasRunning.current && !running) { anchored.current = null; padReply() }
+    wasRunning.current = running
     arrived.current = true
     if (pinned.current) followNow()
   }, [items.length, loose.length, running])
