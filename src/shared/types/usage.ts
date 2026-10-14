@@ -42,6 +42,12 @@ export type AccountAuth = 'subscription' | 'apiKey'
 export type SwitchReason = 'user' | 'banner' | 'limit'
 
 /**
+ * Which chats a switch moves (KERNEL-843): `keep` only changes the account new chats start on, and chats stay on the account
+ * that holds their cache. `all` moves every chat of the provider. `keep` is the default while `accounts.keepChatsOnAccount` is on.
+ */
+export type SwitchMove = 'keep' | 'all'
+
+/**
  * One account a provider can run on (Settings, Providers, KERNEL-406). Each provider always has its CLI's own login
  * (`cli`), which is `~/.claude` or `~/.codex` as the user set it up. Added accounts keep only their credential apart. The
  * active one runs the next turn. Switching is the user's click, or Kernel's at a limit once the user turned that on
@@ -104,6 +110,11 @@ export interface AccountProfile {
    * "Waiting for Keychain access".
    */
   keychainWait?: boolean
+  /**
+   * How many of the provider's open chats run their next turn on this account (KERNEL-843). Chats that never ran a turn are
+   * left out, since they start on whichever account is in use then. Undefined when none do.
+   */
+  chats?: number
 }
 
 /**

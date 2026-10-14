@@ -1,5 +1,7 @@
-import { MODELS, type Chat, type ChatItem, type ColdReason, type LastTurn, type MoveChoice, type MovePreview, type MovePreviewChat, type Provider } from '@shared/types'
-import { chatProvider } from '@shared/providers'
+import { MODELS, type Chat, type ChatItem, type ColdReason, type LastTurn, type MoveChoice, type MovePreview, type MovePreviewChat, type Provider, type RateLimit } from '@shared/types'
+import { chatProvider, limitProvider } from '@shared/providers'
+import { nearLimit } from '@shared/usage'
+import { blockingLimit, limitedModels } from '../services/health'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -24,6 +26,12 @@ const CLI_ACCOUNT = 'cli'
 /** The meta key that holds the account pairs proven to share a prompt cache, as `provider:a|b` with `a` before `b`. */
 const SHARED_KEY = 'sharedCaches'
 
+/**
+ * The meta key that holds the chats a Move all switch placed on its account before they ran a turn there, by chat id
+ * (KERNEL-843). A chat's entry goes once a turn starts on any account.
+ */
+const PLACED_KEY = 'placedChats'
+
 /** An account a chat could run on next: its id in `accounts.*` (`cli` for the CLI's own login), and the model, the chat's by default. */
 export interface Target { account: string; email?: string; model?: string }
 
@@ -47,11 +55,83 @@ function itemChars(item: ChatItem): number {
 }
 
 /**
- * Where a chat's cache is and what moving it costs (KERNEL-841). This first step reads the facts: each chat's last turn, why
- * a move would read it again, what that reads and costs, the account pairs that share a cache, the note after a move, and
- * what a switch would move. It moves nothing.
+ * Where a chat's cache is and what moving it costs (KERNEL-841): each chat's last turn, why a move would read it again, what
+ * that reads and costs, the account pairs that share a cache, the note after a move, and what a switch would move. With
+ * `accounts.keepChatsOnAccount` on, a chat runs on the account that holds its cache until that account can't take it
+ * (`accountFor`, KERNEL-843).
  */
 export class Placement extends Feature {
+  /**
+   * The account the chat's next turn runs on, undefined for the CLI's own login, as Sessions' `accountFor` (KERNEL-843). With
+   * `accounts.keepChatsOnAccount` on, a chat stays on the account it last ran on, or the one a Move all switch placed it on,
+   * while that account is still in Kernel, signed in, has no rejected window or limit on the chat's model, and is below the
+   * move threshold (`nearLimit`: 5 hour 90%, weekly 95%). A new chat, a chat whose account fails one of those, and every
+   * chat with the setting off run on the provider's account in use.
+   */
+  accountFor(provider: Provider, chat?: Chat, limits?: RateLimit[], now = Date.now()): string | undefined {
+    const active = this.k.providers.active(provider)
+    const home = chat && this.keeps() ? this.placed()[chat.id] ?? chat.ranOn : undefined
+    if (!chat || !home || home === (active ?? CLI_ACCOUNT)) return active
+    return this.canHold(provider, home, chat.model, limits ?? this.store.meta<RateLimit[]>('limits') ?? [], now) ? (home === CLI_ACCOUNT ? undefined : home) : active
+  }
+
+  /** Chats keep the account that holds their cache: Settings, Account "Keep chats on their account", on by default. */
+  keeps(): boolean { return this.settings?.accounts?.keepChatsOnAccount ?? true }
+
+  /** The account can still run a chat on `model`: in Kernel, signed in, no limit on it or the model, below the move threshold. */
+  private canHold(provider: Provider, account: string, model: string, limits: RateLimit[], now: number): boolean {
+    if (!this.k.providers.has(provider, account) || !this.k.providers.signedInNow(provider, account)) return false
+    const id = account === CLI_ACCOUNT ? undefined : account
+    const mine = limits.filter((l) => limitProvider(l) === provider && l.accountId === id)
+    return !blockingLimit(mine, now) && !(limitedModels(mine, now) as string[]).includes(model) && !nearLimit(mine, now)
+  }
+
+  private placed(): Record<string, string> { return this.store.meta<Record<string, string>>(PLACED_KEY) ?? {} }
+
+  /**
+   * A Move all switch of `provider` to `to` (KERNEL-843): each open chat of the provider that last ran on another account runs
+   * its next turn on `to`. Chats placed before on another account are placed again.
+   */
+  placeAll(provider: Provider, to: string) {
+    const placed = this.placed()
+    for (const ws of this.store.workspaces()) {
+      if (ws.status === 'archived') continue
+      for (const chat of this.store.chats(ws.id)) {
+        if (chat.kind !== 'chat' || chatProvider(chat) !== provider) continue
+        if (chat.ranOn && chat.ranOn !== to) placed[chat.id] = to
+        else delete placed[chat.id]
+      }
+    }
+    this.store.saveMeta(PLACED_KEY, placed)
+  }
+
+  /** A turn of the chat starts on some account, so a placement from a Move all switch has done its job (Sessions' `startedOn`). */
+  startedOn(chatId: string) {
+    const placed = this.placed()
+    if (!(chatId in placed)) return
+    delete placed[chatId]
+    this.store.saveMeta(PLACED_KEY, placed)
+  }
+
+  /**
+   * How many of the provider's open chats run their next turn on each account, by id, `cli` for the CLI's own login
+   * (`AccountProfile.chats`, KERNEL-843). Chats that never ran a turn and weren't placed are left out.
+   */
+  chatsPerAccount(provider: Provider, now = Date.now()): Map<string, number> {
+    const counts = new Map<string, number>()
+    const placed = this.placed()
+    const limits = this.store.meta<RateLimit[]>('limits') ?? []
+    for (const ws of this.store.workspaces()) {
+      if (ws.status === 'archived') continue
+      for (const chat of this.store.chats(ws.id)) {
+        if (chat.kind !== 'chat' || chat.closed || chatProvider(chat) !== provider || !(placed[chat.id] ?? chat.ranOn)) continue
+        const on = this.accountFor(provider, chat, limits, now) ?? CLI_ACCOUNT
+        counts.set(on, (counts.get(on) ?? 0) + 1)
+      }
+    }
+    return counts
+  }
+
   /**
    * The chat's size in tokens: its last turn's, else /context's, else a guess from its transcript since the last compaction,
    * saved as an estimated `lastTurn` so the guess is made once. A chat that never ran a turn is 0.

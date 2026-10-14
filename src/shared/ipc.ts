@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MovePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MovePreview, SharedAnchor, SwitchMove, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -412,8 +412,10 @@ export interface KernelApi {
    * Use: the account runs the provider's next turns. A running turn finishes on the account it started on. `reason` is
    * `banner` from the limit banner's Switch to, which leaves the account in use at its limit, and `user` by default (KERNEL-568).
    * The new account's row carries `missingModels` when agents start on a model it doesn't offer, and the Inbox says so (KERNEL-616).
+   * `move` says which chats go to it: with `keep` only new chats do, with `all` every chat. Its default is `keep` while
+   * `accounts.keepChatsOnAccount` is on (KERNEL-843).
    */
-  'accounts.switch': { req: { provider: Provider; accountId: string; reason?: Exclude<SwitchReason, 'limit'> }; res: AccountProfile[] }
+  'accounts.switch': { req: { provider: Provider; accountId: string; reason?: Exclude<SwitchReason, 'limit'>; move?: SwitchMove }; res: AccountProfile[] }
   /**
    * Sign out of an account. The CLI's own login signs the CLI out. An added login signs out of its own folder or home, and
    * a token or key account forgets its credential. Every other account stays signed in.

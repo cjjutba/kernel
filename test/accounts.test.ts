@@ -151,7 +151,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     await k.stop({ budgetMs: 0 })
   })
 
-  it('runs Codex chats on the account switched to from their next start, keeping the thread', async () => {
+  it('runs Codex chats on the account a Move all switch went to from their next start, keeping the thread across homes', async () => {
     const { k } = await kernel()
     const added = await k.handlers()['accounts.add']({ provider: 'codex' })
     const repo = await tempRepo()
@@ -165,7 +165,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     const cwd = await realpath(repo)
     const started = async () => (await fake.messages()).filter((m) => 'started' in m && m.cwd === cwd).map((m) => m.started)
     expect(await started()).toEqual([null])
-    await k.handlers()['accounts.switch']({ provider: 'codex', accountId: added.id })
+    await k.handlers()['accounts.switch']({ provider: 'codex', accountId: added.id, move: 'all' })
     expect(k.providers.active('codex')).toBe(added.id)
     await k.sessions.send('chat', [{ type: 'text', text: 'again' }])
     await until(async () => (await started()).length === 2 && !k.sessions.isRunning('chat'))
@@ -260,7 +260,9 @@ describe('Claude accounts (KERNEL-567)', () => {
     const { k, h, home } = await claudeKernel()
     const added = await h['accounts.add']({ provider: 'claude' })
     const folder = k.providers.claudeHome(added.id)
-    const deps = (k.sessions as unknown as { d: { claudeEnv: () => Record<string, string> } }).d
+    const d = (k.sessions as unknown as { d: { claudeEnv: (account?: string) => Record<string, string>; accountFor: (p: 'claude') => string | undefined } }).d
+    // What a new chat's process gets, on the account in use.
+    const deps = { claudeEnv: () => d.claudeEnv(d.accountFor('claude')) }
     expect(deps.claudeEnv()).toEqual({})
     await h['accounts.switch']({ provider: 'claude', accountId: added.id })
     // What ~/.claude gained since is linked, and the MCP servers are copied again.
