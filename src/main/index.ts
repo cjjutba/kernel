@@ -26,6 +26,7 @@ import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { appearanceOf, readAppearance, WindowAppearance } from './features/appearance'
 import { handZoom, zoomStepOf } from './windowZoom'
+import { attachImageMenu } from './imageMenu'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
@@ -228,6 +229,7 @@ function createWindow() {
     e.preventDefault()
     void win?.webContents.executeJavaScript(`window.dispatchEvent(new Event('${event}'))`)
   })
+  attachImageMenu(win.webContents)
   if (!headless) win.once('ready-to-show', () => win?.show())
   win.on('closed', () => { preview?.closeAll(); win = null })
   // The window only ever shows the app. A dropped HTML file, a link or a redirect would otherwise load in it, and
