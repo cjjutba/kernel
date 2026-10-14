@@ -1,5 +1,5 @@
 import type { TrackerKind, WaitsFor, Workspace, WorkspaceMode } from '@shared/types'
-import { isMerged } from '@shared/waits'
+import { isMerged, joinLabels } from '@shared/waits'
 import { issueTracker } from './trackers'
 import { stripRemote } from './worktrees'
 
@@ -109,4 +109,18 @@ function reaches(workspaces: Workspace[], from: string, to: string): boolean {
     stack.push(...(workspaces.find((w) => w.id === id)?.waitsFor?.on ?? []))
   }
   return false
+}
+
+/**
+ * What merged and how to read it, for the message a waiting teammate gets (KERNEL-695): `PR #164 is "Fix the header".
+ * Read what changed with `gh pr view 164` and `git log abc..origin/main`.` A target with no PR or title leaves its part
+ * out, and `log` is the range for `git log`, left out when there is none.
+ */
+export function mergedReading(targets: Workspace[], log?: string): string {
+  const titled = targets.filter((t) => t.prNumber && t.prTitle?.trim()).map((t) => `PR #${t.prNumber} is "${t.prTitle!.trim()}"`)
+  const commands = [...targets.filter((t) => t.prNumber).map((t) => `\`gh pr view ${t.prNumber}\``), ...(log ? [`\`git log ${log}\``] : [])]
+  return [
+    ...(titled.length ? [`${joinLabels(titled)}.`] : []),
+    ...(commands.length ? [`Read what changed with ${joinLabels(commands)}.`] : [])
+  ].join(' ')
 }

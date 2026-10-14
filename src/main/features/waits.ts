@@ -3,9 +3,11 @@ import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
 import { fastForward, fetchOrigin, isAncestor, revParse, stripRemote } from '../services/worktrees'
 import { issueTracker } from '../services/trackers'
-import { buildsIssue, isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
+import { buildsIssue, isMerged, joinLabels, mergedReading, waitLabel, waitMet, waitRefusal } from '../services/waits'
 import { head } from './shared'
 import { Feature } from './feature'
+
+const withReading = (text: string, reading: string) => (reading ? `${text} ${reading}` : text)
 
 /**
  * A wait kept because the turn Kernel started to rebase ended without the merge in the branch (KERNEL-691). Its targets
@@ -145,9 +147,11 @@ export class Waits extends Feature {
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
     if (now) this.note(id, this.earlyNote(current, left), undefined, refs)
     else {
-      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
+      // The brief was written before the merge, so the teammate hears what merged and how to read it (KERNEL-695).
+      const reading = this.readingOf(current, before ? `${before}..${remote}/${base}` : undefined)
+      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: withReading(`${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.`, reading) }], { from: 'kernel' })
       const it = refs.length > 1 ? 'them' : 'it'
-      this.note(id, forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a rebase.`, undefined, refs)
+      this.note(id, withReading(forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a rebase.`, reading), undefined, refs)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
@@ -165,6 +169,12 @@ export class Waits extends Feature {
       if (t && await isAncestor(ws.path, `${remote}/${stripRemote(t.baseRef, remote)}`, 'HEAD') !== true) return false
     }
     return true
+  }
+
+  /** What merged for `ws`'s wait and how to read it. Text only, from what Kernel already has. */
+  private readingOf(ws: Workspace, log?: string) {
+    const all = this.store.workspaces(ws.roomId)
+    return mergedReading((ws.waitsFor?.on ?? []).map((t) => all.find((w) => w.id === t)).filter((t): t is Workspace => !!t), log)
   }
 
   /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to rebase when the brief went with the wait kept. */
@@ -208,7 +218,9 @@ export class Waits extends Feature {
     if (!chat) return
     if (tip !== ws.waitsFor.tip) this.updateWs(id, { waitsFor: { ...ws.waitsFor, tip } })
     const base = stripRemote(ws.baseRef, remote)
-    const parts: ChatPart[] = [{ type: 'text', text: `${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.` }]
+    // Not rebased yet, so HEAD is where the teammate's branch is (KERNEL-695).
+    const text = withReading(`${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.`, this.readingOf(ws, `HEAD..${remote}/${base}`))
+    const parts: ChatPart[] = [{ type: 'text', text }]
     const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
     this.releaseSent.add(id)
     if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
