@@ -8,7 +8,7 @@ import { baseMessage, catchUpMessage, listFiles } from '../src/main/features/bas
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { git, run } from '../src/main/services/exec'
 import { behindCount, FETCH_REUSE_MS, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-180: Kernel tells a teammate with no PR when main moves under its branch in a way that would conflict.
 
@@ -32,7 +32,7 @@ async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // No base set, so a workspace starts from origin/main.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   return { dataDir, home }
 }
 

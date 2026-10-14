@@ -6,7 +6,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
 import type { RoomSettings } from '../src/shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-723: a room's Settings pages hear when .kernel/settings.toml or settings.local.toml changes on disk.
 
@@ -21,7 +21,7 @@ async function watched() {
   const repo = await tempRepo()
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   const room = await k.rooms.addRoom(repo)

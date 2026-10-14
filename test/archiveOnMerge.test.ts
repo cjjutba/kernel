@@ -7,7 +7,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import { archiveToast } from '../src/renderer/src/screens/workspace/pr/model'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -51,7 +51,7 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   const app = { ...(o.archiveOnMerge === undefined ? {} : { archiveOnMerge: o.archiveOnMerge }), ...(o.deleteBranch === undefined ? {} : { deleteBranchOnArchive: o.deleteBranch }) }
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...app } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...app } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
@@ -212,6 +212,58 @@ describe('Archive on merge (KERNEL-114)', () => {
     await vi.waitFor(() => expect((k.autoArchive['archiveMerged'] as unknown as { mock: { results: unknown[] } }).mock.results.length).toBeGreaterThan(passes), SLOW)
     await settled()
     expect(k.store.workspace(author.id)).toMatchObject({ branch: 'feat/next', prState: 'none' })
+    expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(false)
+    expect(status(author)).not.toBe('archived')
+  })
+
+  it('refuses Continue once the archive has started, and leaves the branch alone', async () => {
+    const { k, repo, author, status, land } = await setup()
+    // The archive holds at its first step, after it has started and before the record says archived. Its checks before
+    // that sync the branch too, so only the archive's own call holds.
+    let release!: () => void
+    const held = new Promise<void>((r) => { release = r })
+    const sync = k.prs.syncBranch.bind(k.prs)
+    const archive = k.archive.archiveWorkspace.bind(k.archive)
+    let archiving = false
+    const reached = vi.fn()
+    vi.spyOn(k.archive, 'archiveWorkspace').mockImplementation((id, ...a) => { if (id === author.id) archiving = true; return archive(id, ...a) })
+    vi.spyOn(k.prs, 'syncBranch').mockImplementation(async (id) => { if (id === author.id && archiving) { reached(); await held } return sync(id) })
+    await land('merged')
+    await vi.waitFor(() => expect(reached).toHaveBeenCalled(), SLOW)
+    await expect(k.prs.continuePr(author.id)).rejects.toThrow('This workspace is being archived, so Continue changed nothing. Restore it once the archive finishes to keep going.')
+    expect((await run('git', ['-C', author.path, 'rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe(author.branch)
+    release()
+    await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
+    await expect(k.prs.continuePr(author.id)).rejects.toThrow('This workspace was archived, so Continue changed nothing. Restore it to keep going.')
+    expect(k.store.workspace(author.id)).toMatchObject({ branch: author.branch, prState: 'merged', prNumber: 42 })
+    expect((await run('git', ['-C', repo, 'branch', '--list', `${author.branch}-2`])).trim()).toBe('')
+  })
+
+  it('skips the archive when Continue started first, so the branch and the record agree', async () => {
+    const { k, author, status, land, settled } = await setup()
+    // The archive pass holds after its git checks, before it decides; Continue holds before it switches the branch.
+    let releaseArchive!: () => void
+    const archiveHeld = new Promise<void>((r) => { releaseArchive = r })
+    const unpushed = k.autoArchive['unpushedOf'].bind(k.autoArchive)
+    const archiveReached = vi.fn()
+    vi.spyOn(k.autoArchive as unknown as { unpushedOf: typeof unpushed }, 'unpushedOf').mockImplementation(async (ws) => { archiveReached(); await archiveHeld; return unpushed(ws) })
+    let releaseContinue!: () => void
+    const continueHeld = new Promise<void>((r) => { releaseContinue = r })
+    const lock = k.workspaces.withBranchLock.bind(k.workspaces)
+    const continueReached = vi.fn()
+    vi.spyOn(k.workspaces, 'withBranchLock').mockImplementation(async (roomId, pick) => { continueReached(); await continueHeld; return lock(roomId, pick) })
+    await land('merged')
+    await vi.waitFor(() => expect(archiveReached).toHaveBeenCalled(), SLOW)
+    const continued = k.prs.continuePr(author.id)
+    await vi.waitFor(() => expect(continueReached).toHaveBeenCalled(), SLOW)
+    releaseArchive()
+    await settled()
+    expect(status(author)).not.toBe('archived')
+    expect(k.archive.archivingNow(author.id)).toBe(false)
+    releaseContinue()
+    const next = await continued
+    expect(next).toMatchObject({ branch: `${author.branch}-2`, prState: 'none', prNumber: undefined })
+    expect((await run('git', ['-C', author.path, 'rev-parse', '--abbrev-ref', 'HEAD'])).trim()).toBe(next.branch)
     expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(false)
     expect(status(author)).not.toBe('archived')
   })

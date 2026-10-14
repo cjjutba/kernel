@@ -92,16 +92,16 @@ export class Lead extends Feature {
    * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
    * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps the Lead on the
-   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776).
+   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776), and so is a `leadMode` (KERNEL-805).
    */
-  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }): Promise<Chat> {
+  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     // Hand off or Build here, from the room's default, else the app's (KERNEL-770). Read before anything is saved.
     const room = this.store.room(roomId)
-    const leadMode = newChatLeadMode(this.settings, room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined)
+    const leadMode = o.leadMode ?? newChatLeadMode(this.settings, room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined)
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }

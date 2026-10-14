@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { convertScriptVariables, MAX_IMPORT_BYTES, suggestScripts } from '../src/main/services/scriptImport'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-682: Kernel offers a room the scripts Conductor, Superset or its lockfiles ask for, and applies none.
 
@@ -235,7 +235,7 @@ describe('scripts.suggest in a room (KERNEL-682)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await tempHome()
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))

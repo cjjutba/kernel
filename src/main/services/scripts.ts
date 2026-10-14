@@ -229,18 +229,16 @@ export const timeoutText = (s: { scripts: { timeoutMinutes: number } }) => `${s.
 export type ScriptEnd = number | null | 'timeout'
 
 /**
- * On Linux node-pty reports SIGHUP, with exit code 0, for a short script that finished before its terminal closed. Kernel
- * stops scripts with SIGTERM and SIGKILL, so a hangup on a script nobody stopped is a normal end, not a stop.
+ * How a script ended, from what its terminal reported: a timeout wins, then a stop or signal (null), then the exit code.
+ * A shell a signal ended has no exit code, as a stopped script had none before. On Linux node-pty reports SIGHUP, with
+ * exit code 0, for a short script that finished before its terminal closed. Kernel stops scripts with SIGTERM and
+ * SIGKILL, so a hangup on a script nobody stopped is a normal end, not a stop.
  */
-export const hungUp = (exitCode: number, signal: number | undefined, stopped: boolean) => signal === 1 && exitCode === 0 && !stopped
-
-/** How a script ended, from what its terminal reported: a timeout wins, then a stop or signal (null), then the exit code. */
 export function scriptEndOf(e: { exitCode: number; signal?: number; stopped: boolean; timedOut: boolean }): ScriptEnd {
-  return e.timedOut ? 'timeout' : exitCodeOf(e.exitCode, e.signal, e.stopped)
+  if (e.timedOut) return 'timeout'
+  const hungUp = e.signal === 1 && e.exitCode === 0 && !e.stopped
+  return e.signal && !hungUp ? null : e.exitCode
 }
-
-/** A shell a signal ended has no exit code, as a stopped script had none before. */
-const exitCodeOf = (exitCode: number, signal: number | undefined, stopped: boolean) => (signal && !hungUp(exitCode, signal, stopped) ? null : exitCode)
 
 /**
  * Run a workspace script in a login shell, in a terminal of its own, so it prints colors and redraws its progress as it
@@ -307,17 +305,17 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       // Stop took the script out of `running` before it signalled it. One still there ended by itself.
       const stopped = !current()
       if (current()) running.delete(k)
+      // The event carries what the terminal reported even after a timeout. Only the promise says `timeout`.
+      const code = scriptEndOf({ exitCode, signal, stopped, timedOut: false }) as number | null
       // A run script says how it ended, so a server that quit doesn't look like a button that did nothing (KERNEL-679).
       if (name && !restarted.has(proc)) {
-        if (stopped || (signal && !hungUp(exitCode, signal, stopped))) scriptNote(o.workspaceId, 'run', 'Run script was stopped', 'stdout', name)
-        else if (exitCode === 0) scriptNote(o.workspaceId, 'run', 'Run script ended', 'stdout', name)
-        else scriptNote(o.workspaceId, 'run', `Run script exited with code ${exitCode}`, 'stderr', name)
+        if (stopped || code === null) scriptNote(o.workspaceId, 'run', 'Run script was stopped', 'stdout', name)
+        else if (code === 0) scriptNote(o.workspaceId, 'run', 'Run script ended', 'stdout', name)
+        else scriptNote(o.workspaceId, 'run', `Run script exited with code ${code}`, 'stderr', name)
       }
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
-      // A shell a signal ended has no exit code, as a stopped script had none before.
-      const code = exitCodeOf(exitCode, signal, stopped)
       bus.push({ type: 'script.exit', ...tag, code })
-      resolve(timedOut ? 'timeout' : code)
+      resolve(scriptEndOf({ exitCode, signal, stopped, timedOut }))
     })
   })
 }

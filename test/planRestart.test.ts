@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
 import type { Chat, ChatItem } from '@shared/types'
-import { setUp, tempRepo } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { kernelTools } from '../src/main/services/kernelMcp'
@@ -57,7 +57,7 @@ async function kernel() {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const where = { dataDir, home }
   const k = new Kernel(where)
   await k.start()

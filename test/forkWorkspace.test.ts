@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import type { Chat, ChatItem, ChatPart } from '../src/shared/types'
@@ -23,7 +23,7 @@ async function setup(files: Record<string, string> = {}) {
   const repo = await tempRepo({ 'README.md': '# x\n', 'a.txt': 'one\n', '.claude/agents/kai.md': KAI, '.claude/agents/kernel.md': KERNEL, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop().catch(() => undefined))

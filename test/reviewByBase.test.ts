@@ -7,7 +7,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { run } from '../src/main/services/exec'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -33,7 +33,7 @@ async function setup() {
   const repo = await tempRepo(REPO)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { CheckpointPreview } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions } from '../../store'
+import { actions, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { refreshChanges } from './changesBus'
 import './confirm.css'
@@ -10,15 +10,24 @@ const SHOWN = 8
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /** What the revert does to commits: HEAD stays, and their changes come back as edits that undo them. */
-export function commitsLine(commitsAhead: number, pushed: boolean): string {
+export function commitsLine(commitsAhead: number, pushed: boolean, merged = false): string {
   const undone = `This also undoes ${count(commitsAhead, 'commit', 'commits')} as uncommitted changes.`
+  if (merged) return `${undone} ${commitsAhead === 1 ? 'It is' : 'They are'} already merged, so main keeps ${commitsAhead === 1 ? 'it' : 'them'}.`
   return pushed ? `${undone} Your PR keeps ${commitsAhead === 1 ? 'it' : 'them'}.` : `${undone} ${commitsAhead === 1 ? 'It is' : 'They are'} not pushed, so the backup branch keeps ${commitsAhead === 1 ? 'it' : 'them'}.`
+}
+
+/** Files main changed too: the revert puts back the checkpoint's version of them. */
+export function conflictsLine(conflicts: string[]): string {
+  const shown = conflicts.slice(0, SHOWN).join(', ')
+  const more = conflicts.length > SHOWN ? ` and ${conflicts.length - SHOWN} more` : ''
+  return `These files changed on main too, and go back to your version: ${shown}${more}.`
 }
 
 /** Revert the files to a turn's checkpoint, from the "..." menu in the transcript (KERNEL-766). The chat stays and later changes move to a backup branch. */
 export function ConfirmRevert({ workspaceId, checkpointId, start }: { workspaceId: string; checkpointId: string; start?: boolean }) {
   const [preview, setPreview] = useState<CheckpointPreview | null>(null)
   const [busy, run] = useBusy()
+  const merged = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.prState === 'merged')
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     void call('checkpoints.preview', { workspaceId, checkpointId }).then(setPreview).catch((e) => setError(cleanError(e)))
@@ -51,7 +60,8 @@ export function ConfirmRevert({ workspaceId, checkpointId, start }: { workspaceI
           </div>
         )
         : <p className="wsc-note">No files change.</p>)}
-      {preview && preview.commitsAhead > 0 && <p className="wsc-note">{commitsLine(preview.commitsAhead, preview.pushed)}</p>}
+      {preview && preview.commitsAhead > 0 && <p className="wsc-note">{commitsLine(preview.commitsAhead, preview.pushed, merged)}</p>}
+      {preview && preview.conflicts.length > 0 && <p className="wsc-note">{conflictsLine(preview.conflicts)}</p>}
       {error && <p role="alert" className="wsc-error">{error}</p>}
     </ConfirmDialog>
   )

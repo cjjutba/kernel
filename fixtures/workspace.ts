@@ -418,6 +418,66 @@ const toolCalls: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** Opened Bash rows: a short command and a scan whose output runs past the 260px cap, so its section fades at the bottom (KERNEL-802). */
+const stepCardBashItems: ChatItem[] = [
+  userMsg('sb-u', 'Find what is using the disk.'),
+  tool('sb2', 'List the biggest folders', 'du -xk -d 3 ~ | sort -rn | head -40', {
+    durationMs: 3200, input: { command: 'du -xk -d 3 ~ | sort -rn | head -40', description: 'List the biggest folders' },
+    output: Array.from({ length: 40 }, (_, i) => `${String(48_000_000 - i * 1_150_000).padStart(9)}\t/Users/sam/${['Library', 'Projects', 'Downloads', 'Movies', 'Documents'][i % 5]}/folder-${i + 1}`).join('\n')
+  }),
+  { kind: 'text', id: 'sb-x', ts: at(10, 28), text: 'Next step.' },
+  tool('sb1', 'Wait while the scan runs', 'sleep 120; echo waited', { durationMs: 120_400, input: { command: 'sleep 120; echo waited', description: 'Wait while the scan runs' }, output: 'waited' }),
+  ...tableItems.slice(-2)
+]
+
+/** Opened MCP rows: a JSON response that is pretty-printed, one that is plain text, and a request with no response yet to show (KERNEL-802). */
+const stepCardMcpItems: ChatItem[] = [
+  userMsg('sm-u', 'Check the Settings issues.'),
+  mcpCall('sm1', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, {
+    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Room settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
+  }),
+  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  ...tableItems.slice(-2)
+]
+
+const codexPatch = (path: string, old: string[], next: string[], context = ['export function InvoiceTable() {']) =>
+  [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
+
+/** What Codex's file changes and a MultiEdit open to: red and green diff lines, as an Edit shows (KERNEL-802). A fileChange has no old and new text, so its output, a unified diff, is what is drawn. */
+const stepCardCodexItems: ChatItem[] = [
+  userMsg('sc-u', 'Sort the invoice table.'),
+  tool('sc1', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx' }, output: codexPatch('src/app/invoices/table.tsx', ["  const rows = sortBy(invoices, 'amount')", '  return <Table rows={rows} />'], ['  const rows = sortBy(invoices, sort.key, sort.dir)', '  return <Table rows={rows} sort={sort} />']) }),
+  { kind: 'text', id: 'sc-x1', ts: at(10, 28), text: 'Next step.' },
+  tool('sc2', 'Edit page.tsx', 'src/app/invoices/page.tsx', { name: 'MultiEdit', durationMs: 150, input: { file_path: 'src/app/invoices/page.tsx', edits: [
+    { old_string: "import { Table } from './table'", new_string: "import { Table, useSort } from './table'" },
+    { old_string: 'const rows = invoices', new_string: 'const sort = useSort()\nconst rows = invoices' }
+  ] } }),
+  ...tableItems.slice(-2)
+]
+
+const emptyStateSource = [
+  "import { Button } from '../../ui'",
+  '',
+  'export function EmptyState({ onCreate }: { onCreate: () => void }) {',
+  '  return (',
+  '    <div className="empty">',
+  '      <h2>No invoices yet</h2>',
+  '      <p>Invoices you send show up here, newest first.</p>',
+  '      <Button onClick={onCreate}>Create invoice</Button>',
+  '    </div>',
+  '  )',
+  '}',
+  '',
+  ...Array.from({ length: 30 }, (_, i) => `export const EMPTY_COPY_${i + 1} = 'No invoices in view ${i + 1}'`)
+].join('\n')
+
+/** A Write opens capped, with its line count in the heading (KERNEL-802). */
+const stepCardWriteItems: ChatItem[] = [
+  userMsg('sw-u', 'Add the empty state.'),
+  tool('sw1', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: emptyStateSource }}),
+  ...tableItems.slice(-2)
+]
+
 /** The messages in the setup wait shots (KERNEL-430): a pasted screenshot with a question, then a follow-up with a pasted log. */
 const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
 const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
@@ -1089,17 +1149,26 @@ const revertPreviews: Record<string, CheckpointPreview> = {
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
       { path: 'tests/invoices.spec.ts', status: 'D', added: 9, removed: 118 }
     ],
-    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false
+    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false, conflicts: []
   },
   '2': {
     files: [
       { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
     ],
-    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true
+    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true, conflicts: []
+  },
+  '1': {
+    files: [
+      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
+      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
+      { path: 'src/app/invoices/columns.ts', status: 'M', added: 4, removed: 11 }
+    ],
+    stat: { files: 3, added: 45, removed: 125 }, commitsAhead: 2, pushed: true, conflicts: ['src/app/invoices/page.tsx', 'src/app/invoices/columns.ts']
   }
 }
-const revertScene = (ui: Partial<Fixture['ui']>) => scene(() => ({
+const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
+  ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
   checkpoints: { [ids.table]: checkpoints },
   checkpointPreviews: { [ids.table]: revertPreviews },
@@ -1757,6 +1826,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
   })),
+  /** The four opened cards (KERNEL-802), each with its rows opened by scripts/shots.ts: Bash, MCP, Codex diffs and a MultiEdit, and a Write. */
+  WorkspaceStepCardBash: scene(() => ({
+    items: { [ids.tableChat]: stepCardBashItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardMcp: scene(() => ({
+    items: { [ids.tableChat]: stepCardMcpItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardCodexDiff: scene(() => ({
+    items: { [ids.tableChat]: stepCardCodexItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardWrite: scene(() => ({
+    items: { [ids.tableChat]: stepCardWriteItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
   /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
   WorkspaceRowsOpen: scene(() => ({
     items: { [ids.tableChat]: rowsOpenItems },
@@ -1788,6 +1874,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   /** A long chat read from higher up, with the Scroll to bottom button over it (KERNEL-532). Scroll position is local to the transcript, so scripts/shots.ts scrolls it up before the shot. */
   WorkspaceScrolledUp: scene(() => ({
     items: { [ids.tableChat]: longChat },
+    ui: open
+  })),
+  /** A message just sent in a short chat (KERNEL-803): it sits at the top of the view with the Working line under it and an empty reply area below. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers, since only a send anchors. */
+  WorkspaceJustSent: scene((f) => ({
+    items: { [ids.tableChat]: tableItems.slice(0, 1) },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
@@ -1853,6 +1945,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
+  // KERNEL-798: the same confirm once the PR is merged says main keeps the commits, and when main changed files the checkpoint changed too it names them.
+  ConfirmRevertMerged: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }, 'merged'),
+  ConfirmRevertConflicts: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '1' } }),
   // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
   // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
   TurnFiles: turnFilesScene([
@@ -2296,6 +2391,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
+  // KERNEL-805: New chat has the chat's mode chip. NewChat is Hand off at rest. NewChatLeadModeMenu has the chip's menu open and NewChatBuildHere has Build here picked from it (scripts/shots.ts).
+  NewChatLeadModeMenu: scene((f) => noPlan(leadNoChats(f))),
+  NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
   // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
   // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
   NewChatAfterSend: scene((f) => noPlan(startedFromNewChat(f, false))),
@@ -2507,6 +2605,34 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** One follow-up behind a running turn: the tray has no "N queued" header. */
+  WorkspaceQueuedOne: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A multiline follow-up with a file and a skill: one truncated line, with the file counted. */
+  WorkspaceQueuedLong: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'skill', name: 'verify' }, { type: 'text', text: 'Check the Terminal tab for the same problem.\nThe console output is in the attached file, and the first run also printed a warning about the sort hook that I would like you to look at before the next change.' }, { type: 'file', name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] },
+      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'image', name: 'image.png' }, { type: 'text', text: 'Use the shared EmptyState component' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A follow-up typed while the Mac is offline: the tray says so and has no Send now. */
+  WorkspaceQueuedOffline: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Also add a loading skeleton to the table' }] }]
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   /** A brief held because every agent slot is in use (KERNEL-273). Not on the canvas, see docs/decisions/KERNEL-273.md. */
   WorkspaceQueuedCapacity: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Build the loading skeleton from the plan' }] }]

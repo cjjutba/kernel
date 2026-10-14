@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -34,7 +34,7 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   const repo = await tempRepo({ ...kai, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   kernels.push(k)

@@ -278,7 +278,8 @@ async function removeFile(root: string, path: string) {
  * Put the worktree's files back the way they were at a checkpoint. The current state is saved first on a new branch,
  * `kernel/backup/<workspace>-<time>`. Only paths that differ between now and the checkpoint are written or removed;
  * HEAD, the real index and ignored files are left alone. Every checkpoint is taken after the workspace started, so
- * changes that were in a current-branch checkout before then (the baseline) are in every checkpoint and survive.
+ * changes that were in a current-branch checkout before then (the baseline) are in every checkpoint and survive. What arrived
+ * from the base since the checkpoint survives too (KERNEL-797).
  */
 export function revertTo(ws: CheckpointWorkspace, checkpointId: string, o: { now?: Date } = {}): Promise<Reverted> {
   return serial(ws.id, async () => {
@@ -289,7 +290,8 @@ export function revertTo(ws: CheckpointWorkspace, checkpointId: string, o: { now
     const backup = (await git(ws.path, ['commit-tree', now, ...(head ? ['-p', head] : [])], IDENTITY, `Backup of ${ws.name} before reverting to ${clock(target.checkpoint.ts)}\n`)).trim()
     const backupBranch = await freeBranch(ws.path, `kernel/backup/${ws.name}-${stamp(o.now ?? new Date())}`)
     await git(ws.path, ['branch', backupBranch, backup])
-    const { written, removed } = await writeTree(ws.path, now, `${target.sha}^{tree}`)
+    const { tree } = await revertTree(ws, target, await remoteBase(ws.path, ws.baseRef))
+    const { written, removed } = await writeTree(ws.path, now, tree)
     await git(ws.path, ['update-ref', headRef(ws.id), target.sha])
     return { checkpoint: { ...target.checkpoint, current: true }, backupBranch, restored: written, removed }
   })
@@ -297,7 +299,7 @@ export function revertTo(ws: CheckpointWorkspace, checkpointId: string, o: { now
 
 /**
  * What reverting to a checkpoint would do (KERNEL-764): the files it would write or remove, read as the revert does them, and
- * the commits HEAD gained since the checkpoint, which the revert leaves in place. `pushed` says whether any of them is on a
+ * the commits HEAD gained since the checkpoint that aren't on the base, which the revert leaves in place. `pushed` says whether any of them is on a
  * remote. A checkpoint saved before HEAD was recorded counts from the checkpoint itself, which can count commits from turns
  * before it too.
  */
@@ -305,16 +307,48 @@ export function previewRevert(ws: CheckpointWorkspace, checkpointId: string): Pr
   return serial(ws.id, async () => {
     const target = (await readAll(ws)).find((c) => c.checkpoint.id === checkpointId)
     if (!target) throw new Error('That checkpoint no longer exists.')
-    const rows = await treeDiff(ws.path, await worktreeTree(ws.path), `${target.sha}^{tree}`)
+    const remote = await remoteBase(ws.path, ws.baseRef)
+    const { tree, conflicts } = await revertTree(ws, target, remote)
+    const rows = await treeDiff(ws.path, await worktreeTree(ws.path), tree)
     const files = rows.filter((r) => !r.was.startsWith(GITLINK) && !r.now.startsWith(GITLINK)).map(({ path, status, added, removed }) => ({ path, status, added, removed }))
     const head = await revParse(ws.path, 'HEAD^{commit}')
     // A HEAD git has collected since, as after a rebase, counts from the checkpoint instead.
     const since = (target.head && await revParse(ws.path, `${target.head}^{commit}`)) || target.sha
-    const count = async (...more: string[]) => head ? Number((await git(ws.path, ['rev-list', '--count', `${since}..${head}`, ...more])).trim()) || 0 : 0
+    // Commits that came from the base, as a rebase or merge of main brings, aren't the agent's and don't count (KERNEL-797).
+    const not = (...more: string[]) => remote || more.length ? ['--not', ...(remote ? [remote] : []), ...more] : []
+    const count = async (...more: string[]) => head ? Number((await git(ws.path, ['rev-list', '--count', `${since}..${head}`, ...not(...more)])).trim()) || 0 : 0
     const commitsAhead = await count()
-    const pushed = commitsAhead > 0 && (await count('--not', '--remotes')) < commitsAhead
-    return { files, stat: statOf(files), commitsAhead, pushed }
+    const pushed = commitsAhead > 0 && (await count('--remotes')) < commitsAhead
+    return { files, stat: statOf(files), commitsAhead, pushed, conflicts }
   })
+}
+
+/**
+ * The tree a revert to `target` writes, used by the revert and its preview alike (KERNEL-797). When the base moved forward since
+ * the checkpoint, as when the agent rebased onto main or merged it, it is the checkpoint's own changes on the base as it is now:
+ * a file the base changed and the checkpoint didn't keeps the base's content, so a revert never undoes teammates' merged work.
+ * A file both changed keeps the checkpoint's content, as before, and is listed in `conflicts`. A base that didn't move, moved
+ * back or sideways, or can't be read, and a checkpoint with no recorded base, give the checkpoint's whole tree, as before.
+ */
+async function revertTree(ws: CheckpointWorkspace, target: Stored, remote: string | undefined): Promise<{ tree: string; conflicts: string[] }> {
+  const whole = { tree: `${target.sha}^{tree}`, conflicts: [] }
+  const head = await revParse(ws.path, 'HEAD^{commit}')
+  const now = remote && head ? await baseOf(ws.path, remote, head) : undefined
+  if (!target.base || !now || target.base === now) return whole
+  return (await onBase(ws.path, target.sha, target.base, now).catch(() => undefined)) ?? whole
+}
+
+async function onBase(cwd: string, sha: string, was: string, now: string): Promise<{ tree: string; conflicts: string[] } | undefined> {
+  if ((await exec('git', ['-C', cwd, 'merge-base', '--is-ancestor', was, now])).code !== 0) return undefined
+  const moved = await treeDiff(cwd, was, now, { counts: false })
+  const own = new Map((await treeDiff(cwd, was, sha, { counts: false })).map((r) => [r.path, r]))
+  const take = moved.filter((b) => !own.has(b.path))
+  const conflicts = moved.filter((b) => { const o = own.get(b.path); return o && o.now !== b.now }).map((b) => b.path)
+  if (!take.length) return { tree: `${sha}^{tree}`, conflicts }
+  // Mode 0 removes a path the base deleted. `--replace` lets a file take the place of a folder the base removed, and back.
+  const info = take.map((b) => `${b.now}\t${b.path}`).join('\0') + '\0'
+  const tree = await withTempIndex(cwd, { tree: `${sha}^{tree}` }, (env) => git(cwd, ['update-index', '--replace', '-z', '--index-info'], env, info).then(() => git(cwd, ['write-tree'], env)))
+  return { tree: tree.trim(), conflicts }
 }
 
 /**

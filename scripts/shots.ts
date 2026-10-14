@@ -37,6 +37,15 @@ async function openRows(page: Page, rows: string[]) {
   await page.waitForTimeout(300)
 }
 
+// Every step row that can open, in order, so a fixture's shot doesn't depend on the words a row says.
+async function openEveryRow(page: Page) {
+  const rows = page.locator('.trow-btn:not(:disabled)')
+  const n = await rows.count()
+  for (let i = 0; i < n; i++) await rows.nth(i).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // A Read image row clicked: the first one loads and opens its image in a tab, the one for the deleted file opens to its path (KERNEL-671).
 async function clickReadImage(page: Page, name: string) {
   await page.locator('.trow-btn', { hasText: 'Read image' }).filter({ hasText: name }).first().click()
@@ -50,6 +59,13 @@ async function scrollUp(page: Page) {
   await page.mouse.wheel(0, -600)
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
+}
+
+// WorkspaceJustSent: a send arrives while the chat is open, which is what anchors the message at the top (KERNEL-803).
+async function sendMessage(page: Page, app: ElectronApplication) {
+  await page.waitForTimeout(300)
+  await app.evaluate(({ BrowserWindow }, item) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'chat.item', chatId: 'chat-invoice-table', item }), { kind: 'user', id: 'js-u', ts: Date.now() - 2000, parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] })
+  await page.waitForTimeout(1200)
 }
 
 async function scrollToSection(page: Page, title: string) {
@@ -296,6 +312,16 @@ async function driveWhereByKeyboard(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+// NewChatLeadModeMenu is New chat with the Hand off and Build here menu open. NewChatBuildHere has Build here picked from it (KERNEL-805).
+async function openLeadModeMenu(page: Page) {
+  await openWhere(page, /^How Kernel works:/, /Build here/)
+}
+async function pickBuildHere(page: Page) {
+  await page.getByRole('button', { name: /^How Kernel works:/ }).click()
+  await page.getByRole('menuitemradio', { name: /Build here/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
 async function openBranchMenu(page: Page) {
   await page.getByRole('button', { name: 'New branch from main' }).click()
   await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
@@ -435,6 +461,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatBranch: openBranchMenu,
   NewChatLocal: hoverLocalBranch,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
+  NewChatLeadModeMenu: openLeadModeMenu,
+  NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
   SettingsAddAccount: (page) => openAddAccount(page, 0),
@@ -472,6 +500,10 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
   WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Message', 'Edited']),
+  WorkspaceStepCardBash: openEveryRow,
+  WorkspaceStepCardMcp: openEveryRow,
+  WorkspaceStepCardCodexDiff: openEveryRow,
+  WorkspaceStepCardWrite: openEveryRow,
   WorkspaceDiffImageInlineOpen: async (page) => {
     await page.getByRole('button', { name: 'Open public/logo.png' }).click()
     await page.mouse.move(0, 0)
@@ -479,6 +511,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   },
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
+  WorkspaceJustSent: sendMessage,
   WorkspaceScrolledUp: scrollUp,
   ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),

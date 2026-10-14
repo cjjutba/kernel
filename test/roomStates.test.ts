@@ -12,7 +12,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { HOLD_TIMEOUT_SEC, RESTART_NUDGE, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
-import { setUp, tempRepo } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts, plus `fail` to end a session the way a crashed process does.
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: any; feed: (m: unknown) => void; fail: (e: Error) => void }[] }))
@@ -328,7 +328,7 @@ describe('agent states from real events', () => {
 async function kernel() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   return k

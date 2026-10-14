@@ -284,7 +284,7 @@ export interface KernelApi {
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
    * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
    */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }; res: Chat }
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
   /**
    * Starts a fetch of the room's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).

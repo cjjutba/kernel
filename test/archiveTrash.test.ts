@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { tempRepo, setUp } from './helpers'
+import { tempRepo, setUp, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
 import { linkNodeModules } from '../src/main/services/scripts'
@@ -16,7 +16,7 @@ async function setup() {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = await boot(dataDir, home)
   const room = await k.addRoom(repo)
   return { repo, dataDir, home, k, room }

@@ -1,5 +1,6 @@
 import { expect, vi } from 'vitest'
 import { cp, mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { run } from '../src/main/services/exec'
@@ -87,4 +88,11 @@ export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 
     throw new Error(`${(e as Error).message}\nSetup log:\n${log.join('\n') || '(none)'}\nWorkspace: ${JSON.stringify(k.store.workspace(wsId))}`, { cause: e })
   } finally { bus.off('push', on) }
   return k.store.workspace(wsId)!
+}
+
+/** A TCP port the OS just handed out. Use it for a Kernel's `hookPort`: a random pick can match the one another test file picked, and the second hook server then fails to bind. */
+export function freePort() {
+  return new Promise<number>((resolve, reject) => {
+    const s = createServer().once('error', reject).listen(0, '127.0.0.1', () => { const { port } = s.address() as { port: number }; s.close(() => resolve(port)) })
+  })
 }

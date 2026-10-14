@@ -8,7 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-262: a teammate that finds a dependency mid-task tells Kernel with wait_for_merge, and Kernel moves it on at the merge.
 
@@ -54,7 +54,7 @@ async function setup() {
   await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
   const prs = new Map<string, PrInfo>()
   const k = new Kernel({ dataDir, home })
   k.github = { info: async (_cwd, ref, workspaceId) => { const pr = prs.get(ref); return pr ? { ...pr, workspaceId } : null }, merge: async () => {}, ready: async () => {}, reopen: async () => {} }

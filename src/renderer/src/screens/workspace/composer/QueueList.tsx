@@ -1,11 +1,24 @@
+import { useEffect, useRef, useState } from 'react'
 import type { ChatPart, QueuedMessage, QueueReason } from '@shared/types'
 import { Button, Icon } from '../../../ui'
 import { NoteText } from '../NoteText'
 import type { WaitLine } from '../waitLines'
 
-const textOf = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ').trim()
+/** The message as one line: its text, with skills as `/name`. Files and images are counted by `extras`, not folded in. */
+const lineOf = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : '')).join(' ').replace(/\s+/g, ' ').trim()
 
-/** What the note above the queue says. A running turn needs none: the transcript already shows the agent working. */
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** "+1 file", "+2 images": what the message carries besides its text. */
+function extras(parts: ChatPart[]): string {
+  const files = parts.filter((p) => p.type === 'file').length
+  const images = parts.filter((p) => p.type === 'image').length
+  const other = parts.filter((p) => p.type !== 'text' && p.type !== 'skill' && p.type !== 'file' && p.type !== 'image').length
+  const bits = [files && plural(files, 'file'), images && plural(images, 'image'), other && plural(other, 'link')].filter(Boolean)
+  return bits.length ? `+${bits.join(', ')}` : ''
+}
+
+/** What the tray's first line says. A running turn needs none: the transcript already shows the agent working. */
 const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models and effort.',
@@ -15,26 +28,84 @@ const WAITING: Partial<Record<QueueReason, string>> = {
 }
 
 /** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
-const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
+export const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
 
-/** Messages typed while the agent works, or held for another reason (`why`). They go out in order once nothing holds them. Edit one to pull it back into the box. */
-export function QueueList({ queue, why, held, onEdit, onNow, onRemove }: { queue: QueuedMessage[]; /** What the queue waits for (KERNEL-273). */ why?: QueueReason; /** For `merge`, the PRs still to merge, each opening its workspace. */ held?: WaitLine; onEdit: (q: QueuedMessage) => void; onNow: (q: QueuedMessage) => void; onRemove: (q: QueuedMessage) => void }) {
+const LEAVE_MS = 160
+
+/** The queue plus the rows that are fading out, so a message that sends leaves the tray the way it came in. */
+function useLeaving(queue: QueuedMessage[]): { rows: { q: QueuedMessage; leaving: boolean }[] } {
+  const [rows, setRows] = useState(() => queue.map((q) => ({ q, leaving: false })))
+  const prev = useRef(queue)
+  useEffect(() => {
+    const was = prev.current
+    prev.current = queue
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    const gone = was.filter((w) => !queue.some((q) => q.id === w.id))
+    if (!gone.length || reduced) { setRows(queue.map((q) => ({ q, leaving: false }))); return }
+    // Gone rows stay where they were, marked leaving, and are dropped once their fade ends.
+    const merged: { q: QueuedMessage; leaving: boolean }[] = []
+    const all = [...was, ...queue.filter((q) => !was.some((w) => w.id === q.id))]
+    for (const q of all) merged.push({ q: queue.find((x) => x.id === q.id) ?? q, leaving: !queue.some((x) => x.id === q.id) })
+    setRows(merged)
+    const t = setTimeout(() => setRows((r) => r.filter((x) => !x.leaving)), LEAVE_MS)
+    return () => clearTimeout(t)
+  }, [queue])
+  return { rows }
+}
+
+/**
+ * Messages typed while the agent works, or held for another reason (`why`), docked to the top of the composer. They go out in
+ * order once nothing holds them. Edit one to pull it back into the box.
+ */
+export function QueueList({ queue, why, held, running, sending, onEdit, onNow, onRemove }: {
+  queue: QueuedMessage[]
+  /** What the queue waits for (KERNEL-273). */
+  why?: QueueReason
+  /** For `merge`, the PRs still to merge, each opening its workspace. */
+  held?: WaitLine
+  /** A turn is running, so Send now stops it. */
+  running?: boolean
+  /** The id of the message whose Send now is in flight. */
+  sending?: string | null
+  onEdit: (q: QueuedMessage) => void
+  onNow: (q: QueuedMessage) => void
+  onRemove: (q: QueuedMessage) => void
+}) {
+  const { rows } = useLeaving(queue)
   // Messages waiting for setup are bubbles in the chat, with their own Edit and Cancel (SetupWait, KERNEL-430).
-  if (!queue.length || why === 'setup') return null
+  if (!rows.length || why === 'setup') return null
   const waiting = why ? WAITING[why] : undefined
   const named = why === 'merge' ? held : undefined
+  const stops = !!running && !why
+  const many = queue.length > 1
   return (
-    <div className="queue">
-      {waiting && <div className="note" role="status"><span className="note-text">{named ? <NoteText text={named.text} refs={named.refs} /> : waiting}</span></div>}
+    <div className="queue-tray">
+      {(waiting || many) && (
+        <div className="queue-head" role="status">
+          {waiting && <span className="queue-why">{named ? <NoteText text={named.text} refs={named.refs} /> : waiting}</span>}
+          {many && <span className="queue-count">{queue.length} queued</span>}
+        </div>
+      )}
       <ul className="queue" aria-label="Queued messages">
-        {queue.map((q) => (
-          <li key={q.id} className="queue-row">
-            {!waiting && <span className="muted" style={{ fontSize: 12 }}>Queued</span>}
-            <button type="button" className="queue-text ellipsis" data-tip="Edit this message" onClick={() => onEdit(q)}>{textOf(q.parts)}</button>
-            {canSendNow(why) && <Button className="queue-now" onClick={() => onNow(q)}>Send now</Button>}
-            <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={12} /></button>
-          </li>
-        ))}
+        {rows.map(({ q, leaving }) => {
+          const text = lineOf(q.parts)
+          const more = extras(q.parts)
+          return (
+            <li key={q.id} className={leaving ? 'queue-row leaving' : 'queue-row'} inert={leaving || undefined}>
+              <div className="queue-row-in">
+                <span className="queue-icon" aria-hidden="true"><Icon name="clock" size={12} /></span>
+                <button type="button" className="queue-text" data-tip="Edit this message" onClick={() => onEdit(q)}>
+                  <span className="ellipsis">{text || (more ? 'Attachment' : '')}</span>
+                </button>
+                {more && <span className="queue-extra">{more}</span>}
+                {canSendNow(why) && (
+                  <Button variant="ghost" className="queue-now" busy={sending === q.id} busyLabel="Sending" disabled={!!sending} data-tip={stops ? 'Stop this turn and send now' : 'Send now'} data-tip-kbd="⌘⇧↵" onClick={() => onNow(q)}>Send now</Button>
+                )}
+                <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={12} /></button>
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

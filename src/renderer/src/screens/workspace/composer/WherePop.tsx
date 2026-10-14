@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Icon } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 
@@ -6,8 +6,8 @@ import { useLayer } from '../../../ui/hooks'
 const STOPS = 'input, [role^="menuitem"]'
 
 /**
- * A menu of New chat's where row. It opens upward and ends 8px above the message box, so it never covers the box's toolbar however tall the
- * box has grown. Arrow keys move between its field and rows (Home and End once the field is not focused), Escape closes and hands focus back
+ * A menu of New chat's where row. It opens upward from its own button, 8px above it, as the model and permission menus do, and may cover the
+ * message box (KERNEL-805). Arrow keys move between its field and rows (Home and End once the field is not focused), Escape closes and hands focus back
  * to the button, Tab closes. `onKey` sees a key first and may take it.
  */
 export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst = true, children }: {
@@ -17,13 +17,7 @@ export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst =
   focusFirst?: boolean; children: ReactNode
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [bottom, setBottom] = useState<number | undefined>()
   useLayer({ onEscape: () => onClose(true), onOutside: () => onClose(), ref, anchorRef })
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current
-    const box = anchor?.closest('.composer-inner')?.querySelector('.cmp-box')
-    if (anchor && box) setBottom(Math.round(anchor.getBoundingClientRect().bottom - box.getBoundingClientRect().top + 8))
-  }, [])
   useEffect(() => {
     if (!focusFirst) return
     const stops = [...(ref.current?.querySelectorAll<HTMLElement>(STOPS) ?? [])]
@@ -43,7 +37,7 @@ export function WherePop({ anchorRef, label, width, onClose, onKey, focusFirst =
     else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
   }
   return (
-    <div ref={ref} className="menu where-pop" role="menu" aria-label={label} style={{ width, bottom }} onKeyDown={keys}>
+    <div ref={ref} className="menu where-pop" role="menu" aria-label={label} style={{ width }} onKeyDown={keys}>
       {children}
     </div>
   )

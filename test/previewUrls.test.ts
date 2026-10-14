@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { PassThrough } from 'node:stream'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { MAX_LINE, pipeLines, runScript, stopAllScripts, stopScript } from '../src/main/services/scripts'
@@ -205,7 +205,7 @@ describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
   it('round trips through settings.setRoom: the patch replaces the list, sources follow, null removes it', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[[preview.urls]]\nname = "Web"\nurl = "http://localhost:$KERNEL_PORT"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort() }))
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
     await k.start()
     try {

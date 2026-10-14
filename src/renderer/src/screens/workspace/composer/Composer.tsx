@@ -11,24 +11,23 @@ import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useRoomSettings } from '../../settings/useSettings'
-import { Button, Icon } from '../../../ui'
+import { Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { PlanBar } from '../cards/plan'
+import { PlanStrip } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
-import { LeadModeButton, ModeButton } from './ModeMenu'
-import { ModelPicker } from './ModelPicker'
+import { ComposerToolbar } from './ComposerToolbar'
 import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
-import { PlusMenu, type PlusPanel } from './PlusMenu'
-import { QueueList } from './QueueList'
+import type { PlusPanel } from './PlusMenu'
+import { canSendNow, QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { UncommittedNote } from './UncommittedNote'
@@ -77,8 +76,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
   const run = useRef<CycleRun | null>(null)
-  const modelAnchor = useRef<HTMLSpanElement>(null)
-  const plusAnchor = useRef<HTMLSpanElement>(null)
   const name = agent?.name ?? 'the agent'
   // Only a chat with Kernel has a mode, Hand off or Build here (KERNEL-780).
   const withKernel = !!ws && isLeadChatWorkspace(ws)
@@ -233,6 +230,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
+  const [sendingNow, runNow] = useBusy<string>()
+  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id }))))
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -242,6 +241,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
+    // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
+    if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
+    // Up in an empty box pulls the last queued message back, as clicking its text does.
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && queueWhy !== 'setup') { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
@@ -304,16 +307,18 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       above={<>
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
         {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
+        {banner}
+        {dirty.length > 0 && <UncommittedNote files={dirty} />}
         <QueueList
           queue={queue}
           why={queueWhy}
           held={held}
+          running={running}
+          sending={sendingNow}
           onEdit={editQueued}
-          onNow={(q) => void attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id })))}
+          onNow={sendNow}
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
         />
-        {banner}
-        {dirty.length > 0 && <UncommittedNote files={dirty} />}
       </>}
       popup={<>
         {acOpen && rows.length > 0 && (
@@ -356,26 +361,16 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
         )}
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, style: { opacity: blocked ? 0.5 : 1 }, ...d.drop }}
-      top={plan && <PlanBar a={plan} />}
+      top={<PlanStrip plan={plan} />}
       input={<DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
-      foot={<>
-        {withKernel && <LeadModeButton mode={leadMode} footer={leadDefaultLine(roomLeadMode, appLeadMode)} open={menu === 'leadMode'} onOpen={(o) => setMenu(o ? 'leadMode' : null)} onPick={pickLeadMode} />}
-        {!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
-        <span ref={modelAnchor} style={{ position: 'relative' }}>
-          <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={12} /></Button>
-          {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
-        </span>
-        <ModeButton provider={provider} availability={availability} shown={shown} open={menu === 'mode'} onOpen={(o) => setMenu(o ? 'mode' : null)} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} />
-        <span className="grow" />
-        {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-        <span ref={plusAnchor} style={{ position: 'relative' }}>
-          <PlusMenu panel={menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'leadMode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
-            onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
-        </span>
-        {running && !hasDraft
-          ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
-          : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} /></button>}
-      </>}
+      foot={<ComposerToolbar
+        lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
+        agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
+        model={{ label: model, effort, open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider, grouped, started: !!chat.sessionId, onNewChat: (p, m, x) => { setMenu(null); newChatOn(p, m, x) }, model: chat.model, effort: chat.effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: setEffort } }}
+        mode={{ provider, availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
+        context={chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
+        plus={{ panel: menu === 'model' || menu === 'context' || menu === 'mode' || menu === 'leadMode' ? null : menu, onPanel: setMenu, roomId, workspaceId: chat.workspaceId, onMode: () => setMenu('mode'), onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+        send={{ label: plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send', ready: hasDraft && !blocked, disabled: blocked, stop: running && !hasDraft, onSend: () => void send(), onStop: () => void call('chats.interrupt', { chatId: chat.id }) }} />}
       hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
       where={where}
     />

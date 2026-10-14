@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ActivityEvent } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-67 against real Claude Code: a Lead whose own file only plans, briefed in plan mode, then "Approve and hand off".
 // It spends a short Sonnet planning turn and one Haiku turn on the Claude plan, so it only runs when asked:
@@ -40,7 +40,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
-      hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+      hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
       workspace: { baseRef: 'main' },
       models: { lead: 'claude-sonnet-5-5', engineers: 'claude-haiku-4-5-20251001', effort: 'low', leadPlanMode: true },
       permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] }

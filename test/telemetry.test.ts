@@ -8,6 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import { QUEUE_CAP } from '../src/main/features/telemetry'
 import { batchBody, errorEvent } from '../src/main/services/telemetrySend'
 import { diagnostics } from '../src/main/services/log'
+import { freePort } from './helpers'
 
 // KERNEL-397: usage data is opt-in. Kernel keeps a short list of events either way, and only a build with a key whose user
 // said yes sends them, in batches, with nothing that names the user's work.
@@ -16,7 +17,7 @@ type Sent = { url: string; body: { api_key: string; batch: { event: string; dist
 async function boot(o: { key?: boolean; privacy?: 'ask' | 'on' | 'off'; ok?: boolean } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), privacy: { telemetry: o.privacy ?? 'ask' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), privacy: { telemetry: o.privacy ?? 'ask' } }))
   const sent: Sent[] = []
   const state = { ok: o.ok ?? true }
   const fetch = (async (url: string, init: { body: string }) => { sent.push({ url, body: JSON.parse(init.body) }); return { ok: state.ok } }) as unknown as typeof globalThis.fetch

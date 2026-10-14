@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { PushEvent } from '../src/shared/ipc'
 import type { RoomSetupStep } from '../src/shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { MAX_FILES_TO_COPY, productionInCopy, resolveFilesToCopy } from '../src/main/services/filesToCopy'
@@ -176,7 +176,7 @@ describe('Files to copy exclusions and the production warning (KERNEL-449)', () 
   it('warns in room setup and on Files to copy until the user stops copying the files or keeps them', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
     const k = new Kernel({ dataDir, home, starterDir: join(__dirname, '..', 'docs', 'starter-agents'), claudeSettingsFile: join(home, 'claude-settings.json') })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))

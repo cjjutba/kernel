@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { draftAgent } from '../src/main/services/agents'
 import { loadRepoSettings, saveTeamSettings, upsertTomlTable } from '../src/main/services/settings'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-397: `[team]` goes in the settings.toml the repo commits, so Kernel changes only that table and keeps the rest as written.
 describe('[team] in .kernel/settings.toml', () => {
@@ -81,7 +81,7 @@ describe('[team] roster', () => {
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await mkdir(join(home, '.claude', 'agents'), { recursive: true })
     for (const [path, text] of personal) await writeFile(join(home, path), text)
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, starterDir: STARTERS, claudeSettingsFile: join(home, 'claude-settings.json') })
     onTestFinished(() => k.stop())
     await k.start()

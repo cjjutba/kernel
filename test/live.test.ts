@@ -15,7 +15,7 @@ import { Approvals } from '../src/main/services/approvals'
 import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { probeClaudeMcp, sessionEnv } from '../src/main/services/providers/claude'
-import { trustRoom } from './helpers'
+import { trustRoom, freePort } from './helpers'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -35,7 +35,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
     const claudeSettingsFile = join(home, 'claude-settings.json')
-    const hookPort = 18000 + Math.floor(Math.random() * 900)
+    const hookPort = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
       hookPort, worktreeRoot: join(home, 'wt'),
       workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
@@ -252,7 +252,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
       const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
       const where = { dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') }
       await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
-        hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+        hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
         workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
         models: { engineers: 'claude-sonnet-5-5', effort: 'low' },
         permissions: { mode: 'bypassPermissions', bypassOnlyInWorktrees: true, alwaysAsk: [], neverAllow: [] },
@@ -336,7 +336,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
     await exec('git', ['-C', repo, 'add', '-A'])
     await exec('git', ['-C', repo, 'commit', '-q', '-m', 'init'])
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
-      hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+      hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
       models: { effort: 'low', leadPlanMode: false }, permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] }
     }))
     const evidence: Record<string, unknown> = { repo }
@@ -440,7 +440,7 @@ const liveCodex = !!process.env.KERNEL_LIVE && !!process.env.KERNEL_LIVE_CODEX
 async function codexSettings(dataDir: string, home: string) {
   const role = { provider: 'codex', model: codexModel, effort: 'medium' }
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
-    hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+    hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
     workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
     models: { roles: { lead: role, engineers: role, qa: role, reviewer: role }, leadPlanMode: true },
     permissions: { mode: 'acceptEdits', alwaysAsk: ['touch kernel-ask-check', 'touch kernel-deny-check'], neverAllow: ['git push origin main'] }

@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, ChatItem, Workspace } from '@shared/types'
@@ -12,7 +12,7 @@ import { loadRepoSettings, saveRepoSettings } from '../src/main/services/setting
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // Hand off and Build here: the two ways a chat with Kernel works (KERNEL-770).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -28,7 +28,7 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   const repo = await tempRepo({ ...REPO, ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
@@ -78,6 +78,14 @@ describe("a new chat's mode (KERNEL-770)", () => {
     expect(app.k.store.workspace(next.workspaceId)?.leadMode).toBe('handoff')
     expect(app.k.store.workspace(open.workspaceId)?.leadMode).toBe('build')
   })
+
+  it('starts in the mode lead.start sends over the default (KERNEL-805)', async () => {
+    const s = await setup({ app: { team: { leadMode: 'build' } } })
+    const picked = await s.k.lead.newLeadChat(s.room.id, { prompt: '', leadMode: 'handoff' })
+    expect(s.k.store.workspace(picked.workspaceId)?.leadMode).toBe('handoff')
+    const plain = await s.k.lead.newLeadChat(s.room.id, { prompt: '' })
+    expect(s.k.store.workspace(plain.workspaceId)?.leadMode).toBe('build')
+  })
 })
 
 describe('lead.setMode (KERNEL-770)', () => {
@@ -106,6 +114,22 @@ describe('lead.setMode (KERNEL-770)', () => {
     await expect(k.handlers()['lead.setMode']({ workspaceId: teammate.id, mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: 'nope', mode: 'build' })).rejects.toThrow('Only a chat with Kernel')
     await expect(k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode: 'solo' as never })).rejects.toThrow('is not a mode')
+  })
+
+  it('switches with uncommitted edits in the worktree, both ways, and leaves them as they were', async () => {
+    const { k, chat } = await setup()
+    const c = await chat()
+    const path = k.store.workspace(c.workspaceId)!.path
+    await writeFile(join(path, 'README.md'), '# edited\n')
+    await writeFile(join(path, 'draft.md'), 'notes\n')
+    const status = async () => (await git(path, 'status', '--porcelain')).trim()
+    const before = await status()
+    expect(before).toContain('README.md')
+    for (const mode of ['build', 'handoff'] as const) {
+      expect((await k.handlers()['lead.setMode']({ workspaceId: c.workspaceId, mode })).leadMode).toBe(mode)
+      expect(await status()).toBe(before)
+    }
+    expect(await readFile(join(path, 'README.md'), 'utf8')).toBe('# edited\n')
   })
 
   it("counts files changed in the chat's own worktree, which teammates won't start from", async () => {
@@ -248,6 +272,16 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(toolPolicy(undefined, { lead: 'build' })).toBeUndefined()
     // disallowedTools still takes them away in Build here.
     expect(toolPolicy(undefined, { lead: 'build', disallowed: ['Edit'] })!.allows('Edit', { file_path: '/tmp/ws/a.ts' })).toBe(false)
+  })
+
+  it.each(['AGENTS.md', 'docs/decisions/KERNEL-783.md', '.changes/unreleased/KERNEL-783.md', '.claude/agents/kernel.md', 'package.json'])('Hand off refuses an edit to %s and Build here makes it, whatever its tools line says', (file) => {
+    const path = `/tmp/ws/${file}`
+    for (const tools of [undefined, ['Read', 'Edit', 'Write', 'Bash']]) {
+      const handoff = toolPolicy(tools, { lead: 'handoff', plans: '/tmp/plans' })!
+      for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(handoff.allows(tool, { file_path: path }), tool).toBe(false)
+    }
+    const build = toolPolicy(['Read', 'Bash'], { lead: 'build' })!
+    for (const tool of ['Edit', 'Write', 'MultiEdit']) expect(build.allows(tool, { file_path: path }), tool).toBe(true)
   })
 
   it("Codex's Hand off takes only files under the workspace's .kernel/shared", () => {

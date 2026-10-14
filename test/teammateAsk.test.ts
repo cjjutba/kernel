@@ -6,7 +6,7 @@ import type { ChatPart, TeamUpdate, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { forProvider, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-747: a teammate asks the Lead with ask_lead, or proposes handing part of its work to another agent with
 // propose_handoff. Both reach the Lead chat that handed the workspace off as Team update events.
@@ -40,7 +40,7 @@ async function setup() {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   const room = await k.addRoom(repo)

@@ -16,10 +16,10 @@ describe('toolView verbs and tenses', () => {
 
   it('reads a refused approval as denied and a cut-off call as stopped', () => {
     const denied = toolView(call('Bash', { command: 'rm -rf dist' }, { status: 'failed', output: "The user doesn't want to proceed with this tool use." }))
-    expect(denied.verb).toBe('You denied running')
+    expect(denied.verb).toBe('You denied running a command')
     expect(denied.state).toBe('denied')
     const clicked = toolView(call('Bash', { command: 'pnpm test' }, { status: 'failed', output: 'Denied in Kernel.' }))
-    expect(clicked).toMatchObject({ verb: 'You denied running', state: 'denied' })
+    expect(clicked).toMatchObject({ verb: 'You denied running a command', state: 'denied' })
     expect(clicked.detail).toBeUndefined()
     const stopped = toolView(call('mcp__linear__save_issue', {}, { status: 'failed', output: 'Stopped when Kernel quit' }))
     expect(stopped.verb).toBe('Stopped filing issue')
@@ -29,8 +29,24 @@ describe('toolView verbs and tenses', () => {
   it('shows Bash by its description, or by its command without a leading cd', () => {
     expect(toolView(call('Bash', { command: 'pnpm test', description: 'Run the unit tests.' })).verb).toBe('Run the unit tests')
     const bare = toolView(call('Bash', { command: 'cd /tmp/x && cd y && pnpm test --run\nmore' }))
-    expect(bare).toMatchObject({ verb: 'Ran', object: 'pnpm test --run', mono: true })
-    expect(toolView(call('Bash', { command: 'ls', description: 'List files' }, { status: 'failed', output: 'denied by user: you denied' })).verb).toBe('You denied "List files"')
+    expect(bare).toMatchObject({ verb: 'Ran a command', object: 'pnpm test --run', mono: true })
+    expect(toolView(call('Bash', { command: 'ls', description: 'List files' }, { status: 'failed', output: 'denied by user: you denied' })).verb).toBe('Denied: List files')
+  })
+
+  it('reads a Bash call with no description as a command, in each tense, and keeps the command', () => {
+    const command = { command: 'pnpm test' }
+    expect(toolView(call('Bash', command, { status: 'running' })).verb).toBe('Running a command')
+    expect(toolView(call('Bash', command, { status: 'failed', output: 'exit 1' }))).toMatchObject({ verb: "Couldn't run a command", object: 'pnpm test' })
+    expect(toolView(call('Bash', command)).sentence).toBe('Ran a command: pnpm test')
+    expect(toolView(call('Bash', { ...command, description: '' })).verb).toBe('Ran a command')
+    expect(toolView(call('Bash', { ...command, description: 'Run the invoice tests' }, { status: 'running' })).verb).toBe('Run the invoice tests')
+  })
+
+  it('reads a denied call with a fixed label without quotes, and other denied wording as before', () => {
+    const refused = { status: 'failed' as const, output: "The user doesn't want to proceed with this tool use." }
+    expect(toolView(call('Bash', { command: 'pnpm test', description: 'Run the invoice tests' }, refused)).verb).toBe('Denied: Run the invoice tests')
+    expect(toolView(call('mcp__my_server__list_things', {}, refused)).verb).toBe('Denied: List things')
+    expect(toolView(call('Read', { file_path: 'a.ts' }, refused)).verb).toBe('You denied reading')
   })
 
   it('names a file by its name with its folder apart', () => {
@@ -82,7 +98,17 @@ describe('toolView verbs and tenses', () => {
   it('never previews JSON from an MCP tool and falls back to the stored label elsewhere', () => {
     const v = toolView(call('mcp__linear__list_issues', {}, { detail: '{"team":"Kernel"}' }))
     expect(v.detail).toBeUndefined()
-    expect(toolView({ name: 'Mystery', status: 'done', label: 'Did a thing', detail: 'about it' })).toMatchObject({ verb: 'Did a thing', detail: 'about it' })
+  })
+
+  it('never prints the name of a tool it does not know', () => {
+    const v = toolView({ name: 'bash_placeholder', status: 'done', label: 'bash_placeholder', detail: 'about it' })
+    expect(v).toMatchObject({ verb: 'Used a tool', unknown: true, detail: 'about it' })
+    expect(v.sentence).not.toContain('bash_placeholder')
+    expect(toolView({ name: 'Mystery', status: 'running', label: 'Did a thing' }).verb).toBe('Using a tool')
+    expect(toolView({ name: 'Mystery', status: 'failed', output: 'No such tool available' }).verb).toBe("Couldn't use a tool")
+    expect(toolView(call('mcp__context7__query_docs')).unknown).toBeUndefined()
+    expect(toolView(call('Read', { file_path: 'a.ts' })).unknown).toBeUndefined()
+    expect(toolView(call('ToolSearch')).unknown).toBeUndefined()
   })
 })
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fakeGh, tempRepo } from './helpers'
+import { fakeGh, tempRepo, freePort } from './helpers'
 import { exec, git } from '../src/main/services/exec'
 import { defaultBranch, FETCH_REUSE_MS, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
@@ -96,7 +96,7 @@ describe('createWorkspace from a source', () => {
     const repo = await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     // An issue source moves the issue in Linear (D-140). The stub keeps a LINEAR_API_KEY in the environment from touching a real one.
     const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
     await k.start()
@@ -125,7 +125,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     vi.stubEnv('LINEAR_API_KEY', '')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
     await k.start()
     onTestFinished(() => k.stop())
@@ -295,7 +295,7 @@ describe('the base a workspace starts from', () => {
   const kernel = async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -541,7 +541,7 @@ describe('plan mode for new workspaces (KERNEL-74)', () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -593,7 +593,7 @@ describe('New chat message (KERNEL-147)', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     // The message waits for the chat's worktree, then goes while setup runs (KERNEL-405, KERNEL-542).
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const room = await k.addRoom(repo)

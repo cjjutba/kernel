@@ -10,7 +10,7 @@ import { agentPrompt } from '../src/main/services/sessions'
 import { roomWorktreeRoot, slugify } from '../src/main/services/worktrees'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // KERNEL-405: each chat with Kernel is its own workspace, with its own worktree, branch, ports and setup. It replaces KERNEL-355's
 // one Lead worktree per room, and KERNEL-181's sync now runs per chat.
@@ -37,7 +37,7 @@ const REPO = {
 async function dirs(workspace: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
   return { dataDir, home }
 }
 

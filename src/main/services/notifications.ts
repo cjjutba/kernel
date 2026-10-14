@@ -99,7 +99,10 @@ export class Notifications {
     this.pruneTimer = setInterval(() => this.prune(), PRUNE_EVERY_MS)
   }
 
-  detach() { this.off(); clearInterval(this.pruneTimer); for (const id of [...this.idle.keys()]) this.cancelIdle(id) }
+  /** Set by `detach()`, which runs when Kernel stops. Work that outlives it reaches the closed database only through here. */
+  private detached = false
+
+  detach() { this.detached = true; this.off(); clearInterval(this.pruneTimer); for (const id of [...this.idle.keys()]) this.cancelIdle(id) }
 
   /**
    * At start and once a day: deletes the rows of archived and deleted workspaces, and rows created more than a week ago
@@ -173,9 +176,11 @@ export class Notifications {
    * switches don't apply, and quiet hours and the sound setting still do. One row per `id`: a second call with it changes nothing.
    */
   notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body'>>): Notification {
+    const made: Notification = { kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n }
+    if (this.detached) return made
     const had = this.d.store.notification(n.id)
     if (had) return had
-    const row = this.save({ kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n })
+    const row = this.save(made)
     this.alert(row, 'usage')
     return row
   }

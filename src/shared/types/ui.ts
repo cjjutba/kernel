@@ -3,7 +3,7 @@ import type { NewAgentPrefill, NewRoomPrefill } from './rooms'
 import type { RoomSettingsSection, SettingsPage, Theme } from './settings'
 import type { Provider } from './chats'
 import type { AppUpdate } from './system'
-import type { WorkspaceMode, WorkspaceSource } from './workspaces'
+import type { LeadMode, WorkspaceMode, WorkspaceSource } from './workspaces'
 
 /**
  * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `permissions` comes after `checks`
@@ -46,6 +46,8 @@ export interface NewChatPicks {
   plan: boolean
   /** The target branch picked, empty for the default. */
   baseRef: string
+  /** Hand off or Build here, when picked in the box. Left out while it follows the room or Settings. */
+  leadMode?: LeadMode
 }
 
 /** A New chat the issue check held back (KERNEL-500). Start anyway sends `parts` to the room's Lead, and Cancel reopens New chat on `source` with `picks`. */
