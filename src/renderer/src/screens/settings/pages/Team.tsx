@@ -11,7 +11,7 @@ import { shortFile, warningText } from '../../agent/model'
 import { STARTER_TEAMMATES } from '../../rooms/draft'
 import { NoRoom, Row, RoomPage, Section, SettingsLink, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-import { agentGroup, cleanDescription } from './agentRows'
+import { agentGroup, cleanDescription, shownRole } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
 const SAME_AS_APP = ''
@@ -142,7 +142,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const agentRow = (a: AgentDef) => {
     const reviewsOnly = a.id === reviewerPick && !a.member && !a.lead
     return (
-      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && a.role.trim().toLowerCase() !== a.name.trim().toLowerCase() && <span className="rm-role">{a.role}</span>}</>} desc={rowDesc(a)}>
+      <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{shownRole(a) && <span className="rm-role">{shownRole(a)}</span>}</>} desc={rowDesc(a)}>
         {a.lead
           ? <span className="set-desc">Hands out tasks</span>
           : reviewsOnly
