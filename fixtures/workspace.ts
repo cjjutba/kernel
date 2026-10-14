@@ -2384,7 +2384,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
   NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
   // New chat on a room that was archived under it: the title asks without a room, and Pick a room opens the same menu.
-  NewChatNoRoom: scene((f) => { const p = noPlan(leadNoChats(f)); return { ...p, ui: { ...p.ui!, route: { name: 'leadNew', roomId: 'room-gone' } } } }),
+  NewChatNoRoom: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const gone = { ...f.rooms[0], id: 'room-gone', name: 'Old app', archived: true }
+    return { ...p, rooms: [...(p.rooms ?? f.rooms), gone], ui: { ...p.ui!, route: { name: 'leadNew', roomId: gone.id } } }
+  }),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene((f) => ({
