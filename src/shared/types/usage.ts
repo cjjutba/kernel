@@ -118,7 +118,7 @@ export interface MissingModel {
   model: string
   /** "Opus 5.5", or the id when Kernel has no name for it. */
   label: string
-  /** The names of the agents whose role or file puts them on it, "Rowan". */
+  /** The names of the agents whose role or file puts them on it, "Kernel". */
   agents: string[]
 }
 

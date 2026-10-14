@@ -45,8 +45,8 @@ export interface AgentDef {
   /** Retired agents live in .claude/retired-agents (D-003) and stay listable so they can come back. */
   retired?: boolean
   /**
-   * Kernel's own Lead, run from the app's bundled file because the repo has none, or `[team]` picks it (KERNEL-397), or one
-   * of Kernel's own reviews (KERNEL-549). Its `file` is ''. Nothing is written to the repo until the user customizes it.
+   * Kernel, the Lead in every room (KERNEL-692), or one of Kernel's own reviews (KERNEL-549). The Lead's `file` is the repo
+   * file that customizes it, or '' when it runs as it ships, which the UI shows as Customized or Default.
    */
   builtIn?: 'lead' | 'reviewer'
   /** The room's reviewer. Left out on agents Kernel didn't resolve, so read it with `isReviewer` (`@shared/team`). */
@@ -131,7 +131,7 @@ export interface AgentReach {
  * so a room without one needs nothing written.
  */
 export interface TeamConfig {
-  /** An agent id, or `kernel-lead` for Kernel's Rowan. */
+  /** The agent file that customizes Kernel, the Lead, when the room has no kernel.md (KERNEL-692). Settings no longer writes it. */
   lead?: string
   /** An agent id, `kernel-reviewer` for Kernel's code review, or `none` for no reviewer (KERNEL-553). */
   reviewer?: string

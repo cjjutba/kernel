@@ -24,7 +24,7 @@ export class Env extends Feature {
     const room = this.store.room(ws.roomId)
     const keep = o.script ? (layer: Record<string, string>) => layer : withoutClaudeNames
     const settings = room ? loadRepoSettingsSync(room.path) : undefined
-    // Each chat with Rowan has its own worktree with files.copy done, so it reads its own copies like a teammate (KERNEL-405).
+    // Each Lead chat has its own worktree with files.copy done, so it reads its own copies like a teammate (KERNEL-405).
     const files = room && settings ? this.envFiles(room, ws, settings).map(keep) : []
     // Setup's variables count once it passed, in a room whose scripts are trusted, the way setup itself only ran then.
     const setup = room && ws.status === 'ready' && this.k.trust.roomTrusted.get(room.id) ? keep(readSetupEnv(setupEnvPath(this.o.dataDir, ws.id)).vars) : {}

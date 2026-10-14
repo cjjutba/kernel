@@ -10,7 +10,7 @@ import { isBroken } from './waits'
 import { blockedWhy, kindsText, reviewPhrase, reviewsText } from '@shared/merge'
 
 /**
- * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody passes a
+ * Tells the Lead what its teammates did (KERNEL-72). Without it, the Lead hands off and never hears back: nobody passes a
  * review's blockers on, and nobody tells the user a PR is ready. Events are collected per Lead chat, the one that handed the
  * workspace off (KERNEL-105), and sent as one message once things go quiet, only to a Lead chat that already exists and
  * is idle. A busy, queued or paused chat gets them later, and doesn't hold up the others. Nothing is dropped except when
@@ -754,7 +754,7 @@ export class LeadUpdates {
         const alone = this.compose(roomId, [{ events: p.events, owner: p.owner }])
         if (alone && !alone.wakes) continue
         const opened = alone && this.d.open(roomId, p.owner)
-        // Kernel is starting a chat with Rowan for it (KERNEL-405). The update waits for it, and goes once its setup passed.
+        // Kernel is starting a Lead chat for it (KERNEL-405). The update waits for it, and goes once its setup passed.
         if (opened === 'opening') continue
         t = opened
       }
@@ -928,7 +928,7 @@ export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoRe
 
 /**
  * The To do line for a PR that passed checks and every review approved. The review's own line says the same, so it shows once.
- * A kind the review round skipped to save usage is the user's to know (KERNEL-552). Rowan gives the user a short merge summary
+ * A kind the review round skipped to save usage is the user's to know (KERNEL-552). The Lead gives the user a short merge summary
  * with it, and says why Kernel didn't merge it by itself when the user's auto-merge is on (`refused`, KERNEL-556).
  */
 function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [], refused?: string): string {
@@ -939,8 +939,8 @@ function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [
 }
 
 /**
- * What Rowan tells the user about a PR that passed checks with no review, when automatic review being off is the only reason
- * none started (feat-automatic-review-off-by-default). Rowan says it, so "me" is Rowan.
+ * What the Lead tells the user about a PR that passed checks with no review, when automatic review being off is the only reason
+ * none started (feat-automatic-review-off-by-default). The Lead says it, so "me" is the Lead.
  */
 export const NO_AUTO_REVIEW = 'No review started because automatic review is off. Turn it on in Settings, Pull requests, or ask me to review it.'
 
@@ -1071,7 +1071,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
       case 'wait.released': break
       case 'pr.merged':
-        // Kernel merged it by itself, so the user hears it from Rowan, even once the work is archived (KERNEL-556).
+        // Kernel merged it by itself, so the user hears it from the Lead, even once the work is archived (KERNEL-556).
         if (e.auto) wake(autoMergedTodo(pr, ws.prUrl), true)
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break

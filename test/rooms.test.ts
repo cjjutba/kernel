@@ -58,9 +58,9 @@ describe('rooms service', () => {
     expect(expandHome('~/Projects/x', home)).toBe(join(home, 'Projects', 'x'))
   })
 
-  it("seats the picked starter agents, Theo too but not Kernel's own Rowan, and writes settings.toml once", async () => {
+  it("seats the picked starter agents, Theo too but not Kernel, and writes settings.toml once", async () => {
     const repo = await tempRepo()
-    expect(await seatStarterTeam(starter, repo, ['kai', 'rowan', 'theo', 'nobody'])).toEqual(['kai', 'theo'])
+    expect(await seatStarterTeam(starter, repo, ['kai', 'kernel', 'theo', 'nobody'])).toEqual(['kai', 'theo'])
     expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'theo.md'])
     // A file the repo already has stays as it is.
     await writeFile(join(repo, '.claude', 'agents', 'noor.md'), '---\nname: noor\ndescription: Ours.\n---\nx\n')
@@ -149,7 +149,7 @@ describe('Kernel rooms', () => {
     expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['host', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
     expect((await k.agents(room.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai'])
-    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Rowan from Kernel' })
+    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Kernel leads' })
     expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
     expect(await stat(join(repo, '.kernel', 'settings.toml'))).toBeTruthy()
 

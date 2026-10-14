@@ -37,13 +37,13 @@ describe('team handlers (KERNEL-19)', () => {
       expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(kaiFile)
 
       // Hire from a draft: the file lands in ~/.claude/agents and the agent takes a desk at the end of room.desks.
-      await k.updateRoom(room.id, { desks: ['rowan', 'kai'] })
+      await k.updateRoom(room.id, { desks: ['kernel-lead', 'kai'] })
       const draft = await h['agents.draft']({ roomId: room.id, description: 'A designer who checks screens against DESIGN.md', name: 'Lumi' })
       const lumi = await h['agents.create']({ roomId: room.id, draft })
       expect(lumi).toMatchObject({ id: 'lumi', origin: 'personal', file: join(home, '.claude', 'agents', 'lumi.md') })
       expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['lumi.md'])
       expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'rowan.md'])
-      expect(k.store.room(room.id)?.desks).toEqual(['rowan', 'kai', 'lumi'])
+      expect(k.store.room(room.id)?.desks).toEqual(['kernel-lead', 'kai', 'lumi'])
 
       // The profile's model and effort reach the chat a new workspace starts with.
       await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { model: 'fable', effort: 'xhigh' } })
@@ -55,11 +55,11 @@ describe('team handlers (KERNEL-19)', () => {
 
       // Retire hands the open workspace to the Lead and frees the desk, and the file stays. The Lead cannot be retired.
       const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
-      await expect(h['agents.retire']({ roomId: room.id, agentId: 'rowan' })).rejects.toThrow(/leads this room/)
+      await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/leads this room/)
       await h['agents.retire']({ roomId: room.id, agentId: 'kai' })
-      expect(k.store.workspace(ws.id)?.agentId).toBe('rowan')
-      expect(k.store.room(room.id)?.desks).toEqual(['rowan', 'lumi'])
-      expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['rowan', 'lumi'])
+      expect(k.store.workspace(ws.id)?.agentId).toBe('kernel-lead')
+      expect(k.store.room(room.id)?.desks).toEqual(['kernel-lead', 'lumi'])
+      expect((await h['agents.list']({ roomId: room.id })).map((a) => a.id)).toEqual(['kernel-lead', 'lumi'])
       expect((await h['agents.list']({ roomId: room.id, retired: true })).map((a) => a.id)).toEqual(['kai'])
       expect((await h['agents.restore']({ roomId: room.id, agentId: 'kai' })).id).toBe('kai')
       // None of it touched the checkout.

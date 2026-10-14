@@ -75,13 +75,13 @@ export class Setup extends Feature {
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
   readonly settingUp = new Set<string>()
   /**
-   * Workspaces whose setup started in this run before `recoverSetups` ran, as the chats with Rowan that move at startup do
+   * Workspaces whose setup started in this run before `recoverSetups` ran, as the Lead chats that move at startup do
    * (KERNEL-405). Their setup is still going, so it didn't stop when Kernel quit.
    */
   readonly fresh = new Set<string>()
 
   /**
-   * "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. A chat with Rowan whose
+   * "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. A Lead chat whose
    * worktree git wouldn't make, or a quit cut short, makes it first, then sets up as a new chat does (KERNEL-542).
    */
   async retrySetup(workspaceId: string): Promise<Workspace> {
@@ -194,7 +194,7 @@ export class Setup extends Feature {
 
   /**
    * Lets every chat tab of the workspace held for setup go, `first` first. A new workspace has one, but a restored one or a
-   * chat with Rowan can have several (KERNEL-405).
+   * Lead chat can have several (KERNEL-405).
    */
   releaseTabs(workspaceId: string, first?: string) {
     const tabs = this.chatTabs(workspaceId).filter((c) => c.kind !== 'terminal')
@@ -300,7 +300,7 @@ export class Setup extends Feature {
   /**
    * A workspace still in setup when Kernel quit has no script running any more (KERNEL-128). It counts as failed, with a
    * note saying why, and its brief, and whatever the Lead sent after it, wait in the chat for Run again. So does one whose
-   * setup had just passed when Kernel quit, before its brief went out. A chat with Rowan whose worktree wasn't made yet says
+   * setup had just passed when Kernel quit, before its brief went out. A Lead chat whose worktree wasn't made yet says
    * that in `worktreePending` instead, and Run again makes it (KERNEL-542).
    */
   recoverSetups() {
@@ -327,7 +327,7 @@ export class Setup extends Feature {
     return {
       'scripts.run': async ({ workspaceId, kind, name }) => {
         const ws = this.mustWs(workspaceId)
-        // A chat with Rowan has no folder to run in until its worktree is made. Run again on one that failed makes it (KERNEL-542).
+        // A Lead chat has no folder to run in until its worktree is made. Run again on one that failed makes it (KERNEL-542).
         if (ws.worktreePending) {
           if (kind !== 'setup' || ws.status !== 'failed') throw new Error("This chat's worktree isn't made yet.")
           void this.retrySetup(workspaceId).catch(() => undefined)

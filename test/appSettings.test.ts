@@ -656,7 +656,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     await next.k.stop()
   })
 
-  it('runs Rowan and the reviewer on the plan-resolved models, and an agent file with a model still wins', async () => {
+  it('runs Kernel and the reviewer on the plan-resolved models, and an agent file with a model still wins', async () => {
     const repo = await tempRepo({
       'README.md': '# x\n',
       '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Rowan.',
@@ -668,9 +668,9 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
     const room = await k.addRoom(repo)
     await h['account.get'](undefined)
     const models = async () => Object.fromEntries((await k.team.agents(room.id)).map((a) => [a.id, k.team.modelFor(a)]))
-    expect(await models()).toMatchObject({ rowan: 'claude-sonnet-5-5', theo: 'claude-sonnet-5-5', kai: 'claude-sonnet-5-5', noor: 'claude-opus-5-5' })
+    expect(await models()).toMatchObject({ 'kernel-lead': 'claude-sonnet-5-5', theo: 'claude-sonnet-5-5', kai: 'claude-sonnet-5-5', noor: 'claude-opus-5-5' })
     await h['settings.set']({ patch: { models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5' } } } } })
-    expect((await models()).rowan).toBe('claude-opus-5-5')
+    expect((await models())['kernel-lead']).toBe('claude-opus-5-5')
     await k.stop()
     const max = await kernel({ plan: 'max' })
     const room2 = await max.k.addRoom(repo)
@@ -688,7 +688,7 @@ describe('defaults that fit the plan (KERNEL-225)', () => {
   })
 
   it("leaves the model out of the starter agent files, so Kernel's role models decide", async () => {
-    for (const id of ['rowan', 'theo', 'kai', 'noor', 'ivy']) {
+    for (const id of ['kernel', 'theo', 'kai', 'noor', 'ivy']) {
       const text = await readFile(join(__dirname, '..', 'docs', 'starter-agents', `${id}.md`), 'utf8')
       expect(text.split('\n---\n')[0], id).not.toMatch(/^model:/m)
     }

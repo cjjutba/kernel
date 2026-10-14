@@ -131,7 +131,7 @@ describe('[team] roster', () => {
 
   it("doesn't ask with 12 agents or fewer, and keeps a subagent the user makes a teammate", async () => {
     const { h, room, seat, settings } = await setUp([agent('api'), agent('web', 'tools: Read, Edit, Write, Bash\n', 'You build the UI.'), agent('architect', '', 'You design.')])
-    expect(seat).toMatchObject({ detail: 'Api, Architect, Web from .claude/agents, Rowan from Kernel', brought: 3, roster: { agents: 3, needed: false, suggested: ['api', 'web'] } })
+    expect(seat).toMatchObject({ detail: 'Api, Architect, Web from .claude/agents, Kernel leads', brought: 3, roster: { agents: 3, needed: false, suggested: ['api', 'web'] } })
     const team = await h['agents.setTeam']({ roomId: room.id, team: { members: ['api', 'web', 'architect'] } })
     expect(team.find((a) => a.id === 'architect')).toMatchObject({ member: true })
     expect(team.find((a) => a.id === 'architect')?.warnings).toBeUndefined()

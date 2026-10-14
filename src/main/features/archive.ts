@@ -47,7 +47,7 @@ export class Archive extends Feature {
   /**
    * One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice.
    * Its own choice to delete the branch still counts (KERNEL-139). Keeping it, or not saying, leaves the running one's.
-   * A chat with Rowan's workspace archives like any other (KERNEL-405). The shared Lead workspace from before only goes with
+   * A Lead chat's workspace archives like any other (KERNEL-405). The shared Lead workspace from before only goes with
    * its room, or when its chats move out (`removingRoom`). `noScript` skips the archive script, for a workspace that never ran
    * the room's scripts.
    */
@@ -88,7 +88,7 @@ export class Archive extends Feature {
 
   private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean; noScript?: boolean } = {}) {
     this.k.setup.setupFailures.delete(id)
-    // A chat with Rowan's worktree that git is making is made first, so nothing lands in its folder after the archive. One git
+    // A Lead chat's worktree that git is making is made first, so nothing lands in its folder after the archive. One git
     // never made has no folder, branch or script to deal with (KERNEL-542).
     await this.k.workspaces.worktreeMade(id)
     // The branch the work is on now: archive deletes it, and restore brings it back.
@@ -117,7 +117,7 @@ export class Archive extends Feature {
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
     // The caller's choice wins, then the room's own value, then the app's (KERNEL-370).
-    // The shared Lead worktree from before KERNEL-405 is detached, so it has no branch to delete (KERNEL-355). A chat with Rowan's
+    // The shared Lead worktree from before KERNEL-405 is detached, so it has no branch to delete (KERNEL-355). A Lead chat's
     // branch with no commits of its own holds nothing, so it goes whatever the switch says (KERNEL-405).
     const empty = !unmade && isLeadChatWorkspace(ws) && ws.mode === 'worktree' && await git(room.path, 'rev-list', '--count', `${ws.baseRef}..refs/heads/${ws.branch}`).then((n) => n.trim() === '0', () => false)
     const wanted = !unmade && ws.mode === 'worktree' && ws.branch !== 'HEAD' && !o.keepWorktree && (empty || (deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive')))
@@ -132,7 +132,7 @@ export class Archive extends Feature {
     const moved = ws.mode === 'worktree' && !o.keepWorktree && !unmade ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     // Archiving a waiter ends its wait (KERNEL-259). An archived workspace has no folder to miss (KERNEL-291).
     const archived = this.updateWs(id, { status: 'archived', archivedAt: Date.now(), waitsFor: undefined, folderGone: undefined }, { archived: true })
-    // A chat with Rowan is archived with its workspace (KERNEL-405).
+    // A Lead chat is archived with its workspace (KERNEL-405).
     if (isLeadChatWorkspace(archived)) this.markThread(archived.threadId!, Date.now())
     if (moved) this.throwAway(moved)
     this.k.waits.releaseSent.delete(id)
@@ -172,7 +172,7 @@ export class Archive extends Feature {
     for (let p = this.emptying; ; p = this.emptying) { await p; if (p === this.emptying) return }
   }
 
-  /** A chat with Rowan's `closedAt` follows its workspace: set when it is archived, cleared when it is restored (KERNEL-405). */
+  /** A Lead chat's `closedAt` follows its workspace: set when it is archived, cleared when it is restored (KERNEL-405). */
   private markThread(threadId: string, closedAt: number | undefined) {
     const t = this.store.thread(threadId)
     if (!t || t.closedAt === closedAt) return
@@ -184,7 +184,7 @@ export class Archive extends Feature {
   /**
    * Brings an archived workspace back: recreates the worktree from its branch and reopens its chats, which Kernel kept. A
    * worktree then sets up like a new one, files.copy and setup, with its chats held and the trust prompt, a failed state and
-   * Run again, but no start checkpoint (KERNEL-77). It returns once the record says `setup`. A chat with Rowan whose branch was
+   * Run again, but no start checkpoint (KERNEL-77). It returns once the record says `setup`. A Lead chat whose branch was
    * deleted gets a new one from the latest base (KERNEL-405). A current-branch workspace comes back ready, as before.
    */
   async restoreWorkspace(id: string): Promise<Workspace> {
@@ -328,7 +328,7 @@ export class Archive extends Feature {
       },
       'workspaces.gitStatus': async ({ workspaceId }) => {
         const ws = await this.k.prs.syncBranch(workspaceId)
-        // A chat with Rowan whose worktree isn't made yet has nothing on its branch (KERNEL-542).
+        // A Lead chat whose worktree isn't made yet has nothing on its branch (KERNEL-542).
         if (ws.worktreePending) return { branch: ws.branch, ahead: 0, behind: 0, dirty: { files: 0, added: 0, removed: 0 } }
         return gitStatus(ws.path, ws.branch, ws.baseRef, await this.k.config.remoteOfWs(ws))
       },

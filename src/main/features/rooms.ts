@@ -177,7 +177,7 @@ export class Rooms extends Feature {
       })
     }
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
-    // the starter agents picked in New room. Kernel's own Rowan fills in a missing Lead either way, and Kernel's code review
+    // the starter agents picked in New room. Kernel fills in a missing Lead either way, and Kernel's code review
     // a missing reviewer (KERNEL-553).
     // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
@@ -197,8 +197,8 @@ export class Rooms extends Feature {
         return { detail: `${roster.agents} agents found in ${places}`, ...(brought ? { brought } : {}), roster }
       }
       const own = list.filter((a) => !a.builtIn).map((a) => a.name)
-      const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
-      const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
+      // Kernel always leads (KERNEL-692), so a Lead file shapes it and isn't listed.
+      const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', list.some((a) => a.lead) ? 'Kernel leads' : ''].filter(Boolean).join(', ')
       return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}), roster }
     })
   }

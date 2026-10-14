@@ -1000,7 +1000,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' } } } })
     await k.team.agents(room.id)
     const lead = k.team.agentsSync(room.id).filter((a) => k.team.pickFor(a).model === 'claude-opus-5-5').map((a) => a.name).sort()
-    expect(lead).toEqual(['Kai', 'Rowan'])
+    expect(lead).toEqual(['Kai', 'Kernel'])
     const side = await h['accounts.add']({ provider: 'claude' })
     k.providers.readModels = async (_p, id) => (id === side.id ? ['claude-sonnet-5-5', 'claude-haiku-4-5-20251001'] : ['claude-opus-5-5', 'claude-sonnet-5-5'])
     const rows = await h['accounts.switch']({ provider: 'claude', accountId: side.id })

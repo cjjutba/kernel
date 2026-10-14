@@ -54,11 +54,11 @@ export interface AppSettings {
   accounts: { switchAtLimit: Record<Provider, boolean> }
   workspace: {
     mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
-    /** The branch a new chat with Rowan starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
+    /** The branch a new Lead chat starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
     leadBranchPattern: string
-    /** A chat with Rowan holds its first message until files.copy and setup pass (KERNEL-405). */
+    /** A Lead chat holds its first message until files.copy and setup pass (KERNEL-405). */
     leadWaitForSetup: boolean
-    /** Archiving a chat with Rowan archives the workspaces it handed off too (KERNEL-405). */
+    /** Archiving a Lead chat archives the workspaces it handed off too (KERNEL-405). */
     archiveChatWorkspaces: boolean
   }
   scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean
