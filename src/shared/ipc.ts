@@ -2,7 +2,7 @@ import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
-  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, MoveChoice, MovePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -232,6 +232,8 @@ export interface KernelApi {
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
   /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
   'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
+  /** What the user picked for a long chat a switch would move to another account. Kernel records it on the chat, which it pushes (KERNEL-842). */
+  'chats.moveChoice': { req: { chatId: string; choice: MoveChoice }; res: Chat }
   /** The permission mode the chat runs in, the mode picked for it and why they differ. `chat.runMode` events carry each change (KERNEL-572). */
   'chats.runMode': { req: { chatId: string }; res: ChatRunMode }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
@@ -416,6 +418,12 @@ export interface KernelApi {
    * Sign out of an account. The CLI's own login signs the CLI out. An added login signs out of its own folder or home, and
    * a token or key account forgets its credential. Every other account stays signed in.
    */
+  /**
+   * What switching `provider` to `accountId` would move, read only: its chats on the account in use now at or above
+   * `accounts.longChatTokens`, each with its size, why it would read its history again and what that costs on an API key
+   * (KERNEL-842).
+   */
+  'accounts.previewSwitch': { req: { provider: Provider; accountId: string }; res: MovePreview }
   'accounts.signOut': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
   /**
    * Rename: the account's nickname, the CLI's own login's included, kept in `accounts.json`. An empty label goes back to

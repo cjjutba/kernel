@@ -29,6 +29,9 @@ export const CLAUDE_PLANS: { id: Exclude<ClaudePlan, 'unknown'>; label: string }
   { id: 'enterprise', label: 'Enterprise' }
 ]
 
+/** Summarize a long chat before it moves to another account, continue it as it is, or ask each time (KERNEL-841). */
+export type LongChatMove = 'summarize' | 'continue' | 'ask'
+
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
 export interface AppSettings {
   /** Read-only, filled by main when it resolves the settings (KERNEL-225). A patch never writes it. */
@@ -50,8 +53,10 @@ export interface AppSettings {
   /**
    * `switchAtLimit`: per provider, Kernel moves to another signed-in subscription account when the one in use hits its 5-hour
    * or weekly limit. Off by default, and never to an API key account (KERNEL-568).
+   * `keepChatsOnAccount`: a chat stays on the account that holds its cache rather than following a switch. `longChatMove`:
+   * what Kernel does, per provider, when a chat of `longChatTokens` or more has to move to another account (KERNEL-841).
    */
-  accounts: { switchAtLimit: Record<Provider, boolean> }
+  accounts: { switchAtLimit: Record<Provider, boolean>; keepChatsOnAccount: boolean; longChatMove: Record<Provider, LongChatMove>; longChatTokens: number }
   workspace: {
     mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
     /** The branch a new Lead chat starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */

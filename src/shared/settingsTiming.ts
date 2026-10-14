@@ -42,6 +42,10 @@ export const APP_SETTING_TIMING: Record<string, SettingTiming> = {
   'usage.pauseNearLimit': 'now',
   // switchAtLimit() in features/account.ts, on each usage reading.
   'accounts.switchAtLimit': 'now',
+  // features/placement.ts, as a turn starts and when a switch is previewed (KERNEL-841).
+  'accounts.keepChatsOnAccount': 'now',
+  'accounts.longChatMove': 'now',
+  'accounts.longChatTokens': 'now',
   // createWorkspace() in features/workspaces.ts.
   'workspace.mode': 'newWorkspaces',
   'workspace.baseRef': 'newWorkspaces',

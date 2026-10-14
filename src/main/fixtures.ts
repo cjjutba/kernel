@@ -218,6 +218,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    'chats.moveChoice': async ({ chatId, choice }) => ({ ...chat(chatId), moveChoice: { choice, at: Date.now() } }),
     // A fixture has no process and reads no policy, so every mode is available and nothing waits for a turn.
     'chats.runMode': async ({ chatId }) => {
       const c = chat(chatId)
@@ -338,6 +339,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.code': async () => ok,
     'accounts.cancelAdd': async () => ok,
     'accounts.switch': async () => f.accounts ?? [],
+    'accounts.previewSwitch': async ({ provider, accountId }) => ({ provider, from: (f.accounts ?? []).find((a) => a.provider === provider && a.active)?.id ?? 'cli', to: accountId, chats: [] }),
     'accounts.signOut': async () => f.accounts ?? [],
     'accounts.remove': async () => f.accounts ?? [],
     'accounts.checkMcp': async () => f.accounts ?? [],
