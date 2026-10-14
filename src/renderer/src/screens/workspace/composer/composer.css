@@ -9,6 +9,9 @@
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
 .cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink-2); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline: none; }
+.cmp-field { position: relative; }
+.cmp-hint { position: absolute; top: 0; right: 0; font-size: 12px; line-height: 24px; color: var(--muted); white-space: nowrap; pointer-events: none; user-select: none; }
+.cmp-field[data-hint] .cmp-input[data-empty]::before { max-width: calc(100% - 96px); }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
 .cmp-foot { gap: 12px; }
