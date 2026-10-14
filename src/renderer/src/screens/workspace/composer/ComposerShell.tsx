@@ -10,8 +10,8 @@ export function ComposerShell({ above, popup, box, top, input, foot, hidden, whe
   above?: ReactNode
   /** A menu that opens over the box's top edge, inside the box's own positioning. */
   popup?: ReactNode
-  /** Attributes of the box itself: `data-plan`, `data-blocked`, `data-drop` while files are dragged over the pane. */
-  box?: HTMLAttributes<HTMLDivElement> & { 'data-plan'?: string; 'data-blocked'?: boolean; 'data-drop'?: boolean }
+  /** Attributes of the box itself: `data-plan`, `data-swap` (the placeholder and mode chip fade in once a plan's strip has closed), `data-blocked`, `data-drop` while files are dragged over the pane. */
+  box?: HTMLAttributes<HTMLDivElement> & { 'data-plan'?: string; 'data-swap'?: 'a' | 'b'; 'data-blocked'?: boolean; 'data-drop'?: boolean }
   top?: ReactNode
   input: ReactNode
   /** The toolbar: model and effort, the permission picker, a spacer, then the context meter, + and send. */

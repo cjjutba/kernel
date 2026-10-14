@@ -2141,6 +2141,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
+  WorkspacePlanApproveDraft: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),

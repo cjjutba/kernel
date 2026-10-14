@@ -125,6 +125,13 @@ async function pickFirstOption(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspacePlanApproveDraft has text in the box, so pressing Approve asks "Approve without your changes?" in the strip (KERNEL-833). The question is local to the strip.
+async function askApprove(page: Page) {
+  await page.getByRole('button', { name: /^Approve/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(700)
+}
+
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
 async function questionStates(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
@@ -525,6 +532,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceKernelNoteOpen: openKernelNote,
   WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionStates: questionStates,
+  WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
