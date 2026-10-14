@@ -13,7 +13,7 @@ function chipMeta(p: ChatPart): string {
 }
 
 /** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
-export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'workspace' ? 'branch' : 'doc')
+export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'workspace' ? 'branch' : p.type === 'agent' ? 'user' : 'doc')
 
 /** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
 export function ChipIcon({ part }: { part: ChatPart }) {
@@ -128,7 +128,7 @@ export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () 
     </>
   )
   return (
-    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'workspace' ? part.type : 'file'}>
+    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton> : body}
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>
