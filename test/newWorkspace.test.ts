@@ -672,6 +672,21 @@ describe('the New chat page starts a chat on its own picks (KERNEL-544, KERNEL-7
     expect(panelShownIn(getState().ui, 'w1')).toBe(true)
   })
 
+  it('opens the held panel with one press of the toggle while the global panel is on (KERNEL-788)', async () => {
+    const { send } = await renderer()
+    const { actions, getState, panelShownIn } = await import('../src/renderer/src/store')
+    const { toggleRightPanel } = await import('../src/renderer/src/components/PanelToggles')
+    actions.ui.setRightPanel(true)
+    await send()
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
+    toggleRightPanel()
+    expect(getState().ui.rightPanel).toBe(true)
+    expect(getState().ui.panelHeld).not.toContain('w1')
+    expect(panelShownIn(getState().ui, 'w1')).toBe(true)
+    toggleRightPanel()
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
+  })
+
   it('keeps the text and the picks when the chat could not be sent', async () => {
     const { drafts, send, state } = await renderer()
     const room = drafts.newChatDraftOf('r1')
