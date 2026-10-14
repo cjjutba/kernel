@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { migrate, refuseNewer } from './migrations'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedComment, SharedFile, Task, Thread, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, OpenItem, Overlap, Room, SharedComment, SharedFile, Task, Thread, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
 // migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
@@ -107,6 +107,7 @@ export class Store {
       this.db.prepare('delete from shared_comments where shared_id in (select id from shared_files where room_id = ?)').run(id)
       this.db.prepare('delete from shared_files where room_id = ?').run(id)
       this.db.prepare('delete from threads where room_id = ?').run(id)
+      this.db.prepare('delete from open_items where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
@@ -126,7 +127,7 @@ export class Store {
       this.db.prepare(`delete from workspaces where id in (${mine})`).run(json)
       this.db.prepare(`delete from shared_comments where shared_id in (select id from shared_files where workspace_id in (${mine}))`).run(json)
       this.db.prepare(`delete from shared_files where workspace_id in (${mine})`).run(json)
-      for (const table of ['approvals', 'activity', 'notifications']) this.db.prepare(`delete from ${table} where json_extract(data, '$.workspaceId') in (${mine})`).run(json)
+      for (const table of ['approvals', 'activity', 'notifications', 'open_items']) this.db.prepare(`delete from ${table} where json_extract(data, '$.workspaceId') in (${mine})`).run(json)
     })()
   }
 
@@ -185,6 +186,23 @@ export class Store {
   /** A Lead chat whose workspace is deleted from History, or that never got one (KERNEL-405). Its tabs go with their workspace. */
   deleteThread(id: string) { this.db.prepare('delete from threads where id = ?').run(id) }
   saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.roomId, JSON.stringify(t), t.createdAt); return t }
+  // open items (KERNEL-749)
+  openItems(threadId: string): OpenItem[] { return this.all('select data from open_items where thread_id = ? order by created_at, rowid', threadId) }
+  openItem(id: string): OpenItem | undefined { return this.one('select data from open_items where id = ?', id) }
+  /** Saves the item, in place of the thread's item with the same `key`. */
+  saveOpenItem(i: OpenItem, key: string) {
+    this.db.prepare('insert or replace into open_items (id, thread_id, room_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)').run(i.id, i.threadId, i.roomId, key, JSON.stringify(i), i.createdAt)
+    return i
+  }
+  /** Updates items in place, keeping their keys. */
+  updateOpenItems(items: OpenItem[]) {
+    const update = this.db.prepare('update open_items set data = ? where id = ?')
+    this.db.transaction(() => { for (const i of items) update.run(JSON.stringify(i), i.id) })()
+  }
+  deleteOpenItems(ids: string[]) {
+    if (ids.length) this.db.prepare('delete from open_items where id in (select value from json_each(?))').run(JSON.stringify(ids))
+  }
+
   /** Every tab of the chat's thread, closed ones too, oldest first. Just the chat when it has no thread, none when it is gone. */
   threadTabs(chatId: string): Chat[] {
     const c = this.chat(chatId)

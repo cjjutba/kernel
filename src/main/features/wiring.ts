@@ -48,6 +48,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
       const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
       bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
     },
+    opened: (chat, rows) => k.openItems.delivered(chat, rows),
     // Delivery timings reach Kernel's log, so Help, Copy diagnostics shows why an update was late. The log hears warnings
     // through the console already (KERNEL-651).
     log: k.o.log && ((level, line) => { console[level](line); if (level === 'info') k.o.log?.info(line) })

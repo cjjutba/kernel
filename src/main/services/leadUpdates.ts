@@ -46,6 +46,8 @@ export interface LeadUpdateDeps {
   holdOf?: (chatId: string) => string | undefined
   /** Called after a delivered update, for the room log. */
   delivered?: (roomId: string, chat: Chat, update: TeamUpdate) => void
+  /** Called after a delivered update with each workspace's events as it told them, for what the Lead now owes (KERNEL-749). */
+  opened?: (chat: Chat, rows: { ws: Workspace; name: string; events: TeamEvent[] }[]) => void
   /** What Kernel knows about reviews of the workspace's PR. Unknown until reviews are linked (KERNEL-130). */
   reviewState?: (ws: Workspace) => ReviewState | undefined
   /** The team's reviewer, the first agent with a review role that isn't the Lead. */
@@ -856,6 +858,7 @@ export class LeadUpdates {
         }
       }
       this.d.delivered?.(roomId, g.chat, message.update)
+      this.d.opened?.(g.chat, message.told)
     }
   }
 
@@ -865,7 +868,7 @@ export class LeadUpdates {
    * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
    * whether any of it needs the Lead now.
    */
-  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent> } | undefined {
+  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean; sent: Set<TeamEvent>; told: { ws: Workspace; name: string; events: TeamEvent[] }[] } | undefined {
     const blocks: Block[] = []
     // Events the message carries, or that have nothing left to say. The rest wait for the next update (KERNEL-637).
     const sent = new Set<TeamEvent>()
@@ -951,7 +954,7 @@ export class LeadUpdates {
       }
     })
     const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
-    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent }
+    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0), sent, told: order.map((b) => ({ ws: b.ws, name: b.name, events: b.events })) }
   }
 
   /**

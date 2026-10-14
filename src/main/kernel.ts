@@ -55,6 +55,7 @@ import { Telemetry } from './features/telemetry'
 import { BaseWatch } from './features/baseWatch'
 import { Providers } from './features/providers'
 import { Permissions } from './features/permissions'
+import { OpenItems } from './features/openItems'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -66,7 +67,7 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to its feature's `handlers()`.
  * Empty since KERNEL-30 built the last ones (update.*).
  */
-export const UNBUILT = { 'openItems.list': 'KERNEL-749', 'openItems.dismiss': 'KERNEL-749' } as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
+export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
 type Unbuilt = keyof typeof UNBUILT
 
@@ -132,6 +133,7 @@ export class Kernel {
   readonly baseWatch = new BaseWatch(this)
   readonly providers = new Providers(this)
   readonly permissions = new Permissions(this)
+  readonly openItems = new OpenItems(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -292,7 +294,7 @@ export class Kernel {
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
       this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers(),
-      this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers())
+      this.permissions.handlers(), this.mcp.handlers(), this.reviews.handlers(), this.openItems.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)

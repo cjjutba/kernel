@@ -92,6 +92,15 @@ export const migrations: Migration[] = [
           and (select json_extract(c.data, '$.threadId') from chats c where c.id = json_extract(workspaces.data, '$.leadChatId')) is not null
       `)
     }
+  },
+  {
+    // What each Lead chat owes until the Lead acts on it (KERNEL-749). `key` is what a newer item of the same kind replaces:
+    // one question per workspace, one set of blockers per reviewed workspace, one mention per tab and teammate.
+    version: 6,
+    up: (db) => db.exec(`
+      create table if not exists open_items (id text primary key, thread_id text not null, room_id text not null, key text not null, data text not null, created_at integer not null);
+      create unique index if not exists open_items_by_key on open_items (thread_id, key);
+    `)
   }
 ]
 
