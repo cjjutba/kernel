@@ -17,9 +17,9 @@ export function isOutsidePress(target: Node | null, layer: HTMLElement | null | 
 }
 const stack: Layer[] = []
 
-/** Close the open menus and popovers in `layers`, newest first. A modal has no close handler of its own to call here and is never closed this way. */
+/** Close the open menus and popovers in `layers`, newest first. Only a layer with an outside handler is one: a modal or an escape-only layer (a comment box) is never closed this way. */
 function closeLayers(layers: Layer[]) {
-  for (const l of [...layers].reverse()) if (!l.blocking) (l.outside ?? l.escape)?.()
+  for (const l of [...layers].reverse()) if (!l.blocking) l.outside?.()
 }
 
 /** A move to another chat, tab or screen closes every open menu and popover. Background events never call this. */

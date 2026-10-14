@@ -71,6 +71,16 @@ describe('layer stack', () => {
     act(() => { window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     expect(log).toEqual(['b:escape'])
   })
+  it('never calls the handler of an escape-only layer', () => {
+    const log: string[] = []
+    function EscapeOnly() { useLayer({ onEscape: () => log.push('comment') }); return null }
+    root ??= createRoot(document.createElement('div'))
+    const specs = (modal: boolean) => React.createElement(React.Fragment, null, React.createElement(EscapeOnly), React.createElement(Layer, { name: 'menu', open: true, log }), React.createElement(Layer, { name: 'modal', open: modal, blocking: true, log }))
+    act(() => root!.render(specs(false)))
+    act(() => root!.render(specs(true)))
+    closeAllLayers()
+    expect(log).toEqual(['menu', 'menu'])
+  })
   it('closeAllLayers closes menus and popovers but not a modal', () => {
     const log: string[] = []
     mount([{ name: 'a', open: true }, { name: 'modal', open: true, blocking: true }, { name: 'b', open: true }], log)
