@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Opens, updates or closes the ci-main-red issue. Shared by test.yml (Main status) and test-mac.yml (the full macOS run),
+# Opens, updates or closes a red-main issue: ci-main-red for the Ubuntu run, ci-mac-red for the full macOS run. Shared by test.yml (Main status) and test-mac.yml (the full macOS run),
 # so there is one copy of the logic. Needs gh, with GH_TOKEN and GH_REPO set.
 #
 # Environment:
@@ -9,18 +9,19 @@
 #   RUN_URL    the run's URL
 #   SERVER_URL the GitHub server URL, for the commit link
 #   REPO       owner/name, for the commit link
+#   LABEL      the issue label, default ci-main-red. The macOS run passes ci-mac-red, so only a green macOS run closes its issue.
 #   SOURCE     optional: names the run in the issue text, e.g. "The full macOS run". Empty for the push-to-main run.
-#   CLOSE      "true" to close the open issue on a green run. The nightly macOS run leaves it false: closing stays with
-#              the next green push to main.
+#   CLOSE      "true" to close the open issue on a green run.
 set -euo pipefail
 
 short=${SHA:0:7}
 commit="[$short]($SERVER_URL/$REPO/commit/$SHA)"
-open=$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number // empty')
+label=${LABEL:-ci-main-red}
+open=$(gh issue list --label "$label" --state open --json number --jq '.[0].number // empty')
 
 if [ "$RESULT" = "success" ]; then
   if [ "${CLOSE:-false}" = "true" ] && [ -n "$open" ]; then
-    gh issue close "$open" --comment "Main is green again at $commit ([run]($RUN_URL))."
+    gh issue close "$open" --comment "${SOURCE:-Main} is green again at $commit ([run]($RUN_URL))."
   fi
   exit 0
 fi
@@ -29,7 +30,7 @@ FAILED=$(printf '%s' "${FAILED:-}" | tr ',' '\n' | { grep . || true; } | paste -
 tests=${FAILED:-"none named: typecheck failed, or the tests did not finish"}
 if [ -n "${SOURCE:-}" ]; then
   lead="$SOURCE is red at $commit ([run]($RUN_URL))."
-  title="Main is red: $SOURCE fails on $short"
+  title="macOS is red: $SOURCE fails on $short"
 else
   lead="Main is red at $commit ([run]($RUN_URL))."
   title="Main is red: tests fail on $short"
@@ -41,6 +42,6 @@ Failing test files: $tests"
 if [ -n "$open" ]; then
   gh issue comment "$open" --body "$body"
 else
-  gh label create ci-main-red --color B60205 --description "The test run on main is failing" --force
-  gh issue create --label ci-main-red --title "$title" --body "$body"
+  gh label create "$label" --color B60205 --description "The test run on main is failing" --force
+  gh issue create --label "$label" --title "$title" --body "$body"
 fi
