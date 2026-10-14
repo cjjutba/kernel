@@ -201,17 +201,29 @@ export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: st
 }
 
 /**
+ * The worktree's tree and the HEAD it sits on, read so they agree. A fast-forward that lands while the files are read, as
+ * Kernel's own after a turn does, would otherwise save the old files with the new base, and the next turn would list
+ * everything that base brought (KERNEL-804). HEAD is read on both sides of the files, and they are read again until it held still.
+ */
+async function treeAtHead(cwd: string): Promise<{ tree: string; head?: string }> {
+  for (let tries = 1; ; tries++) {
+    const head = await revParse(cwd, 'HEAD^{commit}')
+    const tree = await worktreeTree(cwd)
+    if (tries === 5 || await revParse(cwd, 'HEAD^{commit}') === head) return { tree, head }
+  }
+}
+
+/**
  * A snapshot and the files it changed, the rows its stat counts. The start checkpoint has none (KERNEL-584). Files that only
  * arrived from the workspace's base since the last checkpoint aren't the turn's, and are left out (KERNEL-603).
  */
 export function snapshotWithFiles(ws: CheckpointWorkspace, o: { chatId: string; title: string; start?: boolean; ts?: number }): Promise<{ checkpoint: Checkpoint; files: ChangedFile[] }> {
   return serial(ws.id, async () => {
-    const tree = await worktreeTree(ws.path)
+    const { tree, head } = await treeAtHead(ws.path)
     const all = await readAll(ws)
     const turn = all.length ? all[0].turn + 1 : 0
     const start = !!o.start && turn === 0
     const prev = await revParse(ws.path, headRef(ws.id))
-    const head = await revParse(ws.path, 'HEAD^{commit}')
     const from = prev ? `${prev}^{tree}` : head ? `${head}^{tree}` : EMPTY_TREE
     const remote = await remoteBase(ws.path, ws.baseRef)
     const base = remote && head ? await baseOf(ws.path, remote, head) : undefined

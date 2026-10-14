@@ -230,6 +230,39 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
     expect(await message(path, checkpoint.ref)).toContain(`Kernel-Base: ${(await git(path, 'rev-parse', 'origin/main')).trim()}`)
   })
 
+  it('saves no files for a turn that edited nothing after the branch was reset onto a newer main', async () => {
+    const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const w = ws('ws-reset-onto')
+    await snapshotWithFiles(w, { chatId: 'c', title: 'Go', start: true })
+    await land({ 'a.ts': 'a\nmain\n', 'n.ts': 'n\n' })
+    await fetch()
+    await git(path, 'reset', '-q', '--hard', 'origin/main')
+
+    expect((await snapshotWithFiles(w, { chatId: 'c', title: 'Fresh branch' })).files).toEqual([])
+  })
+
+  it('saves no files for the turn after a fast-forward landed while the last checkpoint read the worktree (KERNEL-804)', async () => {
+    const { land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n' })
+    const lead = ws('ws-race')
+    await snapshotWithFiles(lead, { chatId: 'c', title: 'Go', start: true })
+    await land({ 'a.ts': 'a\nmain\n', 'n.ts': 'n\n' })
+    await fetch()
+    // A git that fast-forwards the worktree once, right after the checkpoint has read its files and before it reads HEAD.
+    const bin = await mkdtemp(join(tmpdir(), 'kernel-git-'))
+    const real = (await run('sh', ['-c', 'command -v git'])).trim()
+    const once = join(bin, 'once')
+    await writeFile(once, '')
+    await writeFile(join(bin, 'git'), `#!/bin/sh\n"${real}" "$@" || exit\nif [ "$3" = write-tree ] && rm "${once}" 2>/dev/null; then env -u GIT_INDEX_FILE "${real}" -C "$2" merge --ff-only --quiet origin/main; fi\n`, { mode: 0o755 })
+    const PATH = process.env.PATH
+    process.env.PATH = `${bin}:${PATH}`
+    try {
+      expect((await snapshotWithFiles(lead, { chatId: 'c', title: 'Plan' })).files).toEqual([])
+    } finally { process.env.PATH = PATH }
+    expect(await exists(bin, 'once')).toBe(false)
+
+    expect((await snapshotWithFiles(lead, { chatId: 'c', title: 'Talk' })).files).toEqual([])
+  })
+
   it('lists only the files the agent touched in the first turn after a wait is released, and revert still restores them', async () => {
     const { path, land, fetch, ws } = await remoteRoom({ 'a.ts': 'a\n', 'api.ts': 'v1\n' })
     const w = ws('ws-wait')
