@@ -1691,6 +1691,17 @@ describe('turns that end without a reply on Claude (KERNEL-808)', () => {
     await flush()
     expect(notes(t.store)).toEqual(['Try /init to add a CLAUDE.md', 'Indexing 2 of 2', 'Approaching your usage limit', 'Sign in again'])
   })
+
+  it("keeps a notification in its own chat and turn when the same key comes again", async () => {
+    const t = await setup()
+    const notice = (uuid: string) => ({ type: 'system', subtype: 'notification', key: 'limit', text: 'Approaching your usage limit', priority: 'high', uuid, session_id: 's' })
+    t.call.feed(notice('n1'))
+    t.call.feed({ type: 'result', subtype: 'success', is_error: false, duration_ms: 1, uuid: 'r1', session_id: 's' })
+    t.call.feed(notice('n2'))
+    await flush()
+    const rows = t.store.items('chat').filter((i) => i.kind === 'note')
+    expect(rows.map((i) => i.id)).toEqual(['n1', 'n2'])
+  })
 })
 
 describe("a room's Always allow rules on Claude (KERNEL-454)", () => {

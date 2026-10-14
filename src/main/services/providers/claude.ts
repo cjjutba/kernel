@@ -85,6 +85,8 @@ export class ClaudeRunner implements Runner {
   private readonly toolItems = new Map<string, ChatItem & { kind: 'tool' }>()
   /** Agent rows whose label already names the subagent's model, by tool use id. The call's own `model` is final (KERNEL-158). */
   private readonly agentModels = new Set<string>()
+  /** This turn's notification notes by the SDK's key, so a repeat updates its line. The key is fixed across chats and turns, so the id is the first event's uuid (KERNEL-808). */
+  private readonly notices = new Map<string, string>()
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   private readonly commands = new Map<string, string>()
   /** The folder each Bash command runs in, from the hook, for the push guard in canUseTool (KERNEL-687). */
@@ -340,7 +342,9 @@ export class ClaudeRunner implements Runner {
           host.item({ kind: 'note', id: msg.tool_use_id ? `info-${msg.tool_use_id}` : msg.uuid, ts: now, text: msg.content.trim() })
         }
         if (msg.subtype === 'notification' && msg.text.trim() && (msg.priority === 'high' || msg.priority === 'immediate')) {
-          host.item({ kind: 'note', id: `notice-${msg.key}`, ts: now, text: msg.text.trim() })
+          const id = this.notices.get(msg.key) ?? msg.uuid
+          this.notices.set(msg.key, id)
+          host.item({ kind: 'note', id, ts: now, text: msg.text.trim() })
         }
         if (msg.subtype === 'model_refusal_no_fallback') host.item({ kind: 'note', id: msg.uuid, ts: now, text: msg.content.trim() || 'Claude declined to answer.' })
         if (msg.subtype === 'model_refusal_fallback') {
@@ -408,6 +412,7 @@ export class ClaudeRunner implements Runner {
         return
       }
       case 'result': {
+        this.notices.clear()
         const ok = msg.subtype === 'success'
         // A turn that ended on an API error is `success` with `is_error`, so it never says the API was reached.
         if (ok && !msg.is_error) host.reached()
