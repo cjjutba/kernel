@@ -40,7 +40,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; references?: string[]; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -58,7 +58,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const openItems = new OpenItems({ store } as unknown as Kernel)
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
+    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability, referencesFor: () => o.references,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
     ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
     disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp,
@@ -362,6 +362,16 @@ describe('permission modes on Codex (KERNEL-447)', () => {
     expect(await off.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'decline' }])
     expect(await off.answers('item/permissions/requestApproval')).toEqual([{ permissions: {}, scope: 'turn' }])
     expect(off.of('note').map((n) => n.text)).toEqual([NETWORK_OFF, NETWORK_OFF])
+  })
+
+  it.fails('refuses a file change under a reference folder in every mode, as Claude does (KERNEL-743, fix tracked in KERNEL-790)', async () => {
+    const t = track(await setup({ mode: 'bypassPermissions', references: ['/tmp/client-a-api'] }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(
+      { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
+      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } }
+    ) }])
+    await t.idle()
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
   })
 
   it('in Bypass permissions accepts file changes outside the workspace and grants more permissions, and still asks its questions', async () => {
