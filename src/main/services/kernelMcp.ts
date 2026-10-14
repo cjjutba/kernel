@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type PrState, type QueueReason, type RoomSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AgentChangePr, type AgentDef, type AgentReach, type AgentScope, type Approval, type AskedQuestion, type ChatPart, type Decision, type IssueTaken, type LeadMode, type PrState, type QueueReason, type RoomSettingsPatch, type Workspace, type WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, headBlockers, notMergeable, reviewsText } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -96,6 +96,13 @@ export interface KernelToolDeps {
   isRunning: (workspaceId: string) => boolean
   /** Whether archiving would lose uncommitted work: 'dirty', 'unknown' when git can't tell, or false. */
   unsaved: (workspaceId: string) => Promise<'dirty' | 'unknown' | false>
+
+  /** The chat's mode as its session started, which a switch restarts (KERNEL-770). Left out, Hand off. */
+  leadMode?: LeadMode
+  /** How many files are changed and not committed in this chat's own worktree (KERNEL-770). Left out, none. */
+  ownChanges?: () => Promise<number>
+  /** Puts Build here's suggestion to switch to Hand off under Kernel's reply (KERNEL-770). Left out, suggest_hand_off refuses. */
+  suggestHandoff?: (why: string) => void
 
   /** Whether the Lead chat is in plan mode now. Read on each call, since the toggle can change mid-session. Left out, it counts as off (KERNEL-176). */
   planMode?: () => boolean
@@ -202,6 +209,19 @@ export function takenWarning(issue: string, t: IssueTaken): string {
 
 /** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176, KERNEL-678). */
 export const PLAN_MODE_OFF = "Not asked: plan mode is off, so there is no plan to approve. Propose who gets what in one yes-or-no question, and hand off only on a go-ahead that raises nothing new, quoted in go_ahead. If the reply also asks questions, changes scope or only agrees with the idea, answer it and ask once."
+
+/** request_plan_approval's refusal in a Build here chat that isn't in plan mode (KERNEL-770). */
+export const BUILD_PLAN_MODE_OFF = 'Not asked: plan mode is off, so there is no plan to approve. Build what the user asked.'
+
+/** create_workspace's refusal in a Build here chat, for anything but a review (KERNEL-770). */
+export const BUILD_HERE_REFUSAL = "Not created: this chat is in Build here. Switch this chat to Hand off to give tasks to teammates. Tell the user that, or build it here yourself."
+
+/** suggest_hand_off's refusal in a chat already in Hand off (KERNEL-770). */
+export const ALREADY_HANDOFF = 'Not suggested: this chat is already in Hand off. Propose the hand-off instead.'
+
+/** The line a hand-off or plan from a chat with uncommitted changes carries (KERNEL-770). Teammates start from `base`. */
+export const uncommittedNote = (files: number, base: string) =>
+  `This chat's worktree has ${files} uncommitted ${files === 1 ? 'change' : 'changes'}. Teammates start from ${base} and won't see ${files === 1 ? 'it' : 'them'}.`
 
 /** create_workspace's refusal with plan mode off when go_ahead is missing or isn't in the user's latest message (KERNEL-678). */
 export const NO_GO_AHEAD = "Not handed off: quote the user's go-ahead from their latest message, or ask them first."
@@ -357,6 +377,9 @@ const SAVE = 'Save'
 /** What the Lead's server tells the model, next to the tools. */
 export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
+/** What the Lead's server tells the model in a Build here chat (KERNEL-770). */
+export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. create_workspace only starts a review, with review_of. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
+
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
  * of review_of (KERNEL-299). Only for a Reviewer, so a task branched off another task is never archived with it. The base
@@ -375,7 +398,7 @@ export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | un
  * The Lead proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
-  return kernelServer(kernelTools(d), LEAD_INSTRUCTIONS)
+  return kernelServer(kernelTools(d), d.leadMode === 'build' ? LEAD_BUILD_INSTRUCTIONS : LEAD_INSTRUCTIONS)
 }
 
 /** The Lead's tools, apart from the server so tests can call them. */
@@ -423,6 +446,13 @@ export function kernelTools(d: KernelToolDeps) {
     const tracker = ws.source?.kind === 'issue' ? ws.source.tracker : undefined
     return ` ${tracker ? trackerName(tracker) : 'The issue tracker'} marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
   }
+  const build = d.leadMode === 'build'
+  /** The uncommitted-changes line, when this chat's worktree has any (KERNEL-770). Never blocks: a check that fails says nothing. */
+  const leftBehind = async (base?: string): Promise<string> => {
+    const files = await d.ownChanges?.().catch(() => 0) ?? 0
+    if (!files) return ''
+    return uncommittedNote(files, base ?? (await d.handoffBase?.().catch(() => undefined))?.base ?? 'the default branch')
+  }
   return [
     tool('list_agents', 'List the agents in this room with their roles. Helpers, which don\'t take tasks, come as one line of names.', {}, async () => text(agentList(await d.agents()))),
     tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, "yours" for the ones you handed off in this chat, and "open" for a question, blockers or a proposed hand-off you haven\'t acted on.', {}, async () => {
@@ -437,11 +467,13 @@ export function kernelTools(d: KernelToolDeps) {
       steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
     }, async ({ title, plan, steps }, extra) => {
       // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
-      if (!d.planMode?.()) return { ...text(PLAN_MODE_OFF), isError: true }
+      if (!d.planMode?.()) return { ...text(build ? BUILD_PLAN_MODE_OFF : PLAN_MODE_OFF), isError: true }
       // Task lines alone hide the write-up, which then never reaches the chat or .kernel/plans/ (KERNEL-373).
       if (!plan?.trim()) return { ...text(NO_PLAN), isError: true }
       bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
-      const decision = await d.askUser({ kind: 'plan', title, detail: plan, steps }, signalOf(extra))
+      // A plan to hand off says when this chat's own edits stay behind, since teammates start from the base (KERNEL-770).
+      const left = build ? '' : await leftBehind()
+      const decision = await d.askUser({ kind: 'plan', title, detail: left ? `${plan.trimEnd()}\n\n${left}` : plan, steps }, signalOf(extra))
       if (!decision) return text('No answer yet. Wait and ask again later.')
       // Out of plan mode before the answer goes back, so the hand-off that follows runs outside it.
       if (decision.behavior === 'allow') return text((await d.planApproved?.()) || `approved. ${HANDOFF_NOW}`)
@@ -488,6 +520,8 @@ export function kernelTools(d: KernelToolDeps) {
       // A reviewer started on another workspace's branch is a review of it, with the same checks. It keeps base_ref and
       // branch, since a long reviewed branch can't take review_of yet (KERNEL-299, KERNEL-265).
       const review_of = askedReview ?? reviewedByBase(pick, base_ref, d.workspaces())?.id
+      // Build here hands no task out, and never on its own: the user switches the chat to Hand off (KERNEL-770).
+      if (build && !review_of) return { ...text(BUILD_HERE_REFUSAL), isError: true }
       // A helper only answers when another agent calls it, so it gets no workspace of its own. The reviewer can still review (KERNEL-397).
       if (!takesTasks(pick) && !(review_of && isReviewer(pick))) {
         bus.track({ name: 'handoff.refused', reason: 'helper' })
@@ -573,7 +607,9 @@ export function kernelTools(d: KernelToolDeps) {
       const queued = failed || waiting || trust ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
       // A check that couldn't answer didn't hold the start up, and the Lead hears which one (KERNEL-479).
       const unchecked = taken?.notes.length ? ` ${taken.notes.join(' ')}` : ''
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${trust}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued || !!trust)}${unchecked}`)
+      // This chat's own edits stay in its worktree. The Lead tells the user, and nothing is held up (KERNEL-770).
+      const left = review_of ? '' : await leftBehind(ws.baseRef)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${trust}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued || !!trust)}${unchecked}${left ? ` ${left} Tell the user.` : ''}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
@@ -709,6 +745,14 @@ export function kernelTools(d: KernelToolDeps) {
       const plans = d.plans?.() ?? []
       if (!plans.length) return text('No plan has been approved in this chat yet.')
       return text(plans.map((p) => `Approved in the tab "${p.tab}" at ${new Date(p.at).toISOString()}:\n${p.plan}`).join('\n\n'))
+    }),
+    tool('suggest_hand_off', 'In Build here, when the work spans lanes or is bigger than one PR: show the user a button under your reply that switches this chat to Hand off. Say why in reason. Only the user switches the mode.', {
+      reason: z.string().max(280).describe('Why this work should go to teammates, in one sentence, for example "It touches the engine and the UI, two lanes"')
+    }, async ({ reason }) => {
+      if (!build) return { ...text(ALREADY_HANDOFF), isError: true }
+      if (!d.suggestHandoff) return { ...text('Not suggested: this chat can\'t switch modes.'), isError: true }
+      d.suggestHandoff(reason.trim())
+      return text('Suggested. The user sees a button to switch this chat to Hand off. Stop here, and build nothing until they answer.')
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working' })

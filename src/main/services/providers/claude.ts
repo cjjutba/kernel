@@ -4,6 +4,7 @@ import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPa
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
+import { leadModeOf } from '@shared/leadMode'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
@@ -114,8 +115,8 @@ export class ClaudeRunner implements Runner {
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
     // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
-    // A review only reads, whatever its agent's file says (KERNEL-549).
-    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf })
+    // A review only reads, whatever its agent's file says (KERNEL-549). A chat with Kernel edits only in Build here (KERNEL-770).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf, lead: agent?.lead ? leadModeOf(ws) : undefined })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
@@ -747,6 +748,9 @@ function kernelHooks(o: {
         if (unlisted === 'ask' && bypassing()) return ROOM_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
+      // Hand off refuses an edit whatever the file says, and says so (KERNEL-770).
+      const mode = tools.modeRefuses(tool)
+      if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       const why = tools.disallows(tool)
         ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`

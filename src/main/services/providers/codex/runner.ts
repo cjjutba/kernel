@@ -1,9 +1,10 @@
 import type { ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
 import type { ChatItem, ChatPart, CodexPersonality, Decision, Effort, UnlistedTools } from '@shared/types'
 import { linkText } from '@shared/links'
+import { leadModeOf } from '@shared/leadMode'
 import { describeTool } from '../../approvals'
 import { planChanges } from '../../handoff'
 import { exec } from '../../exec'
@@ -11,6 +12,7 @@ import { IMAGE_DATA_URL, imageMarker, imagesNote } from '../../plans'
 import { ALWAYS_ASK, decide, rulesOf, saveAlwaysAllow, type RunMode, type Step } from '../../permissions'
 import { toolPolicy } from '../../agentTools'
 import { codexStatus } from '../../mcp'
+import { SHARED_DIR } from '../../sharedFiles'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { appServerArgs, codexEnv, KERNEL_VERSION, loginWithKey } from './client'
@@ -157,6 +159,8 @@ export class CodexRunner implements Runner {
   private model: string
   private effort: Effort
   private plan: boolean
+  /** A chat with Kernel in Hand off, which edits no file but the ones it shares (KERNEL-770). Fixed for the process's life. */
+  private readonly handoff: boolean
   private gitDir?: string
   /** The running turn's plan, from its `plan` item. A plan-mode turn that ends with one asks for approval. */
   private planText?: string
@@ -187,6 +191,7 @@ export class CodexRunner implements Runner {
     this.model = chat.model
     this.effort = chat.effort
     this.plan = chat.plan
+    this.handoff = !!host.agent?.lead && leadModeOf(host.workspace) === 'handoff'
     this.threadId = chat.sessionId
     if (chat.sessionId) host.managed(chat.sessionId)
   }
@@ -248,10 +253,14 @@ export class CodexRunner implements Runner {
 
   kill() { if (this.child && this.child.exitCode === null) this.child.kill('SIGTERM') }
 
-  /** The sandbox for the next turn: writes in the workspace and the repo's git folder, network as Settings, Permissions says. Plan mode only reads. */
+  /**
+   * The sandbox for the next turn: writes in the workspace and the repo's git folder, network as Settings, Permissions says.
+   * Plan mode only reads, and so does a chat with Kernel in Hand off (KERNEL-770): every file change then asks, and
+   * `approveFiles` declines all but a file it shares. Git reads in the sandbox, and a git command that writes asks to leave it.
+   */
   private sandbox(): SandboxPolicy {
     const network = this.host.settings().permissions.network !== false
-    if (this.plan) return { type: 'readOnly', networkAccess: network }
+    if (this.plan || this.handoff) return { type: 'readOnly', networkAccess: network }
     return { type: 'workspaceWrite', writableRoots: this.gitDir ? [this.gitDir] : [], networkAccess: network, excludeTmpdirEnvVar: false, excludeSlashTmp: false }
   }
 
@@ -553,6 +562,8 @@ export class CodexRunner implements Runner {
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'
     // A review only reads, whatever its agent's file says (KERNEL-549).
     if (this.host.workspace.reviewOf) return { decision: 'decline' }
+    // Hand off edits nothing but the files it shares under .kernel/shared, whatever the file and the mode say (KERNEL-770).
+    if (this.handoff && !(change?.changes.length && change.changes.every((c) => sharesFile(this.host.workspace.path, c.path)))) return { decision: 'decline' }
     if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined }, { signal })
@@ -590,6 +601,12 @@ export class CodexRunner implements Runner {
     }
     return { answers }
   }
+}
+
+/** Whether `path`, as Codex names a changed file, is under the workspace's `.kernel/shared`, where share_file's files go (KERNEL-770). */
+export function sharesFile(workspace: string, path: string): boolean {
+  const rel = relative(resolve(workspace, SHARED_DIR), resolve(workspace, path))
+  return !!rel && !rel.startsWith('..') && !isAbsolute(rel) && !rel.split(sep).includes('..')
 }
 
 /** What a command card says when accepting runs the command outside Codex's sandbox. */
