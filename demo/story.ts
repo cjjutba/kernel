@@ -91,7 +91,7 @@ export const f: Fixture = {
   diffs: {},
   prs: {},
   push: [],
-  ui: { route: { name: 'leadNew', roomId: ROOM }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  ui: { route: { name: 'leadNew', roomId: ROOM }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false } }
 }
 
 const handlers = fixtureHandlers(f) as unknown as Record<string, (req: unknown) => Promise<unknown>>

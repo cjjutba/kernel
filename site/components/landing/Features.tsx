@@ -23,7 +23,7 @@ const FEATURES: Feature[] = [
     text: 'Theo reviews each pull request once its checks pass. Blockers hold the merge, and approved work can merge on its own.',
     clip: 'reviews',
     width: 1592,
-    height: 1200,
+    height: 1560,
     label: 'A team update arrives row by row: one pull request merged on its own, one held by blockers, one approved and merged; Noor then fixes both blockers and that pull request merges too'
   },
   {
@@ -32,7 +32,7 @@ const FEATURES: Feature[] = [
     text: 'Every request says why it asks. Allow it once, allow it in this workspace, or deny it.',
     clip: 'permissions',
     width: 1592,
-    height: 1200,
+    height: 1560,
     label: 'Noor asks to run a command that writes outside the workspace and gets Allow once, then a bigger export gets Always allow here, and a third export runs without asking'
   },
   {

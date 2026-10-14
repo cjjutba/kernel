@@ -113,7 +113,7 @@ const CLIPS: Record<string, Clip> = {
   },
   reviews: {
     scene: 'reviews',
-    crop: column(250, 600),
+    crop: column(90, 780),
     poster: 6,
     play: async (d) => {
       await d.show(760, 760)
@@ -128,7 +128,7 @@ const CLIPS: Record<string, Clip> = {
   },
   permissions: {
     scene: 'permissions',
-    crop: column(250, 600),
+    crop: column(90, 780),
     poster: 5,
     play: async (d) => {
       await d.show(800, 780)
@@ -138,7 +138,7 @@ const CLIPS: Record<string, Clip> = {
       await d.click(d.page.getByRole('button', { name: /^Allow once/ }).last(), 900)
       await d.wait(3600)
       await d.click(d.page.getByRole('button', { name: /^Always allow here/ }).last(), 900)
-      await d.wait(7000)
+      await d.wait(8800)
     }
   },
   accounts: {
