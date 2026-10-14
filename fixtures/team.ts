@@ -27,13 +27,13 @@ const roomsScene = (f: Fixture): Partial<Fixture> => {
     activity: [],
     // Three things wait on Client A, the Inbox count in the sidebar.
     approvals: f.approvals.map((a) => ({ ...a, roomId: ids.roomA })),
-    agents: { [ids.roomA]: team, [ids.roomB]: crew('rowan', 'kai'), [ids.roomOwn]: crew('rowan', 'kai', 'ivy'), [ids.roomPortfolio]: crew('rowan', 'kai'), 'room-sandbox': crew('rowan') },
+    agents: { [ids.roomA]: team, [ids.roomB]: crew('kernel-lead', 'kai'), [ids.roomOwn]: crew('kernel-lead', 'kai', 'ivy'), [ids.roomPortfolio]: crew('kernel-lead', 'kai'), 'room-sandbox': crew('kernel-lead') },
     status: {
-      [ids.roomA]: { rowan: 'idle', kai: 'idle', noor: 'idle', theo: 'idle', ivy: 'idle' },
-      [ids.roomB]: { rowan: 'working', kai: 'idle' },
-      [ids.roomOwn]: { rowan: 'idle', kai: 'working', ivy: 'idle' },
-      [ids.roomPortfolio]: { rowan: 'idle', kai: 'idle' },
-      'room-sandbox': { rowan: 'idle' }
+      [ids.roomA]: { 'kernel-lead': 'idle', kai: 'idle', noor: 'idle', theo: 'idle', ivy: 'idle' },
+      [ids.roomB]: { 'kernel-lead': 'working', kai: 'idle' },
+      [ids.roomOwn]: { 'kernel-lead': 'idle', kai: 'working', ivy: 'idle' },
+      [ids.roomPortfolio]: { 'kernel-lead': 'idle', kai: 'idle' },
+      'room-sandbox': { 'kernel-lead': 'idle' }
     },
     // +412 -38 on invoice-table, as in the sidebar of Rooms.png.
     workspaces: withWorkspace(f, ids.table, { stat: { files: 4, added: 412, removed: 38 } })
@@ -49,7 +49,7 @@ const setupSteps: RoomSetupStep[] = [
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'wait' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'wait' },
   { id: 'push', title: 'Check push access', detail: 'samrivera can push to samrivera/client-c', state: 'wait' },
-  { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
+  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
 ]
 // KERNEL-449: setup is done, and two of the copied files look like production. KERNEL-460: git can't push, because it
 // isn't using gh's login. Both are warnings, so the room still opens.
@@ -60,7 +60,7 @@ const warnSteps: RoomSetupStep[] = [
   { id: 'copy', title: 'Copy local files', detail: '.env, .env.local, .env.production', state: 'warn', production: ['.env', '.env.production'] },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
   { id: 'push', title: 'Git can\u2019t push to cjjutba/client-c', detail: 'gh is signed in as cjjutba, but git isn\u2019t using that login, so agents can\u2019t push yet.', state: 'warn', fix: { command: 'gh auth setup-git', action: 'recheck' } },
-  { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'ok' }
+  { id: 'agents', title: 'Seat agents', detail: 'Kernel, Kai, Noor, Ivy, Theo from .claude/agents', state: 'ok' }
 ]
 
 const shop: Room = { id: 'room-shop', name: 'Shop', kind: 'folder', path: '/Users/you/Projects/shop', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
@@ -70,7 +70,7 @@ const shopSteps: RoomSetupStep[] = [
   { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'ok' },
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
-  { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Rowan from Kernel', state: 'ok', brought: 3 }
+  { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Kernel leads', state: 'ok', brought: 3 }
 ]
 /** KERNEL-477: the code host read from the checkout, after its first step. A folder with no remote has no push step. */
 const hostSteps = (first: RoomSetupStep, host: string, folder: string, o: { push: boolean }): RoomSetupStep[] => [
@@ -91,16 +91,16 @@ const clock = (daysAgo: number, h: number, m: number) => { const d = new Date();
 /** The three things waiting on the user in Client A (Inbox.png, Home.png): two approvals and a PR ready to merge. */
 const homeApprovals: Approval[] = [
   { id: 'ap-push', kind: 'tool', source: 'sdk', roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Kai is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
-  { id: 'ap-plan15', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
+  { id: 'ap-plan15', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'kernel-lead', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
 ]
 const note = (n: Partial<Notification> & Pick<Notification, 'id' | 'title' | 'sub' | 'createdAt'>): Notification => ({ kind: 'system', roomId: ids.roomA, needsYou: false, read: false, ...n })
 const homeNotifications: Notification[] = [
   note({ id: 'n1', kind: 'approval', agentId: 'noor', approvalId: 'ap-push', title: 'Wants to run drizzle-kit push', sub: 'Permission · Client A', heading: 'Noor wants to run a command that changes the database', needsYou: true, createdAt: ago(2 * MIN) }),
-  note({ id: 'n2', kind: 'approval', agentId: 'rowan', approvalId: 'ap-plan15', title: 'Plan ready: Export invoices as PDF', sub: 'Plan review · Client A', heading: 'Rowan has a plan for you to review', needsYou: true, createdAt: ago(6 * MIN) }),
+  note({ id: 'n2', kind: 'approval', agentId: 'kernel-lead', approvalId: 'ap-plan15', title: 'Plan ready: Export invoices as PDF', sub: 'Plan review · Client A', heading: 'Kernel has a plan for you to review', needsYou: true, createdAt: ago(6 * MIN) }),
   note({ id: 'n3', kind: 'merge', agentId: 'theo', workspaceId: ids.invites, title: 'PR #41 is ready to merge', sub: 'Merge · Client A', heading: 'PR #41 is ready to merge', body: 'org-invites has passing checks and no open review comments.', needsYou: true, createdAt: ago(12 * MIN) }),
   note({ id: 'n4', kind: 'blocked', agentId: 'ivy', title: 'T-11 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-11 was blocked by a hook', body: 'The test-output hook stopped Ivy. She needs the run output attached.', createdAt: ago(18 * MIN) }),
   note({ id: 'n5', kind: 'finished', agentId: 'kai', workspaceId: ids.table, title: 'Finished T-14 invoice table', sub: 'Workspace ready · Client A', heading: 'Finished T-14 invoice table', body: 'Kai pushed the table, its states and the tests. Vitest and Playwright pass.', createdAt: ago(31 * MIN) }),
-  note({ id: 'n6', kind: 'standup', agentId: 'rowan', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
+  note({ id: 'n6', kind: 'standup', agentId: 'kernel-lead', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
   note({ id: 'n7', title: 'Hooks reconnected', sub: 'System', roomId: undefined, heading: 'Hooks reconnected', body: 'Kernel is listening on localhost:7420 again.', read: true, createdAt: ago(11 * HOUR) })
 ]
 
@@ -114,12 +114,12 @@ const homeScene = (f: Fixture): Partial<Fixture> => {
     rooms: roomsScene(f).rooms!.filter((r) => !r.archived),
     approvals: homeApprovals,
     notifications: homeNotifications,
-    agents: { [ids.roomA]: team, [ids.roomB]: crew('rowan', 'kai'), [ids.roomOwn]: crew('rowan', 'kai', 'ivy'), [ids.roomPortfolio]: crew('rowan', 'kai') },
+    agents: { [ids.roomA]: team, [ids.roomB]: crew('kernel-lead', 'kai'), [ids.roomOwn]: crew('kernel-lead', 'kai', 'ivy'), [ids.roomPortfolio]: crew('kernel-lead', 'kai') },
     status: {
-      [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'idle', ivy: 'idle' },
-      [ids.roomB]: { rowan: 'working', kai: 'working' },
-      [ids.roomOwn]: { rowan: 'working', kai: 'working', ivy: 'working' },
-      [ids.roomPortfolio]: { rowan: 'idle', kai: 'idle' }
+      [ids.roomA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'idle', ivy: 'idle' },
+      [ids.roomB]: { 'kernel-lead': 'working', kai: 'working' },
+      [ids.roomOwn]: { 'kernel-lead': 'working', kai: 'working', ivy: 'working' },
+      [ids.roomPortfolio]: { 'kernel-lead': 'idle', kai: 'idle' }
     },
     workspaces: [
       ...f.workspaces,
@@ -127,7 +127,7 @@ const homeScene = (f: Fixture): Partial<Fixture> => {
       merged('ws-m2', ids.roomA, 'noor', 'fix(auth): invite links expire after 7 days', 26, 9, clock(0, 9, 58)),
       merged('ws-m3', ids.roomOwn, 'kai', 'chore(db): seed realistic data', 188, 4, clock(0, 9, 12)),
       merged('ws-m4', ids.roomPortfolio, 'kai', 'Landing page polish', 926, 383, clock(1, 18, 40)),
-      merged('ws-m5', ids.roomB, 'rowan', 'docs: onboarding questions', 18, 11, clock(1, 16, 5))
+      merged('ws-m5', ids.roomB, 'kernel-lead', 'docs: onboarding questions', 18, 11, clock(1, 16, 5))
     ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
   }
 }
@@ -149,7 +149,7 @@ const historyScene = (f: Fixture): Partial<Fixture> => {
       archived('ws-h3', 'try-datatable', 'spike/try-datatable', ids.roomA, 'kai', null, clock(0, 9, 48)),
       archived('ws-h4', 'auth-orgs', 'feat/t-08-auth-orgs', ids.roomA, 'noor', { n: 36, state: 'merged' }, clock(3, 10, 12)),
       archived('ws-h5', 'landing-polish', 'feat/landing-polish', ids.roomPortfolio, 'kai', { n: 12, state: 'merged' }, clock(3, 9, 30)),
-      archived('ws-h6', 'pricing-experiment', 'spike/pricing-experiment', ids.roomOwn, 'rowan', { n: 7, state: 'closed' }, clock(4, 16, 4))
+      archived('ws-h6', 'pricing-experiment', 'spike/pricing-experiment', ids.roomOwn, 'kernel-lead', { n: 7, state: 'closed' }, clock(4, 16, 4))
     ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
   }
 }
@@ -158,9 +158,9 @@ const historyScene = (f: Fixture): Partial<Fixture> => {
 const teamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.roomA
   const who = (id: string, name: string, role: string, model: string, description: string, o: Partial<AgentDef> = {}): AgentDef =>
-    ({ ...agent(id, name, role, model, !!o.lead), description, effort: 'high', prompt: `You are ${name}, the ${role.toLowerCase()} in this room. ${description} Work in your own worktree and tell Rowan when you finish.`, ...o })
+    ({ ...agent(id, name, role, model, !!o.lead), description, effort: 'high', prompt: `You are ${name}, the ${role.toLowerCase()} in this room. ${description} Work in your own worktree and tell Kernel when you finish.`, ...o })
   const crew: AgentDef[] = [
-    who('rowan', 'Rowan', 'Lead', 'opus', 'Plans, splits tasks, hands them out. Never edits code.', { lead: true, tools: ['Read', 'Grep', 'Glob'], skills: ['/plan'] }),
+    who('kernel-lead', 'Kernel', 'Lead', 'opus', 'Plans, splits tasks, hands them out. Never edits code.', { lead: true, tools: ['Read', 'Grep', 'Glob'], skills: ['/plan'] }),
     who('kai', 'Kai', 'Frontend', 'sonnet', 'UI work. Follows DESIGN.md.', {
       tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'], skills: ['/feature', '/verify', '/image'],
       prompt: 'You are Kai, the frontend engineer in this room. Build the screens in the plan exactly as the PNGs show them.\n\nFollow DESIGN.md: tokens only, no hex values, hairlines instead of shadows.\nOpen the compare image after every change and fix what a person would notice.\nAdd a Playwright test for each state before you ask for review.'
@@ -182,11 +182,11 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
     ({ id, roomId: A, title, column, state: column === 'done' ? 'done' : 'working', agentId, workspaceId, steps: [], createdAt: at(8, 0), updatedAt: at(hour, min) })
   const skills: Skill[] = [['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image']].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
   return {
-    agents: { [A]: crew, [ids.roomB]: crew.slice(0, 1), [ids.roomOwn]: crew.filter((a) => ['rowan', 'kai', 'ivy'].includes(a.id)), [ids.roomPortfolio]: crew.slice(0, 1) },
-    status: { [A]: { rowan: 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', wren: 'idle' } },
+    agents: { [A]: crew, [ids.roomB]: crew.slice(0, 1), [ids.roomOwn]: crew.filter((a) => ['kernel-lead', 'kai', 'ivy'].includes(a.id)), [ids.roomPortfolio]: crew.slice(0, 1) },
+    status: { [A]: { 'kernel-lead': 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', wren: 'idle' } },
     workspaces, skills,
-    // The other rooms only seat some of the crew, so a question from someone who is not there comes from Rowan.
-    approvals: f.approvals.map((a) => (a.roomId === ids.roomB || a.roomId === ids.roomPortfolio ? { ...a, agentId: 'rowan' } : a)),
+    // The other rooms only seat some of the crew, so a question from someone who is not there comes from Kernel.
+    approvals: f.approvals.map((a) => (a.roomId === ids.roomB || a.roomId === ids.roomPortfolio ? { ...a, agentId: 'kernel-lead' } : a)),
     tasks: { [A]: [
       task('T-15b', 'Download PDF button', 'build', 'kai', 'ws-pdf-button', 10, 41), task('T-14', 'Invoice table', 'done', 'kai', 'ws-t14', 9, 40),
       task('T-09', 'Org settings page', 'done', 'kai', 'ws-t09', 9, 10), task('T-06', 'Sign-in screens', 'done', 'kai', 'ws-t06', 8, 40)
@@ -195,14 +195,14 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
 }
 
 /**
- * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Rowan and Theo fill in (KERNEL-397).
+ * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Kernel and Theo fill in (KERNEL-397).
  * Architect's tools can't open a PR, so it is a helper. RoomSetupTeam.png and SettingsTeam.
  */
 const ownCrew: AgentDef[] = [
   {
-    id: 'kernel-lead', name: 'Rowan', role: 'Lead', builtIn: 'lead', lead: true, reviewer: false, member: false, file: '',
+    id: 'kernel-lead', name: 'Kernel', role: 'Lead', builtIn: 'lead', lead: true, reviewer: false, member: false, file: '',
     description: 'Lead. Plans features, gets your approval, and hands each task to the right teammate in its own workspace.',
-    prompt: 'You are Rowan, the lead of this room\'s team in Kernel.\n- While the chat is in plan mode: plan first, then call request_plan_approval with the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps.\n- With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask before calling create_workspace.\n- Give every create_workspace a complete brief: goal, files, acceptance criteria.\n- Use list_agents to see who is on the team.\n- If the team lacks a skill, propose a new teammate with hire_agent.'
+    prompt: 'You are Kernel, the lead of this room\'s team in Kernel.\n- While the chat is in plan mode: plan first, then call request_plan_approval with the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps.\n- With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask before calling create_workspace.\n- Give every create_workspace a complete brief: goal, files, acceptance criteria.\n- Use list_agents to see who is on the team.\n- If the team lacks a skill, propose a new teammate with hire_agent.'
   },
   { id: 'api', name: 'Api', role: 'Backend', description: 'Backend engineer. Builds the API.', lead: false, reviewer: false, member: true, prompt: 'You build the API.', file: '.claude/agents/api.md' },
   {
@@ -220,7 +220,7 @@ const ownCrew: AgentDef[] = [
 const ownTeamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.roomA
   const t = teamScene(f)
-  const swap: Record<string, string> = { rowan: 'kernel-lead', kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', wren: 'web' }
+  const swap: Record<string, string> = { kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', wren: 'web' }
   const mapped = <T extends { roomId?: string; agentId?: string }>(x: T): T => (x.roomId === A && x.agentId && swap[x.agentId] ? { ...x, agentId: swap[x.agentId] } : x)
   return {
     ...t,
@@ -284,7 +284,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
     ],
     approvals: [
       ...(rooms.approvals ?? []),
-      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
+      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
@@ -342,8 +342,8 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
   const running: string[] = []
   CHATS.forEach((c, i) => {
     const own: Workspace = {
-      id: `ws-chat-${c.key}`, roomId: A, name: slug(c.title), branch: `rowan/${slug(c.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/rowan-${slug(c.title)}`, mode: 'worktree',
-      agentId: 'rowan', lead: true, threadId: `t-${c.key}`, port: 4300 + i * 10, status: 'ready', prState: 'none', createdAt: at(10, 50 - i * 10)
+      id: `ws-chat-${c.key}`, roomId: A, name: slug(c.title), branch: `kernel/${slug(c.title)}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/kernel/kernel-${slug(c.title)}`, mode: 'worktree',
+      agentId: 'kernel-lead', lead: true, threadId: `t-${c.key}`, port: 4300 + i * 10, status: 'ready', prState: 'none', createdAt: at(10, 50 - i * 10)
     }
     workspaces.push(own)
     chats.push({ id: `chat-${c.key}`, workspaceId: own.id, title: c.title, kind: 'chat', ...model, threadId: `t-${c.key}`, createdAt: own.createdAt, ...(c.unread ? { unreadAt: at(10, 45) } : {}) })
@@ -385,7 +385,7 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
     { kind: 'text', id: 'cg-tx', ts: at(10, 42), text: 'Land KERNEL-557 review states and Reviews page are both running. The end-to-end check of the review pipeline starts when they open pull requests.' },
     { kind: 'result', id: 'cg-r', ts: at(10, 42), durationMs: 7000, ok: true }
   ]
-  const plan: Approval = { id: 'ap-plan-changed', kind: 'plan', source: 'sdk', roomId: A, agentId: 'rowan', workspaceId: 'ws-chat-changed', chatId: 'chat-changed', title: 'Plan for the changed indicator', detail: '1. Find where the indicator reads\n2. Clear it on commit', status: 'pending', createdAt: at(10, 44) }
+  const plan: Approval = { id: 'ap-plan-changed', kind: 'plan', source: 'sdk', roomId: A, agentId: 'kernel-lead', workspaceId: 'ws-chat-changed', chatId: 'chat-changed', title: 'Plan for the changed indicator', detail: '1. Find where the indicator reads\n2. Clear it on commit', status: 'pending', createdAt: at(10, 44) }
   return {
     rooms: f.rooms.map((r) => (r.id === A ? { ...r, name: 'Kernel' } : { ...r, hidden: true })),
     threads, workspaces, chats, prs,
@@ -470,7 +470,7 @@ const linearIssues = (): LinearIssueDetail[] => {
     issue(31, 'Export invoices as PDF', 'todo', 2, 'invoices', 2 * DAY, {
       cycle: { id: 'cycle-12', number: 12 }, labels: ['Feature', 'Billing'],
       description: 'Clients want a PDF copy of any invoice they can send to their accountant.\n\n## Acceptance criteria\n\n- A Download PDF action on every invoice row\n- The PDF matches the on-screen layout, on one page\n- Fonts are embedded, so it looks the same on every device',
-      comments: [comment('c31a', 'Maya Chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'CJ Jutba', 'Use the on-screen design as the layout. Rowan can split it once we agree on the scope.', DAY)]
+      comments: [comment('c31a', 'Maya Chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'CJ Jutba', 'Use the on-screen design as the layout. Kernel can split it once we agree on the scope.', DAY)]
     }),
     issue(33, 'Send a reminder for overdue invoices', 'todo', 3, 'billing', 3 * DAY),
     issue(35, 'Show the invoice total in the page title', 'todo', 4, 'invoices', 4 * DAY),
@@ -534,7 +534,7 @@ const githubIssues = (): GithubIssueDetail[] => {
     gh(31, 'Export invoices as PDF', ['feature', 'billing'], ['cjjutba'], 2 * DAY, {
       milestone: 'Invoices v1',
       body: 'Clients want a PDF copy of any invoice they can send to their accountant.\n\n## Acceptance criteria\n\n- A Download PDF action on every invoice row\n- The PDF matches the on-screen layout, on one page\n- Fonts are embedded, so it looks the same on every device',
-      comments: [comment('c31a', 'maya-chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'cjjutba', 'Use the on-screen design as the layout. Rowan can split it once we agree on the scope.', DAY)]
+      comments: [comment('c31a', 'maya-chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'cjjutba', 'Use the on-screen design as the layout. Kernel can split it once we agree on the scope.', DAY)]
     }),
     gh(33, 'Send a reminder for overdue invoices', ['feature', 'billing'], [], 3 * DAY),
     gh(35, 'Show the invoice total in the page title', ['bug'], ['kai-okoye'], 4 * DAY),
@@ -595,7 +595,7 @@ export const teamFixtures: Record<string, Fixture> = {
     }
   }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
-  // KERNEL-339: the palette in Rowan's chat. It lists the room's open chats with their tab counts, and New tab adds a tab to this one.
+  // KERNEL-339: the palette in Kernel's chat. It lists the room's open chats with their tab counts, and New tab adds a tab to this one.
   GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
   // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
@@ -610,7 +610,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
   NewAgent: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
-  // No PNG: New agent from Settings, Agents with no room added. NewAgent.png without a room, so Rowan and the room's team are not named.
+  // No PNG: New agent from Settings, Agents with no room added. NewAgent.png without a room, so Kernel and the room's team are not named.
   NewAgentNoRoom: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
@@ -689,7 +689,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } }
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the room opens.
-  // KERNEL-555: Rowan is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
+  // KERNEL-555: Kernel is the only built-in agent, so this team has no reviewer and the picker opens on Kernel's code review.
   RoomSetupTeam: scene((f) => roomSetupTeam(f)),
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
   RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),

@@ -77,7 +77,7 @@ describe('workspace banners', () => {
 
     it('says new work waits at 90% of the 5-hour window, with when it resumes, and blocks nothing', () => {
       const b = bannerFor(input({ usage: [near('five_hour', 0.91, at340)] }))
-      expect(b).toMatchObject({ id: 'nearLimit', kind: 'limit', title: 'Close to your 5-hour limit', sub: 'New work from teammates waits until 3:40 PM. Rowan can still answer you.', blocks: false })
+      expect(b).toMatchObject({ id: 'nearLimit', kind: 'limit', title: 'Close to your 5-hour limit', sub: 'New work from teammates waits until 3:40 PM. Kernel can still answer you.', blocks: false })
       expect(b?.actions).toEqual([{ id: 'usage', label: 'View usage' }])
       expect(bannerFor(input({ usage: [near('five_hour', 0.9, at340)] }))?.id).toBe('nearLimit')
       expect(bannerFor(input({ usage: [near('five_hour', 0.89, at340)] }))).toBeNull()
@@ -112,7 +112,7 @@ describe('workspace banners', () => {
     it('says tomorrow when the weekly window resets the next day', () => {
       const tomorrow = new Date(2026, 9, 8, 4, 0).getTime()
       expect(bannerFor(input({ usage: [near('seven_day', 0.85, tomorrow)] }))).toMatchObject({ id: 'weeklyWarn', sub: 'It resets tomorrow at 4:00 AM.' })
-      expect(bannerFor(input({ usage: [near('seven_day', 0.96, tomorrow)] }))).toMatchObject({ id: 'nearLimit', sub: 'New work from teammates waits until tomorrow at 4:00 AM. Rowan can still answer you.' })
+      expect(bannerFor(input({ usage: [near('seven_day', 0.96, tomorrow)] }))).toMatchObject({ id: 'nearLimit', sub: 'New work from teammates waits until tomorrow at 4:00 AM. Kernel can still answer you.' })
     })
 
     it('shows the hold rather than the weekly warning once the week is close enough to hold teammates', () => {
@@ -223,13 +223,13 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))?.sub).toBe('pnpm install exited with code 1. Kai waits until setup passes.')
   })
 
-  it("keeps a chat with Rowan that doesn't wait for setup open after setup fails, and says Rowan keeps answering (KERNEL-490)", () => {
+  it("keeps a Lead chat that doesn't wait for setup open after setup fails, and says Kernel keeps answering (KERNEL-490)", () => {
     const scripts = [{ kind: 'setup' as const, line: '$ pnpm install', stream: 'stdout' as const }]
-    const rowan = { agentName: 'Rowan', skipsSetup: true }
-    expect(bannerFor(input({ ...rowan, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
-      id: 'setup', sub: 'pnpm install exited with code 1. Rowan keeps answering without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
+    const kernel = { agentName: 'Kernel', skipsSetup: true }
+    expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'failed' }, scripts, setupCode: 1 }))).toMatchObject({
+      id: 'setup', sub: 'pnpm install exited with code 1. Kernel keeps answering without it.', blocks: false, actions: [{ id: 'editScript' }, { id: 'runAgain' }]
     })
-    expect(bannerFor(input({ ...rowan, ws: { ...ws, status: 'trust' } }))).toMatchObject({ id: 'trust', sub: 'Setup has not run yet. Rowan keeps answering without it.', blocks: false })
+    expect(bannerFor(input({ ...kernel, ws: { ...ws, status: 'trust' } }))).toMatchObject({ id: 'trust', sub: 'Setup has not run yet. Kernel keeps answering without it.', blocks: false })
   })
 
   it('shows the hook server going down last', () => {

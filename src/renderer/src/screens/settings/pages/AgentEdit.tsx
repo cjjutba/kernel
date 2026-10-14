@@ -47,7 +47,7 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
     )
   }
 
-  const builtIn = !!agent.builtIn
+  const builtIn = !!agent.builtIn && !agent.file
   const plugin = agent.origin === 'plugin'
   // A file in the repo can go to the team as a pull request. A personal agent's file is the user's own, so it has no such choice.
   const asksScope = !!roomId && !builtIn && !plugin && agent.origin !== 'personal'

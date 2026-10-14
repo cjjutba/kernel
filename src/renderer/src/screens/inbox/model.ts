@@ -29,7 +29,7 @@ function fromApproval(a: Approval, rooms: Room[]): Notification {
   }
 }
 
-/** A row for agents changing the same file in different worktrees. It lasts until the overlap clears or Rowan takes it (D-104). */
+/** A row for agents changing the same file in different worktrees. It lasts until the overlap clears or the Lead takes it (D-104). */
 function fromOverlap(o: Overlap, rooms: Room[]): Notification {
   const room = rooms.find((r) => r.id === o.roomId)
   return {

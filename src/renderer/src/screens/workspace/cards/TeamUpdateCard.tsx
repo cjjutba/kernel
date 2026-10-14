@@ -41,7 +41,7 @@ export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract
   const omitted = !data.omitted ? '' : item.update ? `Updates on ${data.omitted} more ${data.omitted === 1 ? 'workspace' : 'workspaces'} didn't fit here` : `${data.omitted} earlier ${data.omitted === 1 ? 'update' : 'updates'} left out`
   return (
     <div className="msg tucard-wrap">
-      <section className="card tcard tucard" aria-label="Team update from Kernel">
+      <section className="card tcard tucard" aria-label="Team update">
         <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">

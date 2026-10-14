@@ -138,7 +138,7 @@ function keep(panel: keyof typeof HIDDEN, open: boolean) {
 try { localStorage.removeItem('kernel.askHistory') } catch { /* nothing stored */ }
 /**
  * The right panel's bottom pane (KERNEL-513), kept across launches like the panel toggles. Its size is one fraction of the panel below the PR band
- * for every chat, and a key is stored only once it is dragged. Collapsed or open is kept apart for Rowan's chats, which start collapsed, and for
+ * for every chat, and a key is stored only once it is dragged. Collapsed or open is kept apart for Lead chats, which start collapsed, and for
  * teammate workspaces, which start open. localStorage may be missing or blocked, and a stored value may be junk.
  */
 export const BOTTOM_RATIO_DEFAULT = 1 / 3

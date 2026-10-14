@@ -606,7 +606,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     await loadWorkspace(workspaceId)
     forked.current(next.id)
   }), [chatId, workspaceId])
-  // Only a workspace with its own worktree forks into a new one, and not a chat with Rowan's, which plans and hands off (KERNEL-405).
+  // Only a workspace with its own worktree forks into a new one, and not a Lead chat's, which plans and hands off (KERNEL-405).
   // The new workspace opens while its setup runs.
   const worktree = ws?.mode === 'worktree' && !ws.lead
   // Only the latest reply's card links to the workspace's changes, and only when they differ from its own and the diff is the agent's alone.

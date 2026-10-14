@@ -14,7 +14,7 @@ export function cardData(item: UserItem): TeamUpdate {
 /** The workspace a row's Merge button merges: a reviewer's row merges the work it reviewed (`reviewOf`), every other row its own. */
 export const mergeTargetOf = (ws: Pick<Workspace, 'id' | 'reviewOf'>) => ws.reviewOf ?? ws.id
 
-/** The row's PR came to Rowan unmerged: the reviews still block it after the review rounds `[review] rounds` allows, so Kernel starts no more (KERNEL-552). */
+/** The row's PR came to the Lead unmerged: the reviews still block it after the review rounds `[review] rounds` allows, so Kernel starts no more (KERNEL-552). */
 export const isStillBlocked = (row: Pick<TeamUpdateRow, 'events'>) => row.events.some((e) => e.kind === 'pr.review' && /^Still blocked after \d+ review rounds?$/.test(e.text))
 
 /** The row's PR merged because the user allowed it, and Kernel said so (KERNEL-556). */

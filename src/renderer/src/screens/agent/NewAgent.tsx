@@ -3,6 +3,7 @@ import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { openLeadChat } from '../../lead'
+import { KernelMark } from '../../icons'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
 import './agent.css'
@@ -18,7 +19,7 @@ const PRESETS: { label: string; description: string }[] = [
 const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus', label: 'Opus 5.5' }, { value: 'haiku', label: 'Haiku 4.5' }]
 
 /**
- * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Rowan drafted,
+ * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Kernel drafted,
  * and see them join. The step is part of the modal route, the form lives here, so Back keeps what was typed.
  * With no `roomId` (Settings, Agents before any room exists) the agent is personal: it saves to ~/.claude/agents and there is no room to refine it in.
  */
@@ -58,11 +59,11 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
     } catch (e) { setError(cleanError(e)) }
   })
 
-  // Hand the draft to Rowan to improve in his own chat. He proposes the final file with create_agent, and it comes back as an approval card.
+  // Hand the draft to Kernel to improve in a chat. It proposes the final file with create_agent, and it comes back as an approval card.
   const refine = () => draft && roomId && run('refine', async () => {
     setError(null)
     try {
-      // A new chat with Rowan, which opens before its worktree exists (KERNEL-542). The brief is a plain one, not a plan.
+      // A new Lead chat, which opens before its worktree exists (KERNEL-542). The brief is a plain one, not a plan.
       const chat = await call('lead.start', { roomId, prompt: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with create_agent.\n\n${text}`, plan: false })
       actions.chats.upsert(chat)
       await openLeadChat(roomId, chat.id)
@@ -74,10 +75,10 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
     return (
       <Modal
         title="New agent" onClose={close} width={600} top={122}
-        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={close}>Cancel</Button><Button variant="primary" size="lg" busy={busy === 'draft'} busyLabel="Drafting" disabled={!ready} onClick={() => void makeDraft()}>{`Draft with ${lead?.name ?? 'Rowan'}`}</Button></>}
+        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={close}>Cancel</Button><Button variant="primary" size="lg" busy={busy === 'draft'} busyLabel="Drafting" disabled={!ready} onClick={() => void makeDraft()}>{`Draft with ${lead?.name ?? 'Kernel'}`}</Button></>}
       >
         <form className="na-body" onSubmit={(e) => { e.preventDefault(); if (ready) void makeDraft() }}>
-          <p>Describe the agent. {lead?.name ?? 'Rowan'} writes the file in .claude/agents and you review it before it joins.</p>
+          <p>Describe the agent. {lead?.name ?? 'Kernel'} writes the file in .claude/agents and you review it before it joins.</p>
           <textarea className="na-text" aria-label="What should this agent do?" placeholder="What should this agent do?" value={description} onChange={(e) => setDescription(e.target.value)} />
           <div className="na-presets" role="group" aria-label="Start from a role">
             {PRESETS.map((p) => <Pill key={p.label} onClick={() => { setDescription(p.description); if (!name.trim()) setName(p.label) }}>{p.label}</Pill>)}
@@ -94,7 +95,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
   if (!draft) return null
 
   if (step === 'draft') {
-    const rowan = lead ?? agents?.[0]
+    const author = lead?.name ?? 'Kernel'
     return (
       <Modal
         title={`Review ${draft.id}.md`} onClose={close} width={600} top={122}
@@ -102,14 +103,14 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
       >
         <div className="na-body">
           <div className="na-by">
-            <span className="tm-av" aria-hidden="true" style={{ background: rowan && agents ? shirtOf(rowan, agents, room) : undefined }}>{(rowan?.name ?? 'R')[0]}</span>
-            <span><b style={{ fontWeight: 500 }}>{rowan?.name ?? 'Rowan'}</b> drafted the agent file</span>
+            <span className="tm-av" aria-hidden="true"><KernelMark size={14} /></span>
+            <span><b style={{ fontWeight: 500 }}>{author}</b> drafted the agent file</span>
           </div>
           <div className="na-file">
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          {roomId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><span className="spin" aria-hidden="true" />Sending to {rowan?.name ?? 'Rowan'}</> : `Refine it in a chat with ${rowan?.name ?? 'Rowan'}`}</button>}
+          {roomId && <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><span className="spin" aria-hidden="true" />Sending to {author}</> : `Refine it in a chat with ${author}`}</button>}
         </div>
       </Modal>
     )

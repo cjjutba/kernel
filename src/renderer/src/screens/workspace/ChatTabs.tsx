@@ -28,7 +28,7 @@ const base = (path: string) => path.split('/').pop() ?? path
  */
 export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
   workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
-  /** The Lead's workspace shows New chat with Rowan, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+  /** The Lead's workspace shows New chat, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
@@ -64,7 +64,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
   // since that closes the chat (KERNEL-338); another tab closes at once.
   const close = (ids: string[]) => {
     closeMenu()
-    // Closing a chat with Rowan's last tab archives the chat, the way its row's Archive does, and asks first when that would stop something (KERNEL-405).
+    // Closing a Lead chat's last tab archives the chat, the way its row's Archive does, and asks first when that would stop something (KERNEL-405).
     const whole = closesThread(getState(), workspaceId, ids)
     const ws = getState().workspaces.find((w) => w.id === workspaceId)
     if (whole && ws && isLeadChatWorkspace(ws)) return attempt('Could not archive the chat', () => archiveChatFromSidebar(whole))

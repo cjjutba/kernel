@@ -3,7 +3,7 @@ import { instructionOf } from './pr/model'
 import { userView } from './sender'
 import { cardData } from './cards/teamUpdate'
 
-/** One thing the chat rail lists: a message the user sent, or in Rowan's chat a Team update. `more` counts the update's rows after the first. */
+/** One thing the chat rail lists: a message the user sent, or in the Lead's chat a Team update. `more` counts the update's rows after the first. */
 export interface RailEntry { id: string; label: string; more: number; update: boolean }
 
 /** The rail is hidden until the chat has this many entries to list. */
@@ -56,7 +56,7 @@ export function updateLabel(item: UserItem): { label: string; more: number } | u
 }
 
 /**
- * What the rail lists, oldest first: the messages the user sent, as the thread draws them in a bubble, and in Rowan's chat the
+ * What the rail lists, oldest first: the messages the user sent, as the thread draws them in a bubble, and in the Lead's chat the
  * Team updates (KERNEL-599). Replies, tool calls, Kernel's notes and the instruction cards a button sent are not listed.
  */
 export function railEntries(items: ChatItem[], lead: boolean): RailEntry[] {

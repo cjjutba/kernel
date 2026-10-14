@@ -98,7 +98,7 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
 }
 
 /**
- * The room's Lead, shown only while it has no open chat to list. It opens New chat with Rowan, where the first message starts a chat in its
+ * The room's Lead, shown only while it has no open chat to list. It opens New chat, where the first message starts a chat in its
  * own workspace (KERNEL-405). Its icon shows what waits on you, and a working Lead adds the spinner at its right end.
  */
 function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
@@ -113,10 +113,10 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const shown = restIcon(g, leadGlyph('idle', waiting), 'chat')
   return (
     <>
-      <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
+      <button className="nav-item nav-sub" {...card.bind} aria-current={current ? 'page' : undefined} data-arrive={arrive ? '' : undefined} aria-label={`New chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
         <Glyph g={shown} />
-        <span className="grow ellipsis">{lead.name}</span>
-        {slot?.hint ? <KeyHint n={slot.n} /> : <><span className="muted" style={{ fontSize: 12 }}>Lead</span>{g.icon === 'spin' && <RunningMark />}</>}
+        <span className="grow ellipsis">New chat</span>
+        {slot?.hint ? <KeyHint n={slot.n} /> : g.icon === 'spin' ? <RunningMark /> : null}
       </button>
       {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} hold={card.hold} />}
     </>

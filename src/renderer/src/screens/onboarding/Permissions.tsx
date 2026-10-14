@@ -62,11 +62,11 @@ export function Permissions() {
   // One line says why a mode is off. A Codex Lead has its own sentence (SetupPermissionsNoAuto.png). The reason covers Auto and Bypass together, so it sits under Auto when that is off.
   const why = (m: PermissionMode): string | undefined => {
     if (!can || allowed(m)) return undefined
-    if (m === 'auto') return lead === 'codex' ? `Auto isn't available for Codex agents yet. Rowan runs on ${PROVIDER_NAME[lead]}.` : can.reason ?? "Auto isn't available on this Claude account."
+    if (m === 'auto') return lead === 'codex' ? `Auto isn't available for Codex agents yet. Kernel runs on ${PROVIDER_NAME[lead]}.` : can.reason ?? "Auto isn't available on this Claude account."
     return can.auto ? can.reason : undefined
   }
-  const foot = recommended === 'auto' ? `Rowan runs on ${PROVIDER_NAME[lead]}, so Auto is the default.`
-    : lead === 'codex' ? `Rowan runs on ${PROVIDER_NAME[lead]}, so Accept edits is the default.`
+  const foot = recommended === 'auto' ? `Kernel runs on ${PROVIDER_NAME[lead]}, so Auto is the default.`
+    : lead === 'codex' ? `Kernel runs on ${PROVIDER_NAME[lead]}, so Accept edits is the default.`
       : "Auto isn't available, so Accept edits is the default."
 
   const choose = (m: PermissionMode) => { if (allowed(m)) setPicked(m) }

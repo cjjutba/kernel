@@ -83,7 +83,7 @@ export async function mergeAndToast(workspaceId: string) {
 
 /**
  * What `MergeButton` draws for a view. `busy` is the label while this button's own merge call runs, such as "Merging". A PR
- * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button, Rowan or
+ * that reads merging, or has a merge pending, spins in every place it shows, whoever started the merge: a button, the Lead or
  * Merge all (KERNEL-417, KERNEL-520).
  */
 export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {

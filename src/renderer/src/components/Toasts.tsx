@@ -9,7 +9,7 @@ import './toasts.css'
 
 /**
  * `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 2.6s, or stays while hovered. Swiping
- * it right or pressing its action dismisses it sooner.
+ * it right or down, or pressing its action dismisses it sooner.
  * The update card sits last, under them (KERNEL-164). The stack stays mounted so a closed card stays closed.
  */
 export function Toasts() {

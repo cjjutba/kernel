@@ -2,7 +2,7 @@ import type { Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 
 /**
- * The chat doesn't wait for setup: a chat with Rowan with nothing held for setup in main (KERNEL-490). Its first message went at
+ * The chat doesn't wait for setup: a Lead chat with nothing held for setup in main (KERNEL-490). Its first message went at
  * once, or Kernel opened it with none, and no brief is on its way, so what you send goes at once, or waits in main if the chat is held.
  */
 export const skipsSetup = (ws: Workspace, held: boolean) => isLeadChatWorkspace(ws) && !held

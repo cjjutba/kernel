@@ -18,7 +18,7 @@ import './accounts.css'
 
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
 const EXECUTABLES = [{ value: 'bundled', label: 'Bundled with Kernel' }, { value: 'system', label: 'System, from your PATH' }]
-const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your chat with Rowan is never held.'
+const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your Lead chat is never held.'
 
 /** Both providers use account id `cli` for their own login, so every state is keyed by provider and id. */
 const keyOf = (a: Pick<AccountProfile, 'provider' | 'id'>) => `${a.provider}:${a.id}`
@@ -157,7 +157,7 @@ export function Accounts({ s }: { s: AppSettings }) {
         })
       }
       if (!a.active && !!others.length) details.push({ k: 'Organization', v: `Same organization as ${joinNames(others)}, so they may share limits` })
-      details.push({ k: 'Sign-in source', v: a.cli ? `${NAME[a.provider]}’s own login, also used in Terminal` : 'Added in Kernel' })
+      details.push({ k: 'Sign-in source', v: a.cli ? `${NAME[a.provider]}’s own login, also used in Terminal` : a.alsoCli ? `Added in Kernel, also ${NAME[a.provider]}’s own login in Terminal` : 'Added in Kernel' })
     }
     const backText = blocked && !out ? (at ? `Back ${resetPhrase(at, now)}` : 'At a limit') : undefined
     return (

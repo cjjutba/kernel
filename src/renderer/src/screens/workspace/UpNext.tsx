@@ -12,7 +12,7 @@ const SHOWN = 3
 const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub', jira: 'Jira' }
 
 /**
- * Up next, under New chat with Rowan's composer: the room tracker's issues nobody has started, the most pressing first, as
+ * Up next, under New chat's composer: the room tracker's issues nobody has started, the most pressing first, as
  * `issues.next` lists them, less the ones a workspace in the room already started from. Plan hands the issue to `onPlan` as a chip.
  * A room with no tracker, one on Jira, whose issues Kernel can't list yet, or a tracker that doesn't answer shows nothing.
  */

@@ -123,7 +123,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const sharedId = tab?.startsWith('shared:') ? tab.slice(7) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
-  // A room whose last chat was closed has no chat to show: New chat with Rowan is drawn instead, and the first message starts the chat (KERNEL-366).
+  // A room whose last chat was closed has no chat to show: New chat is drawn instead, and the first message starts the chat (KERNEL-366).
   // A terminal tab is shown while it is the one open, until + or ⌘T ask for the box (`newChat`).
   const noChat = leadHasNoChat(isLead, everyChat)
   const showNewChat = showsNewChat(noChat, newChat, chats, tab)
@@ -176,15 +176,15 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   useWorkspaceShortcuts({ workspaceId, chatId: chat?.id, openDiff: (path) => select(diffTab(path)) })
 
   if (!ws) return <div className="panel" />
-  // A chat with Rowan with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
+  // A Lead chat with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
   const ownPr = !isLead || (isLeadChatWorkspace(ws) && (hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
   const title = headerTitle(ws)
-  // Rowan's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
+  // the Lead's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
   // stays, and it has no copy: the title is plain text there.
   const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
   // A chat waiting for setup shows what waits and where setup stands (KERNEL-430). It draws a failed setup as its own card, so the
   // banner doesn't say it a second time. A teammate's brief still on its way keeps the box shut, so nothing goes out before it. A chat
-  // with Rowan that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
+  // with the Lead that isn't held shows its transcript and stays open while setup runs (KERNEL-490).
   const gate = setupGate({ status: ws.status, skips, held: heldForSetup, empty })
   const setupWait = gate.wait && chat?.kind !== 'terminal'
   const banner = setupWait && found?.id === 'setup' ? undefined : found
@@ -302,7 +302,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 }
 
 /**
- * New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists before the first message, which makes the chat's own
+ * New chat in a room with no open chat (KERNEL-366). No workspace exists before the first message, which makes the chat's own
  * worktree (KERNEL-405), so there are no tabs and no right panel.
  */
 export function LeadNewScreen({ roomId }: { roomId: string }) {

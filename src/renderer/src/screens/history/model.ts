@@ -7,12 +7,12 @@ export type HistoryTab = 'all' | 'merged' | 'notMerged'
 export const endedAt = (w: Workspace) => w.archivedAt ?? w.mergedAt ?? w.createdAt
 
 /**
- * The archived workspaces History lists, newest first. A chat with Rowan is one of them, named by its chat (KERNEL-405). The shared Lead
+ * The archived workspaces History lists, newest first. A Lead chat is one of them, named by its chat (KERNEL-405). The shared Lead
  * workspace from before isn't: its chats moved out.
  */
 export const archivedList = (workspaces: Workspace[]) => workspaces.filter((w) => w.status === 'archived' && !(w.lead && !w.threadId)).sort((a, b) => endedAt(b) - endedAt(a))
 
-/** The name History shows: a chat with Rowan's title, else the workspace's name (KERNEL-405). */
+/** The name History shows: a Lead chat's title, else the workspace's name (KERNEL-405). */
 export const historyName = (w: Workspace, threads: Record<string, Thread>) => (isLeadChatWorkspace(w) ? threads[w.threadId!]?.title ?? w.title ?? w.name : w.name)
 
 export const inTab = (w: Workspace, tab: HistoryTab) => tab === 'all' || (tab === 'merged') === (w.prState === 'merged')
