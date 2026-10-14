@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import type { AppSettings, PushCheck, PushCheckRow, RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
-import { Button, CodeBlock, Select, useBusy } from '../../../ui'
-import { isOverride, NoRoom, Row, RoomPage, Section, StatusLine, useRoomPage } from '../kit'
+import { Button, CodeBlock, SegmentedControl, Select, Toggle, useBusy } from '../../../ui'
+import { NoRoom, Row, RoomPage, roomValue, Section, StatusLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 const USE_DEFAULT = ''
@@ -92,36 +92,35 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   if (!room || !roomId) return <NoRoom />
   const app = s.workspace
   const set = (patch: Partial<Record<keyof RoomSettings['workspace'], string | boolean | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
-  const reset = (key: keyof RoomSettings['workspace']) => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
-  const choice = (appValue: string, list: { value: string; label: string }[]) => [{ value: USE_DEFAULT, label: `Default (${appValue})` }, ...list]
-  const flag = (key: 'deleteBranchOnArchive' | 'archiveOnMerge' | 'archiveChatWorkspaces', label: string) => (
-    <Row label={label} onReset={reset(key)}>
-      <Select label={label} align="right" value={onOff(rs?.workspace[key])} onChange={(v) => set({ [key]: v ? v === 'on' : null })} options={choice(yesNo(app[key]), [{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }])} />
+  const state = (key: keyof RoomSettings['workspace']) => roomValue(rs, `workspace.${key}`, () => set({ [key]: null }), { to: { page: 'git' }, label: 'Settings, Git' })
+  const flag = (key: 'deleteBranchOnArchive' | 'archiveOnMerge' | 'archiveChatWorkspaces', label: string, desc?: string) => (
+    <Row label={label} desc={desc} {...state(key)}>
+      <Toggle label={label} checked={rs?.workspace[key] ?? app[key]} onChange={(v) => set({ [key]: v })} />
     </Row>
   )
-  const own = (key: 'baseRef' | 'remote') => rs?.workspace[key] ?? USE_DEFAULT
+  const own = (key: 'baseRef' | 'remote') => rs?.workspace[key] ?? app[key]
   const named = (list: string[], current: string) => [...new Set([...(current ? [current] : []), ...list])].map((v) => ({ value: v, label: v }))
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
   return (
     <RoomPage room={room} rs={rs} title="Git">
       <PushAccess roomId={roomId} remote={rs?.workspace.remote ?? app.remote} />
-      <Section title="New workspaces" scope="mac">
-        <Row setting="workspace.mode" label="Workspace type" onReset={reset('mode')}>
-          <Select label="Workspace type" align="right" value={rs?.workspace.mode ?? USE_DEFAULT} onChange={(v) => set({ mode: v || null })} options={choice(MODE[app.mode], [{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }])} />
+      <Section title="New workspaces">
+        <Row setting="workspace.mode" label="Workspace type" {...state('mode')}>
+          <SegmentedControl label="Workspace type" value={rs?.workspace.mode ?? app.mode} onChange={(v) => set({ mode: v })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
         </Row>
-        <Row setting="workspace.baseRef" label="Branch from" onReset={reset('baseRef')}>
-          <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v || null })} options={choice(app.baseRef, named(branches, own('baseRef')))} />
+        <Row setting="workspace.baseRef" label="Branch from" {...state('baseRef')}>
+          <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v })} options={named(branches, own('baseRef'))} />
         </Row>
-        <Row label="Remote" onReset={reset('remote')}>
-          <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v || null })} options={choice(app.remote, named(remotes.length ? remotes : ['origin'], own('remote')))} />
+        <Row label="Remote" {...state('remote')}>
+          <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v })} options={named(remotes.length ? remotes : ['origin'], own('remote'))} />
         </Row>
-        <Row setting="workspace.leadBranchPattern" label="Lead chat branch names" onReset={reset('leadBranchPattern')}>
-          <LeadPattern value={rs?.workspace.leadBranchPattern ?? ''} placeholder={`${app.leadBranchPattern}  Default`} save={(v) => set({ leadBranchPattern: v })} />
+        <Row setting="workspace.leadBranchPattern" label="Lead chat branch names" {...state('leadBranchPattern')}>
+          <LeadPattern value={rs?.workspace.leadBranchPattern ?? app.leadBranchPattern} placeholder={app.leadBranchPattern} save={(v) => set({ leadBranchPattern: v })} />
         </Row>
       </Section>
-      <Section title="Cleanup" scope="mac">
+      <Section title="Cleanup">
         {flag('deleteBranchOnArchive', 'Delete the branch on archive')}
-        {flag('archiveOnMerge', 'Archive on merge')}
+        {flag('archiveOnMerge', 'Archive on merge', 'Review workspaces go too.')}
         {flag('archiveChatWorkspaces', 'Archive a chat’s workspaces with it')}
       </Section>
     </RoomPage>

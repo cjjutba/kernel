@@ -9,18 +9,16 @@ import { ReviewerPicker } from '../../rooms/ReviewerPicker'
 import './rooms.css'
 import { shortFile, warningText } from '../../agent/model'
 import { STARTER_TEAMMATES } from '../../rooms/draft'
-import { NoRoom, Row, RoomPage, Section, SettingsLink, sourceLine, useRoomPage } from '../kit'
+import { NoRoom, Row, RoomPage, roomValue, Section, SettingsLink, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 import { agentGroup, cleanDescription } from './agentRows'
 
 const NO_AGENTS: AgentDef[] = []
-const SAME_AS_APP = ''
 
 /** The open-workspace choices: the app's number first, then 1 to 8, a saved number outside them, and No limit (KERNEL-493). */
 function openWorkspaceOptions(saved: number | undefined, appLimit: number) {
-  const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : [])])].sort((a, b) => a - b)
+  const counts = [...new Set([1, 2, 3, 4, 5, 6, 7, 8, ...(saved ? [saved] : []), ...(appLimit > 0 ? [appLimit] : [])])].sort((a, b) => a - b)
   return [
-    { value: SAME_AS_APP, label: `Default (${appLimit > 0 ? appLimit : 'No limit'})` },
     ...counts.map((n) => ({ value: String(n), label: String(n) })),
     { value: '0', label: 'No limit' }
   ]
@@ -154,7 +152,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
         </Row>
         {!!files.length && (
-          <Row label="Reviewer" labelId="rm-reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request.">
+          <Row label="Reviewer" labelId="rm-reviewer" desc="Reviews each pull request.">
             <ReviewerPicker value={reviewerPick} agents={files.filter((a) => !a.lead)} disabled={busy !== null} labelledBy="rm-reviewer" onChange={(id) => void setTeam('reviewer', { reviewer: id })} />
           </Row>
         )}
@@ -185,8 +183,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {!!files.length && (
         <Section label="Limits">
-          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`Workspaces ${lead?.name ?? 'the Lead'} keeps open here. Reviews don’t count.`}>
-            <Select label="Open workspaces" align="right" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: v === SAME_AS_APP ? null : Number(v) } })} />
+          <Row label="Open workspaces" {...roomValue(rs, 'agents.openWorkspaces', () => void patchRoomSettings(roomId, { agents: { openWorkspaces: null } }), { to: { page: 'models' }, label: 'Settings, Models and effort' })} desc={`Workspaces ${lead?.name ?? 'the Lead'} keeps open here. Reviews don’t count.`}>
+            <Select label="Open workspaces" align="right" value={String(rs?.agents?.openWorkspaces ?? s.models.agentLimit)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: Number(v) } })} />
           </Row>
         </Section>
       )}

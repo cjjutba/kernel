@@ -564,7 +564,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomPermissions: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } } })),
   // KERNEL-455: the room's mode menu is open, over Use app default.
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
-  SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the room.
+  SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
@@ -615,7 +616,28 @@ export const platformFixtures: Record<string, Fixture> = {
         }
       },
       // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
-      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] }
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
+    }),
+    agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
+  })),
+  // KERNEL-726: a shared review setting was just changed, so the page says to commit settings.toml.
+  SettingsRoomPrsSaved: scene((f) => ({
+    ...clientA({
+      review: {
+        rounds: 2,
+        kinds: {
+          code: { enabled: true, paths: [], required: true, model: 'claude-opus-5-5', provider: 'claude' },
+          security: { enabled: true, paths: ['src/api/**', 'src/auth/**', 'db/migrations/**'], required: true, agent: 'theo', model: 'claude-opus-5-5', provider: 'claude' },
+          ux: { enabled: true, paths: ['src/renderer/**/*.tsx', '**/*.css'], required: false, agent: 'wren', model: 'claude-sonnet-5-5', provider: 'claude' }
+        }
+      },
+      // KERNEL-594: the shared `[merge] always_review`, as the canvas's box lists it.
+      merge: { alwaysReview: ['src/billing/**', 'db/migrations/**'] },
+      pr: { ...kernelFiles.pr, mergeMethod: 'rebase' },
+      sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' }
     }),
     agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => ({ ...a, reviewer: false })) },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'prs' } }
