@@ -1062,23 +1062,6 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/**
- * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
- * reads Opus 5.5, not the PNG's Sonnet 5.5. Plan mode is off here, as the PNG draws it. The app's default (Settings, Models) is on.
- */
-const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
-  settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
-  branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
-  openPrs: [
-    { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'samrivera' },
-    { number: 43, title: 'fix(auth): invite links expire after 7 days', branch: 'fix/invite-expiry', author: 'jordan' },
-    { number: 41, title: 'feat(org): invite members by email', branch: 'feat/org-invites', author: 'samrivera' },
-    { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'jordan' }
-  ],
-  issues: [{ id: 'T-16', title: 'Client portal login' }, { id: 'T-17', title: 'Bulk export for accountants' }, { id: 'T-18', title: 'Dark mode for invoice PDFs' }],
-  ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
-}))
-
 /** The invoice table's turns, newest first. */
 const checkpoints: Checkpoint[] = ([
   ['4', 10, 31, 'Done. The table sorts by date, client and amount', [4, 412, 38]],
@@ -1655,12 +1638,27 @@ const turnFilesLong = () => turnFilesScene([
   tfEnd(7, 40, [11, 8], TF_LONG)
 ], TF_PANEL_LONG)
 
+/**
+ * KERNEL-788: the chat New chat started, right after the send. Its right panel is held closed whatever `rightPanel` says (`panelHeld`), so the shot has the
+ * panel setting on and still no panel. `opened` is the same chat once the toggle was pressed in it, which clears the hold and shows the panel on PRs.
+ */
+function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
+  const title = 'Settings search plan'
+  const ask: ChatItem = { kind: 'user', id: 'ns-u1', ts: Date.now() - 4000, parts: [{ type: 'issue', name: 'KERNEL-731', title: 'Settings search opens the page and lands on the setting', source: 'linear' }, { type: 'text', text: ' Plan this one. Enter should open the first match too.' }] }
+  // The chat has the one tab it started with. Its title is the chat's, in the breadcrumb and the tab.
+  const g = grouped(f, {
+    running: opened ? [] : [ids.leadChat], right: 'prs',
+    chats: (c) => c.filter((x) => x.threadId !== GROUPED.export || x.id === ids.leadChat).map((x) => (x.id === ids.leadChat ? { ...x, title } : x)),
+    threads: (t) => t.map((x) => (x.id === GROUPED.export ? { ...x, title } : x)),
+    ...(opened ? {} : { items: { [ids.leadChat]: [ask, tool('ns-t1', 'Reading the settings search code', 'rg search src/renderer/src/screens/settings', { name: 'Read', status: 'running', ts: Date.now() - 4000, durationMs: undefined })] } })
+  })
+  // Just started, it has handed nothing off, so the room shows no PR yet. Opened, it has Kai's PRs the frame lists.
+  const own = g.workspaces!.map((w) => (w.id === ids.lead ? { ...w, title } : w)).filter((w) => opened || (!w.leadChatId && !w.prNumber))
+  const kept = new Set(own.map((w) => w.id))
+  return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
-  NewWorkspace: newWorkspace(),
-  NewWorkspaceBranch: newWorkspace('branch'),
-  NewWorkspaceFrom: newWorkspace('from'),
-  NewWorkspaceModel: newWorkspace('model'),
-  NewWorkspacePlus: newWorkspace('plus'),
   Workspace: scene(() => ({ ui: open })),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
   WorkspaceIssue: scene((f) => ({
@@ -2224,12 +2222,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
   NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
+  NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene((f) => ({
     ...noPlan(leadNoChats(f)),
     branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
   })),
   NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
   NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
+  // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
+  // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
+  NewChatAfterSend: scene((f) => noPlan(startedFromNewChat(f, false))),
+  ChatPanelOpened: scene((f) => noPlan(startedFromNewChat(f, true))),
   NewChatLinked: scene((f) => {
     const g = noPlan(leadNoChats(f))
     const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
@@ -2426,7 +2429,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
-  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'newWorkspace', roomId: ids.lead } } })),
+  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [

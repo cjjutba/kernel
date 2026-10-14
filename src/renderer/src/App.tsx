@@ -9,7 +9,7 @@ import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { McpSetUp } from './screens/settings/pages/McpSetUp'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
-import { openLead } from './lead'
+import { openLead, openNewChat } from './lead'
 // Settings loads lazily (below), but its stylesheet stays eager, in the slot the screen's import used to fill. Other screens lean on
 // rules in settings.css (the compact .nav-item). A new stylesheet under screens/settings has to be imported here too, or it becomes
 // a lazy chunk that lands after tokens.css.
@@ -48,7 +48,6 @@ import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { ConfirmRevert } from './screens/workspace/ConfirmRevert'
-import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
 import { useArchiveLanding } from './screens/workspace/archiveLanding'
 import { useArchiveStage } from './screens/workspace/archiveMotion'
@@ -93,7 +92,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
-    case 'leadNew': return <LeadNewScreen roomId={route.roomId} />
+    case 'leadNew': return <LeadNewScreen roomId={route.roomId} source={route.source} picks={route.picks} />
     case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} agentId={route.agentId} />
     case 'devUi': return <DevUi page={route.page} />
   }
@@ -102,7 +101,6 @@ function Screen({ route }: { route: Route }): ReactNode {
 /** The one modal shell's contents (DESIGN.md: one modal at a time). */
 function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
-    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} source={modal.source} picks={modal.picks} />
     case 'search': return <CommandPalette />
     case 'newRoom': return <NewRoom prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />
@@ -213,12 +211,13 @@ export function App() {
       if (e.code === 'KeyJ' && !e.shiftKey && !e.altKey && !e.ctrlKey) { e.preventDefault(); toggleBottomPanel() }
       // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }
-      // ⌘N and ⌘⇧N open New chat, and close it when it is already open (like Esc, so a draft is handled the same). Over any other modal they do nothing (it would reset that modal) and so do they during onboarding.
+      // ⌘N and ⌘⇧N open the New chat page, and go back from it when it is already open (like Esc, so the draft is kept). Over a modal they do nothing, and so do they during onboarding.
       if (e.key.toLowerCase() === 'n' && !e.altKey && !e.ctrlKey) {
         e.preventDefault()
         const s = getState()
-        if (s.ui.modal?.name === 'newWorkspace') actions.ui.closeModal()
-        else if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() })
+        if (s.ui.modal || s.ui.route.name === 'onboarding') return
+        if (s.ui.route.name === 'leadNew') actions.ui.back()
+        else openNewChat(currentRoom())
       }
       // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {

@@ -1,9 +1,9 @@
-import type { ChatPart, Effort, HeldChat } from '@shared/types'
+import type { ChatPart, Effort, HeldChat, PermissionMode } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions } from '../../store'
-import { openLeadChat } from '../../lead'
+import { actions, getState, loadWorkspace } from '../../store'
+import { openLeadChat, openNewChat } from '../../lead'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
-import { clearDraft, NEW_CHAT_DRAFT } from '../workspace/composer/draftStore'
+import { clearDraft, loadPicks, newChatDraftOf } from '../workspace/composer/draftStore'
 import { briefParts, leadMessage } from './brief'
 import { startAnywayLine } from './taken'
 
@@ -13,31 +13,42 @@ export interface ChatStart {
   model: string
   effort: Effort
   plan: boolean
+  /** The permission mode the box picked, left out while it follows the room or Settings. */
+  mode?: PermissionMode
   /** The target branch picked, empty for the room's default. */
   baseRef: string
 }
 
 /**
- * Opens a new chat with the room's Lead, sends the brief there and lands on it as soon as the engine answers, before its worktree
- * exists (KERNEL-542). Resolves with why it couldn't send, and nothing once it has. The box keeps its draft until a send succeeds.
+ * Starts a chat with the room's Lead, sends the brief there and lands on it as soon as the engine answers, before its worktree
+ * exists (KERNEL-542). Resolves with why it couldn't send, and nothing once it has. The room's box keeps its draft until a send
+ * succeeds. The new chat opens with its right panel closed, whatever the global setting says, until the toggle is pressed there (KERNEL-788).
  */
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
-  try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.baseRef ? { baseRef: c.baseRef } : {}) }) }
+  try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}) }) }
   catch (e) { return cleanError(e) }
-  clearDraft(NEW_CHAT_DRAFT)
+  clearDraft(newChatDraftOf(c.roomId))
+  // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
+  try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
   // The engine answered before the worktree exists and pushes the workspace, so the chat opens now and says what it waits for.
   actions.chats.upsert(chat)
-  // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
+  actions.ui.holdPanel(chat.workspaceId)
   focusComposerWhenOpen(chat.id)
-  actions.ui.closeModal()
   // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).
   await openLeadChat(c.roomId, chat.id)
 }
 
-/** New chat again, with the words, source and picks it had when the issue warning stopped it. Nothing was sent. */
-export const backToNewChat = (h: HeldChat) => actions.ui.openModal({ name: 'newWorkspace', roomId: h.roomId, source: h.source, picks: h.picks })
+/**
+ * New chat again after the issue warning's Cancel. The page it came from is still under the warning with its words, chip and picks, so
+ * closing the warning is enough. Had the user gone elsewhere meanwhile, the page opens with the source and picks it had. Nothing was sent.
+ */
+export function backToNewChat(h: HeldChat) {
+  const { route } = getState().ui
+  if (route.name === 'leadNew' && route.roomId === h.roomId) actions.ui.closeModal()
+  else openNewChat(h.roomId, { source: h.source, picks: h.picks })
+}
 
 /**
  * Start anyway on the issue warning. The Lead is told the user knows, so it passes confirm when it hands the issue off. A chat
@@ -46,7 +57,8 @@ export const backToNewChat = (h: HeldChat) => actions.ui.openModal({ name: 'newW
 export async function startHeld(h: HeldChat): Promise<void> {
   const { model, effort, plan, baseRef } = h.picks
   const issue = h.source.kind === 'issue' ? h.source.id : ''
-  const failed = await startChat({ roomId: h.roomId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, baseRef })
+  const mode = loadPicks(newChatDraftOf(h.roomId))?.mode
+  const failed = await startChat({ roomId: h.roomId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, mode, baseRef })
   if (!failed) return
   backToNewChat(h)
   actions.ui.toast({ title: failed })

@@ -1,4 +1,4 @@
-import type { Chat, Route, Thread, UiState, Workspace } from '@shared/types'
+import type { Chat, NewChatPicks, Route, Thread, UiState, Workspace, WorkspaceSource } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import type { State } from './store'
 
@@ -148,13 +148,27 @@ const isText = (v: unknown): v is string => typeof v === 'string' && v !== ''
 /** Paths, where an empty one is real: the diff tab of all changes is `diff:` with no path. */
 const paths = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
+/** What New chat starts from, as a saved route holds it, or nothing when it isn't one of the three kinds. */
+function soundSource(v: any): WorkspaceSource | undefined {
+  if (v?.kind === 'issue' && isText(v.id) && typeof v.title === 'string') return { kind: 'issue', id: v.id, title: v.title, ...(isText(v.url) ? { url: v.url } : {}), ...(['linear', 'github', 'jira'].includes(v.tracker) ? { tracker: v.tracker } : {}) }
+  if (v?.kind === 'pr' && typeof v.number === 'number' && typeof v.title === 'string') return { kind: 'pr', number: v.number, title: v.title }
+  if (v?.kind === 'branch' && isText(v.branch)) return { kind: 'branch', branch: v.branch }
+  return undefined
+}
+
+/** What New chat had picked, as a saved route holds it, or nothing when a field is missing or the wrong type. */
+function soundPicks(v: any): NewChatPicks | undefined {
+  const ok = (v?.mode === 'worktree' || v?.mode === 'current') && isText(v.model) && isText(v.effort) && typeof v.plan === 'boolean' && typeof v.baseRef === 'string'
+  return ok ? { mode: v.mode, model: v.model, effort: v.effort, plan: v.plan, baseRef: v.baseRef } : undefined
+}
+
 /** A saved route made sound, or nothing. Missing ids would open a screen with no room or workspace, so they are rejected here. */
 function soundRoute(r: any): Route | undefined {
   switch (r?.name) {
     case 'home': case 'inbox': case 'history': case 'rooms': return { name: r.name }
     case 'issues': return { name: 'issues', ...(isText(r.issueId) ? { issueId: r.issueId } : {}), ...(isText(r.roomId) ? { roomId: r.roomId } : {}) }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
-    case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId } : undefined
+    case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId, ...(soundSource(r.source) ? { source: soundSource(r.source) } : {}), ...(soundPicks(r.picks) ? { picks: soundPicks(r.picks) } : {}) } : undefined
     // Agents load after the first route is chosen, and older builds saved task, floor and board routes that no longer exist, so these open their room's Agents page in Settings (KERNEL-642).
     case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? roomAgents(r.roomId) : undefined
     default: return undefined // onboarding, devUi, settings and anything unknown are never reopened

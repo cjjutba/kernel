@@ -325,6 +325,12 @@ describe('restorePlace', () => {
       expect(restorePlace(saved(route), getState())?.route).toEqual(route)
     }
   })
+  it('keeps the source and picks of the New chat page, and drops ones that are not whole (KERNEL-788)', () => {
+    const source = { kind: 'issue', id: 'KERNEL-9', title: 'Toast says which account', url: 'https://linear.app/x/KERNEL-9', tracker: 'linear' }
+    const picks = { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: true, baseRef: 'origin/dev' }
+    expect(restorePlace(saved({ name: 'leadNew', roomId: 'r1', source, picks }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1', source, picks })
+    expect(restorePlace(saved({ name: 'leadNew', roomId: 'r1', source: { kind: 'issue' }, picks: { ...picks, plan: 'yes' } }), getState())?.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+  })
   it('has nothing to restore for no value, bad JSON, an unknown version or a route it will not reopen', () => {
     expect(restorePlace(null, getState())).toBeUndefined()
     expect(restorePlace('{nope', getState())).toBeUndefined()

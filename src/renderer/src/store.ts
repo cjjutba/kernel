@@ -206,11 +206,13 @@ let state: State = {
   prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
-  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
+  ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), panelHeld: [], bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
 }
 const listeners = new Set<() => void>()
 
 export function getState() { return state }
+/** Whether the right panel shows in a workspace: the global setting, unless a New chat holds it closed there (KERNEL-788). */
+export const panelShownIn = (ui: Pick<UiState, 'rightPanel' | 'panelHeld'>, workspaceId?: string) => ui.rightPanel && !(workspaceId && ui.panelHeld.includes(workspaceId))
 export function setState(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   listeners.forEach((l) => l())
@@ -531,7 +533,16 @@ export const actions = {
     },
     restoreBottomCollapsed: (kind: BottomKind) => actions.ui.setBottomCollapsed(kind, bottomCollapsed(kind), false),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
-    setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
+    /** Opening or closing the panel by hand ends the hold a New chat put on the workspace in view (KERNEL-788). */
+    setRightPanel: (open: boolean) => {
+      folded.delete('rightPanel')
+      const { route, panelHeld } = state.ui
+      const held = route.name === 'workspace' && panelHeld.includes(route.workspaceId)
+      setUi({ rightPanel: open, ...(held && { panelHeld: panelHeld.filter((id) => id !== route.workspaceId) }) })
+      keep('rightPanel', open)
+    },
+    /** The workspace's panel stays closed until the toggle is pressed in it, whatever the global setting says. The panel never opens by itself (KERNEL-788). */
+    holdPanel: (workspaceId: string) => { if (!state.ui.panelHeld.includes(workspaceId)) setUi({ panelHeld: [...state.ui.panelHeld, workspaceId] }) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
     fold: (panel: keyof typeof HIDDEN, narrow: boolean) => {
       if (narrow && getState().ui[panel]) { folded.add(panel); setUi(panel === 'sidebar' ? { sidebar: false } : { rightPanel: false }) }

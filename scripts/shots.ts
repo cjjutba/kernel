@@ -192,13 +192,6 @@ async function hoverAndFocusRows(page: Page) {
   await page.waitForTimeout(300)
 }
 
-// NewWorkspaceFromGitHub and NewWorkspaceFromNone are the From popover on its Issues tab. The tab is local to the modal (KERNEL-471).
-async function openIssuesTab(page: Page) {
-  await page.getByRole('tab', { name: 'Issues' }).click()
-  await page.mouse.move(0, 0)
-  await page.waitForTimeout(300)
-}
-
 // HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
 async function hoverTitle(page: Page) {
   await page.locator('.ws-title-btn').hover()
@@ -259,6 +252,47 @@ async function openCompare(page: Page) {
 async function openWhere(page: Page, name: string | RegExp, item?: string | RegExp) {
   await page.getByRole('button', { name }).click()
   if (item) await page.getByRole('menuitemradio', { name: item }).first().waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+// NewChatKeyboard drives the where row with the keyboard only and throws when a step does not do what it should: a picker opens on Enter,
+// Escape closes it and gives the focus back to its button, Enter on a row picks it, and the room pick moves the breadcrumb and the route.
+async function driveWhereByKeyboard(page: Page) {
+  const key = (k: string) => page.keyboard.press(k)
+  const room = () => page.getByRole('button', { name: /^Room:/ })
+  const must = async (ok: boolean, what: string) => { if (!ok) throw new Error(`NewChatKeyboard: ${what}`) }
+  const crumb = () => page.locator('.ws-crumb, header').first().innerText()
+  const before = await room().getAttribute('aria-label')
+
+  await room().focus(); await key('Enter')
+  await page.getByRole('menuitemradio', { name: /Client B/ }).first().waitFor()
+  await key('Escape')
+  await must(await page.getByRole('menuitemradio', { name: /Client B/ }).count() === 0, 'Escape did not close the room picker')
+  await must(await room().evaluate((el) => el === document.activeElement), 'Escape did not return focus to the room button')
+
+  await key('Enter')
+  await page.getByRole('menuitemradio', { name: /Client B/ }).first().waitFor()
+  // Arrows walk the rows from the top, so the focus lands on Client B within a few presses.
+  for (let i = 0; i < 6 && !(await page.getByRole('menuitemradio', { name: /Client B/ }).first().evaluate((el) => el === document.activeElement)); i++) await key('ArrowDown')
+  await must(await page.getByRole('menuitemradio', { name: /Client B/ }).first().evaluate((el) => el === document.activeElement), 'ArrowDown did not reach Client B')
+  await key('Enter')
+  await page.waitForTimeout(200)
+  await must((await room().getAttribute('aria-label')) !== before, 'Enter did not pick the room')
+  await must((await crumb()).includes('Client B'), 'the breadcrumb did not follow the room pick')
+
+  const mode = page.getByRole('button', { name: /^Work as:/ })
+  await mode.focus(); await key('Enter')
+  await page.getByRole('menuitemradio', { name: /Local/ }).first().waitFor()
+  for (let i = 0; i < 4 && !(await page.getByRole('menuitemradio', { name: /Local/ }).first().evaluate((el) => el === document.activeElement)); i++) await key('ArrowDown')
+  await key('Enter')
+  await page.waitForTimeout(200)
+  await must(/Local/.test((await mode.getAttribute('aria-label')) ?? ''), 'Enter did not pick Local')
+
+  await page.getByRole('textbox').first().click()
+  await page.keyboard.type('Check the invoice export')
+  // Cmd+Enter sends: the send button turns to its busy label while Kernel answers.
+  await key('Meta+Enter')
+  await page.getByRole('button', { name: /Sending|Checking/ }).waitFor({ timeout: 2000 }).catch(() => must(false, 'Cmd+Enter did not send'))
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -397,6 +431,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   LeadNoChatsBranch: openBaseBranch,
   NewChatRoomPicker: (page) => openWhere(page, /^Room:/, /Client B/),
   NewChatMode: (page) => openWhere(page, /^Work as:/, /Local/),
+  NewChatKeyboard: driveWhereByKeyboard,
   NewChatBranch: openBranchMenu,
   NewChatLocal: hoverLocalBranch,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
@@ -419,8 +454,6 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceHistoryButtonsNarrow: narrowSidebar,
   PanelTabsOverflow: narrowPanel,
   LeadPrsNarrow: panelAtNarrowest,
-  NewWorkspaceFromGitHub: openIssuesTab,
-  NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
