@@ -6,6 +6,7 @@ import { call } from '../../api'
 import { isLeadWorkspace, leadOf, openLeadChat } from '../../lead'
 import { collapsedWord } from './bottomWord'
 import { actions, go, useStore, type State } from '../../store'
+import { useRemembered } from '../../remember'
 import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, Spinner, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { patchRoomSettings, useRemote, useRoomSettings } from '../settings/useSettings'
@@ -461,10 +462,11 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // A script that is running stays in the picker, so it can be stopped, even after Settings renamed or removed it or before they load.
   const runningNames = useStore((s) => runningRuns(s, ws.id).join('\n')).split('\n').filter(Boolean)
   const names = pickerNames((rs?.runScripts ?? []).map((r) => r.name), runningNames)
-  // The Run tab shows one run script at a time. Each keeps its own output and exit (KERNEL-249).
-  const [picked, setPicked] = useState<Record<string, string>>({})
-  // Until one is picked, the tab shows a script that is running, else the first.
-  const selected = names.includes(picked[ws.id]) ? picked[ws.id] : names.find((n) => runningNames.includes(n)) ?? names[0] ?? 'run'
+  // The Run tab shows one run script at a time. Each keeps its own output and exit (KERNEL-249). The pick is the room's, since its
+  // scripts are, and it stays when you leave the workspace (DESIGN.md, Remembered choices).
+  const [picked, setPicked] = useRemembered(`kernel.runScript:${ws.roomId}`, (raw) => raw ?? '')
+  // Until one is picked, or when the picked one is gone from Settings, the tab shows a script that is running, else the first.
+  const selected = names.includes(picked) ? picked : names.find((n) => runningNames.includes(n)) ?? names[0] ?? 'run'
   const scriptName = bottom === 'run' ? selected : undefined
   const dataKey = scriptKey(bottom === 'run' ? 'run' : 'setup', scriptName)
   const fallback = useStore((s) => (s.scripts[ws.id] ?? []).filter((l) => (bottom === 'setup' ? l.kind === 'setup' : l.kind === 'run' && l.name === selected)).map((l) => l.line + '\r\n').join(''))
@@ -529,7 +531,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       </div>
       {!collapsed && bottom === 'run' && names.length > 1 && (
         <div className="run-picker">
-          <SegmentedControl label="Run script" busyPattern="snake" value={selected} onChange={(name) => setPicked((p) => ({ ...p, [ws.id]: name }))} options={names.map((name) => ({ value: name, label: name, busy: runningNames.includes(name) }))} />
+          <SegmentedControl label="Run script" busyPattern="snake" value={selected} onChange={setPicked} options={names.map((name) => ({ value: name, label: name, busy: runningNames.includes(name) }))} />
         </div>
       )}
       {!collapsed && bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}

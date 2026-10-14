@@ -13,9 +13,12 @@ function WhereButton({ label, open, disabled, onClick, children }: { label: stri
   )
 }
 
-/** The room New chat starts in. Search, the rooms with a check on the current one, then New room. There is no "No project" row. */
-export function RoomPicker({ rooms, room, open, disabled, onToggle, onClose, onPick, onNewRoom }: {
-  rooms: Room[]; room: Room | undefined; open: boolean; disabled?: boolean
+/**
+ * The room New chat starts in, opened from the title: the room's name, underlined, in "What's next for Kernel?", or a Pick a room button
+ * when the page has no room. Search, the rooms with a check on the current one, then New room. There is no "No project" row.
+ */
+export function RoomPicker({ variant, rooms, room, open, disabled, onToggle, onClose, onPick, onNewRoom }: {
+  variant: 'title' | 'button'; rooms: Room[]; room: Room | undefined; open: boolean; disabled?: boolean
   onToggle: () => void; onClose: () => void; onPick: (id: string) => void; onNewRoom: () => void
 }) {
   const anchor = useRef<HTMLSpanElement>(null)
@@ -25,12 +28,12 @@ export function RoomPicker({ rooms, room, open, disabled, onToggle, onClose, onP
   const shown = rooms.filter((r) => !needle || r.name.toLowerCase().includes(needle))
   const pick = (id: string) => { onPick(id); close(true) }
   return (
-    <span ref={anchor} className="cmp-branch-anchor">
-      <WhereButton label={`Room: ${room?.name ?? 'none'}`} open={open} disabled={disabled} onClick={onToggle}>
-        <RoomIcon room={room} size={16} /><span className="ellipsis">{room?.name}</span>
-      </WhereButton>
+    <span ref={anchor} className={variant === 'title' ? 'lead-room-anchor' : 'cmp-branch-anchor'}>
+      {variant === 'title'
+        ? <button type="button" className="lead-room" disabled={disabled} aria-label={`Room: ${room?.name ?? 'none'}, change room`} aria-haspopup="menu" aria-expanded={open} data-tip={(room?.name.length ?? 0) > 24 ? room?.name : undefined} onClick={onToggle}><span className="ellipsis">{room?.name}</span></button>
+        : <Button disabled={disabled} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>Pick a room<Icon name="chevron" size={12} /></Button>}
       {open && (
-        <WherePop anchorRef={anchor} label="Room" width={248} onClose={close} focusFirst={false}
+        <WherePop anchorRef={anchor} label="Room" width={248} drop="down" onClose={close} focusFirst={false}
           onKey={(e) => { if (e.key === 'Enter' && e.target instanceof HTMLInputElement && shown[0]) { e.preventDefault(); pick(shown[0].id) } }}>
           <PopSearch label="Search rooms…" value={text} onChange={setText} />
           <div className="where-list" role="group" aria-label="Rooms">

@@ -126,6 +126,13 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Remembered choices
+
+- A choice the user makes stays until they change it: a tab, a filter, a picked room, mode, branch or script, a width. Leaving the screen, opening another chat or relaunching never resets it.
+- A choice tied to a room (New chat's picks, a room's GitHub filter, its picked run script) is kept per room, and goes when the room is archived or removed.
+- Screens keep a choice through `remember.ts` (`useRemembered`, `readSaved`, `writeSaved`), never with `useState` alone and never with localStorage directly. `test/remember.test.ts` enforces the second part.
+- A remembered value that no longer fits (a branch that is gone, a script removed from Settings) falls back to the default instead of showing something broken.
+
 ## Saving in Settings
 
 - Every Settings page has one muted line under its title: "Changes save as you make them." (KERNEL-721).

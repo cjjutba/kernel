@@ -137,7 +137,7 @@ export class Integrations extends Feature {
   /** The room's issue tracker. Jira only when the room sets `[tracker] kind = "jira"` (KERNEL-474). */
   async trackerFor(roomId: string): Promise<Tracker> {
     const { room, repo, kind } = await this.detect(roomId)
-    if (kind === 'linear') return linearTracker(() => this.linearKey(), this.linearFetch)
+    if (kind === 'linear') return linearTracker(() => this.linearKey(), this.linearFetch, repo.linear?.team)
     if (kind === 'github') return githubTracker(room.path)
     if (kind === 'jira') return jiraTracker({ creds: () => this.jiraAccount(), project: repo.jira?.project, transition: repo.jira?.transition, fetch: this.o.fetch })
     return noneTracker()

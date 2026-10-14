@@ -4,21 +4,22 @@ import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, pastedText } from './attach'
 import { ComposerChip } from './Chip'
 import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
-import { loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
+import { dropRoomDrafts, loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
 
 const text = (t: string): ChatPart => ({ type: 'text', text: t })
 
 // A draft lasts as long as its chat. Checking the chat list on every change of it covers an archived workspace (from the sidebar or the
 // Lead's archive_workspace), a removed room and a chat that is gone, wherever the app is looking. Drafts come back from disk at launch
 // for workspaces whose chats have not loaded yet, so nothing is pruned before the app has booted, and a draft is only dropped for a
-// missing chat once its workspace's chat list has loaded (see `pruneDrafts`).
-let seen: { chats: unknown; workspaces: unknown } | null = null
+// missing chat once its workspace's chat list has loaded (see `pruneDrafts`). A room's New chat draft, and its picks, last as long as the room.
+let seen: { chats: unknown; workspaces: unknown; rooms: unknown } | null = null
 subscribe(() => {
   const s = getState()
-  if (!s.system.booted || (seen && seen.chats === s.chats && seen.workspaces === s.workspaces)) return
-  seen = { chats: s.chats, workspaces: s.workspaces }
+  if (!s.system.booted || (seen && seen.chats === s.chats && seen.workspaces === s.workspaces && seen.rooms === s.rooms)) return
+  seen = { chats: s.chats, workspaces: s.workspaces, rooms: s.rooms }
   persistDrafts(!isFixture())
   pruneDrafts(s, chatsLoaded)
+  dropRoomDrafts(s.rooms.filter((r) => !r.archived).map((r) => r.id))
 })
 
 /** The workspace a chat belongs to, or empty when no workspace lists it, which keeps its draft in memory only. */

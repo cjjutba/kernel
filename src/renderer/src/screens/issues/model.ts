@@ -175,12 +175,22 @@ export function workspaceSlug(url: string | undefined): string | undefined {
 // ---------- GitHub Issues (KERNEL-471)
 
 /**
- * What narrows a GitHub list. It isn't saved between launches: a room's labels and milestones are its own, so a leftover one would
- * hide issues in the next room with nothing saying why. A repo that never assigns issues has nothing under Mine, so the list opens on All.
+ * What narrows a GitHub list. It is kept per room, since a room's labels and milestones are its own and a leftover one would hide
+ * issues in the next room with nothing saying why. A repo that never assigns issues has nothing under Mine, so the list opens on All.
  */
 export interface GithubFilter { mine: boolean; label?: string; milestone?: string }
 
 export const DEFAULT_GITHUB_FILTER: GithubFilter = { mine: false }
+
+/** Where a room's GitHub filter is kept. */
+export const githubFilterKey = (roomId: string) => `kernel.githubFilter:${roomId}`
+
+/** A stored GitHub filter, field by field: anything that isn't one reads as the default. */
+export function parseGithubFilter(v: unknown): GithubFilter {
+  if (!v || typeof v !== 'object') return { ...DEFAULT_GITHUB_FILTER }
+  const { mine, label, milestone } = v as Record<string, unknown>
+  return { mine: mine === true, ...(typeof label === 'string' && label ? { label } : {}), ...(typeof milestone === 'string' && milestone ? { milestone } : {}) }
+}
 
 /** "maya-chen" becomes "MC" and "cjjutba" "CJ": a login splits at its dashes, dots and underscores the way a name splits at spaces. */
 export const loginInitials = (login: string) => initials(login.replace(/[-_.]+/g, ' '))

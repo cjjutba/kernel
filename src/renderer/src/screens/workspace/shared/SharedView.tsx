@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { SharedFile, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
+import { oneOf, useRemembered } from '../../../remember'
 import { Button, Icon, Menu, SegmentedControl, useBusy, type MenuEntry } from '../../../ui'
 import { Markdown } from '../markdown'
 import { attempt } from '../MessageActions'
@@ -33,7 +34,7 @@ export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sha
 
 function Loaded({ workspaceId, file, version }: { workspaceId: string; file: SharedFile; version: SharedVersion }) {
   const by = useSharer(file)
-  const [width, setWidth] = useState<PreviewWidth>('desktop')
+  const [width, setWidth] = useRemembered<PreviewWidth>('kernel.previewWidth', oneOf<PreviewWidth>(['desktop', 'tablet', 'phone'], 'desktop'))
   const [again, setAgain] = useState(0)
   const [versions, setVersions] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)

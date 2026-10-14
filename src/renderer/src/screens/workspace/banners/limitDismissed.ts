@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { isFixture } from '../../../store'
+import { readSavedJson, writeSavedJson } from '../../../remember'
 import { limitBannerExpired } from './model'
 
 /**
@@ -13,8 +13,7 @@ const listeners = new Set<() => void>()
 
 function read(): ReadonlySet<string> {
   if (keys) return keys
-  let saved: unknown
-  if (!isFixture()) try { saved = JSON.parse(localStorage.getItem(KEY) ?? '[]') } catch { /* not restored */ }
+  const saved = readSavedJson(KEY, (v) => v)
   const now = Date.now()
   return (keys = new Set(Array.isArray(saved) ? saved.filter((k): k is string => typeof k === 'string' && !limitBannerExpired(k, now)) : []))
 }
@@ -22,7 +21,7 @@ function read(): ReadonlySet<string> {
 export function dismissLimitBanner(key: string) {
   const now = Date.now()
   keys = new Set([...read()].filter((k) => !limitBannerExpired(k, now)).concat(key))
-  if (!isFixture()) try { localStorage.setItem(KEY, JSON.stringify([...keys])) } catch { /* not remembered */ }
+  writeSavedJson(KEY, [...keys])
   for (const l of listeners) l()
 }
 

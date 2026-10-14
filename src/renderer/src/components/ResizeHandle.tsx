@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type PointerEvent, type RefObject } from 'react'
+import { readSaved, writeSaved } from '../remember'
 import './resize.css'
 
 const STEP = 8
@@ -6,14 +7,12 @@ const BIG_STEP = 32
 
 /** The saved width, read once, or null when none is saved. localStorage may be missing or blocked, and a stored value may be junk. It clamps only to [min, max], so a width saved in a roomier window survives a narrow one; the caller caps what it shows. */
 export function readWidth(key: string, min: number, max: number): number | null {
-  try {
-    const n = Number(localStorage.getItem(key))
-    return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, Math.round(n))) : null
-  } catch { return null }
+  const n = Number(readSaved(key))
+  return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, Math.round(n))) : null
 }
 /** Only a width the user chose is stored, so the default can still change. */
 function keepWidth(key: string, w: number | null) {
-  try { if (w === null) localStorage.removeItem(key); else localStorage.setItem(key, String(w)) } catch { /* not remembered */ }
+  writeSaved(key, w === null ? null : String(w))
 }
 
 /** What letting go at `raw` does: hide the target when it has a hide threshold and `raw` is under it, else commit the clamped width, so a handle without one stops at its minimum. */

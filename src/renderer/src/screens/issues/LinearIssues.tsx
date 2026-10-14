@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import type { LinearIssue, LinearScope } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
+import { readSaved as readStored, writeSaved } from '../../remember'
 import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { IssueDetail } from './IssueDetail'
 import { FilterChip, IssuesHeader, typing, type RoomHead } from './parts'
 import {
-  clearedFilter, cyclesFor, cycleLabel, describeFilter, DEFAULT_FILTER, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
+  clearedFilter, cyclesFor, cycleLabel, describeFilter, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
 } from './model'
 import './issues.css'
@@ -26,7 +27,7 @@ function failure(e: unknown): View {
 }
 
 function readSaved(): SavedFilter {
-  try { return parseFilter(localStorage.getItem(FILTER_KEY)) } catch { return { ...DEFAULT_FILTER } }
+  return parseFilter(readStored(FILTER_KEY))
 }
 
 /** The name of the Linear workspace, kept from the last time an issue came back, so the header can still say it while Linear is down. */
@@ -106,7 +107,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
 
   // A change of filter or search reads the lists again. The first load, and a filter that load corrected, already did.
   useEffect(() => {
-    try { localStorage.setItem(FILTER_KEY, serializeFilter(filter)) } catch { /* not remembered */ }
+    writeSaved(FILTER_KEY, serializeFilter(filter))
     if (!scopeRef.current || loadedKey.current === `${serializeFilter(filter)}|${query}`) return
     const t = window.setTimeout(() => void load(false), query ? 250 : 0)
     return () => window.clearTimeout(t)

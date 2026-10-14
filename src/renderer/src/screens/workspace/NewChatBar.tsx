@@ -16,9 +16,11 @@ export function NewChatHeader({ room }: { room?: Room }) {
   return (
     <header className="header">
       <SidebarToggle />
-      <RoomIcon room={room} className="crumb-avatar" />
-      <span className="crumb">{room?.name}</span>
-      <span className="muted"><Icon name="right" size={12} /></span>
+      {room && !room.archived && <>
+        <RoomIcon room={room} className="crumb-avatar" />
+        <span className="crumb">{room.name}</span>
+        <span className="muted"><Icon name="right" size={12} /></span>
+      </>}
       <h1 className="ellipsis">New chat</h1>
       <span className="grow" />
     </header>
