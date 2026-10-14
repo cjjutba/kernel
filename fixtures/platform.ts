@@ -569,6 +569,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
   SettingsPRsClamped: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsSavedLight: settingsPage('prs', { settings: { ...prSettings, appearance: { ...prSettings.appearance, theme: 'light' } } }),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
   SettingsRoomSetupFiles: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
