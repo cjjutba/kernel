@@ -448,12 +448,14 @@ export class Providers extends Feature {
     }
     if (!changed) return
     await this.save()
-    // The CLI's own login that is also an added account says so on that account's read, so one login saves one notice (KERNEL-701).
-    if (was === true && !who.signedIn && !o.quiet && (a || !this.twinOfCli(provider, rec))) {
+    if (was === true && !who.signedIn && !o.quiet) {
       const name = a?.label ?? file[provider].cli?.label ?? file[provider].cli?.email ?? OWN_LOGIN[provider]
       // One a day at most: a session the server refuses while `auth status` still reads signed in goes round every 10 seconds.
       const day = new Date().toISOString().slice(0, 10)
-      this.notifications.notice({ id: `n-signed-out-${provider}-${id ?? CLI_ACCOUNT}-${day}`, title: `${name} is signed out`, sub: 'Sign in again in Settings, Providers.', heading: `${name} is signed out`, body: `${name} is signed out. Sign in again in Settings, Providers.` })
+      // The CLI's own login that is also an added account saves under that account's id, so when both sign out, whichever is
+      // read first says so and the other adds nothing. One that signs out alone still says so (KERNEL-701).
+      const on = a?.id ?? this.twinOfCli(provider, rec)?.id ?? CLI_ACCOUNT
+      this.notifications.notice({ id: `n-signed-out-${provider}-${on}-${day}`, title: `${name} is signed out`, sub: 'Sign in again in Settings, Providers.', heading: `${name} is signed out`, body: `${name} is signed out. Sign in again in Settings, Providers.` })
     }
     // The plan defaults follow the plan of the account in use (KERNEL-225).
     if (planChanged && provider === 'claude' && id === this.active('claude')) void this.k.account.accountChanged().catch(() => undefined)

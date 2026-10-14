@@ -1727,7 +1727,23 @@ describe('One login, one row (KERNEL-701)', () => {
     await claude.setLogin(k.providers.claudeHome(side.id), null)
     await claude.setLogin('cli', null)
     await k.providers.readUsage({ force: true })
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toHaveLength(1)
+    await k.stop()
+  })
+
+  it("still says the CLI login signed out when it signs out alone, and the added account doesn't", async () => {
+    const { k, claude, add, runLogin } = await setUp()
+    const side = await add('claude', 'side@example.com')
+    await runLogin('side@example.com')
+    await k.providers.readUsage({ force: true })
+    // claude auth logout in Terminal: only the CLI's own login signs out.
+    await claude.setLogin('cli', null)
+    await k.providers.readUsage({ force: true })
     expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out')).map((n) => n.title)).toEqual(['side@example.com is signed out'])
+    // The added account signs out later the same day: it is the same login, so nothing new is saved.
+    await claude.setLogin(k.providers.claudeHome(side.id), null)
+    await k.providers.readUsage({ force: true })
+    expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toHaveLength(1)
     await k.stop()
   })
 })
