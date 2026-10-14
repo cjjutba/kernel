@@ -126,7 +126,7 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
  * the chat icon. They read the same approvals and `running` flags as the tabs. It opens the chat's own workspace on the tab last shown in it. A chat
  * that handed off workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
  * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405). A running turn swaps
- * the icon for the loader, unless the chat itself waits on you, where the wait is all the row shows (KERNEL-601).
+ * the icon for the loader, unless something waits on you, where the wait keeps the icon (KERNEL-601).
  */
 function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, onSettled }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey; leaving?: Gone; onSettled?: () => void }) {
   const approvals = useStore((s) => s.approvals)
@@ -145,8 +145,8 @@ function ChatItemRow({ roomId, thread, ws, tabs, owned, folded, slot, leaving, o
   // Plan mode tints the icon `plan` blue, like the composer: a tab that plans, or a plan waiting for approval. The shape still says the state (no-amber-icons).
   const planning = tabs.some((c) => c.plan) || waiting.some(isPlanApproval)
   const g = chatGlyph({ ws, waiting, running, trust })
-  // The icon is the one the chat has at rest. A wait on one of its own tabs stops the turn, so it shows no spinner; one on a hidden workspace doesn't.
-  const busy = g.icon === 'spin' || (running && !waits.some((w) => w.key.startsWith('chat:')))
+  // The loader takes the icon only when nothing waits on you: a wait, on a tab or on a hidden workspace, keeps its icon until it is answered.
+  const busy = g.icon === 'spin'
   const shown = restIcon(g, chatGlyph({ ws, waiting, running: false, trust }), 'chat')
   // A new reply in any tab, or in a hidden workspace while folded, bolds the title. The icon keeps its own state (KERNEL-508).
   const unread = useStore((s) => chatUnread({ tabs, owned, chats: s.chats, folded, current }))
