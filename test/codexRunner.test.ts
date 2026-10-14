@@ -364,7 +364,7 @@ describe('permission modes on Codex (KERNEL-447)', () => {
     expect(off.of('note').map((n) => n.text)).toEqual([NETWORK_OFF, NETWORK_OFF])
   })
 
-  it.fails('refuses a file change under a reference folder in every mode, as Claude does (KERNEL-743)', async () => {
+  it.fails('refuses a file change under a reference folder in every mode, as Claude does (KERNEL-743, fix tracked in KERNEL-790)', async () => {
     const t = track(await setup({ mode: 'bypassPermissions', references: ['/tmp/client-a-api'] }))
     await t.sessions.send('chat', [{ type: 'text', text: script(
       { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
