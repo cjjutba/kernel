@@ -175,6 +175,31 @@ describe('the padding under a sent message (KERNEL-803)', () => {
   })
 })
 
+describe('a message that travels more than a screen lands at its gap (KERNEL-825)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ anchorGoal: (scrollTop: number, markTop: number, viewTop: number) => number; anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number; ANCHOR_GAP: number }>
+
+  it('aims at a position more than a view away, and the padding keeps that position inside the range', async () => {
+    const { anchorGoal, anchorPad } = await load()
+    const view = 700
+    // The reader is 1500px above the end of 2000px of rows when the 90px message is added at the bottom of them.
+    const scrollTop = 400
+    const markTop = 2000 - 90 - scrollTop
+    const goal = anchorGoal(scrollTop, markTop, 0)
+    expect(goal - scrollTop).toBeGreaterThan(view)
+    const pad = anchorPad(view, markTop, 2000 - scrollTop)
+    expect(2000 + pad - view).toBeGreaterThanOrEqual(goal)
+  })
+
+  it('moves the aim by what the rows above the message shift mid-glide', async () => {
+    const { anchorGoal, ANCHOR_GAP } = await load()
+    const before = anchorGoal(800, 900, 0)
+    // Rows measured a frame after the glide passed them grew by 12px, so the message sits 12px lower at the same scroll position.
+    expect(anchorGoal(800, 912, 0)).toBe(before + 12)
+    // Once there, the message sits exactly at the gap.
+    expect(anchorGoal(before + 12, ANCHOR_GAP, 0)).toBe(before + 12)
+  })
+})
+
 describe('what a send anchors (KERNEL-803)', () => {
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsSend: (item: ChatItem | undefined) => boolean }>
 

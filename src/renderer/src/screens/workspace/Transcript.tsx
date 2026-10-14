@@ -48,6 +48,13 @@ export interface ScrollView { scrollTop: number; scrollHeight: number; clientHei
 /** The gap between the top of the view and the message a send anchors there (KERNEL-803). */
 export const ANCHOR_GAP = 16
 
+/** Frames the anchored message must sit at its gap before the aim ends, and the most frames it keeps aiming (KERNEL-825). */
+const AIM_CALM = 12
+const AIM_FRAMES = 150
+
+/** The scroll position that puts the anchored message ANCHOR_GAP under the top of the view, from where it and the view sit on screen now. */
+export const anchorGoal = (scrollTop: number, markTop: number, viewTop: number) => Math.round(scrollTop + markTop - viewTop - ANCHOR_GAP)
+
 /**
  * The padding under the thread while a sent message sits at the top of the view (KERNEL-803): what is left of the view below the message and everything
  * after it, so the reply fills in under the message. `anchorTop` and `endBottom` are viewport coordinates of the message and of the end of the thread's rows.
@@ -915,6 +922,31 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     padNow.current = next
     box.style.paddingBottom = next ? `${next}px` : ''
   }
+  // Rows far above the message are measured a frame after the glide passes them, so the message moves while the scroll runs and a target taken once lands short.
+  // Aim again whenever the target moves, until the message has sat at the gap for a few frames. The reader's own scrolling ends it.
+  const aiming = useRef(0)
+  const aim = (id: string, smooth: boolean) => {
+    cancelAnimationFrame(aiming.current)
+    let aimed = NaN
+    let calm = 0
+    let frames = 0
+    const step = () => {
+      const el = scroller.current
+      const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
+      if (!el || !mark || anchored.current !== id || byHand.current) { release(); return }
+      padReply()
+      const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
+      if (goal !== aimed) {
+        aimed = goal
+        if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTo({ top: goal, behavior: smooth ? 'smooth' : 'auto' })
+      }
+      calm = Math.abs(goal - el.scrollTop) < 1 ? calm + 1 : 0
+      if (calm >= AIM_CALM || ++frames >= AIM_FRAMES) { if (calm < AIM_CALM) el.scrollTo({ top: goal, behavior: 'auto' }); release(); return }
+      aiming.current = requestAnimationFrame(step)
+    }
+    step()
+  }
+  useEffect(() => () => cancelAnimationFrame(aiming.current), [])
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
   const anchorSend = (id: string) => {
     release()
@@ -922,13 +954,11 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     anchored.current = id
     pinned.current = false
     padReply()
-    const el = scroller.current
-    const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-    if (!el || !mark) return
+    if (!scroller.current || !thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)) return
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
     gliding.current = smooth
-    el.scrollTo({ top: el.scrollTop + mark.getBoundingClientRect().top - el.getBoundingClientRect().top - ANCHOR_GAP, behavior: smooth ? 'smooth' : 'auto' })
     show(false)
+    aim(id, smooth)
   }
   // The thread grows without gaining a row: a reply streaming text into the one it has, a step opening, a turn folding into its summary. Follow its size, not its row count.
   const height = useRef(0)

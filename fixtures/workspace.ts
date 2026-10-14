@@ -1891,6 +1891,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** A long chat right after a send (KERNEL-825): the message travelled more than a screen and sits 16px from the top with the Working line under it. scripts/shots.ts delivers the send after the chat opens at its end. */
+  WorkspaceJustSentLong: scene((f) => ({
+    items: { [ids.tableChat]: longChat },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
   ChatRestoredSpot: scene(() => ({
     items: { [ids.tableChat]: [
