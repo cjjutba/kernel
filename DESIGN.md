@@ -148,11 +148,11 @@ A button that waits on the main process shows it is working until the call retur
   | --- | --- |
   | Send (messages, answers, plans, tests) | `arrow-right` |
   | Merge | `ripple-in` |
-  | Approve, allow, deny, trust | `pulse` |
-  | Archive, discard, remove, delete, close, disconnect, cancel | `scatter` |
+  | Approve, allow, deny, trust, and confirming a risky choice (Bypass permissions, Start anyway, Overrule) | `pulse` |
+  | Archive, discard, remove, retire, delete, close, disconnect, cancel | `scatter` |
   | Refresh, retry, reload, restart, recheck | `rotate` |
   | Run and stop scripts | `snake` |
-  | Restore, revert, reset, switch account, sign in to a usage account | `wave-back` |
+  | Restore, revert, reset, switch account or program, sign in to a usage account | `wave-back` |
   | Everything else (save, create, open, copy, add, install, connect, export, move, compact, commit, link) | `ripple-out` |
 
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
