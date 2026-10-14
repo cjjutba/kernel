@@ -362,7 +362,7 @@ describe('Kernel start (KERNEL-155)', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
-    // The last run: Rowan's plan waits for an answer, with its row in Needs you. Then the app quits.
+    // The last run: Kernel's plan waits for an answer, with its row in Needs you. Then the app quits.
     const before = new Store(join(dataDir, 'kernel.db'))
     const plan = approval({ id: 'plan', kind: 'plan', toolName: undefined, title: 'Plan for the Ulat release' })
     before.saveApproval(plan)

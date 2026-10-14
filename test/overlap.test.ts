@@ -37,7 +37,7 @@ afterEach(() => { pushed.length = 0; logged.length = 0 })
 const service = (all: () => Workspace[], saved?: Store) => new Overlaps({
   workspaces: () => all(),
   since: (ws) => mergeBase(ws.path, ws.baseRef),
-  leadId: () => 'rowan',
+  leadId: () => 'kernel',
   saved
 })
 const overlapEvents = () => pushed.filter((e): e is Extract<PushEvent, { type: 'overlap' }> => e.type === 'overlap').map((e) => e.overlap)
@@ -71,7 +71,7 @@ describe('overlap detection across two real worktrees', () => {
       { agentId: 'noor', workspaceId: noor.id, lines: 'lines 18-40' }
     ])
     const line = logged.find((e) => e.kind === 'overlap')!
-    expect(line).toMatchObject({ roomId: 'r', agentId: 'rowan', object: 'invoices.ts', warn: true })
+    expect(line).toMatchObject({ roomId: 'r', agentId: 'kernel', object: 'invoices.ts', warn: true })
     expect(line.data).toMatchObject({ workspaceIds: [kai.id, noor.id] })
 
     // The next turn changes nothing: no second line, no second push.

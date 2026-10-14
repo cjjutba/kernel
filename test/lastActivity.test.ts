@@ -8,8 +8,8 @@ import { bus } from '../src/main/bus'
 import { actions, apply, getState } from '../src/renderer/src/store'
 import type { ActivityEvent } from '../src/shared/types'
 
-const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'noor', 'rowan', 'theo', 'wren']
-const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'rowan' ? 'lead: true\n' : ''}---\nYou are ${id}.`
+const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'noor', 'kernel', 'theo', 'wren']
+const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'kernel' ? 'lead: true\n' : ''}---\nYou are ${id}.`
 
 describe('rooms.lastActivity (KERNEL-104)', () => {
   it("returns each agent's newest event from the whole log, so it holds past the 200-event window", async () => {
@@ -25,7 +25,7 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
 
       // Everyone acted once, a while ago. Then Eli logged 250 events, which push the others out of any 200-event window.
       const t = Date.now() + 10_000
-      const once: Record<string, number> = { theo: t + 50, noor: t + 40, rowan: t + 60, kai: t + 30, ivy: t + 20 }
+      const once: Record<string, number> = { theo: t + 50, noor: t + 40, kernel: t + 60, kai: t + 30, ivy: t + 20 }
       for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', roomId: room.id, agentId, text: 'did something', ts })
       bus.activity({ kind: 'note', roomId: other.id, agentId: 'wren', text: 'worked in another room', ts: t + 5000 })
       for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'eli', text: 'ran a tool', ts: t + 100 + i })

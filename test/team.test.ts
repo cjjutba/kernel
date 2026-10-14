@@ -12,7 +12,7 @@ describe('team handlers (KERNEL-19)', () => {
   it('edits, hires and retires an agent, and sees a file added outside Kernel', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\n---\nYou are Kai.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -42,7 +42,7 @@ describe('team handlers (KERNEL-19)', () => {
       const wren = await h['agents.create']({ roomId: room.id, draft })
       expect(wren).toMatchObject({ id: 'wren', origin: 'personal', file: join(home, '.claude', 'agents', 'wren.md') })
       expect(await readdir(join(home, '.claude', 'agents'))).toEqual(['wren.md'])
-      expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'rowan.md'])
+      expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'kernel.md'])
       expect(k.store.room(room.id)?.desks).toEqual(['kernel-lead', 'kai', 'wren'])
 
       // The profile's model and effort reach the chat a new workspace starts with.

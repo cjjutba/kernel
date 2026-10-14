@@ -51,7 +51,7 @@ const templates = new Map<string, Promise<{ repo: string; origin: string }>>()
 function template(files: Record<string, string>) {
   const key = JSON.stringify(files)
   if (!templates.has(key)) templates.set(key, (async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
     await run('git', ['clone', '-q', '--bare', repo, origin])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -349,8 +349,8 @@ describe('a hand-off that waits for a merge', () => {
     const b = await target(k, 170)
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     await mergeOnGitHub(k, a)
-    const rowan = (await k.agents(room.id)).find((x) => x.lead)!
-    const tool = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'wait_for_merge')!
+    const kernel = (await k.agents(room.id)).find((x) => x.lead)!
+    const tool = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'wait_for_merge')!
     const out = (await tool.handler({ workspace_id: w.id, on: [] } as never, {})).content[0] as { text: string }
     expect(out.text).toBe('Kai no longer waits. Kernel sent the brief, so Kai starts now.')
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
@@ -439,8 +439,8 @@ describe('a hand-off that waits for a merge', () => {
     const { k, room, lead, target } = await setup()
     const noor = await target(k, 164)
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const archive = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'archive_workspace')!
+    const kernel = (await k.agents(room.id)).find((a) => a.lead)!
+    const archive = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'archive_workspace')!
     const out = await archive.handler({ workspace_ids: [w.id] } as never, {})
     expect((out.content[0] as { text: string }).text).toBe(`Archived ${w.name}.`)
     expect(k.store.workspace(w.id)).toMatchObject({ status: 'archived' })
@@ -620,8 +620,8 @@ describe('the Lead\'s tools', () => {
   it('create_workspace waits by PR number, says which merge starts the teammate, and list_workspaces shows it', async () => {
     const { k, room, lead, target } = await setup()
     const noor = await target(k, 164)
-    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const tools = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead))
+    const kernel = (await k.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead))
     const create = tools.find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(room.id).find((x) => x.title === 'Thinking rows')!
@@ -636,8 +636,8 @@ describe('the Lead\'s tools', () => {
     const { k, room, lead, target, mergeOnGitHub } = await setup()
     const noor = await target(k, 164)
     await mergeOnGitHub(k, noor)
-    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+    const kernel = (await k.agents(room.id)).find((a) => a.lead)!
+    const create = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: [noor.id] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(room.id).find((x) => x.title === 'Thinking rows')!
     expect(out.text).toBe(`Created ${w.id} on ${w.branch} for kai.`)
@@ -647,7 +647,7 @@ describe('the Lead\'s tools', () => {
   })
 
   it('wait_for_merge sets a wait on a teammate and refuses what it can\'t wait for', async () => {
-    const team = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
+    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
     const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', createdAt: 1, ...extra }) as Workspace
     const list = [ws('w1', { prNumber: 164 }), ws('k1', { agentId: 'kai', prState: 'none' })]
     const set: [string, string[]][] = []
@@ -694,8 +694,8 @@ function linear(blockedBy: Record<string, string[]>, o: { fail?: boolean } = {})
 
 describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   const handOff = async (k: Kernel, room: { id: string }, lead: Chat, input: object) => {
-    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+    const kernel = (await k.agents(room.id)).find((a) => a.lead)!
+    const create = kernelTools(k.lead['leadToolDeps'](room.id, kernel, lead)).find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', ...input } as never, {})).content[0] as { text: string }
     return { text: out.text, w: k.store.workspace(/^Created (\S+) on/.exec(out.text)![1])! }
   }
@@ -777,7 +777,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   }, 20_000)
 
   it("says the teammate starts once the brief goes out when the brief waits for a free slot", async () => {
-    const team = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
+    const team = [{ id: 'kernel', name: 'Kernel', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
     const noor = { id: 'w1', name: 'w1', agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
     const handOff = async (tracker?: 'linear') => {
       const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows', ...(tracker ? { tracker } : {}) }, waitsFor: { on: ['w1'], held: false } } as Workspace
@@ -796,7 +796,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     expect(await handOff()).toContain('. The issue tracker marks KERNEL-198 as blocked by KERNEL-197,')
   })
 
-  it("keeps Rowan's wait_for, even one that merged already, and doesn't add Linear's blockers", async () => {
+  it("keeps Kernel's wait_for, even one that merged already, and doesn't add Linear's blockers", async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197'] })
     const { k, room, lead, target, mergeOnGitHub } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
     await target(k, 164, 'Tool rows', 'KERNEL-197')
@@ -818,7 +818,7 @@ describe('waits, the rules', () => {
   const all = [
     ws('w1', { prNumber: 164, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } }),
     ws('old', { prNumber: 164, status: 'archived', prState: 'merged', createdAt: 9 }),
-    ws('lead', { agentId: 'rowan', mode: 'current' }),
+    ws('lead', { agentId: 'kernel', mode: 'current' }),
     ws('rv', { agentId: 'theo', reviewOf: 'w1' }),
     ws('main', { mode: 'current' }),
     ws('shut', { prState: 'closed', prNumber: 150 }),
@@ -827,7 +827,7 @@ describe('waits, the rules', () => {
     ws('k2', { agentId: 'kai', prState: 'none', waitsFor: { on: ['k3'], held: true } }),
     ws('k3', { agentId: 'kai', prState: 'none', waitsFor: { on: ['k1'], held: true } })
   ]
-  const isLead = (w: Workspace) => w.agentId === 'rowan'
+  const isLead = (w: Workspace) => w.agentId === 'kernel'
   const refuse = (refs: string[], o: Partial<Parameters<typeof waitRefusal>[0]> = {}) => waitRefusal({ workspaces: all, refs, isLead, ...o })
 
   it('finds a target by id, PR number or Linear key, open work first', () => {
@@ -893,7 +893,7 @@ describe('waits, the rules', () => {
 describe('a wait on work in another room', () => {
   /** A second room on a repo of its own, with Ivy on its team, and Ivy's workspace there with PR #`number` open. */
   async function otherRoom(k: Kernel, gh: { prs: Map<string, PrInfo> }, number: number) {
-    const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/ivy.md': AGENT('ivy') })
+    const repo = await tempRepo({ 'README.md': '# api\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/ivy.md': AGENT('ivy') })
     const api = await k.rooms.addRoom(repo)
     await trustRoom(k, api.id)
     const ivy = await k.workspaces.createWorkspace(api.id, { prompt: 'Add the invoices endpoint', agentId: 'ivy', title: `Invoices endpoint ${number}` })
@@ -904,8 +904,8 @@ describe('a wait on work in another room', () => {
   it("is refused by the Lead's tools, which see only their own room", async () => {
     const { k, room, lead, gh } = await setup()
     const ivy = await otherRoom(k, gh, 12)
-    const rowan = (await k.team.agents(room.id)).find((a) => a.lead)!
-    const tools = kernelTools(k.lead.leadToolDeps(room.id, rowan, lead))
+    const kernel = (await k.team.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead.leadToolDeps(room.id, kernel, lead))
     const call = async (name: string, input: object) => ((await tools.find((t) => t.name === name)!.handler(input as never, {})).content[0] as { text: string }).text
     const missing = (ref: string) => `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or an issue key.`
     expect(await call('create_workspace', { agent: 'kai', title: 'Invoice list', brief: 'Show invoices', wait_for: [ivy.id] })).toBe(`Not created: ${missing(ivy.id)}`)

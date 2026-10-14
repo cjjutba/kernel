@@ -795,7 +795,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
   })
 
   it("leaves starting reviews out of the Lead's prompt, since Kernel starts them itself (KERNEL-115, KERNEL-549)", async () => {
-    const lead = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
+    const lead = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
     const on = await setup()
     expect(on.k.tools.rulesFor(on.ws, lead)).toBe(LEAD_SHARING_RULE)
     const off = await setup({ pr: { autoReview: false } })

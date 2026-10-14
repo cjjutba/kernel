@@ -71,13 +71,13 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live agent files', () => {
     }
   })
 
-  it("Kernel's Rowan leads a room whose agents have no Lead", { timeout: 600_000 }, async () => {
+  it("Kernel's Kernel leads a room whose agents have no Lead", { timeout: 600_000 }, async () => {
     const { k, room, done } = await boot()
     try {
       const chat = await k.startLeadChat(room.id, { prompt: 'Who is on this team, and who takes tasks? Call list_agents and answer in two sentences.', plan: false })
       await waitFor('the Lead to answer', () => k.store.items(chat.id).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
       const said = k.store.items(chat.id).flatMap((i) => (i.kind === 'text' ? [i.text] : []))
-      console.log(`[live] Rowan said ${JSON.stringify(said.slice(-1))}`)
+      console.log(`[live] Kernel said ${JSON.stringify(said.slice(-1))}`)
       expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
       expect(k.store.items(chat.id).some((i) => i.kind === 'tool' && i.name === 'mcp__kernel__list_agents')).toBe(true)
     } finally {

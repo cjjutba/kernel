@@ -8,7 +8,7 @@ import { bus } from '../src/main/bus'
 import { Tasks, derive, nextTaskId } from '../src/main/services/tasks'
 
 const agent = (id: string, name: string, role: string, lead = false): AgentDef => ({ id, name, role, description: '', lead, prompt: '', file: `.claude/agents/${id}.md` })
-const agents = [agent('rowan', 'Rowan', 'Lead', true), agent('kai', 'Kai', 'Frontend'), agent('ivy', 'Ivy', 'QA')]
+const agents = [agent('kernel', 'Kernel', 'Lead', true), agent('kai', 'Kai', 'Frontend'), agent('ivy', 'Ivy', 'QA')]
 const ws = (extra: Partial<Workspace> = {}): Workspace => ({ id: 'w1', roomId: 'r', name: 'invoice-table', branch: 'wt/t-14', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...extra })
 
 const open: Tasks[] = []
@@ -24,7 +24,7 @@ async function setup() {
 }
 
 const plan = (extra: Partial<Approval> = {}): Approval => ({
-  id: 'p1', kind: 'plan', source: 'sdk', roomId: 'r', agentId: 'rowan', title: 'T-15 Export invoices as PDF', status: 'allowed', createdAt: 1,
+  id: 'p1', kind: 'plan', source: 'sdk', roomId: 'r', agentId: 'kernel', title: 'T-15 Export invoices as PDF', status: 'allowed', createdAt: 1,
   steps: [{ title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'kai' }, { title: 'T-15b Snapshot tests', taskId: 'T-15b', agentId: 'ivy' }, { title: 'Write the release note', agentId: 'kai' }], ...extra
 })
 

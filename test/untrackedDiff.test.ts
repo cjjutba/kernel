@@ -68,7 +68,7 @@ describe('workspaces.readImage (KERNEL-409)', () => {
   it('reads the base at the merge base of a worktree workspace', async () => {
     const repo = await tempRepo({
       'README.md': '# demo\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
     })
     await writeFile(join(repo, 'logo.png'), png(1))

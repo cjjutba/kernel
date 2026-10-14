@@ -39,7 +39,7 @@ describe('restore', () => {
   it('recreates the worktree from the branch and keeps the chats', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -81,7 +81,7 @@ describe('restore', () => {
     await expect(k.restoreWorkspace(ws.id)).rejects.toThrow(/no longer exists/)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
 
-    // With no chat open, a new chat with Rowan starts with setup (KERNEL-405), and its first message waits only for the chat's worktree
+    // With no chat open, a new chat with Kernel starts with setup (KERNEL-405), and its first message waits only for the chat's worktree
     // (KERNEL-490, KERNEL-542).
     const { id: chatId } = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Who is blocked?' })
     expect(k.sessions.queued(chatId).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Who is blocked?' }]])
@@ -96,11 +96,11 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   const users = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'user' ? [(i.parts[0] as { text: string }).text] : []))
   const notes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'note' ? [i.text] : []))
 
-  /** Rowan planning and Kai building, both mid-turn, with a message queued for Kai and Kai's Bash call still running. */
+  /** Kernel planning and Kai building, both mid-turn, with a message queued for Kai and Kai's Bash call still running. */
   async function working() {
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -113,7 +113,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const lead = await k.leadChat(room.id)
     const leadWs = await setUp(k, lead.id)
     await k.sessions.send(lead.id, text('Plan the invoice table'))
-    callIn(leadWs.path).feed({ type: 'system', subtype: 'init', session_id: 'rowan-session', apiKeySource: 'none' })
+    callIn(leadWs.path).feed({ type: 'system', subtype: 'init', session_id: 'kernel-session', apiKeySource: 'none' })
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const kai = k.store.chats(ws.id)[0]
     const call = callIn(ws.path)
@@ -153,15 +153,15 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     await flush()
     expect(users(k2, kai).at(-1)).toBe(RELAUNCH_NUDGE)
 
-    // Rowan carries on by itself too, with its prompt and its Kernel tools (amends D-116).
+    // Kernel carries on by itself too, with its prompt and its Kernel tools (amends D-116).
     const leadCall = callIn(leadWs.path, before)
     expect(k2.sessions.isRunning(lead.id)).toBe(true)
     expect(users(k2, lead).at(-1)).toBe(RELAUNCH_NUDGE)
-    expect(leadCall.options.resume).toBe('rowan-session')
-    expect(leadCall.options.systemPrompt.append).toContain('You are Rowan.')
+    expect(leadCall.options.resume).toBe('kernel-session')
+    expect(leadCall.options.systemPrompt.append).toContain('You are Kernel.')
     expect(leadCall.options.mcpServers?.kernel).toBeDefined()
 
-    // Kai's crash rides along in Rowan's next update: it carries on, so it doesn't wake Rowan.
+    // Kai's crash rides along in Kernel's next update: it carries on, so it doesn't wake Kernel.
     const saved = k2.store.meta<{ pending: [string, { events: { kind: string; resumed?: boolean; workspaceId: string }[] }][] }>('leadUpdates')
     expect(saved?.pending.flatMap(([, p]) => p.events)).toContainEqual(expect.objectContaining({ kind: 'crash', resumed: true, workspaceId: ws.id }))
   }, 30000)
@@ -295,7 +295,7 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.gitignore': '.env.local\nfail.txt\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
       '.kernel/settings.toml': `[scripts]\nsetup = "echo run >> ${log} && test ! -f fail.txt"\n\n[files]\ncopy = [".env.local", "fail.txt"]\n`
     })

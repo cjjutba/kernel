@@ -90,9 +90,9 @@ describe('agent tools', () => {
     expect(theo.allows('Write', { file_path: '/Users/you/.claude/plans/quiet-otter.md' })).toBe(true)
     expect(theo.allows('Edit', { file_path: '/Users/you/.claude/plans/quiet-otter.md' })).toBe(true)
     for (const file_path of ['/Users/you/.claude/plans/sub/x.md', '/Users/you/.claude/plans/../settings.json', '/Users/you/.claude/plans/x.json', '/repo/src/index.ts']) expect(theo.allows('Write', { file_path }), file_path).toBe(false)
-    const rowan = toolPolicy(['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear'])!
-    expect(rowan.allows('mcp__linear__save_issue')).toBe(true)
-    expect(rowan.allows('mcp__linearx__thing')).toBe(false)
+    const kernel = toolPolicy(['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear'])!
+    expect(kernel.allows('mcp__linear__save_issue')).toBe(true)
+    expect(kernel.allows('mcp__linearx__thing')).toBe(false)
     expect(toolPolicy(['mcp__claude_ai_github__*'])!.allows('mcp__claude_ai_github__search_code')).toBe(true)
     expect(toolPolicy(['Task', 'Read'])!.allows('Agent')).toBe(true)
     // A background command started with Bash can be read and stopped, and only by an agent that has Bash.

@@ -180,7 +180,7 @@ describe('Jira as a tracker (KERNEL-474)', () => {
         summary: 'Crash on save', labels: ['ui', 'Bug'], status: status('To Do', 'new'),
         description: doc(para(text('Saving '), text('crashes', [{ type: 'strong' }]))),
         comment: { comments: [
-          { author: { displayName: 'Rowan' }, body: doc(para(text('Second'))), created: '2026-10-11T10:00:00.000+0000' },
+          { author: { displayName: 'Kernel' }, body: doc(para(text('Second'))), created: '2026-10-11T10:00:00.000+0000' },
           { author: null, body: doc(para(text('First'))), created: '2026-10-10T10:00:00.000+0000' }
         ] },
         issuelinks: [
@@ -193,7 +193,7 @@ describe('Jira as a tracker (KERNEL-474)', () => {
     }))
     expect(await jiraTracker({ creds, project: 'PROJ', fetch: j.fetch }).issue('7')).toEqual({
       id: 'PROJ-7', title: 'Crash on save', url: 'https://acme.atlassian.net/browse/PROJ-7', description: 'Saving **crashes**', labels: ['ui', 'Bug'],
-      comments: [{ body: 'First', createdAt: '2026-10-10T10:00:00.000+0000' }, { author: 'Rowan', body: 'Second', createdAt: '2026-10-11T10:00:00.000+0000' }],
+      comments: [{ body: 'First', createdAt: '2026-10-10T10:00:00.000+0000' }, { author: 'Kernel', body: 'Second', createdAt: '2026-10-11T10:00:00.000+0000' }],
       blockedBy: ['PROJ-2']
     })
     expect(j.calls.map((c) => c.path)).toEqual(['/rest/api/3/issue/PROJ-7?fields=summary,description,labels,status,assignee,comment,issuelinks'])

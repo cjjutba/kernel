@@ -204,7 +204,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
       await git(other, 'push', '-q', 'origin', 'main')
     }
     const fetch = () => git(repo, 'fetch', '-q', 'origin')
-    const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-${Date.now()}`), branch: 'rowan/x', baseRef: 'origin/main' })
+    const path = await createWorktree({ repo, root: join(repo, '..', `wt-603-${Date.now()}`), branch: 'kernel/x', baseRef: 'origin/main' })
     const ws = (id: string) => ({ id, name: 'x', path, baseRef: 'origin/main' })
     return { repo, path, land, fetch, ws }
   }
@@ -284,7 +284,7 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
     expect((await snapshotWithFiles(w, { chatId: 'c', title: 'Fix it' })).files).toEqual([{ path: 'a.ts', status: 'M', added: 1, removed: 0 }])
 
     // The next turn pushes it, to its branch and to main, which moves the base onto the agent's commit.
-    await git(path, 'push', '-q', 'origin', 'HEAD:rowan/x')
+    await git(path, 'push', '-q', 'origin', 'HEAD:kernel/x')
     await git(path, 'push', '-q', 'origin', 'HEAD:main')
     const { checkpoint, files } = await snapshotWithFiles(w, { chatId: 'c', title: 'Push it' })
 

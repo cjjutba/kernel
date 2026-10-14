@@ -16,7 +16,7 @@ import { Log } from '../src/main/services/log'
 import { leadUpdateDeps, listen } from '../src/main/features/wiring'
 import type { Kernel } from '../src/main/kernel'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-72: Kernel tells the Lead what its teammates did, batched, only when the Lead can take it.
@@ -28,7 +28,7 @@ const open: LeadUpdates[] = []
 afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
 const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms))
 const done = { ok: true, interrupted: false, lead: false, queued: false, by: 'lead' as const }
-const NAMES: Record<string, string> = { rowan: 'Rowan', noor: 'Noor', kai: 'Kai' }
+const NAMES: Record<string, string> = { kernel: 'Kernel', noor: 'Noor', kai: 'Kai' }
 const REPLY = 'Linked node_modules into the worktree.\n\nTests pass.'
 
 /** `defaults`: Kernel's own delays, two seconds after the newest event and five after the oldest, for tests on fake timers. */
@@ -36,9 +36,9 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-lu-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Kernel', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   // Teammate workspaces were handed off in the Lead chat "lc" unless a test says otherwise.
-  const ws = (id: string, agentId: string, extra: Partial<Workspace> = {}) => store.saveWorkspace({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId, port: 1, status: 'ready', prState: 'none', createdAt: 1, ...(agentId === 'rowan' ? {} : { leadChatId: 'lc' }), ...extra } as Workspace)
+  const ws = (id: string, agentId: string, extra: Partial<Workspace> = {}) => store.saveWorkspace({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/x/${id}`, mode: 'worktree', agentId, port: 1, status: 'ready', prState: 'none', createdAt: 1, ...(agentId === 'kernel' ? {} : { leadChatId: 'lc' }), ...extra } as Workspace)
   const chat = (id: string, workspaceId: string) => store.saveChat({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 } as Chat)
-  ws('lead', 'rowan', { mode: 'current' })
+  ws('lead', 'kernel', { mode: 'current' })
   ws('w1', 'noor', { title: 'Symlink node_modules' })
   ws('w2', 'kai', { title: 'Inbox actions' })
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
@@ -57,7 +57,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number; defaults?: boole
       const lc = store.chat('lc')!
       return { chat: lc, ...(was ? { from: { title: was.title, ...(was.threadId && was.threadId === lc.threadId ? { tab: true } : {}) } } : {}) }
     },
-    isLead: (w) => w.agentId === 'rowan',
+    isLead: (w) => w.agentId === 'kernel',
     agentName: (_r, a) => NAMES[a],
     post: (chatId, text, update) => { if (!s.accept || s.busy.has(chatId) || s.hold?.(chatId)) return false; s.posts.push(text); s.updates.push(update); s.to.push(chatId); s.times.push(Date.now()); return true },
     holdOf: (chatId) => s.hold?.(chatId) ?? (s.busy.has(chatId) ? 'busy' : undefined),
@@ -443,7 +443,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   const BEHIND = "Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
 
   const rows: [string, TeamEvent[], PrState, Partial<WakeContext>, string[]][] = [
-    ['an error in a turn Rowan started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
+    ['an error in a turn Kernel started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
     ['a crashed session', [ev('crash')], 'none', {}, ["Noor's session ended. Tell the user they can restart it from the workspace."]],
     ['a crash a waiting message already restarted', [ev('crash', { resumed: true })], 'none', {}, []],
@@ -505,7 +505,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Noor found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],
     ['blockers found in work the user archived', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', current: true } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor found blockers in Kai's work after it was archived. Tell the user what they are in a line or two."]],
     ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', current: true } })], 'none', {}, ["Noor approved Kai's work. Ask Kai to open a pull request with message_agent (workspace w2)."]],
-    ['a turn Rowan started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a turn Kernel started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a ready PR GitHub starts blocking for a review (KERNEL-401)', [ev('pr.blocked', { blocked: 'review' })], 'ready', {}, ["PR #54 can't merge until someone approves it on GitHub. Tell the user."]],
     ['a ready PR that falls behind its base (KERNEL-401)', [ev('pr.blocked', { blocked: 'behind' })], 'ready', { reviewer: THEO }, [BEHIND]],
@@ -861,7 +861,7 @@ describe('reviews (KERNEL-130)', () => {
     u.turnDone(rv, rvc, done)
     await wait()
     expect(s.posts).toHaveLength(1)
-    // Rowan asks Theo something, and that answer is.
+    // Kernel asks Theo something, and that answer is.
     u.turnDone(rv, rvc, done)
     await wait()
     expect(s.posts).toHaveLength(2)
@@ -932,7 +932,7 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     pr('w1', 'checks')
     u.readPr('w1')
     await wait()
-    // The turn opened a PR whose checks run, so neither wakes Rowan.
+    // The turn opened a PR whose checks run, so neither wakes Kernel.
     expect(s.posts).toEqual([])
   })
 
@@ -1018,7 +1018,7 @@ describe('Stop on the Lead (KERNEL-122)', () => {
     pr('w1', 'cifail')
     await wait()
     s.accept = true
-    // The user stops Rowan: no Kernel turn may follow.
+    // The user stops Kernel: no Kernel turn may follow.
     u.turnDone(lead, lc, { ...done, lead: true, interrupted: true })
     expect(s.posts).toEqual([])
     pr('w1', 'conflict')
@@ -1388,14 +1388,14 @@ describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
 })
 
 describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () => {
-  const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
+  const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
   /** The delivery log's fields, the last line first. */
   const logged = (s: { logs: string[] }) => s.logs.filter((l) => l.startsWith('[lead-updates] delivered ')).map((l) => JSON.parse(l.slice('[lead-updates] delivered '.length)))
 
   it("sends an update a paused, offline or setup-held Lead chat couldn't take the moment Sessions lifts the hold, and logs why it waited", async () => {
     const t = await setup()
     // Sessions' own rule for what holds the Lead chat. Sending is the harness's, so nothing starts a real turn.
-    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'rowan' ? rowan : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
+    const sessions = new Sessions({ store: t.store, approvals: new Approvals(t.store), settings: () => DEFAULT_SETTINGS('/home/cj'), agentFor: (ws) => (ws.agentId === 'kernel' ? kernel : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {}, onFreed: () => t.u.flushSoon() })
     t.s.hold = (chatId) => sessions.postHold(chatId)
     const holds: [string, () => void, () => void][] = [
       ['paused', () => sessions.pause('r'), () => sessions.resume('r')],
@@ -1555,7 +1555,7 @@ describe('updates reach the Lead as soon as it can take them (KERNEL-637)', () =
     const saved = store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')!
     expect(saved.pending.flatMap(([, p]) => p.events.map((e) => e.workspaceId))).toEqual(['x1', 'x2', 'x3', 'x4'])
     const again = restart()
-    // Rowan's turn on the first update ends: the rest go next, once.
+    // Kernel's turn on the first update ends: the rest go next, once.
     again.turnDone(lead, lc, { ...done, lead: true })
     expect(tasks(1)).toEqual([1, 2, 3, 4].map((i) => `Task ${i}`))
     expect(s.updates[1].omitted).toBeUndefined()

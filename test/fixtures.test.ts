@@ -71,7 +71,7 @@ describe('fixture handlers', () => {
     expect(await h['threads.list']({})).toEqual(f.threads)
   })
 
-  it("opens a room's newest chat with Rowan, or none, and previews what archiving a chat stops (KERNEL-405)", async () => {
+  it("opens a room's newest chat with Kernel, or none, and previews what archiving a chat stops (KERNEL-405)", async () => {
     expect((await h['lead.open']({ roomId: f.rooms[0].id }))?.id).toBe('ws-lead')
     const none = fixtureHandlers({ ...f, workspaces: f.workspaces.filter((w) => !w.lead) })
     expect(await none['lead.open']({ roomId: f.rooms[0].id })).toBeNull()

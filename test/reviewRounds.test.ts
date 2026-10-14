@@ -16,7 +16,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await origin
 
 const AGENTS = {
   'README.md': '# shop\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Kai.'
 }
 const UX_ON = '[review.ux]\npaths = ["src/renderer/**"]\n'

@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('the right panel\'s bottom pane in the store', () => {
-  it('starts a third of the panel, collapsed in Rowan\'s chats and open in a teammate\'s', async () => {
+  it('starts a third of the panel, collapsed in Kernel\'s chats and open in a teammate\'s', async () => {
     const { getState } = await launch()
     expect(getState().ui.bottomRatio).toBeCloseTo(1 / 3)
     expect(getState().ui.bottomCollapsed).toEqual({ lead: true, teammate: false })
@@ -39,7 +39,7 @@ describe('the right panel\'s bottom pane in the store', () => {
     }
   })
 
-  it('keeps collapsed or open apart for Rowan\'s chats and for teammates', async () => {
+  it('keeps collapsed or open apart for Kernel\'s chats and for teammates', async () => {
     const first = await launch()
     first.actions.ui.setBottomCollapsed('lead', false)
     expect(disk.get('kernel.bottomCollapsed.lead')).toBe('0')

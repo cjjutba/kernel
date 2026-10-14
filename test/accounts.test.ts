@@ -47,7 +47,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 /** Encrypts by reversing, so a test can tell a stored token from the plain one. */
 const cipher = { encrypt: (t: string) => `enc:${[...t].reverse().join('')}`, decrypt: (d: string) => [...d.slice(4)].reverse().join('') }
 
-/** The starter agents the app ships, for Kernel's own Rowan. */
+/** The starter agents the app ships, for Kernel's own use. */
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
 async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {

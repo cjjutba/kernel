@@ -35,7 +35,7 @@ describe('a workspace held for script trust counts as needing you (KERNEL-395)',
   it('makes the room card say Needs you, and only while a workspace is held', () => {
     expect(roomState(room, [], undefined, [ws('a', { status: 'trust' })])).toBe('you')
     expect(roomState(room, [], undefined, [ws('a', { status: 'ready' })])).toBe('idle')
-    expect(roomState(room, [], { rowan: 'working' }, [ws('a', { status: 'trust', roomId: 'other' })])).toBe('working')
+    expect(roomState(room, [], { kernel: 'working' }, [ws('a', { status: 'trust', roomId: 'other' })])).toBe('working')
     expect(roomState({ ...room, archived: true }, [], undefined, [ws('a', { status: 'trust' })])).toBe('archived')
   })
 })

@@ -25,9 +25,9 @@ const { followArchives } = await import('../src/renderer/src/screens/workspace/a
 const { archivedList, historyName } = await import('../src/renderer/src/screens/history/model')
 
 const room: Room = { id: 'r1', name: 'Client A', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 }
-const rowan = { id: 'rowan', lead: true } as AgentDef
+const kernel = { id: 'kernel', lead: true } as AgentDef
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
-  ({ id, roomId: 'r1', name: id, branch: `rowan/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'rowan', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
+  ({ id, roomId: 'r1', name: id, branch: `kernel/${id}`, baseRef: 'origin/main', path: `/w/${id}`, mode: 'worktree', agentId: 'kernel', lead: true, port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const thread = (id: string, at: number): Thread => ({ id, roomId: 'r1', title: `Chat ${id}`, createdAt: at })
 const tab = (id: string, workspaceId: string, threadId: string): Chat => ({ id, workspaceId, threadId, title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 const clean = (id: string): ChatArchivePreview['workspaces'][number] => ({ id, name: id, own: true, running: false, dirty: 0, unpushed: 0 })
@@ -37,7 +37,7 @@ beforeEach(() => {
   stop = followArchives()
   calls.length = 0
   setState({
-    rooms: [room], agents: { r1: [rowan] },
+    rooms: [room], agents: { r1: [kernel] },
     workspaces: [ws('a', { threadId: 't1' }), ws('b', { threadId: 't2' })],
     threads: { t1: thread('t1', 1), t2: thread('t2', 2) },
     chats: { a: [tab('a1', 'a', 't1')], b: [tab('b1', 'b', 't2')] }
@@ -47,7 +47,7 @@ beforeEach(() => {
 
 afterEach(() => stop())
 
-describe('archiving a chat with Rowan from the sidebar (KERNEL-405)', () => {
+describe('archiving a chat with Kernel from the sidebar (KERNEL-405)', () => {
   it("archives in one click when nothing would be lost, adds no toast, and goes to the room's front door (KERNEL-596)", async () => {
     preview = { threadId: 't2', title: 'Chat t2', workspaces: [clean('b')] }
     await archiveChatFromSidebar(getState().threads.t2)
@@ -73,7 +73,7 @@ describe('archiving a chat with Rowan from the sidebar (KERNEL-405)', () => {
   })
 })
 
-describe('History and chats with Rowan (KERNEL-405)', () => {
+describe('History and chats with Kernel (KERNEL-405)', () => {
   it("lists an archived chat by its title, and leaves out the shared Lead workspace from before", () => {
     const list = [ws('a', { threadId: 't1', status: 'archived', archivedAt: 5, name: 'lead' }), ws('old', { name: 'lead', status: 'archived', archivedAt: 6 }), ws('kai', { lead: undefined, agentId: 'kai', status: 'archived', archivedAt: 4 })]
     expect(archivedList(list).map((w) => w.id)).toEqual(['a', 'kai'])

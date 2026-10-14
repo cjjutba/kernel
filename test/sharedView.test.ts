@@ -9,7 +9,7 @@ const file = (id: string, workspaceId: string, updatedAt: number, versions = [1]
   versions: versions.map((n) => ({ n, at: n, file: 'f', mime, bytes: 1, sha256: `${id}${n}` }))
 })
 const ws = (id: string, agentId: string, threadId?: string) => ({ id, roomId: 'r1', agentId, ...(threadId ? { threadId } : {}) }) as Workspace
-const agents = { r1: [{ id: 'rowan', lead: true }, { id: 'noor' }] as AgentDef[] }
+const agents = { r1: [{ id: 'kernel', lead: true }, { id: 'noor' }] as AgentDef[] }
 
 describe('versionLine', () => {
   it('names the kind and version, and says "of" when newer versions exist', () => {
@@ -30,18 +30,18 @@ describe('sharedHere', () => {
     expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('w1', 'noor')))).toEqual(['c', 'a'])
   })
   it('lists every file in the room in the Lead workspace from before each chat had its own', () => {
-    expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('lead', 'rowan')))).toEqual(['b', 'c', 'a'])
+    expect(ids(sharedHere({ shared, agents, workspaces: [] }, ws('lead', 'kernel')))).toEqual(['b', 'c', 'a'])
   })
   it('lists nothing when nothing was shared', () => {
     expect(sharedHere({ shared: {}, agents, workspaces: [] }, ws('w1', 'noor'))).toEqual([])
   })
 
-  describe('with two chats with Rowan in one room', () => {
-    const chat1 = ws('lead1', 'rowan', 't1')
-    const chat2 = ws('lead2', 'rowan', 't2')
+  describe('with two chats with Kernel in one room', () => {
+    const chat1 = ws('lead1', 'kernel', 't1')
+    const chat2 = ws('lead2', 'kernel', 't2')
     const noor1 = ws('noor1', 'noor', 't1')
     const noor2 = ws('noor2', 'noor', 't2')
-    const workspaces = [chat1, chat2, noor1, noor2, ws('legacy', 'rowan')]
+    const workspaces = [chat1, chat2, noor1, noor2, ws('legacy', 'kernel')]
     const all = {
       own1: file('own1', 'lead1', 10), team1: file('team1', 'noor1', 30),
       own2: file('own2', 'lead2', 20), team2: file('team2', 'noor2', 40),

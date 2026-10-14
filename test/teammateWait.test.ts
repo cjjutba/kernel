@@ -47,7 +47,7 @@ async function land(origin: string, file: string) {
 
 /** A room on a repo with a bare origin and a fake GitHub. Noor's work is open as PR #164 for KERNEL-197; Kai has started on its brief. */
 async function setup() {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
+  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
   await run('git', ['clone', '-q', '--bare', repo, origin])
   await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])

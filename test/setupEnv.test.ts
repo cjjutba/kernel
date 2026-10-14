@@ -43,7 +43,7 @@ const SETUP = [
 async function roomWith(setup: string) {
   const repo = await tempRepo({
     'README.md': '# client\n',
-    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.',
     '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
     '.kernel/settings.toml': `[scripts]\nsetup = '${setup}'\nrun = 'echo "$A $B $KERNEL_PORT $KERNEL_BRANCH" > run.txt'\n`
   })
@@ -60,7 +60,7 @@ async function roomWith(setup: string) {
 }
 
 describe('$KERNEL_ENV (KERNEL-405)', () => {
-  it("hands setup's variables to Rowan's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
+  it("hands setup's variables to Kernel's session, a run script and a terminal, and Kernel's own names keep Kernel's values", async () => {
     const { k, room, dataDir } = await roomWith(`sleep 1 && ${SETUP}`)
     const lines: string[] = []
     const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
@@ -68,21 +68,21 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     onTestFinished(() => { bus.off('push', on) })
     sdk.calls.length = 0
     const chat = await k.lead.startLeadChat(room.id, { prompt: 'Plan it' })
-    // Rowan's sessions, not the one-turn call that names the chat.
+    // Kernel's sessions, not the one-turn call that names the chat.
     const inWs = () => sdk.calls.filter((c) => c.options.cwd === k.store.workspace(chat.workspaceId)!.path && c.options.mcpServers)
-    // Rowan's first message goes at once, before setup hands anything over (KERNEL-490).
+    // Kernel's first message goes at once, before setup hands anything over (KERNEL-490).
     await vi.waitFor(() => expect(inWs()).toHaveLength(1))
     expect(inWs()[0].options.env).not.toHaveProperty('A')
     const ws = await setUp(k, chat.id)
     // The setup log names what it handed over, and never a value.
     expect(lines).toContain("Setup set A, ANTHROPIC_BASE_URL, B for this workspace's agents, run scripts and terminals. Skipped 1BAD, KERNEL_PORT: they aren't names Kernel passes on.")
     expect(lines.filter((l) => !l.startsWith('$ ')).join('\n')).not.toContain('two words')
-    // Once setup passed, the session ends when its turn does, and the next message starts Rowan with setup's variables.
+    // Once setup passed, the session ends when its turn does, and the next message starts Kernel with setup's variables.
     inWs()[0].feed(result)
     await vi.waitFor(() => expect(k.sessions['live'].has(chat.id)).toBe(false))
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Go on' }])
     await vi.waitFor(() => expect(inWs()).toHaveLength(2))
-    // Rowan's session, in its Bash.
+    // Kernel's session, in its Bash.
     const env = inWs()[1].options.env as Record<string, string>
     expect(env).toMatchObject({ A: '1', B: 'two words', KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_NAME: ws.name, KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: 'main' })
     expect(env).not.toHaveProperty('1BAD')

@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { PORT_BLOCK, type ActivityEvent, type ChatPart } from '../src/shared/types'
 
-// A chat with Rowan's first message waits for setup, and goes out through the real send when setup passes (KERNEL-405), so no
+// A chat with Kernel's first message waits for setup, and goes out through the real send when setup passes (KERNEL-405), so no
 // Claude Code process may start here.
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
@@ -22,7 +22,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.gitignore': '.env.local\nnode_modules\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer. Builds UI.\n---\nYou are Kai.',
       '.kernel/settings.toml': '[scripts]\nsetup = "echo setting up && test -f .env.local"\n\n[files]\ncopy = [".env.local"]\n'
     })
@@ -95,7 +95,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
   it('lead.start sends the new workspace prompt to the Lead in a chat of its own (KERNEL-148)', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\nlead: true\neffort: medium\n---\nYou are Rowan.',
+      '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead. Plans and hands out tasks.\nlead: true\neffort: medium\n---\nYou are Kernel.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer. Builds UI.\n---\nYou are Kai.'
     })
     const leadless = await tempRepo({ 'README.md': '# solo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
@@ -157,7 +157,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
   })
 
   it('lead.open makes no chat or workspace, and lead.start opens its own (KERNEL-242, KERNEL-365, KERNEL-405)', async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -178,7 +178,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
   })
 
   it('lead.start in a room with no Lead workspace leaves exactly one Lead tab, with the brief (KERNEL-242)', async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))

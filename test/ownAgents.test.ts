@@ -187,6 +187,7 @@ describe("a repo's own agents (KERNEL-397)", () => {
     await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/leads this room/)
   })
 
+  // The rowan.md cases here are on purpose: an old repo file named rowan.md still customizes Kernel.
   it('lets a rowan.md marked Lead customize Kernel, and moves its Lead chats to Kernel (KERNEL-692)', async () => {
     const rowan = '---\nname: rowan\ndescription: Lead. Plans.\nlead: true\ntools: Read, Bash\n---\nYou are Rowan.'
     const { k, h, repo, room } = await boot({ '.claude/agents/rowan.md': rowan, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
@@ -353,7 +354,7 @@ describe('personal and plugin agents (KERNEL-463)', () => {
     // Claude Code leaves the personal file out without a word, and so does Kernel.
     expect(team.flatMap((a) => a.warnings ?? []).map((w) => w.kind)).not.toContain('duplicate-id')
 
-    // Rowan hands it tasks like any teammate.
+    // Kernel hands it tasks like any teammate.
     const { call } = await leadTools(k, room.id)
     expect((await call('list_agents', {})).text).toContain('scout: Scout')
     expect((await call('create_workspace', { agent: 'scout', title: 'Prior art', brief: 'Find prior art.' })).text).toMatch(/^Created \S+ on \S+ for scout\./)
@@ -418,7 +419,7 @@ describe('personal and plugin agents (KERNEL-463)', () => {
     expect(named.find((a) => a.reviewer)?.id).toBe('kit:code-reviewer')
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('reviewer = "kit:code-reviewer"')
 
-    // Rowan hands one a task, and its chat runs on the plugin's prompt.
+    // Kernel hands one a task, and its chat runs on the plugin's prompt.
     const { call } = await leadTools(k, room.id)
     expect((await call('create_workspace', { agent: 'kit:builder', title: 'Cart', brief: 'Build the cart.' })).text).toMatch(/^Created \S+ on \S+ for kit:builder\./)
     const ws = k.store.workspaces(room.id).find((w) => w.agentId === 'kit:builder')!

@@ -9,7 +9,7 @@ const room = (id: string): Room => ({ id, name: id, path: `/r/${id}`, defaultBra
 const ws = (id: string, roomId: string, over: Partial<Workspace> = {}): Workspace =>
   ({ id, roomId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
-const lead = { id: 'rowan', lead: true } as AgentDef
+const lead = { id: 'kernel', lead: true } as AgentDef
 
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
 const route = () => getState().ui.route
@@ -21,7 +21,7 @@ beforeEach(() => {
   setState({
     rooms: [room('r1'), room('r2')],
     agents: { r1: [lead] },
-    workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
+    workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {}, modal: null } }))

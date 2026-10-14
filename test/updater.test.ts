@@ -34,10 +34,10 @@ describe('parseNotes', () => {
   })
 
   it('reads the HTML the GitHub feed sends', () => {
-    const html = '<p>Intro.</p><h3>Big terminal</h3><p>Open Claude Code with &#39;⌘⇧T&#39; &amp; more.</p><h3>Overlap warnings</h3><ul><li>Rowan flags it.</li><li>Twice.</li></ul>'
+    const html = '<p>Intro.</p><h3>Big terminal</h3><p>Open Claude Code with &#39;⌘⇧T&#39; &amp; more.</p><h3>Overlap warnings</h3><ul><li>Kernel flags it.</li><li>Twice.</li></ul>'
     expect(parseNotes(html)).toEqual([
       { title: 'Big terminal', body: "Open Claude Code with '⌘⇧T' & more." },
-      { title: 'Overlap warnings', body: 'Rowan flags it.\nTwice.' }
+      { title: 'Overlap warnings', body: 'Kernel flags it.\nTwice.' }
     ])
   })
 

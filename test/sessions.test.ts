@@ -270,7 +270,7 @@ describe('idle stop (KERNEL-183)', () => {
   afterEach(() => { vi.useRealTimers(); bus.removeAllListeners('push'); bus.removeAllListeners('activity') })
 
   const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
-  const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true }
+  const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true }
   // Lets the scripted stream reach Kernel. Fake timers move by a millisecond, which no idle clock notices.
   const flush = () => vi.advanceTimersByTimeAsync(1)
 
@@ -503,7 +503,7 @@ describe('idle stop (KERNEL-183)', () => {
   })
 
   it("starts a Lead turn from a team update after the Lead's chat was stopped", async () => {
-    const { sessions, turn, stopped, sid } = await setup({ agent: rowan })
+    const { sessions, turn, stopped, sid } = await setup({ agent: kernel })
     const call = await turn()
     await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
     expect(stopped(call)).toBe(true)

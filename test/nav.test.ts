@@ -8,14 +8,14 @@ const room = (id: string, over: Partial<Room> = {}): Room => ({ id, name: id, pa
 const ws = (id: string, roomId: string, over: Partial<Workspace> = {}): Workspace =>
   ({ id, roomId, name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', ...over }) as Workspace
 const chat = (id: string, workspaceId: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: 1, ...over }) as Chat
-const lead = { id: 'rowan', lead: true } as AgentDef
+const lead = { id: 'kernel', lead: true } as AgentDef
 
 /** One room with a Lead workspace of three chats, a second workspace of one, and a second room. */
 function seed() {
   setState({
     rooms: [room('r1'), room('r2')],
     agents: { r1: [lead] },
-    workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
+    workspaces: [ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', lead: true, threadId: 'r2t' })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {} } }))
@@ -178,21 +178,21 @@ describe('stillThere and nearest', () => {
     expect(stillThere(at('other'), getState())).toBe(false)
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
   })
-  it('sends an archived chat with Rowan to New chat with Rowan when no other chat is open, and a room with no Lead to Team (KERNEL-405)', () => {
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', status: 'archived' }))
+  it('sends an archived chat with Kernel to New chat with Kernel when no other chat is open, and a room with no Lead to Team (KERNEL-405)', () => {
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', status: 'archived' }))
     expect(nearest(at('lead'), getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
     setState((s) => ({ agents: { ...s.agents, r1: [] } }))
     expect(nearest(at('lead'), getState())).toEqual({ name: 'settings', page: 'room', roomId: 'r1', section: 'agents' })
   })
   it("sends a chat whose workspace closed to the room's newest open chat (KERNEL-405)", () => {
-    actions.workspaces.upsert(ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'rowan', createdAt: 5 }))
+    actions.workspaces.upsert(ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'kernel', createdAt: 5 }))
     setState((s) => ({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } }))
     expect(roomHome('r1', getState())).toEqual(at('newer'))
     actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
     expect(nearest(at('other'), getState())).toEqual(at('newer'))
   })
   it('opens a room on the chat the user last sent a message in, the one the sidebar lists on top (KERNEL-498)', () => {
-    const newer = ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'rowan', createdAt: 5 })
+    const newer = ws('newer', 'r1', { lead: true, threadId: 't2', agentId: 'kernel', createdAt: 5 })
     actions.workspaces.upsert(newer)
     setState({ threads: { t1: { id: 't1', roomId: 'r1', title: 'One', createdAt: 1, lastSentAt: 9 }, t2: { id: 't2', roomId: 'r1', title: 'Two', createdAt: 2 } } })
     expect(roomHome('r1', getState())).toEqual(at('lead'))
@@ -207,7 +207,7 @@ describe('stillThere and nearest', () => {
     actions.workspaces.upsert(ws('other', 'r1', { folderGone: true }))
     expect(stillThere(at('other'), getState())).toBe(false)
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', folderGone: true }))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', folderGone: true }))
     expect(roomHome('r1', getState())).toEqual({ name: 'leadNew', roomId: 'r1' })
   })
   it('sends a removed room, and a hidden or archived one, Home', () => {
@@ -387,8 +387,8 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
   })
   it('opens the nearest place that is still there when the saved workspace was archived', () => {
     openTo('lastPlace')
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'rowan', status: 'archived' }))
-    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', lead: true, threadId: 't2', agentId: 'rowan' }))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', lead: true, threadId: 't1', agentId: 'kernel', status: 'archived' }))
+    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', lead: true, threadId: 't2', agentId: 'kernel' }))
     continueFromChecks()
     expect(route()).toEqual(at('lead2'))
   })

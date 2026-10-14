@@ -69,6 +69,7 @@ describe('resolveTeam', () => {
   })
 
   // KERNEL-692: a repo's Lead file customizes Kernel instead of replacing it.
+  // The rowan.md cases here are on purpose: an old repo file named rowan.md still customizes Kernel.
   it('lets a rowan.md marked Lead customize Kernel, which shows as Kernel', async () => {
     const rowan = file('rowan', 'name: rowan\ndescription: Lead. Plans.\nrole: Lead\nlead: true\nmodel: opus\neffort: high\ntools: Read, Bash\ndisallowedTools: Edit', 'You plan for this repo.')
     const r = await team([KAI, NOOR, rowan, THEO])

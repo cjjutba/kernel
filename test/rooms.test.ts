@@ -291,7 +291,7 @@ describe('Kernel rooms', () => {
 
   it('removes the worktrees of a room only when asked', async () => {
     const { k } = await kernel()
-    const repo = await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nHi' })
+    const repo = await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nHi' })
     const room = await k.addRoom(repo)
     k.sessions.send = async () => ({ queued: false })
     const ws = await k.createWorkspace(room.id, { prompt: 'Do a thing', title: 'Thing', mode: 'worktree', baseRef: 'main' })
@@ -495,7 +495,7 @@ describe('Rooms page helpers', () => {
 
   it("counts the team without Kernel's Theo, which the list keeps only to name old reviews (KERNEL-553)", () => {
     const agent = (id: string, retired?: boolean) => ({ id, name: id, role: 'Engineer', model: 'opus', file: '', retired }) as never
-    expect(teamOf([agent('rowan'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['rowan', 'kai'])
+    expect(teamOf([agent('kernel'), agent('kai'), agent('kernel-reviewer', true)]).map((a) => a.id)).toEqual(['kernel', 'kai'])
     expect(teamOf(undefined)).toEqual([])
   })
 })

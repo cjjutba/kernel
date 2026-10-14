@@ -16,7 +16,7 @@ import { createWorktree, leadBranch, moveWorktree, roomWorktreeRoot, worktreeFol
 import { fakeCodex } from './helpers/fakeCodex'
 import { setUp, tempRepo } from './helpers'
 
-// KERNEL-424: a chat with Rowan names its branch and its worktree folder once, from the chat's first title. Later titles, and
+// KERNEL-424: a chat with Kernel names its branch and its worktree folder once, from the chat's first title. Later titles, and
 // a name the user types, name only the chat.
 
 // A scripted SDK, as in leadMerge.test.ts: a turn runs until the test feeds its result.
@@ -37,7 +37,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
 
 const REPO = {
   'README.md': '# client\n',
-  '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
+  '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 }
 
 const init = (sessionId: string) => ({ type: 'system', subtype: 'init', session_id: sessionId })
@@ -69,7 +69,7 @@ async function room() {
 /** Claude Code titles the tab, as Chats.autoName passes it on. */
 const titled = (k: Kernel, chat: Chat, title: string) => k.lead.tabNamed(k.store.saveChat({ ...k.store.chat(chat.id)!, title }))
 
-/** A new chat with Rowan that has sent nothing, so it is idle once setup passes. */
+/** A new chat with Kernel that has sent nothing, so it is idle once setup passes. */
 async function idleChat(k: Kernel, roomId: string) {
   const chat = await k.lead.startLeadChat(roomId, { prompt: '' })
   return { chat, ws: await setUp(k, chat.id) }
@@ -77,19 +77,19 @@ async function idleChat(k: Kernel, roomId: string) {
 
 afterEach(() => { sdk.calls.length = 0 })
 
-describe("a chat with Rowan's branch name (KERNEL-424)", () => {
+describe("a chat with Kernel's branch name (KERNEL-424)", () => {
   it('takes every word of the title, cut at a word to 60 characters', () => {
-    expect(leadBranch('{lead}/{slug}', 'Setup script tab Run button redundancy', 'Rowan')).toBe('rowan/setup-script-tab-run-button-redundancy')
+    expect(leadBranch('{lead}/{slug}', 'Setup script tab Run button redundancy', 'Kernel')).toBe('kernel/setup-script-tab-run-button-redundancy')
     // Filler words stay, and an apostrophe goes.
-    expect(leadBranch('{lead}/{slug}', "Don't break the CI when it is red", 'Rowan')).toBe('rowan/dont-break-the-ci-when-it-is-red')
-    const long = leadBranch('{lead}/{slug}', 'Plan the invoices export with PDF and CSV for every client in the workspace', 'Rowan')
-    expect(long).toBe('rowan/plan-the-invoices-export-with-pdf-and-csv-for-every')
+    expect(leadBranch('{lead}/{slug}', "Don't break the CI when it is red", 'Kernel')).toBe('kernel/dont-break-the-ci-when-it-is-red')
+    const long = leadBranch('{lead}/{slug}', 'Plan the invoices export with PDF and CSV for every client in the workspace', 'Kernel')
+    expect(long).toBe('kernel/plan-the-invoices-export-with-pdf-and-csv-for-every')
     expect(long.length).toBeLessThanOrEqual(60)
-    expect(worktreeFolder('rowan/setup-script-tab-run-button-redundancy')).toBe('rowan-setup-script-tab-run-button-redundancy')
+    expect(worktreeFolder('kernel/setup-script-tab-run-button-redundancy')).toBe('kernel-setup-script-tab-run-button-redundancy')
   })
 })
 
-describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () => {
+describe("naming a chat with Kernel's branch and folder once (KERNEL-424)", () => {
   it('renames the branch at the first title, moves the folder when the turn ends, and the next message resumes the session there', async () => {
     const { k, repo, room: r, root } = await room()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'in a setup script tab in the workspace the Run button does the same as Play' })
@@ -249,15 +249,15 @@ describe('a Codex chat whose worktree moved (KERNEL-424)', () => {
     const fake = await fakeCodex()
     const repo = await tempRepo()
     const root = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
-    const path = await createWorktree({ repo, root, branch: 'rowan/chat', baseRef: 'main' })
+    const path = await createWorktree({ repo, root, branch: 'kernel/chat', baseRef: 'main' })
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
-    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'chat', branch: 'rowan/chat', baseRef: 'main', path, mode: 'worktree', agentId: 'rowan', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'chat', branch: 'kernel/chat', baseRef: 'main', path, mode: 'worktree', agentId: 'kernel', lead: true, threadId: 't', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
     store.saveWorkspace(ws)
     store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Plan', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'medium', plan: false, threadId: 't', createdAt: 1 })
     const settings = { permissions: { mode: 'acceptEdits', network: true, alwaysAsk: [], neverAllow: [], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: fake.bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
-    const rowan = { id: 'rowan', name: 'Rowan', lead: true, prompt: 'You are Rowan.' } as AgentDef
+    const kernel = { id: 'kernel', name: 'Kernel', lead: true, prompt: 'You are Kernel.' } as AgentDef
     const sessions = open = new Sessions({
-      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => rowan, mcpFor: () => undefined, envFor: () => fake.env,
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => kernel, mcpFor: () => undefined, envFor: () => fake.env,
       roomAllow: () => [], allowInRoom: () => undefined, codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools: [] })
     })
     const sent = async (method: string) => (await fake.messages()).filter((m) => m.method === method)
@@ -267,7 +267,7 @@ describe('a Codex chat whose worktree moved (KERNEL-424)', () => {
     expect((await sent('thread/start'))[0].params.cwd).toBe(path)
 
     // What Lead.moveNow does: git moves the folder, the record follows, and the idle process ends.
-    const to = join(root, 'rowan-plan')
+    const to = join(root, 'kernel-plan')
     await moveWorktree(repo, path, to)
     store.saveWorkspace({ ...ws, path: to })
     sessions.restartIdle(['ws'])
@@ -276,6 +276,6 @@ describe('a Codex chat whose worktree moved (KERNEL-424)', () => {
     expect((await sent('thread/resume'))[0].params).toMatchObject({ threadId: 'thread-1', cwd: to })
     // Each process started in the folder as it was then. git and the process see the real path (/private/var on macOS).
     const real = await realpath(root)
-    expect((await fake.messages()).filter((m) => 'started' in m).map((m) => m.cwd)).toEqual([join(real, 'rowan-chat'), join(real, 'rowan-plan')])
+    expect((await fake.messages()).filter((m) => 'started' in m).map((m) => m.cwd)).toEqual([join(real, 'kernel-chat'), join(real, 'kernel-plan')])
   })
 })

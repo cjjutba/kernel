@@ -5,7 +5,7 @@ import type { ChatItem, TeamUpdateEvent, TeamUpdateRow } from '../src/shared/typ
 import { atEnd, entryInView, markFit, railEntries, railKey, RAIL_MIN, sameEntries, updateLabel, type RailEntry } from '../src/renderer/src/screens/workspace/railEntries'
 import { ChatRail, RailView } from '../src/renderer/src/screens/workspace/ChatRail'
 
-// KERNEL-599: the chat rail lists the user's messages, and in Rowan's chat the Team updates, and marks the one in view.
+// KERNEL-599: the chat rail lists the user's messages, and in Kernel's chat the Team updates, and marks the one in view.
 
 Object.assign(globalThis, { React })
 
@@ -35,7 +35,7 @@ describe('what the rail lists', () => {
     expect(list.every((e) => !e.update)).toBe(true)
   })
 
-  it('adds the Team updates in Rowan\'s chat, in place', () => {
+  it('adds the Team updates in Kernel\'s chat, in place', () => {
     const list = railEntries(items, true)
     expect(list.map((e) => e.id)).toEqual(['u1', 'tu1', 'u2', 'u3'])
     expect(list.find((e) => e.id === 'tu1')).toMatchObject({ update: true, label: 'Kai, PR ready', more: 0 })

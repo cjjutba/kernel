@@ -6,7 +6,7 @@ import type { AgentDef, Chat, Room, SharedFile, Thread, Workspace } from '../src
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
 const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
-const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
+const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/kernel.md' }
 
 describe('command palette', () => {
   it('matches in order, prefers word starts and shorter text, and rejects the rest', () => {
@@ -62,15 +62,15 @@ describe('command palette', () => {
     const opened: string[] = []
     // A short room name used to outrank the room in view.
     const rooms = [room('a', 'Client A'), room('b', 'Client B'), room('o', 'Own')]
-    const input = { rooms, workspaces: [], approvals: [], shared: [], agents: { a: [rowan], b: [{ ...rowan, name: 'Sol' }], o: [{ ...rowan, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
+    const input = { rooms, workspaces: [], approvals: [], shared: [], agents: { a: [kernel], b: [{ ...kernel, name: 'Sol' }], o: [{ ...kernel, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
     const home = buildItems({ ...input, route: { name: 'home' } })
     const suggested = home.items.filter((i) => i.section === 'Suggested')
-    expect(suggested.map((i) => i.label)).toEqual(['New chat in Client A', "Open Rowan's chat"])
+    expect(suggested.map((i) => i.label)).toEqual(['New chat in Client A', "Open Kernel's chat"])
     expect(suggested[1].keys).toEqual(['⌘', '⇧', 'L'])
     suggested[1].run()
     // Typing "lead chat" puts the room in view first, and other rooms' Leads are found by name.
-    expect(visibleItems(home.items, home.more, 'lead chat')[0].list[0].label).toBe("Open Rowan's chat")
-    expect(home.more.map((i) => i.label)).not.toContain("Rowan's chat in Client A")
+    expect(visibleItems(home.items, home.more, 'lead chat')[0].list[0].label).toBe("Open Kernel's chat")
+    expect(home.more.map((i) => i.label)).not.toContain("Kernel's chat in Client A")
     const found = visibleItems(home.items, home.more, 'sol')[0].list
     expect(found[0].label).toBe("Sol's chat in Client B")
     found[0].run()
@@ -82,13 +82,13 @@ describe('command palette', () => {
 
 describe('command palette, shared files', () => {
   const rooms = [room('a', 'Client A'), room('b', 'Client B')]
-  const noor: AgentDef = { ...rowan, id: 'noor', name: 'Noor', role: 'Engine', lead: false }
-  const agents = { a: [rowan, noor], b: [rowan] }
+  const noor: AgentDef = { ...kernel, id: 'noor', name: 'Noor', role: 'Engine', lead: false }
+  const agents = { a: [kernel, noor], b: [kernel] }
   const file = (id: string, over: Partial<SharedFile> = {}): SharedFile => ({
     id, roomId: 'a', workspaceId: 'w1', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: `File ${id}`, kind: 'html',
     versions: [{ n: 1, at: 1, file: 'v1', mime: 'text/html', bytes: 10, sha256: id }], createdAt: 1, updatedAt: 1, ...over
   })
-  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'rowan', mode: 'current', lead: true }), ws('wb', { roomId: 'b', agentId: 'rowan' })]
+  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'kernel', mode: 'current', lead: true }), ws('wb', { roomId: 'b', agentId: 'kernel' })]
   const base = { rooms, workspaces, approvals: [], agents, act }
   const shared = (list: SharedFile[], route: Parameters<typeof buildItems>[0]['route'] = { name: 'workspace', workspaceId: 'w1' }, extra: Partial<Parameters<typeof buildItems>[0]> = {}) => buildItems({ ...base, shared: list, route, ...extra })
   const ids = (list: { id: string }[]) => list.map((x) => x.id)
@@ -118,9 +118,9 @@ describe('command palette, shared files', () => {
       file('layout', { title: 'Invoice layout options', updatedAt: 5 }),
       file('fonts', { title: 'Embedded fonts check', kind: 'image', source: '.kernel/shared/fonts-check.png', agentId: 'kai', updatedAt: 4, versions: [{ n: 1, at: 1, file: 'v1', mime: 'image/png', bytes: 1, sha256: 'c' }] }),
       file('notes', { title: 'PDF renderer notes', kind: 'markdown', source: 'docs/renderer.md', updatedAt: 3 }),
-      file('theirs', { title: 'Totals page', roomId: 'b', workspaceId: 'wb', agentId: 'rowan', updatedAt: 9 })
+      file('theirs', { title: 'Totals page', roomId: 'b', workspaceId: 'wb', agentId: 'kernel', updatedAt: 9 })
     ]
-    const found = (q: string) => { const b = shared(list, { name: 'workspace', workspaceId: 'w1' }, { agents: { ...agents, a: [rowan, noor, { ...noor, id: 'kai', name: 'Kai' }] } }); return visibleItems(b.items, b.more, q).flatMap((g) => g.list).filter((i) => i.section === 'Shared').map((i) => i.id) }
+    const found = (q: string) => { const b = shared(list, { name: 'workspace', workspaceId: 'w1' }, { agents: { ...agents, a: [kernel, noor, { ...noor, id: 'kai', name: 'Kai' }] } }); return visibleItems(b.items, b.more, q).flatMap((g) => g.list).filter((i) => i.section === 'Shared').map((i) => i.id) }
     // Title, with the best match first.
     expect(found('layout')[0]).toBe('shared-layout')
     expect(found('renderer')[0]).toBe('shared-notes')
@@ -130,7 +130,7 @@ describe('command palette, shared files', () => {
     expect(found('fonts-check.png')[0]).toBe('shared-fonts')
     // Every room's files, not only the one in view.
     expect(found('totals')).toEqual(['shared-theirs'])
-    expect(found('rowan')[0]).toBe('shared-theirs')
+    expect(found('kernel')[0]).toBe('shared-theirs')
     // Two files with one title are both listed.
     const twins = shared([file('x', { title: 'Same' }), file('y', { title: 'Same', roomId: 'b', workspaceId: 'wb' })])
     expect(visibleItems(twins.items, twins.more, 'same')[0].list.filter((i) => i.section === 'Shared')).toHaveLength(2)
@@ -166,7 +166,7 @@ describe('command palette, shared files', () => {
     const archived = ws('w1', { roomId: 'a', status: 'archived' })
     pick(file('s', { title: 'Totals page' }), { workspaces: [archived] })
     // The Lead workspace exists: no round trip to the engine.
-    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { roomId: 'a', agentId: 'rowan', mode: 'current', lead: true })] })
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { roomId: 'a', agentId: 'kernel', mode: 'current', lead: true })] })
     // A room with no Lead agent opens in its first workspace that is still open.
     pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('w3', { roomId: 'a' })], agents: { a: [noor] } })
     // No Lead agent and no workspace that is open: say what to do.
@@ -192,14 +192,14 @@ describe('history', () => {
 
 describe('command palette chats (KERNEL-339)', () => {
   const rooms = [room('a', 'Client A'), room('b', 'Client B')]
-  const lead = ws('lead', { name: 'lead', agentId: 'rowan', mode: 'current', lead: true })
+  const lead = ws('lead', { name: 'lead', agentId: 'kernel', mode: 'current', lead: true })
   const tab = (id: string, threadId: string): Chat => ({ id, workspaceId: 'lead', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: 1 })
   const thread = (id: string, title: string): Thread => ({ id, roomId: 'a', title, createdAt: 1 })
   const chats = [
     { thread: thread('t1', 'Export invoices as PDF'), tabs: [tab('c1', 't1'), tab('c2', 't1'), tab('c3', 't1')] },
     { thread: thread('t2', 'Seed demo data'), tabs: [tab('c4', 't2')] }
   ]
-  const input = { rooms, workspaces: [lead], approvals: [], shared: [], agents: { a: [rowan] }, chats, act }
+  const input = { rooms, workspaces: [lead], approvals: [], shared: [], agents: { a: [kernel] }, chats, act }
 
   it('lists the room\'s open chats under "Chats in Client A" with their tab counts, between Suggested and Go to', () => {
     const { items } = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'lead' } })

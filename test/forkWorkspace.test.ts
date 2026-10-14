@@ -8,19 +8,19 @@ import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import type { Chat, ChatItem, ChatPart } from '../src/shared/types'
 
-// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+// A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-346: Fork into new workspace, from the "..." menu under a reply.
 
 const KAI = '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-const ROWAN = '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.'
+const KERNEL = '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.'
 
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
 const git = (cwd: string, ...args: string[]) => run('git', ['-C', cwd, ...args]).then((s) => s.replace(/\s+$/, ''))
 
 async function setup(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# x\n', 'a.txt': 'one\n', '.claude/agents/kai.md': KAI, '.claude/agents/rowan.md': ROWAN, ...files })
+  const repo = await tempRepo({ 'README.md': '# x\n', 'a.txt': 'one\n', '.claude/agents/kai.md': KAI, '.claude/agents/kernel.md': KERNEL, ...files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
