@@ -704,6 +704,34 @@ const teamUpdateReview = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * A teammate's question and a proposed hand-off (TeamUpdateAsk.png, KERNEL-747): Kai asked with ask_lead and ended the turn, and
+ * Noor proposed a task for Kai with propose_handoff and carries on. Both need the Lead, so both read brighter than the rest.
+ */
+const teamUpdateAsk = (f: Fixture): Partial<Fixture> => {
+  const row = tuRow, ev = tuEv
+  const rows = [
+    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('question', 'Asks: Should ⌘L focus the composer in every tab, or only in the tab that is open?', true), ev('turn', 'Finished a turn')]),
+      reply: 'The focus fix works for the open tab. I asked how far ⌘L should reach before I wire it.' },
+    row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('handoff.proposed', 'Proposes Kai for: Merge duplicate issues from the issue menu', true)])
+  ]
+  const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Composer focus', [
+    { kind: 'result', id: 'tua-res0', ts: at(20, 41), durationMs: 6 * 60_000 + 12_000, ok: true },
+    tuCard('tua-1', 41, rows, "Answer Kai's question, and propose Noor's hand-off to the user."),
+    { kind: 'result', id: 'tua-res1', ts: at(20, 42), durationMs: 21_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    workspaces: [
+      ...(s.workspaces ?? f.workspaces),
+      tuWork('ws-182', 'kai', 'kernel-182-new-chats-focus', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, ...issue('KERNEL-182', 0) }),
+      tuWork('ws-172', 'noor', 'kernel-172-duplicates', 158, { prState: 'checks', ...issue('KERNEL-172', 1) })
+    ]
+  }
+}
+
 /** Kernel's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
 const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = {}): Partial<Fixture> => ({
   ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
@@ -1896,6 +1924,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
   // KERNEL-557: a merge Kernel made by itself, a PR still blocked after its review rounds, and a skipped review.
   TeamUpdateReview: scene((f) => teamUpdateReview(f)),
+  // KERNEL-747: a teammate's question and a hand-off another teammate proposed.
+  TeamUpdateAsk: scene((f) => teamUpdateAsk(f)),
   TeamUpdatePrStates: scene((f) => teamUpdatePrStates(f)),
   // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
   GroupedNewChat: scene((f) => {
@@ -2157,6 +2187,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: { ...open, menu: 'model' }
     }
   }),
+  // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
+  ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer: { parts: [], draft: '@no' } } } })),
+  ComposerMentionAgentSent: scene((f) => ({
+    items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'text', text: 'take the invoice export, and ask Kai for the table first' }] }] },
+    chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead } }
+  })),
   ComposerMentionFolders: composing({ parts: [], draft: '@src' }, { tree: { [ids.table]: mentionFolderTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),

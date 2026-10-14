@@ -80,7 +80,7 @@ function Overlays() {
       <Section title="Menu with shortcuts and a submenu">
         <div className="devui-stage" style={{ minHeight: 190 }}>
           <Menu label="Workspace" initiallyOpen="open" onClose={noop} style={{ position: 'relative', width: 240 }} items={[
-            { id: 'new', label: 'New workspace', icon: 'compose', shortcut: '⇧⌘N' },
+            { id: 'new', label: 'New workspace', icon: 'pen', shortcut: '⇧⌘N' },
             { id: 'open', label: 'Open in', icon: 'ext', children: [{ id: 'term', label: 'Terminal', icon: 'term' }, { id: 'code', label: 'Editor', icon: 'code' }] },
             MENU_SEPARATOR,
             { id: 'arch', label: 'Archive', icon: 'trash', shortcut: '⌘⌫' },
@@ -94,7 +94,7 @@ function Overlays() {
           <Popover open onClose={noop} label="Branch" anchorRef={anchor}>Base branch <span className="mono">origin/main</span></Popover>
         </div>
       </Section>
-      <Section title="Toast, bottom right, 2.6s">
+      <Section title="Toast, bottom right, 5s">
         <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" action={{ label: 'Undo' }} /></div></div>
       </Section>
     </>

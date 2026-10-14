@@ -6,7 +6,7 @@ import { useSwipeDismiss } from './useSwipeDismiss'
 
 /** One icon per failure type (DESIGN.md Patterns). */
 export const bannerIcon: Record<BannerKind, IconName> = {
-  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history', trust: 'shield'
+  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'close', hooks: 'plug', retry: 'history', trust: 'shield'
 }
 
 /**

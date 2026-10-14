@@ -80,9 +80,11 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
     // they hold the header and the PRs tab, and a PR still blocked after the last review round isn't ready either (KERNEL-608).
     case 'ready': case 'open':
       if (ws.prBlocked) return PR_OPEN
-      if (headBlockers(ws)) return { icon: 'pr', tone: 'del', label: BLOCKERS_STATUS.label }
-      return ws.prState === 'ready' && !roundsRanOut(ws) ? { icon: 'pr', tone: 'add', label: 'Ready to merge' } : PR_OPEN
-    case 'conflict': case 'cifail': case 'changes': return { icon: 'pr', tone: 'del', label: PR_STATUS[ws.prState].label }
+      if (headBlockers(ws)) return { icon: 'prChanges', tone: 'del', label: BLOCKERS_STATUS.label }
+      return ws.prState === 'ready' && !roundsRanOut(ws) ? { icon: 'prReady', tone: 'add', label: 'Ready to merge' } : PR_OPEN
+    case 'conflict': return { icon: 'prConflict', tone: 'del', label: PR_STATUS.conflict.label }
+    case 'cifail': return { icon: 'prCifail', tone: 'del', label: PR_STATUS.cifail.label }
+    case 'changes': return { icon: 'prChanges', tone: 'del', label: PR_STATUS.changes.label }
     case 'draft': return { icon: 'prDraft', tone: 'muted', label: PR_STATUS.draft.label }
     case 'merged': return { icon: 'merged', tone: 'merged', label: 'Merged' }
     case 'closed': return { icon: 'prClosed', tone: 'muted', label: 'PR closed' }

@@ -202,7 +202,7 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
 }
 
 /** How long a toast stays (DESIGN.md). */
-export const TOAST_MS = 2600
+export const TOAST_MS = 5000
 /** A leaving toast slides out, then its gap closes. `toast-out-*` and `toast-close` in ui.css end by then. */
 const LEAVE_MS = 360
 /** Let go this far right or down of where a swipe started, or past `FLICK_PX` while moving that way faster than `FLICK` px per ms, and the toast leaves. */
@@ -223,7 +223,7 @@ type Leave = 'sink' | 'right' | 'down'
 type Swipe = { from?: { x: number; y: number }; rx: number; ry: number; axis?: 'x' | 'y'; x: number; v: number; at: number; end?: ReturnType<typeof setTimeout> }
 
 /**
- * One toast (WorkspaceToast.png, title over sub, toast-motion-and-swipe). It rises from the bottom, and after 2.6s sinks and
+ * One toast (WorkspaceToast.png, title over sub, toast-motion-and-swipe). It rises from the bottom, and after 5s sinks and
  * fades, then calls `onDismiss` once its gap has closed. It stays while hovered or focused. Dragging it right or down, a
  * two-finger swipe right or down on a trackpad, or pressing its action dismisses it sooner. A swipe leaves in its own direction.
  * A toast without `onDismiss` stays put.

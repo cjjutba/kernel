@@ -40,9 +40,10 @@ describe('@ file search', () => {
 })
 
 describe('picking a folder in the @ menu', () => {
-  const rows = [{ path: 'src', dir: true }, { path: 'src/a.ts', dir: false }]
+  const entries = [{ path: 'src', dir: true }, { path: 'src/a.ts', dir: false }]
+  const rows = entries.map((entry) => ({ kind: 'file' as const, entry }))
   it('turns a folder row into a chip with a trailing slash and a file row into the file', () => {
-    expect(mentionMenu(rows)).toEqual([{ label: 'Files', rows }])
+    expect(mentionMenu(entries)).toEqual([{ label: 'Files', rows }])
     expect(mentionPart(rows[0])).toEqual({ type: 'file', name: 'src/', path: 'src/', dir: true })
     expect(mentionPart(rows[1])).toEqual({ type: 'file', name: 'a.ts', path: 'src/a.ts' })
   })
