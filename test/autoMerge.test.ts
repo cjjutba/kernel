@@ -283,7 +283,8 @@ describe('weighing again', () => {
     const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, unknown)
     // The poll's read weighs it, so every weigh after has the same key.
     await k.prs.refreshPr(ws.id)
-    await vi.waitFor(() => expect(told).toHaveBeenCalledWith(ws.id, "GitHub doesn't read it as ready to merge."), { timeout: 3000 })
+    // Nine weighs, each reading the PR's diff with git: about 2 seconds here, near 3 on a CI runner.
+    await vi.waitFor(() => expect(told).toHaveBeenCalledWith(ws.id, "GitHub doesn't read it as ready to merge."), { timeout: 15_000 })
     expect(weighed).toHaveBeenCalledTimes(Prs.autoMergeRetries + 1)
     expect(told).toHaveBeenCalledTimes(1)
     await quiet()
