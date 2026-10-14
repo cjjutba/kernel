@@ -86,6 +86,8 @@ export interface KernelToolDeps {
   userSaid?: () => { text: string; at: number } | undefined
   /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
   setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
+  /** The room's remote and the base a hand-off from `baseRef` starts from, so a wait across bases is refused (KERNEL-693). Left out, bases aren't compared. */
+  handoffBase?: (baseRef?: string) => Promise<{ remote: string; base: string }>
   /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
   refreshPr?: (workspaceId: string) => Promise<Workspace>
   /** Whether any of the workspace's chats is running a turn. */
@@ -525,7 +527,8 @@ export function kernelTools(d: KernelToolDeps) {
       let targets: Workspace[] = []
       if (wait_for?.length) {
         const all = d.workspaces()
-        const why = waitRefusal({ workspaces: all, refs: wait_for, mode, reviewOf: review_of, isLead: (w) => !!team.find((a) => a.id === w.agentId)?.lead })
+        const bases = await d.handoffBase?.(base_ref)
+        const why = waitRefusal({ workspaces: all, refs: wait_for, mode, reviewOf: review_of, isLead: (w) => !!team.find((a) => a.id === w.agentId)?.lead, ...bases })
         if (why) return { ...text(`Not created: ${why}`), isError: true }
         targets = waitTargets(all, wait_for).filter((t) => !isMerged(t))
       }
@@ -567,7 +570,7 @@ export function kernelTools(d: KernelToolDeps) {
       const isLead = (w: Workspace) => !!team.find((a) => a.id === w.agentId)?.lead
       if (isLead(ws)) return refuse('that is your own workspace.')
       const name = team.find((a) => a.id === ws.agentId)?.name ?? ws.agentId
-      if (on.length) { const why = waitRefusal({ workspaces: all, refs: on, waiter: ws, isLead }); if (why) return refuse(why) }
+      if (on.length) { const why = waitRefusal({ workspaces: all, refs: on, waiter: ws, isLead, remote: (await d.handoffBase?.())?.remote }); if (why) return refuse(why) }
       const targets = waitTargets(all, on)
       const merged = targets.filter(isMerged)
       const left = targets.filter((t) => !isMerged(t))

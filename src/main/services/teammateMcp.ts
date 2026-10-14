@@ -13,6 +13,8 @@ export interface TeammateToolDeps {
   nameOf: (w: Workspace) => string
   /** Kernel's setWait on the caller's workspace, as a wait the teammate set itself, which the Lead hasn't heard about. */
   setWait: (on: string[], why?: string) => Promise<Workspace>
+  /** The room's remote, stripped from the bases a wait compares (KERNEL-693). */
+  remote?: () => Promise<string>
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
@@ -31,7 +33,7 @@ export function teammateTools(d: TeammateToolDeps) {
       try {
         const ws = d.workspace()
         const all = d.workspaces()
-        const refusal = waitRefusal({ workspaces: all, refs: [on], waiter: ws, isLead: d.isLead, teammate: true })
+        const refusal = waitRefusal({ workspaces: all, refs: [on], waiter: ws, isLead: d.isLead, teammate: true, remote: await d.remote?.() })
         if (refusal) return refuse(refusal)
         const target = resolveTarget(all, on)!
         const what = target.prNumber ? `PR #${target.prNumber}` : `${d.nameOf(target)}'s work`

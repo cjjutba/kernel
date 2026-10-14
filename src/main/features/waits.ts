@@ -136,7 +136,7 @@ export class Waits extends Feature {
     if (!now && ws.mode === 'worktree') {
       // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
       const fetched = (await fetchOrigin(room.path, remote, { fresh: true })).ok
-      forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
+      forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`) && await this.hasMerges(ws, wait.on, remote)
     }
     const after = await head(ws.path)
     // Archived, started or changed while git ran.
@@ -152,6 +152,19 @@ export class Waits extends Feature {
     }
     // Setup runs again only when the files under it changed.
     await this.k.setup.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor, ...(left.length ? { left } : {}) })
+  }
+
+  /**
+   * HEAD has the remote's copy of each base the PRs in `on` merged into. "Already up to date" is a fast-forward too, and a
+   * wait set across bases before Kernel refused one would otherwise claim a merge the branch never got (KERNEL-693).
+   */
+  private async hasMerges(ws: Workspace, on: string[], remote: string) {
+    const all = this.store.workspaces(ws.roomId)
+    for (const id of on) {
+      const t = all.find((w) => w.id === id)
+      if (t && await isAncestor(ws.path, `${remote}/${stripRemote(t.baseRef, remote)}`, 'HEAD') !== true) return false
+    }
+    return true
   }
 
   /** "Started without waiting for PR #170 by Noor.", and who Kernel asks to rebase when the brief went with the wait kept. */
@@ -263,7 +276,8 @@ export class Waits extends Feature {
       workspaces: () => this.store.workspaces(this.mustWs(id).roomId),
       isLead: (w) => this.isLeadWorkspace(w),
       nameOf: (w) => this.nameOf(w),
-      setWait: (on, why) => this.setWait(id, on, { told: false, why })
+      setWait: (on, why) => this.setWait(id, on, { told: false, why }),
+      remote: () => this.k.config.remoteOfWs(this.mustWs(id))
     }
   }
 
@@ -279,10 +293,11 @@ export class Waits extends Feature {
     // work on that tracker's issues counts (KERNEL-470).
     const tracker = issueTracker(now.source)
     const all = this.store.workspaces(ws.roomId)
+    const remote = await this.k.config.remoteOfWs(now)
     const isLead = (w: Workspace) => !!this.agentsSync(ws.roomId).find((a) => a.id === w.agentId)?.lead
     const on = all
       .filter((w) => w.status !== 'archived' && !w.reviewOf && !isMerged(w) && blockedBy.some((key) => buildsIssue(w, key, tracker)))
-      .filter((w) => !waitRefusal({ workspaces: all, refs: [w.id], waiter: now, isLead }))
+      .filter((w) => !waitRefusal({ workspaces: all, refs: [w.id], waiter: now, isLead, remote }))
       .map((w) => w.id)
     return on.length ? this.setWait(ws.id, on) : undefined
   }

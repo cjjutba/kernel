@@ -528,6 +528,7 @@ export class Lead extends Feature {
         const code = this.k.setup.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
+      handoffBase: (baseRef) => this.k.workspaces.handoffBase(roomId, baseRef),
       // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
       issueTaken: (key) => this.k.integrations.issueTaken(roomId, key),
       // The room's `[agents] open_workspaces` when it sets one, else Settings, Models' agent limit. 0 from either is no cap,

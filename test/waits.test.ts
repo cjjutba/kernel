@@ -112,14 +112,14 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
 }
 
 /**
- * A commit adding `file` lands on origin's main, as a merged PR does. One fast-import writes it straight into the bare
+ * A commit adding `file` lands on origin's `branch`, main unless named, as a merged PR does. One fast-import writes it straight into the bare
  * repo, on top of main, where a clone, commit and push took six git calls.
  */
-async function land(origin: string, file: string) {
+async function land(origin: string, file: string, branch = 'main') {
   const body = `${file}\n`
   const stream = [
-    'commit refs/heads/main', `committer Test <t@t.dev> ${Math.floor(Date.now() / 1000)} +0000`, `data ${Buffer.byteLength(file)}`, file,
-    'from refs/heads/main^0', `M 100644 inline ${file}`, `data ${Buffer.byteLength(body)}`, body
+    `commit refs/heads/${branch}`, `committer Test <t@t.dev> ${Math.floor(Date.now() / 1000)} +0000`, `data ${Buffer.byteLength(file)}`, file,
+    `from refs/heads/${branch}^0`, `M 100644 inline ${file}`, `data ${Buffer.byteLength(body)}`, body
   ].join('\n')
   await run('git', ['-C', origin, 'fast-import', '--quiet'], { input: stream })
 }
@@ -372,6 +372,26 @@ describe('a hand-off that waits for a merge', () => {
     expect(await head(w.path)).toBe(base)
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     expect(queue(k, chatOf(k, w))).toEqual([])
+    await k.stop()
+  })
+
+  it("asks for a rebase when the merge went into another base, which the fast-forward doesn't bring (KERNEL-693)", async () => {
+    const { k, room, lead, target, origin, gh } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const base = await head(w.path)
+    // A wait set before Kernel compared bases: Noor's PR goes into a release branch, and Kai starts from main.
+    await run('git', ['-C', origin, 'branch', 'release/1.2', 'main'])
+    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/release/1.2' })
+    await land(origin, 'pr-164.txt', 'release/1.2')
+    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
+    await k.refreshPr(noor.id)
+    await released(k, w)
+    // origin/main didn't move, so the fast-forward was "already up to date".
+    expect(await head(w.path)).toBe(base)
+    expect(notes(k, chatOf(k, w))).toContain("PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a rebase.")
+    expect(notes(k, chatOf(k, w))).not.toContain('PR #164 by Noor merged. Your branch now starts from it.')
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead'], ['PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it.', 'kernel']])
     await k.stop()
   })
 
@@ -643,6 +663,24 @@ describe('the Lead\'s tools', () => {
     expect(out.text).toBe(`Created ${w.id} on ${w.branch} for kai.`)
     expect(w.waitsFor).toBeUndefined()
     expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
+    await k.stop()
+  })
+
+  it('create_workspace and wait_for_merge refuse work that merges into another base (KERNEL-693)', async () => {
+    const { k, room, lead, target } = await setup()
+    const noor = k.store.saveWorkspace({ ...await target(k, 164), baseRef: 'origin/release/1.2' })
+    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead))
+    const call = async (name: string, input: object) => { const r = await tools.find((t) => t.name === name)!.handler(input as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
+    // The hand-off would start from the base Settings set, main.
+    expect(await call('create_workspace', { agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] })).toEqual({ isError: true, text: 'Not created: PR #164 merges into release/1.2, and the new workspace would start from main, so its merge never reaches that branch.' })
+    expect(k.store.workspaces(room.id).some((x) => x.title === 'Thinking rows')).toBe(false)
+    const kai = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Other rows', leadChatId: lead.id })
+    expect(await call('wait_for_merge', { workspace_id: kai.id, on: [noor.id] })).toEqual({ isError: true, text: `Not set: PR #164 merges into release/1.2, and ${kai.name} starts from main, so its merge never reaches that branch.` })
+    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    // The remote's copy of the same branch is the same base.
+    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/main' })
+    expect((await call('wait_for_merge', { workspace_id: kai.id, on: [noor.id] })).isError).toBe(false)
     await k.stop()
   })
 
