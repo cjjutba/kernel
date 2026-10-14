@@ -1,9 +1,10 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { freeSlot, runInSlot, slotCount, takeSlot, waitForSlot } from '../scripts/testSlots.ts'
+import { freeSlot, isAlive, isGroupAlive, runInSlot, slotCount, takeSlot, waitForSlot } from '../scripts/testSlots.ts'
+import { workerCount } from './support/workerCount'
 
 let dir: string
 const children: ChildProcess[] = []
@@ -69,5 +70,111 @@ describe('test slots', () => {
     expect(slotCount({})).toBe(2)
     expect(slotCount({ KERNEL_TEST_SLOTS: '4' })).toBe(4)
     expect(slotCount({ KERNEL_TEST_SLOTS: 'many' })).toBe(2)
+  })
+})
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const until = async (cond: () => boolean, ms = 3000) => {
+  for (const end = Date.now() + ms; Date.now() < end && !cond(); ) await wait(25)
+  return cond()
+}
+const guardModule = resolve(import.meta.dirname, 'support/orphanGuard.ts')
+const nodeTs = (code: string, env: NodeJS.ProcessEnv = {}) => {
+  const child = spawn(process.execPath, ['-e', code], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...env } })
+  children.push(child)
+  return child
+}
+// A command that starts a worker and stays up, on Node alone so no shell or PATH is involved.
+const workerTree = `const w = require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: 'ignore' })
+console.log(w.pid)
+setTimeout(() => {}, 30000)`
+const readPid = (child: ChildProcess) => new Promise<number>((r) => child.stdout!.once('data', (d) => r(Number(String(d).trim()))))
+
+describe('process groups (KERNEL-812)', () => {
+  it('keeps a slot taken while a worker of its group lives, and frees it after', async () => {
+    const leader = spawn('sh', ['-c', 'sleep 30 & exit 0'], { detached: true, stdio: 'ignore' })
+    const pgid = leader.pid!
+    await new Promise((r) => leader.on('exit', r))
+    try {
+      expect(isAlive(pgid)).toBe(false)
+      expect(isGroupAlive(pgid)).toBe(true)
+      writeFileSync(join(dir, 'slot-0'), `${pgid} ${pgid}`)
+      expect(takeSlot(dir, 1, process.pid)).toEqual({ busy: 1 })
+      process.kill(-pgid, 'SIGKILL')
+      expect(await until(() => !isGroupAlive(pgid))).toBe(true)
+      expect(takeSlot(dir, 1, process.pid).file).toBe(join(dir, 'slot-0'))
+    } finally {
+      try {
+        process.kill(-pgid, 'SIGKILL')
+      } catch {
+        // Gone already.
+      }
+    }
+  })
+
+  it('stops what the command left running before it frees the slot', async () => {
+    const pidFile = join(dir, 'worker.pid')
+    const code = await runInSlot('sh', ['-c', `sleep 30 & echo $! > ${pidFile}; exit 0`], { dir, env: {}, graceMs: 500 })
+    expect(code).toBe(0)
+    expect(isAlive(Number(readFileSync(pidFile, 'utf8')))).toBe(false)
+    expect(readdirSync(dir).filter((f) => f.startsWith('slot-'))).toEqual([])
+  })
+
+  it('leaves nothing running when the run is killed with SIGKILL', async () => {
+    const runner = nodeTs(`
+      import(${JSON.stringify(resolve(import.meta.dirname, '../scripts/testSlots.ts'))}).then(({ runInSlot }) =>
+        runInSlot(process.execPath, ['-e', ${JSON.stringify(workerTree)}], { dir: ${JSON.stringify(dir)}, env: {} }))`)
+    const worker = await readPid(runner)
+    expect(isAlive(worker)).toBe(true)
+    process.kill(runner.pid!, 'SIGKILL')
+    await new Promise((r) => runner.on('exit', r))
+    expect(takeSlot(dir, 1, process.pid)).toEqual({ busy: 1 })
+    const pgid = Number(readFileSync(join(dir, 'slot-0'), 'utf8').split(' ')[1])
+    expect(isGroupAlive(pgid)).toBe(true)
+    process.kill(-pgid, 'SIGKILL')
+    let taken: string | undefined
+    expect(await until(() => (taken ??= takeSlot(dir, 1, process.pid).file) !== undefined)).toBe(true)
+  })
+
+  it('gives the command its runner pid', async () => {
+    const out = join(dir, 'out')
+    await runInSlot('sh', ['-c', `echo $KERNEL_TEST_RUNNER_PID > ${out}`], { dir, env: {} })
+    expect(readFileSync(out, 'utf8').trim()).toBe(String(process.pid))
+  })
+})
+
+describe('orphan guard (KERNEL-812)', () => {
+  it('ends vitest main within 3 seconds of the runner dying, and not without a runner pid', async () => {
+    const runner = spawn('sleep', ['30'])
+    children.push(runner)
+    const main = nodeTs(`import(${JSON.stringify(guardModule)}).then((m) => { m.exitWhenRunnerDies(); setTimeout(() => {}, 30000) })`, { KERNEL_TEST_RUNNER_PID: String(runner.pid) })
+    const bare = nodeTs(`import(${JSON.stringify(guardModule)}).then((m) => { m.exitWhenRunnerDies(); setTimeout(() => {}, 30000) })`, { KERNEL_TEST_RUNNER_PID: '' })
+    await wait(300)
+    runner.kill('SIGKILL')
+    expect(await until(() => main.exitCode !== null || main.signalCode !== null, 3000)).toBe(true)
+    expect(bare.exitCode).toBeNull()
+    expect(bare.signalCode).toBeNull()
+  })
+
+  it('ends a worker within 3 seconds of its parent being killed', async () => {
+    const parent = nodeTs(`
+      const { spawn } = require('node:child_process')
+      const w = spawn(process.execPath, ['-e', ${JSON.stringify(`import(${JSON.stringify(guardModule)}).then((m) => { m.exitWhenParentDies(); setTimeout(() => {}, 30000) })`)}], { stdio: 'ignore' })
+      console.log(w.pid)
+      setTimeout(() => {}, 30000)`)
+    const worker = await readPid(parent)
+    await wait(300)
+    expect(isAlive(worker)).toBe(true)
+    process.kill(parent.pid!, 'SIGKILL')
+    expect(await until(() => !isAlive(worker), 3000)).toBe(true)
+  })
+})
+
+describe('worker count (KERNEL-812)', () => {
+  it('is 2 locally, 4 in CI, and follows KERNEL_TEST_WORKERS', () => {
+    expect(workerCount({})).toBe(2)
+    expect(workerCount({ CI: 'true' })).toBe(4)
+    expect(workerCount({ KERNEL_TEST_WORKERS: '3', CI: 'true' })).toBe(3)
+    expect(workerCount({ KERNEL_TEST_WORKERS: 'lots' })).toBe(2)
   })
 })
