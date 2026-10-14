@@ -10,7 +10,7 @@ import { Nudges } from '../src/main/services/nudges'
 import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 import { run as git } from '../src/main/services/exec'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -39,7 +39,7 @@ const REPO = {
 async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   return { dataDir, home }
 }
 

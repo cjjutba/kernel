@@ -6,7 +6,7 @@ import type { Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import type { ExecResult } from '../src/main/services/exec'
 import { findApps, launch, MDFIND_MS, OPEN_APPS, type FoundApp, type OpenAppsSystem } from '../src/main/services/openApps'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-427: Open in lists the catalog apps installed on this Mac and opens a path in one with `open -a`. Nothing here
 // launches a real app: every test runs on a fake file system and a fake exec that records what it was asked to run.
@@ -113,7 +113,7 @@ describe('Open in (KERNEL-427)', () => {
     const repo = await tempRepo({ 'README.md': '# demo\n', 'src/run.command': 'echo hi\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), ...(o.openIn ? { general: { openIn: o.openIn } } : {}) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), ...(o.openIn ? { general: { openIn: o.openIn } } : {}) }))
     const revealed: string[] = []
     const k = new Kernel({ dataDir, home, reveal: (p) => void revealed.push(p), appIcon: async (p) => `data:image/png;base64,${Buffer.from(p).toString('base64')}` })
     onTestFinished(() => k.stop().catch(() => undefined))

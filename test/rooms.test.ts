@@ -11,14 +11,14 @@ import { exec } from '../src/main/services/exec'
 import { ago, agoShort, roomState, teamOf } from '../src/renderer/src/screens/rooms/roomInfo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, lockfileInstall, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
 import { loadRepoSettings } from '../src/main/services/settings'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
 async function kernel(settings: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), ...settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), ...settings }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   return { k, home }

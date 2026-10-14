@@ -12,7 +12,7 @@ import { loadRepoSettings, saveRepoSettings } from '../src/main/services/setting
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // Hand off and Build here: the two ways a chat with Kernel works (KERNEL-770).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -28,7 +28,7 @@ async function setup(o: { app?: Record<string, unknown>; files?: Record<string, 
   const repo = await tempRepo({ ...REPO, ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())

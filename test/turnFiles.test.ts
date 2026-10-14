@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Chat, ChatItem, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { fakeCodex } from './helpers/fakeCodex'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
@@ -59,7 +59,7 @@ async function kernel(where: { dataDir: string; home: string }) {
 async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   return { dataDir, home }
 }
 

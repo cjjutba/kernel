@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { actions, apply, getState } from '../src/renderer/src/store'
@@ -15,7 +15,7 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
   it("returns each agent's newest event from the whole log, so it holds past the 200-event window", async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', ...Object.fromEntries(TEAM.map((id) => [`.claude/agents/${id}.md`, agentFile(id)])) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort() }))
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
     await k.start()
     const room = await k.addRoom(repo)

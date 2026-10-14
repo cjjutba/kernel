@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import type { SessionDeps } from '../src/main/services/sessions'
 import { cleanTitle, titleText } from '../src/main/services/titles'
@@ -25,7 +25,7 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
   const repo = o.repo ?? await tempRepo(AGENTS)
   const dataDir = o.dataDir ?? await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = o.home ?? await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   const t = {
     k, repo, dataDir, home,

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { tempRepo, trustRoom, setUp } from './helpers'
+import { tempRepo, trustRoom, setUp, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { copyLocalFiles } from '../src/main/services/scripts'
@@ -29,7 +29,7 @@ async function setup(o: { link: boolean; modules?: boolean; copy?: string[]; loc
   for (const [f, c] of Object.entries(o.local ?? {})) { await mkdir(dirname(join(repo, f)), { recursive: true }); await writeFile(join(repo, f), c) }
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -159,7 +159,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })

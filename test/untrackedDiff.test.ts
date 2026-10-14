@@ -6,7 +6,7 @@ import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
 import { readImage } from '../src/main/services/files'
 import { diffText } from '../src/main/services/worktrees'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-409: a file the agent created and hasn't committed shows in the diff tab, and the diff tab can load images.
 
@@ -76,7 +76,7 @@ describe('workspaces.readImage (KERNEL-409)', () => {
     await git(repo, 'commit', '-qm', 'logo')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop())

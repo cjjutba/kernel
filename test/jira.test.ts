@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import type { Cipher } from '../src/main/services/env'
@@ -355,7 +355,7 @@ describe('Jira in a room (KERNEL-474)', () => {
     const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': settings, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const j = jira(answer)
     const k = new Kernel({ dataDir, home, fetch: j.fetch, cipher })
     kernels.push(k)

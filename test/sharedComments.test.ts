@@ -11,7 +11,7 @@ import { Sessions } from '../src/main/services/sessions'
 import { commentParts, commentText } from '../src/main/services/sharedComments'
 import { newChat } from '../src/main/features/records'
 import { NEW_CHAT } from '../src/main/features/shared'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-310: a comment on a shared file goes to the agent that shared it, as a plain message naming the file, version
 // and spot, with the crop around it attached. Comments are kept per version.
@@ -42,7 +42,7 @@ async function setup() {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/noor.md': AGENT('noor') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: true } }))
   const sent: { chatId: string; parts: ChatPart[] }[] = []
   const make = async () => {
     const k = new Kernel({ dataDir, home })

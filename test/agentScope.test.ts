@@ -9,7 +9,7 @@ import type { CodeHost } from '../src/main/services/github'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { agentFromFile } from '../src/main/services/agents'
 import { editedFields, ownEditOf, withOwnEdit } from '../src/main/services/agentOverrides'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-466: a hire, an edit, a retire and a restore are for the user on this Mac, or for the team in a pull request. Either
 // way the room's own checkout is never left with an agent file Kernel wrote, changed or moved.
@@ -28,7 +28,7 @@ async function boot(files: Record<string, string> = {}) {
   await git(repo, 'push', '-q', '-u', 'origin', 'main')
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
   const k = new Kernel({ dataDir, home })
   onTestFinished(() => k.stop())
   await k.start()

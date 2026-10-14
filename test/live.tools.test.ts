@@ -8,7 +8,7 @@ import type { Tracker } from '@shared/types'
 import type { TelemetryEvent } from '@shared/telemetry'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-397 against real Claude Code: a repo's own agents, with no Lead and a read-only checker. Haiku turns on the Claude
 // plan, so it only runs when asked:
@@ -34,7 +34,7 @@ async function boot(o: { models?: object } = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
-    hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+    hookPort: await freePort(), worktreeRoot: join(home, 'wt'),
     workspace: { baseRef: 'main' },
     models: o.models ?? { lead: 'claude-haiku-4-5-20251001', engineers: 'claude-haiku-4-5-20251001', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', leadPlanMode: false },
     permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] }

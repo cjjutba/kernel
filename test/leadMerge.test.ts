@@ -6,7 +6,7 @@ import type { AgentDef, PrInfo, PrState, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import { kernelTools, MERGE_NOT_ASKED, MERGE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-352: Kernel merges ready PRs when the user asks, once Settings, Pull requests allows it.
 
@@ -167,7 +167,7 @@ async function kernelRoom() {
   await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const prs = new Map<string, PrInfo>()
   const merged: string[] = []
   const k = new Kernel({ dataDir, home })

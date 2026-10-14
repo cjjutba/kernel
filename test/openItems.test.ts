@@ -12,7 +12,7 @@ import { kernelTools } from '../src/main/services/kernelMcp'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import type { TeamEvent } from '../src/main/services/leadUpdates'
 import { openReminder } from '../src/main/features/openItems'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-749: Kernel holds the Lead to what its chat owes: a teammate's question, a review's blockers, a proposed hand-off and
 // a teammate the user addressed. Each opens on its real event, closes when the Lead acts on it, and survives a restart.
@@ -52,7 +52,7 @@ async function setup() {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const { k, posts } = await start(dataDir, home)
   const room = await k.addRoom(repo)
   const lead = await k.leadChat(room.id)

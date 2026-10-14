@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState } from '@shared/types'
-import { tempRepo, trustRoom, setUp } from './helpers'
+import { tempRepo, trustRoom, setUp, freePort } from './helpers'
 import { run } from '../src/main/services/exec'
 import { unpushedCommits } from '../src/main/services/archive'
 import { Kernel } from '../src/main/kernel'
@@ -17,7 +17,7 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI, ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
@@ -30,7 +30,7 @@ async function setup(script?: string, app: object = {}) {
   const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': KAI, ...(script ? { '.kernel/settings.toml': `[scripts]\narchive = ${JSON.stringify(script)}\n` } : {}) })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...app }))
   const k = await boot(dataDir, home)
   const room = await k.addRoom(repo)
   await trustRoom(k, room.id)
