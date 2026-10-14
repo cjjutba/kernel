@@ -382,6 +382,11 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx']),
+  WorkspaceDiffImageInlineOpen: async (page) => {
+    await page.getByRole('button', { name: 'Open public/logo.png' }).click()
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(400)
+  },
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceScrolledUp: scrollUp,

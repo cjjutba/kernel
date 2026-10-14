@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, CompareTarget, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
 import { addToComposer } from './composer/bus'
+import { OpenImage } from './composer/Chip'
 import { compareTitle, targetKey, useCompared } from './compare'
 import { parseDiff } from './diff'
 import { gitDecoration } from './gitStatus'
@@ -51,12 +52,19 @@ function ImagePane({ wsId, path, at, label, target, onSize }: { wsId: string; pa
   const url = useImage(wsId, path, at, target)
   const [loaded, setLoaded] = useState<{ url: string; w: number; h: number } | null>(null)
   const size = loaded && loaded.url === url ? loaded : null
+  const openImage = useContext(OpenImage)
+  const alt = label ? `${label}: ${path}` : path
+  const picture = url
+    ? <img src={url} alt={alt} onLoad={(e) => { const s = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }; setLoaded({ url, ...s }); onSize?.(s) }} />
+    : null
   return (
     <figure className="image-pane">
       {label && <figcaption className="muted" style={{ fontSize: 12 }}>{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
       {url === null
         ? <span className="muted" style={{ fontSize: 12 }}>Can't show this picture.</span>
-        : url && <img src={url} alt={label ? `${label}: ${path}` : path} onLoad={(e) => { const s = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }; setLoaded({ url, ...s }); onSize?.(s) }} />}
+        : openImage && url && size
+          ? <button type="button" className="image-open" aria-label={`Open ${path}`} onClick={() => openImage({ type: 'image', name: split(path).name, path, dataUrl: url })}>{picture}</button>
+          : picture}
     </figure>
   )
 }
