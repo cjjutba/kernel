@@ -13,6 +13,7 @@ import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { forProvider, Handoffs, LEAD_RULE, planApproval } from './handoff'
+import { mentionNote, mentionsOf, Mentions } from './mentions'
 import { missingServers, type MissingServer } from './agentTools'
 import type { McpReport } from './mcp'
 import { hasUnsavedImages, revisedPlanFile, savePlan, withImageFiles } from './plans'
@@ -112,6 +113,8 @@ export interface SessionDeps {
   settings: () => AppSettings
   /** The agent a workspace runs. With `chat`, the one that chat runs, which a review chat picks by its kind (KERNEL-549). */
   agentFor: (ws: Workspace, chat?: Chat) => AgentDef | undefined
+  /** The room's team as Kernel last read it, for the agents a Lead message mentions (KERNEL-745). Undefined when unread. */
+  teamOf?: (roomId: string) => AgentDef[] | undefined
   /** The role Settings, Models reads for a chat in this workspace run by `agent` (`Team.roleFor`). Without it a chat has no compact window of its own. */
   roleFor?: (ws: Workspace, agent: AgentDef | undefined) => Role
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
@@ -254,6 +257,8 @@ export class Sessions {
   private shownModes = new Map<string, string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
+  /** Teammates the user addressed in a Lead chat that the Lead hasn't acted for yet (KERNEL-745). The Lead tools close them. */
+  readonly mentions = new Mentions()
   private queues = new Map<string, QueuedMessage[]>()
   /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
   private reasons = new Map<string, QueueReason | undefined>()
@@ -676,7 +681,7 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     this.mustHaveFolder(chat)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
-    if (o.from !== 'kernel') this.handoffs.done(chatId)
+    if (o.from !== 'kernel') { this.handoffs.done(chatId); this.mentions.done(chatId) }
     // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
     if (this.closing) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
@@ -700,7 +705,7 @@ export class Sessions {
     this.mustHaveFolder(this.mustChat(chatId))
     // One message with nothing ahead of it is an ordinary send.
     if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
-    if (messages.some((m) => m.from !== 'kernel')) this.handoffs.done(chatId)
+    if (messages.some((m) => m.from !== 'kernel')) { this.handoffs.done(chatId); this.mentions.done(chatId) }
     this.setQueue(chatId, [...this.queued(chatId), ...messages.map((m) => ({ id: randomUUID(), chatId, parts: m.parts, ts: Date.now(), ...sender(m) }))])
     if (this.closing) return { queued: true }
     const why = this.waitsFor(chatId)
@@ -832,7 +837,7 @@ export class Sessions {
     const ws = this.mustWorkspace(chat.workspaceId)
     chat = this.unsuggest(chat)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
+    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.mentions.done(chat.id); this.crashed.delete(chat.id) }
     // The user writing instead of answering ends a Codex plan still waiting after its turn (KERNEL-563).
     if ([o, ...more].some((m) => !m.from)) this.expireCards(this.turns.get(chat.id)?.plans)
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
@@ -857,9 +862,22 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = [...parts, ...more.flatMap((m) => m.parts)]
+    live.sent = this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
+  }
+
+  /**
+   * A Lead message that mentions teammates opens a mention for each, and the Lead reads who the user addressed after it
+   * (KERNEL-745). The chat's row keeps the parts as they were.
+   */
+  private withMentions(chat: Chat, ws: Workspace, sent: ChatPart[]): ChatPart[] {
+    if (!sent.some((p) => p.type === 'agent') || !this.isLeadChat(chat.id)) return sent
+    const team = this.d.teamOf?.(ws.roomId)
+    const note = mentionNote(sent, team)
+    if (!note) return sent
+    this.mentions.opened(chat.id, mentionsOf(sent, team))
+    return [...sent, { type: 'text', text: forProvider(note, chatProvider(chat)) }]
   }
 
   /**
@@ -1083,7 +1101,7 @@ export class Sessions {
     if (!live?.running) return
     // Stop is the user taking over. Send now isn't on its own: the message it sends first decides, so a Kernel update
     // sent again with Retry now leaves a pending hand-off reminder alone (KERNEL-116).
-    if (!sendNext) this.handoffs.done(chatId)
+    if (!sendNext) { this.handoffs.done(chatId); this.mentions.done(chatId) }
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
@@ -1430,7 +1448,13 @@ export class Sessions {
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
       afterPlan: () => { const t = this.approvedPlans.get(chatId); this.approvedPlans.delete(chatId); return t },
-      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t && forProvider(t, chatProvider(this.mustChat(chatId))) },
+      // A plan approved and not handed off, and teammates the user addressed and the Lead hasn't acted for, each remind once (KERNEL-745).
+      handoffAtStop: () => {
+        const t = this.handoffs.reminder(chatId)
+        if (t) bus.track({ name: 'handoff.reminder' })
+        const both = [t, this.mentions.reminder(chatId)].filter(Boolean).join('\n\n')
+        return both ? forProvider(both, chatProvider(this.mustChat(chatId))) : undefined
+      },
       followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
   }
