@@ -25,6 +25,15 @@ describe('@ file search', () => {
     expect((await searchFiles(repo, 'tbl')).map((f) => f.path)).toEqual(['src/app/invoices/table.tsx'])
     expect(await searchFiles(repo, 'zzz')).toEqual([])
   })
+
+  it('lists folders from the parent paths, an exact folder name first', async () => {
+    const repo = await tempRepo({ 'src/a.ts': 'a\n', 'src/lib/b.ts': 'b\n', 'docs/src-notes.md': 'c\n' })
+    const hits = await searchFiles(repo, 'src')
+    expect(hits[0]).toEqual({ path: 'src', dir: true })
+    expect(hits.filter((h) => h.dir).map((h) => h.path)).toContain('src')
+    expect((await searchFiles(repo, 'lib')).slice(0, 2)).toEqual([{ path: 'src/lib', dir: true }, { path: 'src/lib/b.ts', dir: false }])
+    expect((await searchFiles(repo, '')).every((h) => !h.dir)).toBe(true)
+  })
 })
 
 describe('skills discovery', () => {

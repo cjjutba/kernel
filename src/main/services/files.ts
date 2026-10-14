@@ -102,9 +102,10 @@ export async function readImage(root: string, path: string, since?: string): Pro
 }
 
 /**
- * Files for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit together,
- * start a path segment or fall in the file name score higher, and shorter paths win ties. Saved plans are listed too,
- * though git ignores them, so a new chat can build from one (D-092).
+ * Files and folders for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit
+ * together, start a path segment or fall in the name score higher, and shorter paths win ties. Folders are the parent paths
+ * of the listed files, scored the same way, and one whose name is the query ranks above the files inside it. Saved plans are
+ * listed too, though git ignores them, so a new chat can build from one (D-092).
  */
 export async function searchFiles(root: string, query: string, limit = 8): Promise<FileEntry[]> {
   const out = await git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')
@@ -112,14 +113,26 @@ export async function searchFiles(root: string, query: string, limit = 8): Promi
   const files = [...new Set([...out.split('\0').filter(Boolean), ...plans])].slice(0, MAX_ENTRIES)
   const q = query.trim().toLowerCase()
   if (!q) return files.slice(0, limit).map((path) => ({ path, dir: false }))
-  const scored: { path: string; score: number }[] = []
+  const scored: { path: string; dir: boolean; score: number }[] = []
   for (const path of files) {
     const score = fuzzyScore(path, q)
-    if (score !== null) scored.push({ path, score })
+    if (score !== null) scored.push({ path, dir: false, score })
+  }
+  const dirs = new Set<string>()
+  for (const file of files) {
+    const parts = file.split('/')
+    for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join('/'))
+  }
+  for (const path of dirs) {
+    const score = fuzzyScore(path, q)
+    if (score !== null) scored.push({ path, dir: true, score: score + (path.slice(path.lastIndexOf('/') + 1).toLowerCase() === q ? EXACT_FOLDER : 0) })
   }
   scored.sort((a, b) => b.score - a.score || a.path.length - b.path.length || a.path.localeCompare(b.path))
-  return scored.slice(0, limit).map(({ path }) => ({ path, dir: false }))
+  return scored.slice(0, limit).map(({ path, dir }) => ({ path, dir }))
 }
+
+/** Enough to put a folder named exactly like the query above any file inside it. */
+const EXACT_FOLDER = 30
 
 export function fuzzyScore(path: string, q: string): number | null {
   const p = path.toLowerCase()
