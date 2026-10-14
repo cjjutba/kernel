@@ -102,6 +102,8 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     return setTeam(a.id, { members, helpers: [...others.filter((x) => !x.member).map((x) => x.id), ...(on ? [] : [a.id])] })
   }
   const customized = !!lead?.file
+  const leadFile = lead?.file ? lead.file.split(/[\\/]/).pop() ?? '' : ''
+  const elsewhere = !!leadFile && leadFile !== 'kernel.md'
   const customize = () => run('customize', async () => {
     try {
       const def = await call('agents.customize', { roomId, agentId: lead?.id ?? KERNEL_LEAD })
@@ -115,6 +117,12 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       actions.agents.set(roomId, await call('agents.resetLead', { roomId }))
       setResetting(false)
     } catch (e) { actions.ui.toast({ title: 'Could not reset Kernel', sub: cleanError(e) }) }
+  })
+  const move = () => run('move', async () => {
+    try {
+      actions.agents.set(roomId, await call('agents.moveLead', { roomId }))
+      actions.ui.toast({ title: 'Kernel is in kernel.md now' })
+    } catch (e) { actions.ui.toast({ title: 'Could not move Kernel’s file', sub: cleanError(e) }) }
   })
   const reviewerPick = reviewerChoice(team, rs?.team)
   const repoAgents = team.filter((a) => agentGroup(a) === 'repo' && a.builtIn !== 'lead')
@@ -147,11 +155,15 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   return (
     <RoomPage room={room} rs={rs} title="Agents" shared>
       <Section title="Roles" scope="repo">
-        <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" desc="Plans with you and hands out tasks.">
-          <span className="set-desc" role="status">{customized ? 'Customized' : 'Default'}</span>
-          {customized
+        <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
+        <span className="set-actions">
+          <span className="set-desc" role="status">{elsewhere ? `Customized in ${leadFile}` : customized ? 'Customized' : 'Default'}</span>
+          {elsewhere
+            ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button busy={busy === 'move'} busyLabel="Moving" disabled={busy !== null} onClick={() => void move()}>Move to kernel.md</Button></>
+            : customized
             ? <><Button disabled={busy !== null} onClick={openFile}>Open file</Button><Button disabled={busy !== null} onClick={() => setResetting(true)}>Reset to default</Button></>
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
+        </span>
         </Row>
         {!!files.length && (
           <Row label="Reviewer" labelId="rm-reviewer" source={sourceLine(rs, 'team.reviewer')} desc="Reviews each pull request.">
@@ -185,7 +197,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {!!files.length && (
         <Section label="Limits">
-          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`Workspaces ${lead?.name ?? 'the Lead'} keeps open here. Reviews don’t count.`}>
+          <Row label="Open workspaces" source={sourceLine(rs, 'agents.openWorkspaces')} desc={`Workspaces ${lead?.name ?? 'Kernel'} keeps open here. Reviews don’t count.`}>
             <Select label="Open workspaces" align="right" value={rs?.agents?.openWorkspaces === undefined ? SAME_AS_APP : String(rs.agents.openWorkspaces)} disabled={busy !== null} options={openWorkspaceOptions(rs?.agents?.openWorkspaces, s.models.agentLimit)} onChange={(v) => void patchRoomSettings(roomId, { agents: { openWorkspaces: v === SAME_AS_APP ? null : Number(v) } })} />
           </Row>
         </Section>
