@@ -447,6 +447,9 @@ const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
 /** What @src finds: the folder first, then the folders and files under it. */
 const mentionFolderTree: FileEntry[] = [{ path: 'src', dir: true }, { path: 'src/app', dir: true }, { path: 'src/app/invoices', dir: true }, ...['src/app/index.ts', 'src/app/invoices/table.tsx'].map(file)]
 
+/** KERNEL-750: rows from a reference folder carry the folder's name, which the menu shows where a repo file shows its folder. */
+const mentionReferenceTree: FileEntry[] = [{ path: '/Users/you/Projects/client-a-api/src/invoices/routes.ts', dir: false, reference: 'client-a-api' }, { path: '/Users/you/Projects/design-system/src/invoice-table.tsx', dir: false, reference: 'design-system' }, ...mentionFolderTree.slice(1, 2), file('src/app/invoices/table.tsx')]
+
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
 const skills: Skill[] = [
@@ -2195,6 +2198,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'workspace', workspaceId: ids.lead } }
   })),
   ComposerMentionFolders: composing({ parts: [], draft: '@src' }, { tree: { [ids.table]: mentionFolderTree } }),
+  ComposerMentionReference: composing({ parts: [], draft: '@invoice' }, { tree: { [ids.table]: mentionReferenceTree } }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.

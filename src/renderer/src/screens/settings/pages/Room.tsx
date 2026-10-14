@@ -6,6 +6,7 @@ import { actions, go } from '../../../store'
 import { Button, ConfirmDialog, Select, useBusy } from '../../../ui'
 import { sourceOf } from '../../rooms/roomInfo'
 import { RoomIconRow } from './RoomIconRow'
+import { RoomReferences } from './RoomReferences'
 import { RoomTrackerRow } from './RoomTrackerRow'
 import { NoRoom, Row, RoomPage, Section, SettingsLink, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
@@ -68,6 +69,7 @@ export function Room({ roomId }: { roomId?: string }) {
             : <Row label="Linear team" desc={<>Connect Linear in <SettingsLink to={{ page: 'integrations' }}>Settings, Integrations</SettingsLink>.</>} />)}
         </Section>
       )}
+      {rs && <RoomReferences roomId={roomId} rs={rs} />}
       <Section title="Danger zone">
         <Row label="Archive room" desc="Stops every agent and archives its workspaces. You can restore it.">
           <Button disabled={!!room.archived} onClick={() => setConfirming(true)}>Archive room</Button>
