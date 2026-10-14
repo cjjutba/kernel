@@ -14,7 +14,6 @@ import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './l
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
-import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
@@ -280,7 +279,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
-          {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
         </section>
       </OpenText.Provider>
       </OpenImage.Provider>

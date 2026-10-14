@@ -287,7 +287,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
       { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
   }
 }
 
@@ -395,7 +395,7 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
     push: running.map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true })),
     ui: {
       route: { name: 'workspace', workspaceId: open.ws }, foldedChats: ['t-changed'],
-      workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
+      workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false },
       tabs: { [open.ws]: { tab: open.tab, lastChat: open.tab, files: [], diffs: [] } }
     }
   }

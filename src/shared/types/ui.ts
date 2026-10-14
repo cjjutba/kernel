@@ -138,7 +138,6 @@ export interface WorkspaceView {
   /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
   leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
-  checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
   /** The Changes tab as a flat list or a folder tree, like VS Code's Source Control (KERNEL-399). The store starts it at what was last picked; a fixture can leave it out. */
