@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, Room } from '@shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { exec } from '../src/main/services/exec'
 import { gh, type CodeHost } from '../src/main/services/github'
@@ -18,7 +18,7 @@ afterEach(async () => { for (const k of kernels.splice(0)) await k.stop() })
 async function kernel() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
   const k = new Kernel({ dataDir, home })
   kernels.push(k)
   await k.start()

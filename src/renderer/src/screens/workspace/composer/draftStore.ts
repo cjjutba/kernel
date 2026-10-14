@@ -15,11 +15,11 @@ export interface DraftPicks { model?: string; effort?: Effort; plan?: boolean; m
 interface Draft { workspaceId: string; parts: ChatPart[]; picks?: DraftPicks }
 const saved = new Map<string, Draft>()
 
-/** The New chat box's draft. It belongs to no chat or workspace, so it is never pruned, and it goes to disk like a chat's. */
-export const NEW_CHAT_DRAFT = 'new-chat'
-/** The draft of a room's own New chat box, in the Lead's workspace when the room has no chat (KERNEL-366). Kept per room, so one room's text never shows in another. */
-export const newChatDraftOf = (roomId: string) => `${NEW_CHAT_DRAFT}:${roomId}`
-const isNewChatDraft = (key: string) => key === NEW_CHAT_DRAFT || key.startsWith(`${NEW_CHAT_DRAFT}:`)
+/** A New chat box's draft belongs to no chat or workspace, so it is never pruned, and it goes to disk like a chat's. */
+const NEW_CHAT = 'new-chat'
+/** The draft of a room's New chat page (KERNEL-788). Kept per room, so one room's text never shows in another. The retired modal's bare `new-chat` draft is no longer read, so the next write drops it from disk. */
+export const newChatDraftOf = (roomId: string) => `${NEW_CHAT}:${roomId}`
+const isNewChatDraft = (key: string) => key.startsWith(`${NEW_CHAT}:`)
 /** Whether a draft can be written to disk: it names its workspace, or it is a New chat box's. */
 const lasting = (key: string, workspaceId: string) => !!workspaceId || isNewChatDraft(key)
 
@@ -132,6 +132,21 @@ export function savePicks(key: string, patch: DraftPicks) {
   saved.set(key, { workspaceId: d?.workspaceId ?? '', parts: d?.parts ?? [], picks: { ...d?.picks, ...patch } })
   schedule()
   for (const fn of [...pickListeners]) fn()
+}
+
+/**
+ * Moves what is typed in one New chat box to another's key, for picking a different room under the box (KERNEL-786). The text and chips
+ * replace the other box's, and the picks stay with the room they were made in. An empty box moves nothing.
+ */
+export function moveDraft(from: string, to: string) {
+  load()
+  const d = saved.get(from)
+  if (from === to || !d?.parts.length) return
+  if (d.picks) saved.set(from, { workspaceId: d.workspaceId, parts: [], picks: d.picks })
+  else saved.delete(from)
+  const dest = saved.get(to)
+  saved.set(to, { workspaceId: dest?.workspaceId ?? d.workspaceId, parts: d.parts, ...(dest?.picks ? { picks: dest.picks } : {}) })
+  schedule()
 }
 
 /** A send: the draft goes with its text and its picks, so the box starts from the Lead again. */

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import type { SessionDeps } from '../src/main/services/sessions'
 import { cleanTitle, titleText } from '../src/main/services/titles'
@@ -25,7 +25,7 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
   const repo = o.repo ?? await tempRepo(AGENTS)
   const dataDir = o.dataDir ?? await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = o.home ?? await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  if (!o.dataDir) await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   const t = {
     k, repo, dataDir, home,
@@ -98,7 +98,7 @@ describe('chat names (KERNEL-202)', () => {
     // Closing the last chat opens an auto-named one.
     for (const c of await h['chats.list']({ workspaceId: ws.id })) await h['chats.close']({ chatId: c.id })
     expect((await h['chats.list']({ workspaceId: ws.id }))[0]).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('names a chat from its conversation at turn 1 when Claude Code wrote no title', async () => {
@@ -110,7 +110,7 @@ describe('chat names (KERNEL-202)', () => {
     expect(s.asked[0].current).toBeUndefined()
     expect(s.asked[0].text).toContain('The login button does nothing')
     expect(s.chat(c.id)).toMatchObject({ title: 'Fix the login bug', autoTitle: { turns: 1 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it("takes Claude Code's title early in the first turn, then passes it as the current name", async () => {
@@ -129,7 +129,7 @@ describe('chat names (KERNEL-202)', () => {
     const reads = s.infoAsked.length
     await s.reply(c.id)
     expect(s.infoAsked).toHaveLength(reads)
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('names an auto-named chat again at turns 1, 3, 10 and 30 only, with the current name as a hint', async () => {
@@ -145,7 +145,7 @@ describe('chat names (KERNEL-202)', () => {
     expect(at).toEqual([1, 3, 10, 30])
     expect(s.asked.map((a) => a.current)).toEqual([undefined, 'Name at 1', 'Name at 3', 'Name at 10'])
     expect(s.chat(c.id)).toMatchObject({ title: 'Name at 30', autoTitle: { turns: 30 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('never changes a name the user typed, even one typed while a request is in flight', async () => {
@@ -170,7 +170,7 @@ describe('chat names (KERNEL-202)', () => {
     for (let n = 0; n < 3; n++) { await s.reply(c.id); await s.turn(c.id) }
     expect(s.asked).toHaveLength(1)
     expect(s.chat(c.id).title).toBe('My own name')
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('puts an auto name back to "New tab" in a Lead tab on /clear only, and keeps a typed name', async () => {
@@ -209,7 +209,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.k.handlers()['chats.rename']({ chatId: c.id, title: 'Mine' })
     await s.reset(c.id, 'clear')
     expect(s.chat(c.id).title).toBe('Mine')
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('drops a name for the old conversation that arrives after /clear', async () => {
@@ -224,7 +224,7 @@ describe('chat names (KERNEL-202)', () => {
     release('About the old conversation')
     await settle()
     expect(s.chat(c.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('leaves the name when a request fails, and tries again at the next turn end', async () => {
@@ -250,7 +250,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.turn(c.id)
     expect(s.asked).toHaveLength(5)
     expect(s.chat(c.id)).toMatchObject({ title: 'Refreshed', autoTitle: { turns: 11 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('retries a failing refresh once, then waits for the next point on the schedule', async () => {
@@ -272,7 +272,7 @@ describe('chat names (KERNEL-202)', () => {
     await run(40)
     expect(at).toEqual([3, 4, 10, 11, 30, 31])
     expect(s.chat(c.id)).toMatchObject({ title: 'Named by Kernel', autoTitle: { turns: 31 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('stops naming a "New tab" after 3 misses in a row, until /clear', async () => {
@@ -288,7 +288,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.turn(c.id)
     expect(s.asked).toHaveLength(4)
     expect(s.chat(c.id)).toMatchObject({ title: 'After the clear', autoTitle: { turns: 1 } })
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
   }, 60_000)
 
   it('names open chats stuck at "New chat" or "New tab" on start, one at a time', async () => {
@@ -311,7 +311,7 @@ describe('chat names (KERNEL-202)', () => {
     const closed = await legacy({ sessionId: 's4', closed: true }, 1)
     const named = await legacy({ sessionId: 's5', title: 'Already named' }, 1)
     const stuckTab = await legacy({ sessionId: 's6', title: 'New tab', autoTitle: { turns: 0 } }, 1)
-    await s.k.stop()
+    await s.k.stop({ budgetMs: 0 })
 
     let live = 0
     let most = 0
@@ -326,7 +326,7 @@ describe('chat names (KERNEL-202)', () => {
     expect(again.chat(stuckTab)).toMatchObject({ title: 'Recovered name', autoTitle: { turns: 1 } })
     for (const id of [noTurn, noSession, closed]) expect(again.chat(id).title).toBe('New chat')
     expect(again.chat(named).title).toBe('Already named')
-    await again.k.stop()
+    await again.k.stop({ budgetMs: 0 })
   }, 60_000)
 })
 

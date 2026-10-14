@@ -9,12 +9,12 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_BUILD_RULE, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
 import { mentionNote } from '../src/main/services/mentions'
 import { OpenItems, openReminder } from '../src/main/features/openItems'
 import type { Kernel } from '../src/main/kernel'
-import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch, REFERENCE_READ_ONLY } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 
@@ -364,14 +364,34 @@ describe('permission modes on Codex (KERNEL-447)', () => {
     expect(off.of('note').map((n) => n.text)).toEqual([NETWORK_OFF, NETWORK_OFF])
   })
 
-  it.fails('refuses a file change under a reference folder in every mode, as Claude does (KERNEL-743, fix tracked in KERNEL-790)', async () => {
-    const t = track(await setup({ mode: 'bypassPermissions', references: ['/tmp/client-a-api'] }))
-    await t.sessions.send('chat', [{ type: 'text', text: script(
-      { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
-      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } }
-    ) }])
-    await t.idle()
-    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
+  it('refuses a file change under a reference folder in every mode, as Claude does, and names the folders in its instructions (KERNEL-790)', async () => {
+    const change = (id: string, ...paths: string[]) => [
+      { notify: 'item/started', params: { item: { type: 'fileChange', id, changes: paths.map((path) => ({ path, kind: { type: 'update', move_path: null }, diff: '+x' })), status: 'inProgress' } } },
+      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1 } }
+    ]
+    for (const mode of ['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const) {
+      const t = track(await setup({ mode, availability: autoWorks, references: ['/tmp/client-a-api'] }))
+      await t.sessions.send('chat', [{ type: 'text', text: script(
+        { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '/tmp/client-a-api/src/routes.ts', kind: { type: 'update', move_path: null }, diff: '+x' }], status: 'inProgress' } } },
+        { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp/client-a-api' } },
+        // Only the second file is under the reference folder.
+        ...change('f2', 'src/app.ts', '/tmp/client-a-api/package.json'),
+        // A rename from the worktree into the reference folder, with no grantRoot.
+        { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f3', changes: [{ path: 'src/app.ts', kind: { type: 'update', move_path: '/tmp/client-a-api/src/app.ts' }, diff: '' }], status: 'inProgress' } } },
+        { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f3', startedAtMs: 1 } }
+      ) }])
+      await t.idle()
+      expect(await t.answers('item/fileChange/requestApproval'), mode).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }])
+      expect(t.of('note').map((n) => n.text), mode).toEqual([REFERENCE_READ_ONLY, REFERENCE_READ_ONLY, REFERENCE_READ_ONLY])
+      expect(t.store.approvals({}), mode).toEqual([])
+      if (mode === 'default') expect((await t.sent('thread/start'))[0].params.developerInstructions).toContain('- /tmp/client-a-api')
+    }
+
+    // Changes anywhere else go on as before.
+    const other = track(await setup({ mode: 'acceptEdits', references: ['/tmp/client-a-api'] }))
+    await other.sessions.send('chat', [{ type: 'text', text: script(...change('f1', 'src/app.ts', '/tmp/client-a-api-v2/x.ts')) }])
+    await other.idle()
+    expect(await other.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
   })
 
   it('in Bypass permissions accepts file changes outside the workspace and grants more permissions, and still asks its questions', async () => {
@@ -950,5 +970,66 @@ describe('switching accounts while a chat waits on the user, on Codex (KERNEL-61
     expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
     expect((await t.sent('turn/start'))[1].params).toMatchObject({ input: [{ type: 'text', text: APPROVED }] })
     expect(notes(t)).toEqual(['Now on personal'])
+  })
+})
+
+describe('a chat with Kernel in Hand off or Build here, on Codex (KERNEL-770)', () => {
+  const leadWs = (leadMode?: 'handoff' | 'build') => ({ threadId: 'thread', ...(leadMode ? { leadMode } : {}) })
+  /** A turn that changes one file, at `path`, and asks Kernel to approve it. */
+  const change = (path: string) => script({ notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path, kind: { type: 'add' }, diff: '+hi' }], status: 'inProgress' } } }, { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1 } })
+  const planTurn = script({ notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Fix the padding' } } })
+
+  it('Hand off reads in the sandbox, declines every file change but a shared file, and takes the Hand off rule', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs(), mode: 'bypassPermissions' }))
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    const [turn] = await t.sent('turn/start')
+    expect(turn.params.sandboxPolicy).toEqual({ type: 'readOnly', networkAccess: true })
+    await t.sessions.send('chat', [{ type: 'text', text: change(join(t.repo, '.kernel/shared/mock.html')) }])
+    await t.idle()
+    await t.sessions.send('chat', [{ type: 'text', text: change('.kernel/shared/../../src/app.ts') }])
+    await t.idle()
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }, { decision: 'decline' }])
+    const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
+    expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
+    expect(instructions).not.toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
+  })
+
+  it('Build here writes in the workspace and accepts file changes as the mode says, with the Build here rule', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs('build') }))
+    await t.sessions.send('chat', [{ type: 'text', text: change('src/app.ts') }])
+    await t.idle()
+    expect((await t.sent('turn/start'))[0].params.sandboxPolicy).toMatchObject({ type: 'workspaceWrite' })
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
+    const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
+    expect(instructions).toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
+    expect(instructions).toContain('kernel_suggest_hand_off')
+    expect(instructions).not.toContain('mcp__kernel__')
+  })
+
+  it('Build here builds an approved plan itself: no hand-off note and no reminder', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs('build'), chat: { plan: true } }))
+    await t.sessions.send('chat', [{ type: 'text', text: planTurn }])
+    t.approvals.decide((await t.pending()).id, { behavior: 'allow' })
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    await new Promise((r) => setTimeout(r, 100))
+    const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
+    expect(inputs).toHaveLength(2)
+    expect(inputs[1]).toBe(APPROVED)
+  })
+
+  it('a switch takes effect from the next turn: the thread resumes with the new rule and sandbox', async () => {
+    const t = track(await setup({ agent: kernel, ws: leadWs() }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    t.store.saveWorkspace({ ...t.store.workspace('ws')!, leadMode: 'build' })
+    t.sessions.restartIdle(['ws'])
+    await t.sessions.send('chat', [{ type: 'text', text: 'Fix the padding' }])
+    await t.idle()
+    const [resume] = await t.sent('thread/resume')
+    expect(resume.params.developerInstructions).toContain(forProvider(LEAD_BUILD_RULE, 'codex'))
+    const turns = await t.sent('turn/start')
+    expect(turns.map((m) => m.params.sandboxPolicy.type)).toEqual(['readOnly', 'workspaceWrite'])
   })
 })

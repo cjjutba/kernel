@@ -11,7 +11,7 @@ import { loadRepoSettings, reviewOf, reviewPolicyOf, saveAlwaysReview, saveRevie
 import { inPaths, kindsFor, lensAgent } from '../src/main/services/lenses'
 import { toolPolicy } from '../src/main/services/agentTools'
 import { reviewRule } from '../src/main/services/handoff'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-549: kinds of review (code, security, UX) that Kernel starts itself when a PR passes checks.
 
@@ -35,7 +35,7 @@ async function setup(o: { settings?: string; files?: Record<string, string>; app
   const repo = await tempRepo({ ...AGENTS, ...(o.settings ? { '.kernel/settings.toml': o.settings } : {}), ...o.files })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ version: 2, hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { autoReview: true }, ...o.app }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -70,6 +70,29 @@ describe('which reviews a PR gets', () => {
     expect(rws).toMatchObject({ reviewOf: ws.id, status: 'ready', agentId: 'kernel-reviewer', title: `Review PR #${ws.prNumber}` })
     expect(lenses(rws)).toEqual([{ kind: 'code' }])
     expect(k.store.chats(rws.id)[0].title).toBe('Code review')
+  })
+
+  it("reviews a Build here chat's own PR and reports to that chat, and leaves a chat in Hand off alone (KERNEL-778)", async () => {
+    const { k, room, reviewsOf, lenses } = await setup()
+    const lead = async (mode: 'build' | 'handoff') => {
+      const c = await k.lead.newLeadChat(room.id, { prompt: '' })
+      await vi.waitFor(() => expect(k.store.workspace(k.store.chat(c.id)!.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
+      k.lead.setMode(k.store.chat(c.id)!.workspaceId, mode)
+      const ws = k.store.workspace(k.store.chat(c.id)!.workspaceId)!
+      await writeFile(join(ws.path, 'retry.ts'), 'export {}\n')
+      await git(ws.path, 'add', '-A')
+      await git(ws.path, 'commit', '-qm', 'retry')
+      k.store.saveWorkspace({ ...ws, prNumber: mode === 'build' ? 201 : 202, prState: 'ready', prHead: (await git(ws.path, 'rev-parse', 'HEAD')).trim() })
+      return { c, ws }
+    }
+    const build = await lead('build')
+    await k.reviews.onReady(build.ws.id)
+    const [rws] = reviewsOf(build.ws.id)
+    expect(rws).toMatchObject({ reviewOf: build.ws.id, leadChatId: build.c.id, title: 'Review PR #201' })
+    expect(lenses(rws)).toEqual([{ kind: 'code' }])
+    const handoff = await lead('handoff')
+    await k.reviews.onReady(handoff.ws.id)
+    expect(reviewsOf(handoff.ws.id)).toEqual([])
   })
 
   it('adds the UX review as a second chat of the same review workspace when the PR touches its paths', async () => {

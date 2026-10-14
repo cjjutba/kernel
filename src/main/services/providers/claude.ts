@@ -4,6 +4,7 @@ import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPa
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
+import { leadModeOf } from '@shared/leadMode'
 import { toolView } from '@shared/toolView'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
@@ -115,8 +116,8 @@ export class ClaudeRunner implements Runner {
     const sessionId = chat.sessionId ?? randomUUID()
     host.managed(sessionId)
     // The agent file's tools line and disallowedTools hold, as they do when Claude Code runs the file as a subagent (KERNEL-397, KERNEL-451).
-    // A review only reads, whatever its agent's file says (KERNEL-549).
-    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf })
+    // A review only reads, whatever its agent's file says (KERNEL-549). A chat with Kernel edits only in Build here (KERNEL-770).
+    const tools = toolPolicy(agent?.tools, { disallowed: agent?.disallowedTools, aliases: o.aliases, allow: o.access?.allow, readOnly: !!ws.reviewOf, lead: agent?.lead ? leadModeOf(ws) : undefined })
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
     this.bypassable = o.bypass
@@ -751,6 +752,9 @@ function kernelHooks(o: {
         if (unlisted === 'ask' && bypassing()) return ROOM_ALLOWS
         if (unlisted === 'ask' && askTool) return askTool(tool, tool_input, `Your agent file doesn't list ${tool.split('__')[1]}.`, signal)
       }
+      // Hand off refuses an edit whatever the file says, and says so (KERNEL-770).
+      const mode = tools.modeRefuses(tool)
+      if (mode) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: mode } }
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       const why = tools.disallows(tool)
         ? `Your agent file's disallowedTools takes away ${tool}. Use another tool, or ask the user to take ${tool} off disallowedTools in your agent file.`
@@ -906,6 +910,7 @@ export function sessionEnv(base: NodeJS.ProcessEnv, account: Record<string, stri
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  env[ARTIFACT] ??= '1'
   // An agent's git can't answer a credential prompt either, so a push without a login fails instead of hanging (KERNEL-460).
   Object.assign(env, NO_PROMPTS)
   // The chat's role in Settings, Models decides where it compacts, whatever the Mac exports: 200k, or the model's whole
@@ -921,6 +926,12 @@ const COMPACT_AT_200K = '200000'
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
+
+/**
+ * Claude Code's switch for its Artifact tools, which draw Claude Design canvases. SDK sessions default them off and the CLI
+ * on, so Kernel gives its sessions the CLI's default. The Mac's value and `enableArtifact: false` still win (KERNEL-795).
+ */
+export const ARTIFACT = 'CLAUDE_CODE_ARTIFACT'
 
 /**
  * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP

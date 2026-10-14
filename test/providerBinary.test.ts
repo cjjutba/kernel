@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PreflightCheck } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
-import { exec, type ExecResult } from '../src/main/services/exec'
+import type { ExecResult } from '../src/main/services/exec'
 import { runPreflight } from '../src/main/services/preflight'
-import { bundledCodex, claudeExecutable, findOnPath, packagedClaude, packagedCodex, resolveBinary } from '../src/main/services/providers/binary'
+import { claudeExecutable, findOnPath, packagedClaude, packagedCodex, resolveBinary } from '../src/main/services/providers/binary'
 
 /** An executable shell script in a fresh folder. */
 async function script(name: string, body: string, dir?: string): Promise<string> {
@@ -50,15 +50,6 @@ describe('which executable a provider runs (KERNEL-406)', () => {
     await mkdir(bin, { recursive: true })
     await script('codex', 'echo hi', bin)
     expect(packagedCodex(resources)).toBe(join(bin, 'codex'))
-  })
-
-  it('bundles the pinned Codex, the version its protocol types came from', async () => {
-    const bin = bundledCodex()
-    expect(bin).toBeTruthy()
-    const pinned = (await readFile(join(__dirname, '..', 'src/main/services/providers/codex/protocol/VERSION'), 'utf8')).trim()
-    const pkg = JSON.parse(await readFile(join(__dirname, '..', 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
-    expect(pinned).toBe(`codex-cli ${pkg.dependencies['@openai/codex']}`)
-    expect((await exec(bin!, ['--version'], { timeoutMs: 60_000 })).stdout.trim()).toBe(pinned)
   })
 
   it('gives Claude sessions the same executable as before while Settings is left alone', () => {

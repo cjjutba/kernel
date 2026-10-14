@@ -254,13 +254,13 @@ export interface TableRow { key: string; cells: ReactNode[]; actions?: ReactNode
 export function DataTable({ label, columns, grid, rows, empty }: { label: string; columns: string[]; grid: string; rows: TableRow[]; empty?: ReactNode }) {
   const template = `${grid} auto`
   return (
-    <div className="set-card set-table" role="table" aria-label={label}>
-      <div className="set-table-head" role="row" style={{ gridTemplateColumns: template }}>
+    <div className="set-card set-table" role="table" aria-label={label} style={{ gridTemplateColumns: template }}>
+      <div className="set-table-head" role="row">
         {columns.map((c) => <span key={c} role="columnheader">{c}</span>)}
         <span role="columnheader" aria-label="Actions" />
       </div>
       {rows.map((r) => (
-        <div key={r.key} className="set-table-row" role="row" style={{ gridTemplateColumns: template }}>
+        <div key={r.key} className="set-table-row" role="row">
           {r.cells.map((c, i) => <span key={i} role="cell" className="set-cell">{c}</span>)}
           <span role="cell" className="set-acts">{r.actions}</span>
         </div>

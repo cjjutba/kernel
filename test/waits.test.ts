@@ -14,7 +14,7 @@ import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp
 import { mergedReading, resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
 import { saveLinearToken } from '../src/main/services/integrations'
 import { saveRepoSettings } from '../src/main/services/settings'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
 
@@ -51,7 +51,8 @@ const templates = new Map<string, Promise<{ repo: string; origin: string }>>()
 function template(files: Record<string, string>) {
   const key = JSON.stringify(files)
   if (!templates.has(key)) templates.set(key, (async () => {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+    // The run script's file is ignored, so the chat's worktree has no change a hand-off would mention (KERNEL-770).
+    const repo = await tempRepo({ 'README.md': '# client\n', '.gitignore': 'ran.txt\nset-up.txt\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
     await run('git', ['clone', '-q', '--bare', repo, origin])
     await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
@@ -73,7 +74,7 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   // A room with a Linear token and team uses Linear (KERNEL-462).
   if (o.fetch) await saveRepoSettings(repo, { linear: { team: 'KERNEL' } })

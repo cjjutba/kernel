@@ -85,34 +85,34 @@ describe('Bash rules', () => {
 describe('session env', () => {
   it('never hands an API key to a session', () => {
     const env = sessionEnv({ PATH: '/bin', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_AUTH_TOKEN: 'tok' }, { KERNEL_PORT: '4300' })
-    expect(env).toEqual({ ...NO_PROMPTS, PATH: '/bin', KERNEL_PORT: '4300' })
+    expect(env).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', KERNEL_PORT: '4300' })
   })
 
   it("hands a session only the picked API key account's key, and no OAuth token beside it (KERNEL-523)", () => {
     const mac = { PATH: '/bin', ANTHROPIC_API_KEY: 'sk-from-the-mac', ANTHROPIC_AUTH_TOKEN: 'tok', CLAUDE_CODE_OAUTH_TOKEN: 'oat-from-the-shell' }
-    expect(sessionEnv(mac, { ANTHROPIC_API_KEY: 'sk-picked' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', ANTHROPIC_API_KEY: 'sk-picked' })
+    expect(sessionEnv(mac, { ANTHROPIC_API_KEY: 'sk-picked' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', ANTHROPIC_API_KEY: 'sk-picked' })
     // A token account and the CLI's own login still get no API key.
-    expect(sessionEnv(mac, { CLAUDE_CODE_OAUTH_TOKEN: 'oat-added' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'oat-added' })
-    expect(sessionEnv(mac, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'oat-from-the-shell' })
+    expect(sessionEnv(mac, { CLAUDE_CODE_OAUTH_TOKEN: 'oat-added' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'oat-added' })
+    expect(sessionEnv(mac, {})).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_OAUTH_TOKEN: 'oat-from-the-shell' })
   })
 
   it('turns agent teams on or off for Kernel sessions, whatever the shell exports, and leaves it alone when not asked (KERNEL-73)', () => {
-    expect(sessionEnv({ PATH: '/bin' }, {}, { agentTeams: true })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {}, { agentTeams: false })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
+    expect(sessionEnv({ PATH: '/bin' }, {}, { agentTeams: true })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {}, { agentTeams: false })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {})).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
   })
 
   it("leaves the window a chat compacts against to the model, or to the user's own setting (context-window-follows-model)", () => {
-    expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
+    expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
   })
 
   it("sets a chat's compact window from its role, whatever the shell exports (feat-compact-window-per-role-with-plan)", () => {
     const mac = { PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }
-    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
-    expect(sessionEnv(mac, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
-    expect(sessionEnv(mac, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
-    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
+    expect(sessionEnv(mac, {}, { compact: '200k' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
+    expect(sessionEnv(mac, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: 'full' })).toEqual({ ...NO_PROMPTS, CLAUDE_CODE_ARTIFACT: '1', PATH: '/bin' })
     // A helper call or a terminal names no choice, and keeps what the Mac has.
     expect(sessionEnv(mac, {}, { agentTeams: true }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('500000')
   })

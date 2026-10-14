@@ -8,7 +8,7 @@ import { baseMessage, catchUpMessage, listFiles } from '../src/main/features/bas
 import { sessionDeps } from '../src/main/features/sessionDeps'
 import { git, run } from '../src/main/services/exec'
 import { behindCount, FETCH_REUSE_MS, mergeTreeConflicts, snapshotCommit } from '../src/main/services/worktrees'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-180: Kernel tells a teammate with no PR when main moves under its branch in a way that would conflict.
 
@@ -32,7 +32,7 @@ async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // No base set, so a workspace starts from origin/main.
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   return { dataDir, home }
 }
 
@@ -284,6 +284,22 @@ describe('telling a teammate that main moved (KERNEL-180)', () => {
     expect(s.saved()[lead.id]).toBeUndefined()
     // Kai wasn't in conflict, so nobody was told anything.
     expect(s.posts).toEqual([])
+  })
+
+  it('tells a chat in Build here, as it tells a teammate, and checks at its turn ends (KERNEL-778)', async () => {
+    const s = await setUp()
+    const leadChat = await s.k.lead.leadChat(s.room.id)
+    // Only a workspace whose setup finished is watched, and a slow machine is still setting it up once the worktree exists.
+    await vi.waitFor(() => expect(s.k.store.workspace(leadChat.workspaceId)?.status).toBe('ready'), { timeout: 10_000, interval: 10 })
+    s.k.lead.setMode(leadChat.workspaceId, 'build')
+    const lead = s.k.store.workspace(leadChat.workspaceId)!
+    await commit(lead.path, { 'src/a.ts': SAME_LINE('lead') }, 'lead')
+    await landOnMain(s.repo, { 'src/a.ts': SAME_LINE('main') })
+    await s.check()
+    expect(s.posts).toEqual([{ chatId: leadChat.id, text: baseMessage('origin/main', 1, ['src/a.ts']) }])
+    const check = vi.spyOn(s.k.baseWatch, 'check')
+    sessionDeps(s.k).onTurnDone!(s.k.store.workspace(lead.id)!, leadChat, { ok: true, interrupted: false, by: 'user' })
+    expect(check).toHaveBeenCalledWith(s.room.id, { fetch: false, only: lead.id })
   })
 
   it('stops quietly when the fetch fails, and checks again once it works', async () => {

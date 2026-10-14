@@ -49,6 +49,15 @@ describe('whether the chat keeps following its end after a scroll (KERNEL-605)',
     expect(followsAfterScroll(true, view(30), was(view(30), 4), false)).toBe(true)
   })
 
+  it('leaves a reader who scrolled up where they are when a running turn folds into its summary (KERNEL-784)', async () => {
+    const { followsAfterScroll } = await load()
+    // The turn's stretches and its live line collapse into one row, so the thread gets shorter and the browser keeps the reader's rows in place.
+    const shorter = view(900, 2400)
+    expect(followsAfterScroll(false, shorter, { ...was(shorter, 0), scrollHeight: 3000 }, false)).toBe(false)
+    // A reader who was following, with the end in reach, keeps following through the same fold.
+    expect(followsAfterScroll(true, view(8, 2400), { ...was(view(8, 2400), 600), scrollHeight: 3000 }, false)).toBe(true)
+  })
+
   it('unpins at once when the reader moves up, even by a little', async () => {
     const { followsAfterScroll } = await load()
     expect(followsAfterScroll(true, view(10), was(view(10), 3), true)).toBe(false)
@@ -141,5 +150,39 @@ describe('the reader\'s input letting go when no scroll follows it (KERNEL-629)'
     vi.advanceTimersByTime(500)
     expect(fn).not.toHaveBeenCalled()
     vi.useRealTimers()
+  })
+})
+
+describe('the padding under a sent message (KERNEL-803)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ anchorPad: (clientHeight: number, anchorTop: number, endBottom: number) => number; ANCHOR_GAP: number }>
+
+  it('fills the view under the message, so a short chat anchors too', async () => {
+    const { anchorPad, ANCHOR_GAP } = await load()
+    // A 100px message on its own in a 700px view: the rest of the view, less the gap above the message.
+    expect(anchorPad(700, 300, 400)).toBe(700 - ANCHOR_GAP - 100)
+  })
+
+  it('shrinks by exactly what the reply grows', async () => {
+    const { anchorPad } = await load()
+    const empty = anchorPad(700, 300, 400)
+    expect(anchorPad(700, 300, 460)).toBe(empty - 60)
+  })
+
+  it('is gone once the message and its reply fill the view, and never negative', async () => {
+    const { anchorPad, ANCHOR_GAP } = await load()
+    expect(anchorPad(700, 300, 300 + 700 - ANCHOR_GAP)).toBe(0)
+    expect(anchorPad(700, 300, 2000)).toBe(0)
+  })
+})
+
+describe('what a send anchors (KERNEL-803)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ followsSend: (item: ChatItem | undefined) => boolean }>
+
+  it('anchors the reader\'s own message only, never a team update, a hand-off or a note', async () => {
+    const { followsSend } = await load()
+    expect(followsSend(user())).toBe(true)
+    expect(followsSend(user({ from: 'lead' }))).toBe(false)
+    expect(followsSend(user({ from: 'kernel' }))).toBe(false)
+    expect(followsSend({ kind: 'note', id: 'n1', ts: 1, text: 'PR #12 merged' } as ChatItem)).toBe(false)
   })
 })

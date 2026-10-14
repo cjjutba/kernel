@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ChatItem, ChatPart, PrInfo, PrState, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prQuery, prStateOf, REPLY_FOOTER, resolveFile, reviewsOf, type PrView } from '../src/main/services/github'
 import { addressReviewText, createPrText, fixChecksText, resolveText } from '../src/main/services/conventions'
@@ -285,7 +285,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: ChatPart[][] = []
@@ -750,7 +750,9 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
   })
 
   it('continues on a fresh branch from the base, in the same worktree', async () => {
-    const { k, ws, gh, notes } = await setup()
+    // Archive on merge is on by default and archives a merged workspace within a fraction of a second, removing the worktree
+    // this test continues in. Continue is for a workspace that stays, so the test keeps it.
+    const { k, ws, gh, notes } = await setup({ workspace: { baseRef: 'main', archiveOnMerge: false } })
     gh.pr = info({ state: 'ready' })
     await k.refreshPr(ws.id)
     gh.pr = info({ state: 'merged' })
@@ -773,7 +775,7 @@ describe('PR instructions per room (KERNEL-190)', () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(from === 'default' ? {} : { pr: app }) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(from === 'default' ? {} : { pr: app }) }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: ChatPart[] = []
@@ -821,7 +823,7 @@ describe("Kernel's PR texts fitted to the workspace (KERNEL-564)", () => {
     await git(repo, 'push', '-q', 'upstream', 'main')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'upstream/main', remote: 'upstream' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'upstream/main', remote: 'upstream' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop())

@@ -7,6 +7,7 @@ import { bus } from '../src/main/bus'
 import { QuitGuard, quitDialog, quitStep, SHUTDOWN_GRACE_MS, type QuitDialog, type QuitReason } from '../src/main/quit'
 import type { Chat } from '../src/shared/types'
 import type { PushEvent } from '../src/shared/ipc'
+import { freePort } from './helpers'
 
 const settle = () => new Promise((r) => setTimeout(r, 10))
 
@@ -175,7 +176,7 @@ describe('QuitGuard', () => {
 async function kernel(o: Partial<ConstructorParameters<typeof Kernel>[0]> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   return new Kernel({ dataDir, home, ...o })
 }
 

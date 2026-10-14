@@ -9,7 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git, run } from '../src/main/services/exec'
 import { roomWorktreeRoot } from '../src/main/services/worktrees'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // KERNEL-542: lead.start answers once the chat, its tab and its workspace are saved. The fetch, the worktree and setup run
 // after, and the first message waits in the tab's queue until the worktree exists.
@@ -65,7 +65,7 @@ async function withOrigin(files: Record<string, string> = {}) {
 async function dirs(workspace: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace }))
   return { dataDir, home }
 }
 

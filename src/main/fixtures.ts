@@ -234,7 +234,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'terminal.resize': async () => ok,
     'terminal.replay': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
-    'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false },
+    'checkpoints.preview': async ({ workspaceId, checkpointId }) => f.checkpointPreviews?.[workspaceId]?.[checkpointId] ?? { files: [], stat: { files: 0, added: 0, removed: 0 }, commitsAhead: 0, pushed: false, conflicts: [] },
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
     'approvals.list': async ({ roomId }) => f.approvals.filter((a) => !roomId || a.roomId === roomId).sort((a, b) => b.createdAt - a.createdAt),
     'approvals.decide': async ({ id, decision }) => {
@@ -258,6 +258,18 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
     'lead.prefetch': async () => ({ ok: true }),
+    'lead.setMode': async ({ workspaceId, mode }) => {
+      const ws = f.workspaces.find((w) => w.id === workspaceId)
+      if (!ws) throw new Error('This fixture has no such workspace.')
+      ws.leadMode = mode
+      return ws
+    },
+    'lead.linkIssue': async ({ workspaceId, issue }) => {
+      const ws = f.workspaces.find((w) => w.id === workspaceId)
+      if (!ws) throw new Error('This fixture has no such workspace.')
+      ws.source = { kind: 'issue', id: issue, title: ws.title ?? issue }
+      return ws
+    },
     'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'threads.archivePreview': async ({ threadId }) => {

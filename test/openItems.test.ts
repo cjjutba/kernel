@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from 'vitest'
+import Database from 'better-sqlite3'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Chat, ChatPart, OpenItem, TeamUpdate, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
+import { migrate, migrations } from '../src/main/migrations'
 import { Kernel } from '../src/main/kernel'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import type { TeamEvent } from '../src/main/services/leadUpdates'
 import { openReminder } from '../src/main/features/openItems'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // KERNEL-749: Kernel holds the Lead to what its chat owes: a teammate's question, a review's blockers, a proposed hand-off and
 // a teammate the user addressed. Each opens on its real event, closes when the Lead acts on it, and survives a restart.
@@ -48,7 +52,7 @@ async function setup() {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kernel.md': AGENT('kernel', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const { k, posts } = await start(dataDir, home)
   const room = await k.addRoom(repo)
   const lead = await k.leadChat(room.id)
@@ -221,5 +225,66 @@ describe('open items survive a restart (KERNEL-749)', () => {
       expect(reminder).toContain('Noor proposed handing "Add the export button" to Kai')
       expect(again.k.openItems.atStop(s.lead.id)).toBeUndefined()
     } finally { await again.k.stop() }
+  }, 20_000)
+})
+
+describe('open items go with their Lead chat (KERNEL-791)', () => {
+  it('deleting the Lead chat from History leaves none of its items behind', async () => {
+    const s = await setup()
+    question(s, s.kai)
+    s.k.openItems.mentioned(s.k.store.chat(s.lead.id)!, [{ agentId: 'noor', name: 'Noor' }])
+    const ws = s.k.store.workspace(s.lead.workspaceId)!
+    const threadId = ws.threadId!
+    expect(await s.k.handlers()['openItems.list']({ threadId })).toHaveLength(2)
+    await s.k.archive.archiveWorkspace(ws.id, false, { noScript: true })
+    expect(await s.k.history.deleteWorkspaces([ws.id], { deleteUnpushed: true })).toMatchObject({ deleted: [ws.id] })
+    expect(s.k.store.thread(threadId)).toBeUndefined()
+    expect(await s.k.handlers()['openItems.list']({ threadId })).toEqual([])
+    expect((s.k.store as unknown as { db: Database.Database }).db.prepare('select count(*) n from open_items where thread_id = ?').get(threadId)).toEqual({ n: 0 })
+    await s.k.stop({ budgetMs: 0 })
+  }, 20_000)
+
+  it('the migration deletes the items of Lead chats deleted before', () => {
+    const db = new Database(':memory:')
+    migrate(db, ':memory:', Date.now(), migrations.filter((m) => m.version <= 6))
+    db.prepare('insert into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run('kept', 'r', '{}', 1)
+    const item = db.prepare('insert into open_items (id, thread_id, room_id, key, data, created_at) values (?, ?, ?, ?, ?, ?)')
+    item.run('a', 'kept', 'r', 'k', '{}', 1)
+    item.run('b', 'gone', 'r', 'k', '{}', 1)
+    migrate(db, ':memory:')
+    expect(db.prepare('select id from open_items').all()).toEqual([{ id: 'a' }])
+    db.close()
+  })
+})
+
+describe('the window hears when open items change (KERNEL-791)', () => {
+  it('pushes openItems.changed once per open, close and dismiss, and not when nothing changed', async () => {
+    const s = await setup()
+    const threadId = s.k.store.chat(s.lead.id)!.threadId!
+    const seen: string[] = []
+    const on = (e: PushEvent) => { if (e.type === 'openItems.changed') seen.push(e.threadId) }
+    bus.on('push', on)
+    try {
+      question(s, s.kai)
+      blockers(s, s.kai)
+      question(s, s.noor)
+      expect(seen).toEqual([threadId, threadId, threadId])
+      // Two items close in one go, one push.
+      s.k.openItems.messaged(s.lead.id, s.kai)
+      expect(seen).toHaveLength(4)
+      s.k.openItems.messaged(s.lead.id, s.kai)
+      s.k.openItems.dismiss('no-such-item')
+      expect(seen).toHaveLength(4)
+      const [left] = s.k.store.openItems(threadId)
+      await s.k.handlers()['openItems.dismiss']({ id: left.id })
+      expect(seen).toHaveLength(5)
+      // An archived workspace's items close when the chat next reads what it owes.
+      question(s, s.kai)
+      s.k.store.saveWorkspace({ ...s.k.store.workspace(s.kai.id)!, status: 'archived' })
+      expect(s.kinds()).toEqual([])
+      expect(seen).toHaveLength(7)
+      expect(s.kinds()).toEqual([])
+      expect(seen).toHaveLength(7)
+    } finally { bus.off('push', on); await s.k.stop({ budgetMs: 0 }) }
   }, 20_000)
 })

@@ -6,7 +6,7 @@ import { Kernel } from '../src/main/kernel'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { git } from '../src/main/services/exec'
 import type { AgentDef } from '../src/shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -30,6 +30,9 @@ async function clone(head: 'main' | 'dev') {
   await git(remote, 'checkout', '-q', head)
   const dir = join(await mkdtemp(join(tmpdir(), 'kernel-clone-')), 'quarter')
   await git(remote, 'clone', '-q', remote, dir)
+  // A clone brings no identity of its own, and the workspaces made from it commit.
+  await git(dir, 'config', 'user.email', 't@t.dev')
+  await git(dir, 'config', 'user.name', 'Test')
   if (head === 'dev') await git(dir, 'branch', 'main', 'origin/main')
   return dir
 }
@@ -38,7 +41,7 @@ async function clone(head: 'main' | 'dev') {
 async function kernel(workspace: Record<string, string> = { baseRef: 'origin/main' }) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())

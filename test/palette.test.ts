@@ -5,7 +5,7 @@ import type { AgentDef, Chat, Room, SharedFile, Thread, Workspace } from '../src
 
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
+const act = { go: () => undefined, openNewChat: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
 const kernel: AgentDef = { id: 'kernel', name: 'Kernel', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/kernel.md' }
 
 describe('command palette', () => {

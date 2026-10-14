@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, freePort } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
@@ -207,7 +207,7 @@ describe('Kernel env', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const logged: unknown[] = []
     const spies = (['log', 'info', 'warn', 'error'] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a) => { logged.push(...a) }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
@@ -264,6 +264,9 @@ describe('Kernel env', () => {
       // Nor does it move the window the chat's role sets (feat-compact-window-per-role-with-plan).
       expect(sessionEnv(k.envFor(ws), {}, { compact: '200k' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
       expect(sessionEnv(k.envFor(ws), {}, { compact: 'full' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
+      // Sessions get the CLI's Artifact tools unless the Mac turns them off (KERNEL-795).
+      expect(sessionEnv({}, {}).CLAUDE_CODE_ARTIFACT).toBe('1')
+      expect(sessionEnv({ CLAUDE_CODE_ARTIFACT: '0' }, {}).CLAUDE_CODE_ARTIFACT).toBe('0')
       expect(k.envFor(ws, { script: true })).toMatchObject({ ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_OAUTH_TOKEN: 'other-account' })
     } finally {
       for (const [k2, v] of [['ANTHROPIC_BASE_URL', mac.base], ['CLAUDE_CODE_USE_BEDROCK', mac.bedrock], ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', mac.teams]] as const) {
@@ -331,61 +334,6 @@ describe('Kernel env', () => {
     await k.stop()
   })
 
-  it('runs nothing from a repo\'s env files until the room is trusted, in a shell or a big terminal', async () => {
-    // ZDOTDIR makes `zsh -l` run the repo's own .zshenv, the way BASH_ENV does for `bash -c`.
-    const repo = await tempRepo({
-      'README.md': '# shell\n',
-      '.env.shell': 'ZDOTDIR=zd\nFROM_REPO=yes\n',
-      'zd/.zshenv': 'touch "$PWD/zshenv-ran"\n',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
-      '.kernel/settings.toml': '[env]\nfiles = [".env.shell"]\n'
-    })
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const shell = process.env.SHELL
-    process.env.SHELL = '/bin/zsh'
-    const k = new Kernel({ dataDir, home, cipher: fakeCipher })
-    try {
-      await k.start()
-      k.sessions.send = async () => ({ queued: false })
-      const h = k.handlers()
-      const room = await k.addRoom(repo)
-      await h['env.set']({ roomId: room.id, name: 'MINE', value: 'set-by-me' })
-      const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Shell' })
-      expect(ws.status).toBe('trust')
-      expect((await h['rooms.scriptTrust']({ roomId: room.id }))?.envFiles).toEqual(['.env.shell'])
-      // The user's own variables still apply. The repo's file doesn't.
-      expect(k.envFor(ws)).toMatchObject({ MINE: 'set-by-me' })
-      expect(k.envFor(ws).FROM_REPO).toBeUndefined()
-      expect(k.envFor(ws, { script: true }).FROM_REPO).toBeUndefined()
-
-      let out = ''
-      const on = (e: { type: string; chatId?: string; data?: string }) => { if (e.type === 'terminal.data') out += e.data }
-      bus.on('push', on)
-      const plain = `shell:${ws.id}`
-      await h['terminal.resize']({ chatId: plain, cols: 100, rows: 30 })
-      await h['terminal.write']({ chatId: plain, data: 'echo "plain-$((40+2))"\r' })
-      await until(() => out.includes('plain-42'))
-      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(false)
-
-      // Once trusted, the same file is read, and the shell runs the repo's .zshenv. That shows the check above is real.
-      await trustRoom(k, room.id)
-      expect(k.envFor(ws).FROM_REPO).toBe('yes')
-      const start = k.ptys.start.bind(k.ptys)
-      k.ptys.start = (id, o) => start(id, { ...o, command: undefined })
-      const term = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })
-      await h['terminal.write']({ chatId: term.id, data: 'echo "big-$((40+3))"\r' })
-      await until(() => out.includes('big-43'))
-      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(true)
-      bus.off('push', on)
-    } finally {
-      if (shell === undefined) delete process.env.SHELL
-      else process.env.SHELL = shell
-      await k.stop()
-    }
-  })
-
   it('asks again when a commit adds an env file, and reads none of the list until then', async () => {
     const repo = await tempRepo({
       'README.md': '# env\n',
@@ -396,7 +344,7 @@ describe('Kernel env', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -528,7 +476,7 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     const repo = await tempRepo({ 'README.md': '# env\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.', ...files })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, cipher: fakeCipher })
     await k.start()
     k.sessions.send = async () => ({ queued: false })

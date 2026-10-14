@@ -94,12 +94,12 @@ describe('the three lists (KERNEL-757)', () => {
 describe('what a not ready row says it waits on', () => {
   const label = (prState: Workspace['prState']) => list([ws('x', { prState })])[0].state
   it("uses every place's words and the PR band's tone, and spins for what runs (KERNEL-417)", () => {
-    expect(label('checks')).toEqual({ label: 'Checks running', tone: 'idle', spin: true })
-    expect(label('resolving')).toEqual({ label: 'Resolving', tone: 'fail', spin: true })
-    expect(label('cifail')).toEqual({ label: 'Checks failed', tone: 'fail', spin: false })
-    expect(label('changes')).toEqual({ label: 'Changes requested', tone: 'fail', spin: false })
-    expect(label('conflict')).toEqual({ label: 'Merge conflicts', tone: 'fail', spin: false })
-    expect(label('draft')).toEqual({ label: 'Draft', tone: 'idle', spin: false })
+    expect(label('checks')).toEqual({ label: 'Checks running', tone: 'idle', glyph: 'pr', spin: true })
+    expect(label('resolving')).toEqual({ label: 'Resolving', tone: 'fail', glyph: 'prConflict', spin: true })
+    expect(label('cifail')).toEqual({ label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })
+    expect(label('changes')).toEqual({ label: 'Changes requested', tone: 'fail', glyph: 'prChanges', spin: false })
+    expect(label('conflict')).toEqual({ label: 'Merge conflicts', tone: 'fail', glyph: 'prConflict', spin: false })
+    expect(label('draft')).toEqual({ label: 'Draft', tone: 'idle', glyph: 'prDraft', spin: false })
   })
 })
 

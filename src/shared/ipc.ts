@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, CheckpointPreview, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LeadMode, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -284,12 +284,24 @@ export interface KernelApi {
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
    * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
    */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }; res: Chat }
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }; res: Chat }
   /**
    * Starts a fetch of the room's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).
    */
   'lead.prefetch': { req: { roomId: string }; res: Ok }
+  /**
+   * Switches a chat with Kernel to Hand off or Build here, by its workspace (KERNEL-770). It applies from the next turn: a running
+   * turn finishes in the mode it started in. The chat's transcript gets a `leadMode` divider. Refuses a workspace that isn't a
+   * chat with Kernel.
+   */
+  'lead.setMode': { req: { workspaceId: string; mode: LeadMode }; res: Workspace }
+  /**
+   * Links a Build here chat to an issue, by its workspace and the issue's key (KERNEL-778). Before the branch is pushed Kernel
+   * renames it the way a teammate's branch for that issue is named. After a push it only links. The PR names the key, so the
+   * issue moves to Done when it merges. Refuses a workspace that isn't a chat with Kernel.
+   */
+  'lead.linkIssue': { req: { workspaceId: string; issue: string }; res: Workspace }
   /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
@@ -632,6 +644,8 @@ export type PushEvent =
   | { type: 'chat'; chat: Chat }
   /** A Lead chat was created, renamed, retitled or closed (KERNEL-337). */
   | { type: 'thread'; thread: Thread }
+  /** An open item of the Lead chat opened, closed or was dismissed. `openItems.list` reads what is open now (KERNEL-791). */
+  | { type: 'openItems.changed'; threadId: string }
   | { type: 'chat.item'; chatId: string; item: ChatItem }
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }

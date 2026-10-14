@@ -8,7 +8,7 @@ import { Kernel } from '../src/main/kernel'
 import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
 import { land, localMerge, LocalMergeError, localStatus, prepareMerge, type Refusal } from '../src/main/services/localMerge'
-import { setUp, tempRepo } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 import { mergeView } from '../src/renderer/src/screens/workspace/pr/MergeButton'
 
@@ -549,7 +549,7 @@ describe('a local merge through the PR feature', () => {
   it("reads the branch as ready, merges it with the room's method, and marks the workspace merged", async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -584,7 +584,7 @@ describe('a local merge through the PR feature', () => {
   it('asks the agent to rebase a branch that fell behind its base, and only then (KERNEL-478)', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()
@@ -619,7 +619,7 @@ describe("the room's merge method (KERNEL-468)", () => {
   async function kernel() {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
     const k = new Kernel({ dataDir, home })
     kernels.push(k)
     await k.start()

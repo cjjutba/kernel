@@ -1,8 +1,10 @@
 import { useMemo } from 'react'
-import type { AgentDef, Approval, Workspace } from '@shared/types'
+import type { AgentDef, Approval, NewChatPicks, Workspace, WorkspaceSource } from '@shared/types'
 import { isLeadWorkspace as isLead } from '@shared/leadWorkspace'
 import { call, cleanError } from './api'
 import { roomAgents } from './nav'
+import { focusComposerIn } from './screens/workspace/composer/bus'
+import { leadNewKey } from './components/sidebar/slots'
 import { actions, getState, go, useStore } from './store'
 
 /** The room's Lead: the agent marked `lead: true`. */
@@ -54,6 +56,18 @@ export async function openLead(roomId: string): Promise<Workspace | undefined> {
   if (ws) go({ name: 'workspace', workspaceId: ws.id })
   else if (ws === null) go({ name: 'leadNew', roomId })
   return ws ?? undefined
+}
+
+/**
+ * New chat, the one way to start a chat (KERNEL-788): the page on the `leadNew` route, in `roomId` or the room in view, else the first room.
+ * `source` arrives in the box as a chip, and `picks` are what the box had chosen when the issue warning sent it back.
+ */
+export function openNewChat(roomId: string | undefined, opts?: { source?: WorkspaceSource; picks?: NewChatPicks }): void {
+  const room = roomId ?? getState().rooms[0]?.id
+  if (!room) return
+  // The box takes the caret when it mounts, or at once when New chat is already showing.
+  focusComposerIn(leadNewKey(room))
+  go({ name: 'leadNew', roomId: room, ...opts })
 }
 
 /**

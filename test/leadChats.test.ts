@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -10,7 +10,7 @@ import { Nudges } from '../src/main/services/nudges'
 import { approvalNotificationId } from '../src/main/services/notifications'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 import { run as git } from '../src/main/services/exec'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
@@ -39,17 +39,30 @@ const REPO = {
 async function dirs() {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   return { dataDir, home }
 }
 
 /** A started Kernel on a temp repo with two Lead chats, `first` and `icons`. Sends are recorded, not run. */
 async function setup(files: Record<string, string> = {}) {
+  const t = await build(files)
+  onTestFinished(() => t.k.stop({ budgetMs: 0 }))
+  return t
+}
+
+/** `setup` for a describe whose tests leave nothing the next one trips on: built once, stopped after the last. A test that needs a clean one calls `setup`. */
+function sharedSetup() {
+  let shared: Awaited<ReturnType<typeof build>>
+  beforeAll(async () => { shared = await build() })
+  afterAll(() => shared.k.stop({ budgetMs: 0 }))
+  return () => shared
+}
+
+async function build(files: Record<string, string> = {}) {
   const repo = await tempRepo({ ...REPO, ...files })
   const where = await dirs()
   const k = new Kernel(where)
   await k.start()
-  onTestFinished(() => k.stop())
   const sent: { chatId: string; text: string; from?: string }[] = []
   // What the next send answers, for the queue cases.
   const answer: { queued: boolean; why?: QueueReason } = { queued: false }
@@ -187,11 +200,11 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
     item('t1', handed.id, 'done'); item('t2', stamped.id, 'done'); item('t3', failed.id, 'failed')
     // As if this database came from a version before the field existed.
     old.store.saveMeta('leadChatBackfill', false)
-    await old.stop()
+    await old.stop({ budgetMs: 0 })
 
     const k = new Kernel(d)
     await k.start()
-    onTestFinished(() => k.stop())
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
     expect(k.store.workspace(handed.id)!.leadChatId).toBe(lead.id)
     expect(k.store.workspace(stamped.id)!.leadChatId).toBe('elsewhere')
     expect(k.store.workspace(failed.id)!.leadChatId).toBeUndefined()
@@ -217,7 +230,7 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, threadId: undefined, name: 'lead', mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
     old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
     old.store.saveMeta('leadWorkspaceBackfill', false)
-    await old.stop()
+    await old.stop({ budgetMs: 0 })
 
     const k = new Kernel(d)
     await k.start()
@@ -226,11 +239,11 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     expect(k.store.workspace(handed.id)!.lead).toBeUndefined()
     expect(k.store.meta('leadWorkspaceBackfill')).toBe(true)
     k.store.saveWorkspace({ ...k.store.workspace(lead.id)!, lead: undefined })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
 
     const again = new Kernel(d)
     await again.start()
-    onTestFinished(() => again.stop())
+    onTestFinished(() => again.stop({ budgetMs: 0 }))
     expect(again.store.workspace(lead.id)!.lead).toBeUndefined()
   })
 })
@@ -669,10 +682,10 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     const { k, first, ws, spend, where, kernel, room } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
     await spend()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const k2 = new Kernel(where)
     await k2.start()
-    onTestFinished(() => k2.stop())
+    onTestFinished(() => k2.stop({ budgetMs: 0 }))
     k2.sessions.send = async () => ({ queued: false })
     k2.sessions.kernelTurn = (id) => id === first.id
     k2.lead['leadTools'](room.id, kernel, first)
@@ -729,8 +742,9 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
 const waiting = async (k: Kernel) => vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
 
 describe("the Lead's ask_user options (KERNEL-407)", () => {
+  const shared = sharedSetup()
   it('keeps each option\'s description for the card and sends back the label that was picked', async () => {
-    const { k, first, call } = await setup()
+    const { k, first, call } = shared()
     const options = [{ label: 'Guided sign-in', description: 'Kernel opens the sign-in in your browser. Recommended.' }, { label: 'Paste a token' }]
     const asking = call(first, 'ask_user', { question: 'How should adding a Claude account work?', options })
     const p = await waiting(k)
@@ -740,7 +754,7 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
   })
 
   it('still takes plain string options', async () => {
-    const { k, first, call } = await setup()
+    const { k, first, call } = shared()
     const asking = call(first, 'ask_user', { question: 'Skip the snapshot test?', options: ['Yes', 'No'] })
     const p = await waiting(k)
     expect(p).toMatchObject({ options: ['Yes', 'No'], questions: [{ options: [{ label: 'Yes' }, { label: 'No' }] }] })
@@ -766,7 +780,7 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
   })
 
   it('carries the recommended flag to the approval\'s questions (KERNEL-415)', async () => {
-    const { k, first, call } = await setup()
+    const { k, first, call } = shared()
     const options = [{ label: 'Guided sign-in', description: 'Kernel opens the sign-in in your browser.', recommended: true }, { label: 'Paste a token' }]
     const asking = call(first, 'ask_user', { question: 'How should adding a Claude account work?', options })
     const p = await waiting(k)
@@ -789,6 +803,7 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
 // KERNEL-496: the user writes in the message box instead of answering Kernel's card. Kernel interrupts the turn, Claude Code
 // cancels the tool call, and its abort signal ends the card.
 describe("a card whose turn stopped before the user answered (KERNEL-496)", () => {
+  const shared = sharedSetup()
   const asks = [
     { tool: 'ask_user', args: { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, kind: 'question', reply: 'No answer yet.' },
     { tool: 'request_plan_approval', args: { title: 'Raise the workspace limit', plan: '## Plan\nRaise it to 8.', steps: ['Raise the limit · Kai'] }, kind: 'plan', reply: 'No answer yet. Wait and ask again later.' },
@@ -797,7 +812,7 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
 
   for (const ask of asks) {
     it(`ends ${ask.tool}'s card as expired with no answer, and settles its Inbox row`, async () => {
-      const { k, first, run } = await setup()
+      const { k, first, run } = shared()
       // request_plan_approval asks only while the chat is in plan mode (KERNEL-176).
       k.store.saveChat({ ...k.store.chat(first.id)!, plan: true })
       const stop = new AbortController()
@@ -816,7 +831,7 @@ describe("a card whose turn stopped before the user answered (KERNEL-496)", () =
   }
 
   it('still takes an answer on the card, and a stop after it changes nothing', async () => {
-    const { k, first, run } = await setup()
+    const { k, first, run } = shared()
     const stop = new AbortController()
     const asking = run(first, 'ask_user', { question: 'Raise the workspace limit to 8?', options: ['Yes', 'No'] }, { signal: stop.signal })
     const p = await waiting(k)
@@ -1053,10 +1068,10 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
     expect(ws).toMatchObject({ leadChatId: first.id, threadId: first.threadId })
     const sibling = await tab(first.threadId)
     k.chats.closeChat(first.id)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const k2 = new Kernel(where)
     await k2.start()
-    onTestFinished(() => k2.stop())
+    onTestFinished(() => k2.stop({ budgetMs: 0 }))
     // The renderer sees only open tabs, so the workspace has to name the Lead chat itself.
     const h = k2.handlers()
     expect((await h['chats.list']({ workspaceId: first.workspaceId })).map((c) => c.id)).not.toContain(first.id)

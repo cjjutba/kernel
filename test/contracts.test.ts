@@ -8,7 +8,7 @@ import { Kernel, UNBUILT } from '../src/main/kernel'
 import { fixtures } from '../fixtures'
 import { fixtureHandlers, fixturePush } from '../src/main/fixtures'
 import { actions, apply, getState } from '../src/renderer/src/store'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 
 describe('IPC contract', () => {
   it('unbuilt channels reject with NotImplemented naming the issue that builds them', async () => {
@@ -105,7 +105,7 @@ describe('IPC contract', () => {
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort() }))
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
     await k.start()
     const h = k.handlers()

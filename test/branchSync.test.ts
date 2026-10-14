@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, PrInfo, PrState } from '@shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { run } from '../src/main/services/exec'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { LEAD_RULE } from '../src/main/services/handoff'
@@ -19,7 +19,7 @@ async function setup() {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': KAI })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })

@@ -1,4 +1,5 @@
 import { chatProvider } from '@shared/providers'
+import { buildsHere } from '@shared/leadMode'
 import type { Kernel } from '../kernel'
 import { bus } from '../bus'
 import type { SessionDeps } from '../services/sessions'
@@ -69,15 +70,18 @@ export function sessionDeps(k: Kernel): SessionDeps {
       k.notifications.turnDone(ws, chat, done)
       // A teammate's update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub
       // takes.
-      const teammate = !k.team.isLeadWorkspace(ws)
-      if (teammate) k.leadUpdates.readingPr(ws.id)
+      const own = k.team.isLeadWorkspace(ws)
+      const teammate = !own
+      // A Build here chat's PR takes a teammate's path, and its news comes back to the chat (KERNEL-778).
+      const prPath = teammate || buildsHere(ws)
+      if (prPath) k.leadUpdates.readingPr(ws.id)
       // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
       k.leadUpdates.turnDone(ws, chat, done, turn.limit ? k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
       // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
       void k.workspaces.changes(ws.id).catch(() => undefined)
       // A read that fails still lets the update go, and says why it may be missing the PR (KERNEL-637).
-      if (teammate) {
+      if (prPath) {
         void k.refreshPr(ws.id).catch((e) => { if (!k.stopped) console.warn(`[lead-updates] could not read the PR of ${ws.id} after its turn: ${(e as Error)?.message ?? e}`) })
           .then(() => k.leadUpdates.readPr(ws.id)).catch((e) => console.warn(`[lead-updates] could not send the update for ${ws.id}: ${(e as Error)?.message ?? e}`))
       }
@@ -86,10 +90,10 @@ export function sessionDeps(k: Kernel): SessionDeps {
       void k.overlaps.check(ws.roomId).catch(() => undefined)
       // A teammate that was busy when main moved is told now, if it still would conflict (KERNEL-180). One that started from a
       // stale base fetches again and catches up (KERNEL-653).
-      if (teammate) void k.baseWatch.check(ws.roomId, { fetch: false, only: ws.id }).catch(() => undefined)
+      if (prPath) void k.baseWatch.check(ws.roomId, { fetch: false, only: ws.id }).catch(() => undefined)
       void k.waits.releaseTaken(ws.id, chat.id, turn.by).catch(() => undefined)
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
-      if (!teammate) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
+      if (own) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
       // The footer shows usage all the time, so the account the turn ran on is read again (KERNEL-673).
       k.providers.readUsageAfterTurn(chatProvider(chat), turn.account)
     },

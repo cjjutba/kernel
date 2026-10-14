@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { freePort, tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { Ptys } from '../src/main/services/pty'
@@ -76,7 +76,7 @@ describe('chat tabs', () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    const hookPort = 18000 + Math.floor(Math.random() * 900)
+    const hookPort = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
@@ -158,7 +158,7 @@ describe('chat tabs', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    const hookPort = 18000 + Math.floor(Math.random() * 900)
+    const hookPort = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, models: { effort: 'medium' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()

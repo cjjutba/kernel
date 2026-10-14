@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { git, run } from '../src/main/services/exec'
 import { createWorktree, leadBranch, moveWorktree, roomWorktreeRoot, worktreeFolder } from '../src/main/services/worktrees'
 import { fakeCodex } from './helpers/fakeCodex'
-import { setUp, tempRepo } from './helpers'
+import { setUp, tempRepo, freePort } from './helpers'
 
 // KERNEL-424: a chat with Kernel names its branch and its worktree folder once, from the chat's first title. Later titles, and
 // a name the user types, name only the chat.
@@ -55,7 +55,7 @@ async function room() {
   await run('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'main'])
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
   const k = new Kernel({ dataDir, home })
   k.signedInReader = async () => true
   k.chats.titleFor = async () => undefined

@@ -208,7 +208,7 @@ describe('pruning drafts', () => {
 })
 
 describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
-  const KEY = 'new-chat'
+  const KEY = 'new-chat:room-z'
   const picks = { model: 'claude-sonnet-5-5', effort: 'low' as const, plan: true }
 
   it('keeps picks without any text, and a box emptied by hand keeps them', async () => {
@@ -285,7 +285,7 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
   })
 
   it('loads a draft saved before picks existed, text only', async () => {
-    disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: { 'new-chat': { workspaceId: '', parts: words('old words') }, c1: { workspaceId: 'w1', parts: words('in a chat') } } }))
+    disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: { [KEY]: { workspaceId: '', parts: words('old words') }, c1: { workspaceId: 'w1', parts: words('in a chat') } } }))
     const m = await launch()
     expect(m.loadDraft(KEY)).toEqual(words('old words'))
     expect(m.loadPicks(KEY)).toBeUndefined()
@@ -296,7 +296,7 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
 
   it('reads picks field by field and ignores what is not a model, an effort or a boolean', async () => {
     disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: {
-      'new-chat': { workspaceId: '', parts: words('x'), picks: { model: 'gpt-6-astra', effort: 'toString', plan: 'yes' } },
+      [KEY]: { workspaceId: '', parts: words('x'), picks: { model: 'gpt-6-astra', effort: 'toString', plan: 'yes' } },
       'new-chat:a': { workspaceId: '', parts: [], picks: { model: 5, effort: 'bogus', plan: 1 } },
       'new-chat:b': { workspaceId: '', parts: [], picks: 'high' },
       'new-chat:c': { workspaceId: '', parts: [], picks: { model: '  ', effort: 'ultra', plan: false } }
@@ -306,6 +306,16 @@ describe('a New chat box keeps its picks with its draft (KERNEL-544)', () => {
     expect(m.loadDraft(KEY)).toEqual(words('x'))
     expect([m.loadPicks('new-chat:a'), m.loadPicks('new-chat:b')]).toEqual([undefined, undefined])
     expect(m.loadPicks('new-chat:c')).toEqual({ effort: 'ultra', plan: false })
+  })
+
+  it("no longer reads the retired modal's bare draft, so the next write drops it from disk (KERNEL-788)", async () => {
+    disk.set('kernel.drafts', JSON.stringify({ v: 1, drafts: { 'new-chat': { workspaceId: '', parts: words('modal words'), picks }, [KEY]: { workspaceId: '', parts: words('page words') } } }))
+    const m = await launch()
+    expect(m.loadDraft('new-chat')).toBeUndefined()
+    expect(m.loadDraft(KEY)).toEqual(words('page words'))
+    m.saveDraft(KEY, words('page words again'), '')
+    vi.advanceTimersByTime(500)
+    expect(Object.keys(onDisk().drafts)).toEqual([KEY])
   })
 
   it('tells a box when its picks change, and not when only the text does', async () => {

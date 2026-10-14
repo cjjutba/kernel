@@ -555,19 +555,11 @@ const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: strin
   ui: { route: { name: 'issues', ...route } }
 })
 
-/** The New workspace modal with the From popover open on its Issues tab. The tab is local to the modal, so scripts/shots.ts clicks it. */
-const newWorkspaceFromIssues = (f: Fixture, roomId: string, issues: GithubIssueDetail[]): Partial<Fixture> => ({
-  ...homeScene(f), ...trackerRooms, githubIssues: { [ids.roomB]: issues },
-  branches: ['origin/main', 'origin/dev', 'main'],
-  settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
-  ui: { route: { name: 'settings', page: 'room', roomId, section: 'agents' }, modal: { name: 'newWorkspace', roomId }, menu: 'from' }
-})
-
 /** The New chat the issue check held back in ConfirmIssueTaken (KERNEL-500). */
 const invoicePdfPrompt = 'KERNEL-31: Export invoices as PDF'
 const invoicePdfChat: HeldChat = {
   roomId: ids.roomA, source: { kind: 'issue', id: 'KERNEL-31', title: 'Export invoices as PDF' }, parts: [{ type: 'text', text: invoicePdfPrompt }],
-  picks: { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: false, baseRef: '', pickedRef: '', filled: invoicePdfPrompt }
+  picks: { mode: 'worktree', model: 'claude-opus-5-5', effort: 'high', plan: false, baseRef: '' }
 }
 
 /** Room setup done in a repo that brought its own agents (RoomSetupTeam.png). `team` is the repo's `[team]` table, if it has one. */
@@ -721,8 +713,6 @@ export const teamFixtures: Record<string, Fixture> = {
   // A room whose `[tracker] kind` is jira says its issues can't be browsed in Kernel yet (KERNEL-503).
   IssuesJira: scene((f) => issuesTrackerScene(f, { roomId: ids.roomOwn }, ids.roomOwn)),
   // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.
-  NewWorkspaceFromGitHub: scene((f) => newWorkspaceFromIssues(f, ids.roomB, githubIssues().filter((i) => [31, 33, 35, 36].includes(i.number)))),
-  NewWorkspaceFromNone: scene((f) => newWorkspaceFromIssues(f, ids.roomPortfolio, [])),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),

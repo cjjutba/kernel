@@ -3,6 +3,7 @@ import { kindStates, lensOf, reviewsText, reviewVerdicts } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
 import { rolePick } from '@shared/rolePick'
+import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
@@ -184,13 +185,14 @@ export class Reviews extends Feature {
    * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
    * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. Except when the user
    * archived the review workspace before every kind reported: then the kinds with no verdict on the head run again in a new
-   * review workspace, in the same round (KERNEL-633). The Lead's own workspaces and reviews get none. From the ready event
+   * review workspace, in the same round (KERNEL-633). Reviews get none, and the Lead's own workspaces get none unless the chat
+   * is in Build here, whose PR is reviewed as a teammate's (KERNEL-778). From the ready event
    * until the round is saved, the workspace's `reviewPending` names the head, so a PR waiting for its reviewer's approval
    * doesn't merge before Kernel knows which reviews it gets (KERNEL-717). A plan that comes back empty clears it.
    */
   async onReady(workspaceId: string): Promise<void> {
     const of = this.store.workspace(workspaceId)
-    if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || this.isLeadWorkspace(of)) return
+    if (!of || of.status === 'archived' || of.reviewOf || of.prState !== 'ready' || !of.prNumber || (this.isLeadWorkspace(of) && !buildsHere(of))) return
     if (this.settings.pr.autoReview === false) {
       if (of.reviewPending !== undefined) this.updateWs(of.id, { reviewPending: undefined })
       return this.noteNotStarted(of)
@@ -269,8 +271,10 @@ export class Reviews extends Feature {
   private async startReview(of: Workspace, plan: PlannedReview[]): Promise<Workspace> {
     const [first] = plan
     const agent = first.agent ?? lensAgent(first.kind)
+    // The verdicts go where the PR's news goes: the chat that handed it off, or the Build here chat it came from (KERNEL-778).
+    const leadChatId = of.leadChatId ?? this.k.lead.buildTab(of)
     const { ws, room, repo, chat } = await this.k.workspaces.cutWorkspace(of.roomId, {
-      prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(of.leadChatId ? { leadChatId: of.leadChatId } : {})
+      prompt: this.brief(of, first.kind), title: `Review PR #${of.prNumber}`, agentId: agent.id, agent, reviewOf: of.id, ...(leadChatId ? { leadChatId } : {})
     })
     const chats = plan.map((p, i) => this.lensChat(ws, p, i === 0 ? chat : undefined))
     for (const [i, c] of chats.entries()) this.sessions.hold(c.id, this.briefParts(of, plan[i].kind), { from: 'kernel' })

@@ -4,6 +4,11 @@ import type { MergeMethod, ReviewKind } from './settings'
 import type { TrackerKind } from './trackers'
 
 export type WorkspaceMode = 'worktree' | 'current'
+/**
+ * How a chat with Kernel works (KERNEL-770): `handoff` plans and hands tasks to teammates and never edits a file, `build`
+ * has Kernel make the change itself in the chat's own worktree. Read it through `leadModeOf`.
+ */
+export type LeadMode = 'handoff' | 'build'
 /** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
 export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
@@ -47,6 +52,11 @@ export interface Workspace {
    * One with no `threadId` is the shared workspace every chat lived in before. Read it through `isLeadChatWorkspace`.
    */
   lead?: true
+  /**
+   * On a Lead chat's workspace: how the chat works, Hand off or Build here (KERNEL-770). Unset is Hand off, as every chat
+   * was before. Set from the app's and room's default when the chat starts, then only by `lead.setMode`.
+   */
+  leadMode?: LeadMode
   port: number
   status: WorkspaceStatus
   /** For current-branch workspaces: the commit that captures pre-existing changes. */
@@ -268,6 +278,12 @@ export interface CheckpointPreview {
   commitsAhead: number
   /** Some of those commits are on a remote, as a pushed branch or PR is. False when `commitsAhead` is 0. */
   pushed: boolean
+  /**
+   * Files the base changed since the checkpoint that the checkpoint changed too, differently (KERNEL-797). The revert keeps the
+   * checkpoint's content for them, so it undoes the base's change to them. Every other file the base changed keeps the base's
+   * content. Empty when the base hasn't moved forward since the checkpoint.
+   */
+  conflicts: string[]
 }
 
 export type ScriptKind = 'setup' | 'run' | 'archive'

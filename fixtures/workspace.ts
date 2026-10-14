@@ -244,13 +244,15 @@ const runningItems = (): ChatItem[] => {
   return [
     { kind: 'user', id: 'ru1', ts: t(134), parts: [{ type: 'text', text: 'T-15c: snapshot tests for three invoice types. Use stable fixture dates.' }, { type: 'file', name: 'plan.md', path: 'docs/plan.md', lines: 42 }] },
     { kind: 'thinking', id: 'rth1', ts: t(130), text: 'I should check how invoices render before writing fixtures.' },
-    tool('rt1', 'Read the PDF renderer', 'cat src/pdf/render.ts', { name: 'Read', ts: t(120) }),
+    tool('rt1', 'Read the PDF renderer', 'src/pdf/render.ts', { name: 'Read', ts: t(125), input: { file_path: 'src/pdf/render.ts' } }),
+    tool('rt1b', 'Read the invoice types', 'src/pdf/types.ts', { name: 'Read', ts: t(120), input: { file_path: 'src/pdf/types.ts' } }),
     { kind: 'thinking', id: 'rth2', ts: t(110), text: 'Three types: standard, credit note, and multi-currency.' },
     tool('rt2', 'Find the existing snapshot setup', 'rg -n "toMatchSnapshot" tests', { ts: t(100) }),
     { kind: 'text', id: 'rx1', ts: t(90), text: 'Vitest already snapshots the invoice table, so I will reuse that setup and add fixtures with frozen dates.' },
-    tool('rt3', 'Create the test file', "cat > tests/invoice-pdf.spec.ts <<'EOF'", { ts: t(60) }),
+    tool('rt3', 'Create the test file', 'tests/invoice-pdf.spec.ts', { name: 'Write', ts: t(60), input: { file_path: 'tests/invoice-pdf.spec.ts', content: 'import { test } from "vitest"' } }),
+    tool('rt3b', 'Create the fixtures', 'tests/fixtures/invoices.ts', { name: 'Write', ts: t(50), input: { file_path: 'tests/fixtures/invoices.ts', content: 'export const invoices = []' } }),
     { kind: 'thinking', id: 'rth3', ts: t(40), text: 'Freezing time at 2026-10-01 keeps every snapshot stable.' },
-    tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { ts: t(20), status: 'running', durationMs: undefined })
+    tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { ts: t(20), status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } })
   ]
 }
 
@@ -328,6 +330,59 @@ const leadSteps: ChatItem[] = [
     mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
 ]
 
+/** A Lead turn in progress (WorkspaceStepRuns): a run of seven Linear issues with one failure, a run of five handoffs and the step in flight. Times count back from now so the clock reads 10m 49s. */
+const stepRunItems = (done: boolean): ChatItem[] => {
+  const t = (secs: number) => Date.now() - secs * 1000
+  const titles = ['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats', 'Settings tabs keep their scroll position', 'Settings search finds a row by its hint']
+  const issues = titles.map((title, i) => mcpCall(`sr-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, i === 5
+    ? { status: 'failed', output: 'Validation failed: title is a duplicate of KERNEL-731' } : { output: `KERNEL-72${i + 1}` }))
+  const hands = [['kai', 'KERNEL-721'], ['noor', 'KERNEL-723'], ['noor', 'KERNEL-724'], ['kai', 'KERNEL-722'], ['kai', 'KERNEL-725']].map(([agent, issue], i) =>
+    mcpCall(`sr-w${i}`, 'kernel', 'create_workspace', { agent, issue, title: titles[i], brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
+  return [
+    { kind: 'user', id: 'sr-u', ts: t(649), parts: [{ type: 'text', text: 'Approved' }] },
+    { kind: 'thinking', id: 'sr-th1', ts: t(640), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
+    tool('sr-t1', 'ToolSearch', '{}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue' }, output: 'Loaded 1 tool' }),
+    mcpCall('sr-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature' }),
+    mcpCall('sr-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings' }, { output: 'KERNEL-716 Room settings title misaligned' }),
+    { kind: 'thinking', id: 'sr-th2', ts: t(600), text: 'KERNEL-716 is already in review covering the room title misalignment, so I will leave it out.' },
+    { kind: 'text', id: 'sr-x1', ts: t(590), text: 'KERNEL-716, now in review, already fixes the room title alignment, so I will leave it out of the layout issue. Filing the issues now.' },
+    mcpCall('sr-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
+    { kind: 'text', id: 'sr-x2', ts: t(560), text: 'Now the sub-issues.' },
+    ...issues.slice(0, 3),
+    { kind: 'thinking', id: 'sr-th3', ts: t(540), text: 'Next the rest of the sub-issues.' },
+    ...issues.slice(3),
+    { kind: 'thinking', id: 'sr-th4', ts: t(500), text: 'Now I need to check list_workspaces for the limit, then plan the new ones.' },
+    mcpCall('sr-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)' }),
+    ...hands,
+    ...(done
+      ? [{ kind: 'text' as const, id: 'sr-x3', ts: t(20), text: 'Filed KERNEL-720 with six sub-issues, and handed five tasks to Kai and Noor. One issue was a duplicate of KERNEL-731, so I left it out.' }, { kind: 'result' as const, id: 'sr-res', ts: t(10), durationMs: 640_000, ok: true }]
+      : [mcpCall('sr-t6', 'kernel', 'wait_for_merge', { on: 'KERNEL-721' }, { status: 'running', durationMs: undefined })])
+  ]
+}
+
+/** A running turn of 500 steps: reads, commands, edits and thinking, then the step in flight (WorkspaceStepsLong). */
+const longSteps = (): ChatItem[] => [
+  { kind: 'user', id: 'sl-u', ts: Date.now() - 1_800_000, parts: [{ type: 'text', text: 'Sweep every screen for hard-coded colours and move them to tokens.' }] },
+  ...Array.from({ length: 500 }, (_, i): ChatItem => {
+    const file = `src/renderer/src/screens/screen${Math.floor(i / 5)}.tsx`
+    switch (i % 5) {
+      case 0: return tool(`sl${i}`, 'Read', file, { name: 'Read', input: { file_path: file } })
+      case 1: return { kind: 'thinking', id: `sl${i}`, ts: at(10, 28), text: 'This screen has two hex values, both in the header.' }
+      case 2: return tool(`sl${i}`, 'Run', 'rg -n "#[0-9a-f]{6}" src', { input: { command: `rg -n "#[0-9a-f]{6}" ${file}` } })
+      case 3: return tool(`sl${i}`, 'Edit', file, { name: 'Edit', input: { file_path: file, old_string: '#fff', new_string: 'var(--ink-2)' } })
+      default: return tool(`sl${i}`, 'Run', 'pnpm typecheck', { input: { command: 'pnpm typecheck' } })
+    }
+  }),
+  tool('sl-live', 'Run the shots', 'pnpm shots --all', { status: 'running', durationMs: undefined, input: { command: 'pnpm shots --all' } })
+]
+
+/** The Lead's chat with `items`, and the turn running unless it is told otherwise. */
+const leadRunning = (f: Fixture, items: ChatItem[], running = true): Partial<Fixture> => {
+  // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+  const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', items, {}, { model: 'claude-opus-5-5' })
+  return { ...rest, push: running ? [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }] : f.push }
+}
+
 const stepStates: ChatItem[] = (() => {
   const bash = (id: string, input: Record<string, unknown>, status: ToolItem['status'], output?: string) =>
     tool(id, 'Run', String(input.command), { input, status, output, durationMs: status === 'running' ? undefined : 900 })
@@ -352,12 +407,74 @@ const stepStates: ChatItem[] = (() => {
 
 const toolCalls: ChatItem[] = [
   tableItems[0],
-  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
+  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100, input: { file_path: 'plans/t-14-invoice-table.md' } }),
+  tool('c1b', 'Read DESIGN.md', 'DESIGN.md', { name: 'Read', durationMs: 60, input: { file_path: 'DESIGN.md' } }),
   tool('c2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
   tool('c3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120 }),
   tool('c4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90 }),
   tool('c5', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
   tool('c6', 'Run Playwright', 'pnpm playwright test invoices', { durationMs: 41_000, output: '4 passed (38.2s)' }),
+  tool('c7', 'Check types', 'pnpm tsc --noEmit', { durationMs: 6100, status: 'failed', output: 'src/app/invoices/table.tsx(41,7): error TS2322: Type string is not assignable to type number.' }),
+  ...tableItems.slice(-2)
+]
+
+/** Opened Bash rows: a short command and a scan whose output runs past the 260px cap, so its section fades at the bottom (KERNEL-802). */
+const stepCardBashItems: ChatItem[] = [
+  userMsg('sb-u', 'Find what is using the disk.'),
+  tool('sb2', 'List the biggest folders', 'du -xk -d 3 ~ | sort -rn | head -40', {
+    durationMs: 3200, input: { command: 'du -xk -d 3 ~ | sort -rn | head -40', description: 'List the biggest folders' },
+    output: Array.from({ length: 40 }, (_, i) => `${String(48_000_000 - i * 1_150_000).padStart(9)}\t/Users/sam/${['Library', 'Projects', 'Downloads', 'Movies', 'Documents'][i % 5]}/folder-${i + 1}`).join('\n')
+  }),
+  { kind: 'text', id: 'sb-x', ts: at(10, 28), text: 'Next step.' },
+  tool('sb1', 'Wait while the scan runs', 'sleep 120; echo waited', { durationMs: 120_400, input: { command: 'sleep 120; echo waited', description: 'Wait while the scan runs' }, output: 'waited' }),
+  ...tableItems.slice(-2)
+]
+
+/** Opened MCP rows: a JSON response that is pretty-printed, one that is plain text, and a request with no response yet to show (KERNEL-802). */
+const stepCardMcpItems: ChatItem[] = [
+  userMsg('sm-u', 'Check the Settings issues.'),
+  mcpCall('sm1', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, {
+    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Room settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
+  }),
+  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  ...tableItems.slice(-2)
+]
+
+const codexPatch = (path: string, old: string[], next: string[], context = ['export function InvoiceTable() {']) =>
+  [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
+
+/** What Codex's file changes and a MultiEdit open to: red and green diff lines, as an Edit shows (KERNEL-802). A fileChange has no old and new text, so its output, a unified diff, is what is drawn. */
+const stepCardCodexItems: ChatItem[] = [
+  userMsg('sc-u', 'Sort the invoice table.'),
+  tool('sc1', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx' }, output: codexPatch('src/app/invoices/table.tsx', ["  const rows = sortBy(invoices, 'amount')", '  return <Table rows={rows} />'], ['  const rows = sortBy(invoices, sort.key, sort.dir)', '  return <Table rows={rows} sort={sort} />']) }),
+  { kind: 'text', id: 'sc-x1', ts: at(10, 28), text: 'Next step.' },
+  tool('sc2', 'Edit page.tsx', 'src/app/invoices/page.tsx', { name: 'MultiEdit', durationMs: 150, input: { file_path: 'src/app/invoices/page.tsx', edits: [
+    { old_string: "import { Table } from './table'", new_string: "import { Table, useSort } from './table'" },
+    { old_string: 'const rows = invoices', new_string: 'const sort = useSort()\nconst rows = invoices' }
+  ] } }),
+  ...tableItems.slice(-2)
+]
+
+const emptyStateSource = [
+  "import { Button } from '../../ui'",
+  '',
+  'export function EmptyState({ onCreate }: { onCreate: () => void }) {',
+  '  return (',
+  '    <div className="empty">',
+  '      <h2>No invoices yet</h2>',
+  '      <p>Invoices you send show up here, newest first.</p>',
+  '      <Button onClick={onCreate}>Create invoice</Button>',
+  '    </div>',
+  '  )',
+  '}',
+  '',
+  ...Array.from({ length: 30 }, (_, i) => `export const EMPTY_COPY_${i + 1} = 'No invoices in view ${i + 1}'`)
+].join('\n')
+
+/** A Write opens capped, with its line count in the heading (KERNEL-802). */
+const stepCardWriteItems: ChatItem[] = [
+  userMsg('sw-u', 'Add the empty state.'),
+  tool('sw1', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: emptyStateSource }}),
   ...tableItems.slice(-2)
 ]
 
@@ -1005,23 +1122,6 @@ const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/**
- * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
- * reads Opus 5.5, not the PNG's Sonnet 5.5. Plan mode is off here, as the PNG draws it. The app's default (Settings, Models) is on.
- */
-const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
-  settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
-  branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
-  openPrs: [
-    { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'samrivera' },
-    { number: 43, title: 'fix(auth): invite links expire after 7 days', branch: 'fix/invite-expiry', author: 'jordan' },
-    { number: 41, title: 'feat(org): invite members by email', branch: 'feat/org-invites', author: 'samrivera' },
-    { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'jordan' }
-  ],
-  issues: [{ id: 'T-16', title: 'Client portal login' }, { id: 'T-17', title: 'Bulk export for accountants' }, { id: 'T-18', title: 'Dark mode for invoice PDFs' }],
-  ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
-}))
-
 /** The invoice table's turns, newest first. */
 const checkpoints: Checkpoint[] = ([
   ['4', 10, 31, 'Done. The table sorts by date, client and amount', [4, 412, 38]],
@@ -1049,17 +1149,26 @@ const revertPreviews: Record<string, CheckpointPreview> = {
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
       { path: 'tests/invoices.spec.ts', status: 'D', added: 9, removed: 118 }
     ],
-    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false
+    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false, conflicts: []
   },
   '2': {
     files: [
       { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
     ],
-    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true
+    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true, conflicts: []
+  },
+  '1': {
+    files: [
+      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
+      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
+      { path: 'src/app/invoices/columns.ts', status: 'M', added: 4, removed: 11 }
+    ],
+    stat: { files: 3, added: 45, removed: 125 }, commitsAhead: 2, pushed: true, conflicts: ['src/app/invoices/page.tsx', 'src/app/invoices/columns.ts']
   }
 }
-const revertScene = (ui: Partial<Fixture['ui']>) => scene(() => ({
+const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
+  ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
   checkpoints: { [ids.table]: checkpoints },
   checkpointPreviews: { [ids.table]: revertPreviews },
@@ -1378,6 +1487,30 @@ const railLead = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * Kernel's chat in Hand off or Build here (KERNEL-780). The chat holds the user's ask, a divider for each switch, and whatever `o` adds.
+ * `ws` overrides the chat's workspace, `changes` are its files, `right` the open tab of the right panel and `menu` the composer menu forced open.
+ */
+const leadModeScene = (f: Fixture, o: { mode: 'handoff' | 'build'; items?: ChatItem[]; ws?: Partial<Workspace>; changes?: ChangedFile[]; right?: 'prs' | 'changes'; menu?: 'mode'; running?: boolean }): Partial<Fixture> => {
+  const ask: ChatItem = { kind: 'user', id: 'lm-u1', ts: at(10, 0), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] }
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', leadMode: o.mode, ...(o.changes?.length ? { stat: { files: o.changes.length, added: 33, removed: 3 } } : {}), ...o.ws }, 'Refund rounding', [ask, ...(o.items ?? [])], {}, { model: 'claude-opus-5-5', effort: 'high', plan: false })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    changes: { ...f.changes, [ids.lead]: o.changes ?? [] },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', toolsOpen: false }, ...(o.menu ? { menu: o.menu } : {}), tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+  }
+}
+const lmReply = (id: string, text: string, m: number): ChatItem[] => [
+  { kind: 'text', id: `${id}-x`, ts: at(10, m), text },
+  { kind: 'result', id: `${id}-r`, ts: at(10, m), durationMs: 38_000, ok: true }
+]
+const lmFiles: ChangedFile[] = [
+  { path: 'src/lib/money.ts', status: 'M', added: 9, removed: 3 },
+  { path: 'src/lib/money.test.ts', status: 'M', added: 24, removed: 0 }
+]
+const lmPr = { prNumber: 171, prUrl: 'https://github.com/samrivera/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
+
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
@@ -1493,6 +1626,19 @@ function sidebarPlanChat(f: Fixture): Partial<Fixture> {
   return { ...g, chats: g.chats!.map((c) => (c.id === 'chat-table' || c.id === 'chat-login' ? { ...c, plan: true } : c)) }
 }
 
+/** WorkspaceLead with three open items on the Export chat: Noor's question, blockers in Kai's work and Ivy's proposed hand-off. */
+function leadOpenItems(f: Fixture): Partial<Fixture> {
+  const base = { roomId: ids.roomA, threadId: GROUPED.export, chatId: ids.leadChat, createdAt: at(10, 20) }
+  return {
+    ...leadWaiting(f),
+    openItems: [
+      { ...base, id: 'oi-q', kind: 'question', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Should the PDF include the VAT breakdown?' },
+      { ...base, id: 'oi-b', kind: 'blockers', workspaceId: 'ws-182', agentId: 'kai', name: 'Kai', blockers: 2 },
+      { ...base, id: 'oi-h', kind: 'handoff.proposed', workspaceId: 'ws-176', agentId: 'noor', name: 'Noor', text: 'Snapshot tests for three invoice types', proposed: { agentId: 'ivy', name: 'Ivy' } }
+    ]
+  }
+}
+
 /** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
 function leadWaiting(f: Fixture): Partial<Fixture> {
   const plan = leadPlan(f, { agentId: 'kernel-lead' })
@@ -1598,12 +1744,27 @@ const turnFilesLong = () => turnFilesScene([
   tfEnd(7, 40, [11, 8], TF_LONG)
 ], TF_PANEL_LONG)
 
+/**
+ * KERNEL-788: the chat New chat started, right after the send. Its right panel is held closed whatever `rightPanel` says (`panelHeld`), so the shot has the
+ * panel setting on and still no panel. `opened` is the same chat once the toggle was pressed in it, which clears the hold and shows the panel on PRs.
+ */
+function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
+  const title = 'Settings search plan'
+  const ask: ChatItem = { kind: 'user', id: 'ns-u1', ts: Date.now() - 4000, parts: [{ type: 'issue', name: 'KERNEL-731', title: 'Settings search opens the page and lands on the setting', source: 'linear' }, { type: 'text', text: ' Plan this one. Enter should open the first match too.' }] }
+  // The chat has the one tab it started with. Its title is the chat's, in the breadcrumb and the tab.
+  const g = grouped(f, {
+    running: opened ? [] : [ids.leadChat], right: 'prs',
+    chats: (c) => c.filter((x) => x.threadId !== GROUPED.export || x.id === ids.leadChat).map((x) => (x.id === ids.leadChat ? { ...x, title } : x)),
+    threads: (t) => t.map((x) => (x.id === GROUPED.export ? { ...x, title } : x)),
+    ...(opened ? {} : { items: { [ids.leadChat]: [ask, tool('ns-t1', 'Reading the settings search code', 'rg search src/renderer/src/screens/settings', { name: 'Read', status: 'running', ts: Date.now() - 4000, durationMs: undefined })] } })
+  })
+  // Just started, it has handed nothing off, so the room shows no PR yet. Opened, it has Kai's PRs the frame lists.
+  const own = g.workspaces!.map((w) => (w.id === ids.lead ? { ...w, title } : w)).filter((w) => opened || (!w.leadChatId && !w.prNumber))
+  const kept = new Set(own.map((w) => w.id))
+  return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
-  NewWorkspace: newWorkspace(),
-  NewWorkspaceBranch: newWorkspace('branch'),
-  NewWorkspaceFrom: newWorkspace('from'),
-  NewWorkspaceModel: newWorkspace('model'),
-  NewWorkspacePlus: newWorkspace('plus'),
   Workspace: scene(() => ({ ui: open })),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
   WorkspaceIssue: scene((f) => ({
@@ -1665,6 +1826,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
   })),
+  /** The four opened cards (KERNEL-802), each with its rows opened by scripts/shots.ts: Bash, MCP, Codex diffs and a MultiEdit, and a Write. */
+  WorkspaceStepCardBash: scene(() => ({
+    items: { [ids.tableChat]: stepCardBashItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardMcp: scene(() => ({
+    items: { [ids.tableChat]: stepCardMcpItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardCodexDiff: scene(() => ({
+    items: { [ids.tableChat]: stepCardCodexItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardWrite: scene(() => ({
+    items: { [ids.tableChat]: stepCardWriteItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
   /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
   WorkspaceRowsOpen: scene(() => ({
     items: { [ids.tableChat]: rowsOpenItems },
@@ -1698,6 +1876,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
+  /** A message just sent in a short chat (KERNEL-803): it sits at the top of the view with the Working line under it and an empty reply area below. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers, since only a send anchors. */
+  WorkspaceJustSent: scene((f) => ({
+    items: { [ids.tableChat]: tableItems.slice(0, 1) },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
   ChatRestoredSpot: scene(() => ({
     items: { [ids.tableChat]: [
@@ -1716,6 +1900,33 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ChatRail: railScene(),
   ChatRailOpen: railScene(),
   ChatRailLead: scene((f) => railLead(f)),
+  // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
+  WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
+  WorkspaceLeadModeMenu: scene((f) => leadModeScene(f, { mode: 'handoff', menu: 'mode', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
+  WorkspaceLeadBuildHere: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles,
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I rounded refunds half away from zero in money.ts and added a test for the cent case.', 3)]
+  })),
+  WorkspaceLeadBuildHereReview: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I opened PR #171. Checks passed and it has no conflicts.', 6)]
+  })),
+  WorkspaceLeadBuildHereMerged: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'PR #171 merged.', 21)]
+  })),
+  WorkspaceLeadTooBig: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles,
+    items: [
+      { kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' },
+      ...lmReply('lm-b', 'Rounding is shared by invoices, credit notes and the export. That touches 14 files across three modules.', 4),
+      { kind: 'modeSuggestion', id: 'lm-s1', ts: at(10, 5), mode: 'handoff', why: 'This change touches 14 files across three modules. Splitting it between teammates keeps each PR small.' }
+    ]
+  })),
+  WorkspaceLeadHandOffDirty: scene((f) => leadModeScene(f, {
+    mode: 'handoff', changes: lmFiles,
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Noor has it. Your edits in this chat stay where they are.', 3)]
+  })),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],
@@ -1734,6 +1945,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
+  // KERNEL-798: the same confirm once the PR is merged says main keeps the commits, and when main changed files the checkpoint changed too it names them.
+  ConfirmRevertMerged: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }, 'merged'),
+  ConfirmRevertConflicts: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '1' } }),
   // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
   // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
   TurnFiles: turnFilesScene([
@@ -1812,6 +2026,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** The Lead's turn from KERNEL-784: seven issues filed with one failure and five handoffs fold into rows, and the step in flight sits under them with the clock. */
+  WorkspaceStepRuns: scene((f) => ({
+    ...leadRunning(f, stepRunItems(false)),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  /** The same turn finished: its summary names what happened, and with the fold open the run with a failure is open too. */
+  WorkspaceStepRunsDone: scene((f) => ({
+    ...leadRunning(f, stepRunItems(true), false),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** A running turn of 500 steps stays one fold and a live line. */
+  WorkspaceStepsLong: scene((f) => ({
+    ...leadRunning(f, longSteps()),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
@@ -1997,6 +2226,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
   WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'kernel-lead' })),
+  /** What the Lead chat still owes, above the composer (KERNEL-792): a question, blockers and a proposed hand-off. The collapsed line, and the same with the list opened by scripts/shots.ts. */
+  LeadOpenItems: scene((f) => leadOpenItems(f)),
+  LeadOpenItemsOpen: scene((f) => leadOpenItems(f)),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', LEAD_PRS_REPLY)),
   // The right panel's two panes (KERNEL-513): 2/3 over 1/3 in a teammate's workspace, which starts with the bottom open, and Kernel's chat, which starts with it
@@ -2148,6 +2380,29 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft } } } }
   }),
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
+  // KERNEL-786: the where row's pickers and the + menu, each open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode.
+  // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
+  NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
+  NewChatMode: scene((f) => noPlan(leadNoChats(f))),
+  NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
+  NewChatBranch: scene((f) => ({
+    ...noPlan(leadNoChats(f)),
+    branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
+  })),
+  NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
+  NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
+  // KERNEL-805: New chat has the chat's mode chip. NewChat is Hand off at rest. NewChatLeadModeMenu has the chip's menu open and NewChatBuildHere has Build here picked from it (scripts/shots.ts).
+  NewChatLeadModeMenu: scene((f) => noPlan(leadNoChats(f))),
+  NewChatBuildHere: scene((f) => noPlan(leadNoChats(f))),
+  // KERNEL-788: NewChat is the page at rest, with the header a chat has and one New chat tab. NewChatAfterSend is the chat right after the send: the box stays at the same y, the
+  // breadcrumb and tab take the chat's title, and the panel setting is on but held closed. ChatPanelOpened is that chat after the toggle was pressed.
+  NewChatAfterSend: scene((f) => noPlan(startedFromNewChat(f, false))),
+  ChatPanelOpened: scene((f) => noPlan(startedFromNewChat(f, true))),
+  NewChatLinked: scene((f) => {
+    const g = noPlan(leadNoChats(f))
+    const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
+  }),
   ChatWhereRow: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
@@ -2329,6 +2584,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   // KERNEL-746: in the Lead's chat @ offers the room's teammates above Files. A teammate's chat (WorkspaceMention) lists files only.
   ComposerMentionAgent: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: '@no' } } } })),
+  ComposerMentionAgentEmpty: scene(() => ({ ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft: '@zzz' } } } })),
   ComposerMentionAgentSent: scene((f) => ({
     items: { [ids.leadChat]: [{ kind: 'user', id: 'u-agent', ts: at(10, 41), parts: [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'text', text: 'take the invoice export, and ask Kai for the table first' }] }] },
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
@@ -2339,7 +2595,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
   // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
-  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'newWorkspace', roomId: ids.lead } } })),
+  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'search' } } })),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [
@@ -2349,6 +2605,34 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** One follow-up behind a running turn: the tray has no "N queued" header. */
+  WorkspaceQueuedOne: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A multiline follow-up with a file and a skill: one truncated line, with the file counted. */
+  WorkspaceQueuedLong: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'skill', name: 'verify' }, { type: 'text', text: 'Check the Terminal tab for the same problem.\nThe console output is in the attached file, and the first run also printed a warning about the sort hook that I would like you to look at before the next change.' }, { type: 'file', name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] },
+      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'image', name: 'image.png' }, { type: 'text', text: 'Use the shared EmptyState component' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A follow-up typed while the Mac is offline: the tray says so and has no Send now. */
+  WorkspaceQueuedOffline: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Also add a loading skeleton to the table' }] }]
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   /** A brief held because every agent slot is in use (KERNEL-273). Not on the canvas, see docs/decisions/KERNEL-273.md. */
   WorkspaceQueuedCapacity: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Build the loading skeleton from the plan' }] }]

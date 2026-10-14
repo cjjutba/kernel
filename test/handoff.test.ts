@@ -7,7 +7,7 @@ import type { AgentDef, Chat, Decision, QueueReason, Tracker, TrackerIssue, Work
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { tempRepo } from './helpers'
+import { tempRepo, freePort } from './helpers'
 import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
 import { reviewPolicyOf } from '../src/main/services/settings'
@@ -52,7 +52,7 @@ async function realLead() {
   const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor. Open a PR for each task.' })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   onTestFinished(() => k.stop())
   await k.start()

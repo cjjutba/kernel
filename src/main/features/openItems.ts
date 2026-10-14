@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Chat, OpenItem, Workspace } from '@shared/types'
+import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import type { TeamEvent } from '../services/leadUpdates'
 import { namesText } from '../services/mentions'
@@ -46,8 +47,19 @@ export class OpenItems extends Feature {
   private threadOf(chatId: string) { return this.store.chat(chatId)?.threadId ?? chatId }
 
   private open(chat: Chat, roomId: string, key: string, item: Pick<OpenItem, 'kind' | 'agentId' | 'name'> & Partial<OpenItem>) {
-    this.store.saveOpenItem({ ...item, id: randomUUID(), roomId, threadId: chat.threadId ?? chat.id, chatId: chat.id, createdAt: Date.now() }, key)
+    const threadId = chat.threadId ?? chat.id
+    this.store.saveOpenItem({ ...item, id: randomUUID(), roomId, threadId, chatId: chat.id, createdAt: Date.now() }, key)
+    this.changed(threadId)
   }
+
+  /** Closes `items` of the Lead chat `threadId`, and tells the window once when there were any (KERNEL-791). */
+  private drop(threadId: string, items: OpenItem[]) {
+    if (!items.length) return
+    this.store.deleteOpenItems(items.map((i) => i.id))
+    this.changed(threadId)
+  }
+
+  private changed(threadId: string) { bus.push({ type: 'openItems.changed', threadId }) }
 
   /**
    * A Team update reached the Lead tab `chat` (`LeadUpdates`). Its questions, proposed hand-offs and blockers on the reviewed
@@ -92,10 +104,14 @@ export class OpenItems extends Feature {
   /** The user wrote in the tab, or stopped its turn: they took over from the mentions there (KERNEL-745). */
   userSent(chatId: string) { this.close(chatId, (i) => i.kind === 'mention' && i.chatId === chatId) }
 
-  dismiss(id: string) { this.store.deleteOpenItems([id]) }
+  dismiss(id: string) {
+    const item = this.store.openItem(id)
+    if (item) this.drop(item.threadId, [item])
+  }
 
   private close(chatId: string, which: (i: OpenItem) => boolean) {
-    this.store.deleteOpenItems(this.store.openItems(this.threadOf(chatId)).filter(which).map((i) => i.id))
+    const threadId = this.threadOf(chatId)
+    this.drop(threadId, this.store.openItems(threadId).filter(which))
   }
 
   /**
@@ -103,9 +119,10 @@ export class OpenItems extends Feature {
    * deleted closes here, since nobody is left to answer.
    */
   owed(chatId: string): OpenItem[] {
-    const items = this.store.openItems(this.threadOf(chatId))
+    const threadId = this.threadOf(chatId)
+    const items = this.store.openItems(threadId)
     const gone = items.filter((i) => { if (!i.workspaceId) return false; const ws = this.store.workspace(i.workspaceId); return !ws || ws.status === 'archived' })
-    this.store.deleteOpenItems(gone.map((i) => i.id))
+    this.drop(threadId, gone)
     return items.filter((i) => !gone.includes(i) && (i.kind !== 'mention' || i.chatId === chatId))
   }
 

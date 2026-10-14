@@ -7,7 +7,7 @@ Kernel is a Mac app (Electron) where Claude Code and Codex agents work as a team
 - `pnpm install` installs, downloads Electron and rebuilds native modules for it
 - `pnpm dev` runs the app with hot reload
 - `pnpm test:changed` runs only the test files your changes (committed or not) affect, compared with `origin/main`. Use this one while you work. It runs everything if you touched `package.json` or the vitest config
-- `pnpm test` runs the full suite on plain Node (engine tests use real git repos in temp folders). CI runs it on every PR, so run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts` or `pnpm exec vitest run test/kernel.test.ts`. Tests open SQLite with a Node build of better-sqlite3, see KERNEL-735
+- `pnpm test` runs the full suite on plain Node (engine tests use real git repos in temp folders). CI runs it on every push to `main`, on Ubuntu, plus a macOS job for the `test/*.mac.test.ts` files (zsh, the Mac build of Codex), which Ubuntu skips. A PR's Test check runs on Ubuntu, plus the macOS job for the macOS-only files, and runs only the affected tests (`vitest run --changed <merge base>`), or the whole suite when the PR touches `package.json`, `pnpm-lock.yaml`, `vitest.config.ts`, `test/support/`, `test/helpers.ts` or `.github/workflows/`. A red `main` opens a `ci-main-red` issue. Run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts` or `pnpm exec vitest run test/kernel.test.ts`. Tests open SQLite with a Node build of better-sqlite3, see KERNEL-735
 - Test runs queue across the Mac: `pnpm test` and `pnpm test:changed` wait for a free slot, so at most 2 run at once (`KERNEL_TEST_SLOTS` changes the number, CI takes no slot)
 - `pnpm typecheck` checks main, preload and renderer
 - `pnpm build` builds all three bundles
@@ -57,6 +57,14 @@ Fixed a pull request sometimes showing its old status after a quick refresh.
 - Unsure between improved and internal? Ask whether a user would notice if the change were reverted.
 
 Releases go through `/release` (`docs/RELEASING.md`).
+
+## Writing tests
+
+- Extend the feature's existing test file. Reuse its setup instead of starting a new Kernel, room and worktree for each test, unless the test needs a clean one. Tests that don't change shared state can share one built in `beforeAll`.
+- Test each behavior once, at the level where it lives. Don't repeat an engine rule in a screen or IPC test.
+- Get a Kernel's `hookPort` from `freePort()` in `test/helpers.ts`, never a random pick: files run side by side, and two that pick the same port leave one hook server unbound.
+- `tempRepo` copies a repo built once per worker, so call it freely. End a test's Kernel with `k.stop({ budgetMs: 0 })`: the default waits up to 3 seconds for a scripted turn that never ends.
+- A fake that reads `process.env` starts each test from none: clear what the test set, or the next test, and any read still running, sees it.
 
 ## Rules
 

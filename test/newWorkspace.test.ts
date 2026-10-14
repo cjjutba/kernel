@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { fakeGh, tempRepo } from './helpers'
+import { fakeGh, tempRepo, freePort } from './helpers'
 import { exec, git } from '../src/main/services/exec'
 import { defaultBranch, FETCH_REUSE_MS, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
@@ -96,7 +96,7 @@ describe('createWorkspace from a source', () => {
     const repo = await tempRepo({ '.claude/agents/kernel.md': '---\nname: kernel\ndescription: Lead.\nlead: true\n---\nYou are Kernel.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     // An issue source moves the issue in Linear (D-140). The stub keeps a LINEAR_API_KEY in the environment from touching a real one.
     const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
     await k.start()
@@ -125,7 +125,7 @@ describe('a workspace from a GitHub issue (KERNEL-462)', () => {
     vi.stubEnv('LINEAR_API_KEY', '')
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
     await k.start()
     onTestFinished(() => k.stop())
@@ -295,7 +295,7 @@ describe('the base a workspace starts from', () => {
   const kernel = async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -541,7 +541,7 @@ describe('plan mode for new workspaces (KERNEL-74)', () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -593,7 +593,7 @@ describe('New chat message (KERNEL-147)', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     // The message waits for the chat's worktree, then goes while setup runs (KERNEL-405, KERNEL-542).
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', leadWaitForSetup: false } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const room = await k.addRoom(repo)
@@ -613,7 +613,7 @@ describe('New chat message (KERNEL-147)', () => {
   })
 })
 
-describe('the New workspace modal starts a chat on its own picks (KERNEL-544)', () => {
+describe('the New chat page starts a chat on its own picks (KERNEL-544, KERNEL-788)', () => {
   const words = (t: string): ChatPart[] => [{ type: 'text', text: t }]
   const chat = { id: 'c1', workspaceId: 'w1', threadId: 't1', title: 'Chat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: true, createdAt: 1 }
 
@@ -642,43 +642,107 @@ describe('the New workspace modal starts a chat on its own picks (KERNEL-544)', 
 
   it("sends the box's picks, then clears the text and the picks so the next box starts from the Lead", async () => {
     const { calls, drafts, send } = await renderer()
-    drafts.saveDraft(drafts.NEW_CHAT_DRAFT, words('fix the login'), '')
-    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    const room = drafts.newChatDraftOf('r1')
+    drafts.saveDraft(room, words('fix the login'), '')
+    drafts.savePicks(room, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
     expect(await send()).toBeUndefined()
     expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ roomId: 'r1', model: 'claude-sonnet-5-5', effort: 'low', plan: true })
-    expect(drafts.loadDraft(drafts.NEW_CHAT_DRAFT)).toBeUndefined()
-    expect(drafts.loadPicks(drafts.NEW_CHAT_DRAFT)).toBeUndefined()
+    expect(drafts.loadDraft(room)).toBeUndefined()
+    expect(drafts.loadPicks(room)).toBeUndefined()
+  })
+
+  it('opens the new chat with its right panel held closed, whatever the global setting says (KERNEL-788)', async () => {
+    const { send } = await renderer()
+    const { getState, panelShownIn } = await import('../src/renderer/src/store')
+    getState().ui.rightPanel = true
+    await send()
+    expect(getState().ui.route).toEqual({ name: 'workspace', workspaceId: 'w1' })
+    expect(getState().ui.panelHeld).toContain('w1')
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
+  })
+
+  it('shows the panel once the toggle is pressed in that chat, and never before (KERNEL-788)', async () => {
+    const { send } = await renderer()
+    const { actions, getState, panelShownIn } = await import('../src/renderer/src/store')
+    actions.ui.setRightPanel(false)
+    await send()
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
+    actions.ui.setRightPanel(true)
+    expect(getState().ui.panelHeld).not.toContain('w1')
+    expect(panelShownIn(getState().ui, 'w1')).toBe(true)
+  })
+
+  it('opens the held panel with one press of the toggle while the global panel is on (KERNEL-788)', async () => {
+    const { send } = await renderer()
+    const { actions, getState, panelShownIn } = await import('../src/renderer/src/store')
+    const { toggleRightPanel } = await import('../src/renderer/src/components/PanelToggles')
+    actions.ui.setRightPanel(true)
+    await send()
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
+    toggleRightPanel()
+    expect(getState().ui.rightPanel).toBe(true)
+    expect(getState().ui.panelHeld).not.toContain('w1')
+    expect(panelShownIn(getState().ui, 'w1')).toBe(true)
+    toggleRightPanel()
+    expect(panelShownIn(getState().ui, 'w1')).toBe(false)
   })
 
   it('keeps the text and the picks when the chat could not be sent', async () => {
     const { drafts, send, state } = await renderer()
-    drafts.saveDraft(drafts.NEW_CHAT_DRAFT, words('fix the login'), '')
-    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    const room = drafts.newChatDraftOf('r1')
+    drafts.saveDraft(room, words('fix the login'), '')
+    drafts.savePicks(room, { model: 'claude-sonnet-5-5', effort: 'low', plan: true })
     state.fail = true
     expect(await send()).toBe('Kernel is busy')
-    expect(drafts.loadDraft(drafts.NEW_CHAT_DRAFT)).toEqual(words('fix the login'))
-    expect(drafts.loadPicks(drafts.NEW_CHAT_DRAFT)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
+    expect(drafts.loadDraft(room)).toEqual(words('fix the login'))
+    expect(drafts.loadPicks(room)).toEqual({ model: 'claude-sonnet-5-5', effort: 'low', plan: true })
   })
 
-  it("leaves a room's own New chat box alone when the modal sends", async () => {
+  it("leaves another room's New chat box alone when a chat starts", async () => {
     const { drafts, send } = await renderer()
-    const room = drafts.newChatDraftOf('r1')
-    drafts.saveDraft(room, words('in the room'), '')
-    drafts.savePicks(room, { plan: false })
+    const other = drafts.newChatDraftOf('r2')
+    drafts.saveDraft(other, words('in the other room'), '')
+    drafts.savePicks(other, { plan: false })
     await send()
-    expect([drafts.loadDraft(room), drafts.loadPicks(room)]).toEqual([words('in the room'), { plan: false }])
+    expect([drafts.loadDraft(other), drafts.loadPicks(other)]).toEqual([words('in the other room'), { plan: false }])
   })
 
-  it('hands the warning\'s picks back to the box it reopens', async () => {
-    const { drafts } = await renderer()
-    const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
-    const { getState } = await import('../src/renderer/src/store')
-    const picks = { mode: 'worktree', model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true, baseRef: '', pickedRef: '', filled: '' } as const
-    backToNewChat({ roomId: 'r1', source: { kind: 'issue', id: 'KERNEL-1', title: 'x' }, parts: words('go'), picks })
-    expect(getState().ui.modal).toMatchObject({ name: 'newWorkspace', roomId: 'r1', picks })
-    // The box puts them in its draft as it opens, where they win over the Lead and stay until it sends.
-    drafts.savePicks(drafts.NEW_CHAT_DRAFT, { model: picks.model, effort: picks.effort, plan: picks.plan })
-    const { boxPick } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
-    expect(boxPick({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high', plan: false }, drafts.loadPicks(drafts.NEW_CHAT_DRAFT))).toEqual({ model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true })
+  it("sends the box's permission mode with the chat", async () => {
+    const { calls } = await renderer()
+    const { startChat } = await import('../src/renderer/src/screens/new-workspace/start')
+    await startChat({ roomId: 'r1', parts: words('go'), model: 'claude-sonnet-5-5', effort: 'low', plan: false, mode: 'acceptEdits', baseRef: '' })
+    expect(calls.find((c) => c.channel === 'lead.start')?.req).toMatchObject({ mode: 'acceptEdits' })
+  })
+
+  describe("the warning's way back", () => {
+    const picks = { mode: 'worktree', model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true, baseRef: 'origin/dev' } as const
+    const held = { roomId: 'r1', source: { kind: 'issue', id: 'KERNEL-1', title: 'x' }, parts: words('go'), picks } as const
+
+    it('opens the New chat page with the source and picks when you have gone elsewhere', async () => {
+      await renderer()
+      const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
+      const { getState } = await import('../src/renderer/src/store')
+      backToNewChat(held)
+      expect(getState().ui.route).toMatchObject({ name: 'leadNew', roomId: 'r1', source: held.source, picks })
+      expect(getState().ui.modal).toBeNull()
+    })
+
+    it('only closes the warning when the page is still under it', async () => {
+      await renderer()
+      const { backToNewChat } = await import('../src/renderer/src/screens/new-workspace/start')
+      const { actions, getState } = await import('../src/renderer/src/store')
+      actions.ui.go({ name: 'leadNew', roomId: 'r1' })
+      actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-1', findings: [], held })
+      backToNewChat(held)
+      expect(getState().ui.modal).toBeNull()
+      expect(getState().ui.route).toEqual({ name: 'leadNew', roomId: 'r1' })
+    })
+
+    it('hands the picks to the box it reopens, where they win over the Lead and stay until it sends', async () => {
+      const { drafts } = await renderer()
+      drafts.savePicks(drafts.newChatDraftOf('r1'), { model: picks.model, effort: picks.effort, plan: picks.plan })
+      const { boxPick } = await import('../src/renderer/src/screens/workspace/composer/modelPrefs')
+      expect(boxPick({ provider: 'claude', model: 'claude-opus-5-5', effort: 'high', plan: false }, drafts.loadPicks(drafts.newChatDraftOf('r1')))).toEqual({ model: 'claude-haiku-4-5-20251001', effort: 'medium', plan: true })
+    })
   })
 })

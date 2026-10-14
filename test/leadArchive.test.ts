@@ -9,7 +9,7 @@ import { bus } from '../src/main/bus'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { setUp, tempRepo, trustRoom } from './helpers'
+import { setUp, tempRepo, trustRoom, freePort } from './helpers'
 
 // A chat with Kernel's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -159,7 +159,7 @@ async function kernelRoom(files: Record<string, string> = {}) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
@@ -361,7 +361,7 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
@@ -435,6 +435,23 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
       { id: kai.id, name: kai.name, own: false, running: false, pr: 41, dirty: 1, unpushed: 0 },
       { id: own.id, name: own.name, own: true, running: true, dirty: 0, unpushed: 0 }
     ])
+  })
+
+  it("archives a chat in Build here as a teammate's work: it warns about unpushed work, keeps the branch, and a merge doesn't archive it (KERNEL-778)", async () => {
+    const { k, repo, chat, own } = await chatWithWork({ archiveChatWorkspaces: false })
+    k.lead.setMode(own.id, 'build')
+    await writeFile(join(own.path, 'retry.ts'), 'export {}\n')
+    await git(own.path, 'add', '-A')
+    await git(own.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'retry')
+    await writeFile(join(own.path, 'draft.ts'), 'export {}\n')
+    k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prNumber: 58, prState: 'merged' })
+    await k.autoArchive.archiveMerged(own.id)
+    expect(k.store.workspace(own.id)?.status).toBe('ready')
+    k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prState: 'open' })
+    expect((await k.lead.archivePreview(chat.threadId!)).workspaces).toEqual([{ id: own.id, name: own.name, own: true, running: false, pr: 58, dirty: 1, unpushed: 1 }])
+    await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(own.id)
+    expect((await git(repo, 'branch', '--list', own.branch)).trim()).toBe(own.branch)
   })
 
   it('restores the chat with its tabs and a new branch when the old one was deleted, and sets it up again', async () => {

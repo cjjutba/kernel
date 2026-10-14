@@ -15,7 +15,7 @@ import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
 import { bashVerdict } from '../src/main/services/bashGuard'
 import type { SessionDeps } from '../src/main/services/sessions'
-import { fakeGh, tempRepo } from './helpers'
+import { fakeGh, tempRepo, freePort } from './helpers'
 
 describe('repo settings files', () => {
   it('writes the shared file and the personal one separately, and reads them merged', async () => {
@@ -368,7 +368,7 @@ describe("the repo's PR conventions (KERNEL-468)", () => {
     const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi', '.github/pull_request_template.md': '## Summary\n', 'package.json': JSON.stringify({ commitlint: {} }) })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     await k.start()
     try {
@@ -410,7 +410,7 @@ describe('a settings file with a typo (KERNEL-231)', () => {
     const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt') }))
     const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
     await k.start()
     const room = await k.addRoom(repo)
@@ -460,7 +460,7 @@ describe('the room remote (KERNEL-190)', () => {
   async function kernelOn(repo: string, app: object = {}) {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), ...app }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), ...app }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -536,7 +536,7 @@ describe('hooks installer without SessionStart', () => {
 describe('bringing out-of-date hooks up to date at start (KERNEL-206)', () => {
   const boot = async (content?: string) => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const port = 18000 + Math.floor(Math.random() * 800)
+    const port = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
     const claudeSettingsFile = join(await mkdtemp(join(tmpdir(), 'kernel-claude-')), 'settings.json')
     if (content !== undefined) await writeFile(claudeSettingsFile, content)
@@ -590,7 +590,7 @@ describe('bringing out-of-date hooks up to date at start (KERNEL-206)', () => {
 describe('rewriting the hooks on a settings change', () => {
   it('never adds hooks, and moves old http entries to the command form', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const port = 18000 + Math.floor(Math.random() * 800)
+    const port = await freePort()
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
     const claudeSettingsFile = join(await mkdtemp(join(tmpdir(), 'kernel-claude-')), 'settings.json')
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile })
@@ -646,7 +646,7 @@ async function startKernel(files?: Record<string, string>) {
   const repo = await tempRepo(files)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
@@ -877,7 +877,7 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
   async function kernelFor(repo: string, dataDir?: string) {
     dataDir ??= await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: await freePort(), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     const sent: string[] = [], released: string[] = []

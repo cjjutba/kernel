@@ -70,7 +70,7 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     // A PR GitHub calls open, held back by a rule. Held back by the reviewer rule alone, it waits for the reviewer's approval.
     const approval = mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
     const label = approval ? 'Waiting for approval' : workspaceGlyph(ws, { waiting: [], running: false }).label
-    return { ...base, ready: false, state: { label, tone: 'idle', spin: false, why } }
+    return { ...base, ready: false, state: { label, tone: 'idle', glyph: 'pr', spin: false, why } }
   }).map((r): LeadPr => ({ ...r, group: groupOf(r) }))
   return GROUPS.flatMap((g) => rows.filter((r) => r.group === g))
 }

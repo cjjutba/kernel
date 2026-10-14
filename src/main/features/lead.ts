@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, LeadMode, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import { buildsHere, LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
@@ -18,7 +19,7 @@ import { isNudge } from '../services/sessions'
 import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
-import { fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, roomWorktreeRoot, slugify, worktreeFolder } from '../services/worktrees'
+import { branchType, fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, roomWorktreeRoot, slugify, taskBranch, worktreeFolder } from '../services/worktrees'
 import { runningRuns } from '../services/scripts'
 import { exec, git } from '../services/exec'
 import { messageOf, NEW_CHAT, NEW_TAB } from './shared'
@@ -91,19 +92,22 @@ export class Lead extends Feature {
    * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
    * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps the Lead on the
-   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776).
+   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776), and so is a `leadMode` (KERNEL-805).
    */
-  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }): Promise<Chat> {
+  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode; leadMode?: LeadMode }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
     const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    // Hand off or Build here, from the room's default, else the app's (KERNEL-770). Read before anything is saved.
+    const room = this.store.room(roomId)
+    const leadMode = o.leadMode ?? newChatLeadMode(this.settings, room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined)
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id }, worktreeLater: true }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
-    const ws = cut.ws.mode === 'worktree' ? this.updateWs(cut.ws.id, { naming: 'branch' }) : cut.ws
+    const ws = this.updateWs(cut.ws.id, { leadMode, ...(cut.ws.mode === 'worktree' ? { naming: 'branch' as const } : {}) })
     // Through the composer's own path, so Bypass where policy or the workspace doesn't allow it still runs as Accept edits.
     const chat = o.mode ? await this.sessions.configure(this.saveChat(cut.chat).id, { mode: o.mode }) : this.saveChat(cut.chat)
     this.userSpoke(chat.id)
@@ -121,6 +125,29 @@ export class Lead extends Feature {
       if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
     })
     return chat
+  }
+
+  /**
+   * Switches a chat with Kernel to Hand off or Build here (KERNEL-770). Each tab gets a divider, and the chat's idle processes
+   * end, so the next turn starts with the mode's prompt and tools. A running turn finishes in the mode it started in, and its
+   * process restarts after it.
+   */
+  setMode(workspaceId: string, mode: LeadMode): Workspace {
+    if (!LEAD_MODES.includes(mode)) throw new Error(`${String(mode)} is not a mode. Use handoff or build.`)
+    const ws = this.store.workspace(workspaceId)
+    if (!ws || !isLeadChatWorkspace(ws)) throw new Error('Only a chat with Kernel can switch between Hand off and Build here.')
+    if (ws.status === 'archived') throw new Error('This chat is archived. Restore it from History first.')
+    if (leadModeOf(ws) === mode) return ws
+    const next = this.updateWs(ws.id, { leadMode: mode })
+    for (const c of this.chatTabs(ws.id)) if (c.kind !== 'terminal') this.place(c.id, { kind: 'leadMode', id: newId(), ts: Date.now(), mode })
+    this.sessions.restartIdle([ws.id])
+    return next
+  }
+
+  /** Puts an item in a chat's transcript. */
+  private place(chatId: string, item: ChatItem) {
+    this.store.saveItem(chatId, item)
+    bus.push({ type: 'chat.item', chatId, item })
   }
 
   /**
@@ -183,7 +210,74 @@ export class Lead extends Feature {
     if (this.k.stopped) return
     const ids = o.workspaceId ? [o.workspaceId] : this.chatWorkspaces(roomId).map((w) => w.id)
     // A folder that waits to move to match its branch moves first, while the chat is idle (KERNEL-424).
-    await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.syncNow(id) }).catch(failed)))
+    // A Build here chat whose PR merged starts its next branch before the sync (KERNEL-778).
+    await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.freshNow(id); await this.syncNow(id) }).catch(failed)))
+  }
+
+  /**
+   * Commits on a merged Build here chat's branch that are neither in the PR, by its last head as GitHub read it or the commit a
+   * local merge made, nor on the base. A squash or rebase merge puts other commits on the base, so the base alone can't tell.
+   * A commit pushed to the branch after the merge isn't in the PR either, so the branch as pushed doesn't count.
+   */
+  private async unmerged(ws: Workspace, repo: string, base: string): Promise<number> {
+    const has = async (ref: string) => (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).code === 0
+    const shipped = []
+    for (const ref of [ws.prHead, ws.mergeCommit]) if (ref && await has(ref)) shipped.push(ref)
+    return Number((await git(ws.path, 'rev-list', '--count', 'HEAD', '--not', base, ...shipped)).trim())
+  }
+
+  /** Build here chats Kernel told it kept on a merged PR's branch, by workspace, PR and reason, so each is told once. */
+  private keptMerged = new Set<string>()
+
+  /**
+   * A Build here chat whose PR merged goes on from a new branch, cut from `<remote>/<default>` in the same worktree and named
+   * the way `nameChatBranch` names a chat's first one, so its next PR is a new one (KERNEL-778). Only while the chat is idle.
+   * The PR's number, state and reviews start over, and so does a linked issue. A worktree with uncommitted changes, or with
+   * commits the PR didn't include, stays on the merged branch, and the chat hears why, once per PR and reason.
+   */
+  private async freshNow(id: string) {
+    if (this.k.stopped) return
+    const ws = this.store.workspace(id)
+    const room = ws && this.store.room(ws.roomId)
+    if (!ws || !room || room.archived || !buildsHere(ws) || ws.prState !== 'merged' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || ws.worktreePending) return
+    if (this.folderBusy(id) || await folderGone(ws.path).catch(() => true)) return
+    const merged = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
+    const repo = await loadRepoSettings(room.path)
+    const remote = await this.k.config.remoteFor(room.path, repo)
+    const base = await leadBase(room.path, remote) ?? ws.baseRef
+    // Work the merge left out stays where it is: uncommitted changes, and commits made after the PR's last head, which a new
+    // branch from the base would drop from the worktree.
+    const dirty = (await git(ws.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel')).trim() !== ''
+    const after = dirty ? 0 : await this.unmerged(ws, room.path, base)
+    const why = dirty ? 'this worktree has uncommitted changes' : after ? `${ws.branch} has ${after === 1 ? 'a commit' : `${after} commits`} the PR didn't include` : undefined
+    if (why) {
+      const key = `${id} ${ws.prNumber ?? ws.branch} ${why}`
+      if (this.keptMerged.has(key)) return
+      this.keptMerged.add(key)
+      this.note(id, `${merged} merged, but ${why}, so Kernel kept this chat on ${ws.branch}. It starts a new branch from ${base} once nothing here is left out of the merge.`)
+      return
+    }
+    const lead = this.agentsSync(room.id).find((a) => a.lead)
+    const title = (ws.threadId && this.store.thread(ws.threadId)?.title) || ws.title || ws.name
+    const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, lead?.name)
+    const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
+      const free = await freeBranch(room.path, wanted, remote, this.k.workspaces.pendingNames(room.id).branches)
+      // Read again after the wait: a turn may have started, or the chat been archived.
+      const now = this.k.stopped ? undefined : this.store.workspace(id)
+      if (!now || now.prState !== 'merged' || now.status !== 'ready' || this.folderBusy(id)) return undefined
+      await git(ws.path, 'checkout', '-b', free, base)
+      return free
+    })
+    if (!branch) return
+    for (const key of this.keptMerged) if (key.startsWith(`${id} `)) this.keptMerged.delete(key)
+    this.updateWs(id, {
+      branch, baseRef: base, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined, prHead: undefined, prBlocked: undefined,
+      mergedAt: undefined, mergedWith: undefined, mergeCommit: undefined, reviews: undefined, reviewRound: undefined, reviewPending: undefined, overruled: undefined,
+      ...(ws.source?.kind === 'issue' ? { source: undefined } : {}),
+    })
+    bus.push({ type: 'pr', workspaceId: id, state: 'none' })
+    this.note(id, `${merged} merged. This chat now works on ${branch}, from ${base}.`)
+    void this.k.workspaces.changes(id).catch(() => undefined)
   }
 
   /** Runs `step` after the git work already queued for the chat's worktree, so two never run git in it at once. */
@@ -444,12 +538,8 @@ export class Lead extends Feature {
       const repo = await loadRepoSettings(room.path)
       const lead = this.agentsSync(room.id).find((a) => a.lead)
       const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, lead?.name)
-      // Pushed under its name, or tracking anything but the base it was cut from, which git sets as its upstream.
       const remote = await this.k.config.remoteFor(room.path, repo)
-      const upstream = await exec('git', ['-C', room.path, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', `${ws.branch}@{u}`])
-      const pushed = (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
-        || (upstream.code === 0 && upstream.stdout.trim() !== ws.baseRef)
-      if (pushed) { this.updateWs(id, { naming: undefined }); return }
+      if (await this.pushed(room.path, ws, remote)) { this.updateWs(id, { naming: undefined }); return }
       // Two Lead chats named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
       const to = wanted === ws.branch ? wanted : await this.k.workspaces.withBranchLock(room.id, async () => {
         const free = await freeBranch(room.path, wanted, remote, this.k.workspaces.pendingNames(room.id).branches)
@@ -465,6 +555,49 @@ export class Lead extends Feature {
     this.renaming.set(id, next)
     void next.finally(() => { if (this.renaming.get(id) === next) this.renaming.delete(id) }).catch(() => undefined)
     return next
+  }
+
+  /**
+   * Links a Build here chat's own work to a tracker issue (KERNEL-778), from the link_issue tool or `lead.linkIssue`. Before
+   * the first push, and with no PR, its branch takes a teammate's name for the issue, `feat/kernel-760-retry-button`, and its
+   * folder follows once the chat is idle. After that only the link changes. The PR body names the key, so the issue closes on
+   * merge.
+   */
+  linkIssue(id: string, issue: string): Promise<Workspace> {
+    const next = (this.renaming.get(id) ?? Promise.resolve()).catch(() => undefined).then(async () => {
+      const ws = this.store.workspace(id)
+      if (!ws || ws.status === 'archived' || !isLeadChatWorkspace(ws)) throw new Error('That chat no longer exists.')
+      if (!buildsHere(ws)) throw new Error('Only a chat in Build here links an issue. In Hand off, the teammate\'s workspace takes it.')
+      const key = issue.trim()
+      if (!key) throw new Error('Name the issue to link, for example KERNEL-760.')
+      const room = this.mustRoom(ws.roomId)
+      const linked = await this.k.integrations.issueSource(room.id, key, ws.title ?? key)
+      const repo = await loadRepoSettings(room.path)
+      const remote = await this.k.config.remoteFor(room.path, repo)
+      const wanted = taskBranch(repo.workspace.branchPattern ?? this.settings.workspace.branchPattern, linked.source.kind === 'issue' ? linked.source.title : key, linked.source.kind === 'issue' ? linked.source.id : key, branchType(linked.labels))
+      const renamable = ws.mode === 'worktree' && ws.branch !== 'HEAD' && !ws.worktreePending && !ws.prNumber && ws.prState === 'none' && wanted !== ws.branch && !(await this.pushed(room.path, ws, remote))
+      const to = renamable ? await this.k.workspaces.withBranchLock(room.id, async () => {
+        const free = await freeBranch(room.path, wanted, remote, this.k.workspaces.pendingNames(room.id).branches)
+        if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
+        await renameBranch(ws.path, free)
+        return free
+      }) : undefined
+      const saved = this.updateWs(id, { source: linked.source, ...(to ? { branch: to, naming: 'folder' as const } : {}) })
+      // The folder moves now if the chat is idle, else when its turn ends.
+      if (to) void this.syncLead(ws.roomId, { workspaceId: id })
+      return saved
+    })
+    const queued = next.then(() => undefined)
+    this.renaming.set(id, queued)
+    void queued.finally(() => { if (this.renaming.get(id) === queued) this.renaming.delete(id) }).catch(() => undefined)
+    return next
+  }
+
+  /** The chat's branch was pushed under its name, or tracks anything but the base it was cut from, which git sets as its upstream. */
+  private async pushed(repo: string, ws: Workspace, remote: string) {
+    const upstream = await exec('git', ['-C', repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', `${ws.branch}@{u}`])
+    return (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
+      || (upstream.code === 0 && upstream.stdout.trim() !== ws.baseRef)
   }
 
   private renameThread(threadId: string, title: string): Thread {
@@ -501,6 +634,23 @@ export class Lead extends Feature {
       plans: () => this.threadPlans(roomId, chat).map((a) => ({ tab: this.store.chat(a.chatId!)?.title ?? '', at: a.createdAt, plan: a.detail ?? '' })),
       // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
       planMode: () => !!this.store.chat(chat.id)?.plan,
+      // Read when the session starts, so a turn finishes in the mode it started in, and a switch restarts it (KERNEL-770).
+      leadMode: leadModeOf(this.store.workspace(chat.workspaceId)),
+      // The files changed in this chat's own worktree, which teammates won't start from (KERNEL-770). Kernel's own `.kernel`
+      // folder, with the user's attachments and shared files, doesn't count.
+      ownChanges: async () => {
+        const own = this.store.workspace(chat.workspaceId)
+        if (!own || own.mode !== 'worktree' || !existsSync(own.path)) return 0
+        const out = await git(own.path, 'status', '--porcelain', '--', '.', ':(exclude).kernel').catch(() => '')
+        return out.split('\n').filter((l) => l.trim()).length
+      },
+      suggestHandoff: (why) => this.place(chat.id, { kind: 'modeSuggestion', id: newId(), ts: Date.now(), mode: 'handoff', why }),
+      linkIssue: async (issue) => {
+        const before = this.mustWs(chat.workspaceId).branch
+        const ws = await this.linkIssue(chat.workspaceId, issue)
+        const source = ws.source?.kind === 'issue' ? ws.source : { id: issue, title: issue }
+        return { id: source.id, title: source.title, ...(ws.branch !== before ? { branch: ws.branch } : {}) }
+      },
       createWorkspace: async ({ issue, images, goAhead, ...o }) => {
         // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
         // agent is a different hand-off.
@@ -719,6 +869,17 @@ export class Lead extends Feature {
     return first && { chat: first, ...(was ? { from: { title: this.chatTitleOf(was) } } : {}) }
   }
 
+  /**
+   * The tab of the Build here chat whose own workspace `ws` is, which hears about its PR and its reviews the way a chat hears
+   * about work it handed off (KERNEL-778): its first open tab, else its first tab. None for any other workspace, or once the
+   * chat is back in Hand off.
+   */
+  buildTab(ws: Workspace): string | undefined {
+    if (!buildsHere(ws) || !this.isLeadWorkspace(ws)) return undefined
+    const tabs = this.store.chats(ws.id).filter((c) => c.kind !== 'terminal')
+    return (tabs.find((c) => !c.closed) ?? tabs[0])?.id
+  }
+
   /** New Lead chats Kernel is starting for a Team update, by room, so a second update waits for the same chat. */
   private opening = new Map<string, Promise<unknown>>()
 
@@ -858,6 +1019,8 @@ export class Lead extends Feature {
       'lead.open': async ({ roomId }) => { await this.leadOf(roomId); return this.newestChatWorkspace(roomId) ?? null },
       'lead.start': async ({ roomId, ...o }) => this.newLeadChat(roomId, o),
       'lead.prefetch': async ({ roomId }) => { this.prefetch(roomId); return { ok: true } },
+      'lead.setMode': async ({ workspaceId, mode }) => this.setMode(workspaceId, mode),
+      'lead.linkIssue': async ({ workspaceId, issue }) => this.linkIssue(workspaceId, issue),
       'threads.list': async ({ roomId }) => this.store.threads(roomId),
       'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title),
       'threads.archivePreview': async ({ threadId }) => this.archivePreview(threadId),

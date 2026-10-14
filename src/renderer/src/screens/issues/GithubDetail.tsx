@@ -4,7 +4,7 @@ import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, Icon, Skeleton, useBusy } from '../../ui'
 import { IssueState } from '../../icons'
-import { openLeadChat } from '../../lead'
+import { openLeadChat, openNewChat } from '../../lead'
 import { Markdown } from '../workspace/markdown'
 import { Linked } from './IssueDetail'
 import { githubPlanParts, issueAge, linkedWorkspaces, loginInitials } from './model'
@@ -35,7 +35,7 @@ export function GithubDetail({ room, id, summary, tick }: { room: Room; id: stri
       await openLeadChat(room.id, chat.id)
     } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })
-  const newChat = () => issue && actions.ui.openModal({ name: 'newWorkspace', roomId: room.id, source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
+  const newChat = () => issue && openNewChat(room.id, { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url || undefined, tracker: 'github' } })
 
   if (!issue) {
     return (

@@ -57,11 +57,14 @@ export class Ptys {
 
   write(id: string, data: string) { this.procs.get(id)?.write(data) }
 
-  /** The terminal runs a command: its foreground process isn't the shell, which node-pty reads from the tty. */
+  /**
+   * The terminal runs a command: its foreground process isn't the shell, which node-pty reads from the tty. On a Mac that is
+   * the process's name, on Linux its command line's first word, `/bin/bash` for the shell, so both compare by base name.
+   */
   busy(id: string): boolean {
     const proc = this.procs.get(id)
     if (!proc) return false
-    try { return proc.process !== basename(loginShell(process.env)) } catch { return false }
+    try { return basename(proc.process) !== basename(loginShell(process.env)) } catch { return false }
   }
 
   /**
