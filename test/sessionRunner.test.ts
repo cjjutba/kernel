@@ -1629,6 +1629,70 @@ describe('permission modes on Claude (KERNEL-447)', () => {
   })
 })
 
+describe('turns that end without a reply on Claude (KERNEL-808)', () => {
+  const notes = (store: Store) => store.items('chat').flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+  const compact = (uuid: string, trigger: 'manual' | 'auto', pre: number, post?: number) => ({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger, pre_tokens: pre, post_tokens: post }, uuid, session_id: 's' })
+
+  it('says a compact happened and how far it shrank the conversation, once per event', async () => {
+    const t = await setup()
+    t.call.feed(compact('c1', 'manual', 142_000, 18_000))
+    t.call.feed(compact('c2', 'auto', 142_400, 17_600))
+    t.call.feed(compact('c3', 'manual', 90_000))
+    t.call.feed(compact('c1', 'manual', 142_000, 18_000))
+    await flush()
+    expect(notes(t.store)).toEqual([
+      'Compacted the conversation, 142k to 18k tokens.',
+      'Context was full, so the conversation was compacted (142k to 18k tokens).',
+      'Compacted the conversation from 90k tokens.'
+    ])
+  })
+
+  it("shows the reason a hook stopped the turn", async () => {
+    const t = await setup()
+    t.call.feed({ type: 'system', subtype: 'informational', content: 'Stop hook: tests must pass first', level: 'notice', prevent_continuation: true, uuid: 'i1', session_id: 's' })
+    await flush()
+    expect(notes(t.store)).toEqual(['Stop hook: tests must pass first'])
+  })
+
+  it('says Claude declined, in its own words when it gives some', async () => {
+    const t = await setup()
+    const refused = (uuid: string, content: string) => ({ type: 'system', subtype: 'model_refusal_no_fallback', original_model: 'claude-opus-5-5', request_id: null, content, uuid, session_id: 's' })
+    t.call.feed(refused('r1', 'This request was declined.'))
+    t.call.feed(refused('r2', ''))
+    await flush()
+    expect(notes(t.store)).toEqual(['This request was declined.', 'Claude declined to answer.'])
+  })
+
+  it('names the model a declined reply fell back to, and whether the switch outlasts it', async () => {
+    const t = await setup()
+    const fell = (uuid: string, scope?: 'session' | 'local') => ({ type: 'system', subtype: 'model_refusal_fallback', trigger: 'refusal', direction: 'retry', scope, original_model: 'claude-opus-5-5', fallback_model: 'claude-sonnet-5-5', request_id: null, content: '', uuid, session_id: 's' })
+    t.call.feed(fell('f1'))
+    t.call.feed(fell('f2', 'local'))
+    await flush()
+    expect(notes(t.store)).toEqual([
+      'Claude declined on claude-opus-5-5, so the reply came from claude-sonnet-5-5.',
+      'Claude declined on claude-opus-5-5, so the reply came from claude-sonnet-5-5. The switch covers only this reply.'
+    ])
+  })
+
+  it('shows prominent status lines once each and drops quiet ones', async () => {
+    const t = await setup()
+    const info = (uuid: string, content: string, level: string, tool_use_id?: string) => ({ type: 'system', subtype: 'informational', content, level, tool_use_id, uuid, session_id: 's' })
+    const notice = (uuid: string, key: string, text: string, priority: string) => ({ type: 'system', subtype: 'notification', key, text, priority, uuid, session_id: 's' })
+    t.call.feed(info('i1', 'Only in transcript mode', 'info'))
+    t.call.feed(info('i2', 'Gray line', 'notice'))
+    t.call.feed(info('i3', 'Try /init to add a CLAUDE.md', 'suggestion'))
+    t.call.feed(info('i4', 'Indexing 1 of 2', 'warning', 'tu1'))
+    t.call.feed(info('i5', 'Indexing 2 of 2', 'warning', 'tu1'))
+    t.call.feed(notice('n1', 'usage', 'Low priority', 'low'))
+    t.call.feed(notice('n2', 'limit', 'Approaching your usage limit', 'high'))
+    t.call.feed(notice('n3', 'limit', 'Approaching your usage limit', 'high'))
+    t.call.feed(notice('n4', 'auth', 'Sign in again', 'immediate'))
+    await flush()
+    expect(notes(t.store)).toEqual(['Try /init to add a CLAUDE.md', 'Indexing 2 of 2', 'Approaching your usage limit', 'Sign in again'])
+  })
+})
+
 describe("a room's Always allow rules on Claude (KERNEL-454)", () => {
   const autoWorks: SessionDeps['availability'] = () => ({ auto: true, bypass: true })
   const signal = () => new AbortController().signal

@@ -103,6 +103,14 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect((await t.sent('thread/resume'))[0].params).toMatchObject({ threadId: 'thread-1', developerInstructions: expect.stringContaining('You are Noor.') })
   })
 
+  it('says a compact happened, once per item (KERNEL-808)', async () => {
+    const t = track(await setup())
+    const compacted = { notify: 'item/completed', params: { item: { type: 'contextCompaction', id: 'cc1' } } }
+    await t.sessions.send('chat', [{ type: 'text', text: script(compacted, compacted) }])
+    await t.idle()
+    expect(t.of('note').map((i) => i.text)).toEqual(['Compacted the conversation.'])
+  })
+
   it('shows thinking, commands, edits, tools and replies as the rows Claude chats have', async () => {
     const t = track(await setup())
     await t.sessions.send('chat', [{ type: 'text', text: script(
