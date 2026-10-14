@@ -16,19 +16,41 @@ function merge<T>(base: T, over: unknown): T {
   return out as T
 }
 
+const newest = new Map<string, number>()
+let saves = 0
+
+function leafPaths(patch: unknown, at = ''): string[] {
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return [at]
+  const keys = Object.keys(patch)
+  return keys.length ? keys.flatMap((k) => leafPaths((patch as Record<string, unknown>)[k], at ? `${at}.${k}` : k)) : [at]
+}
+
+/** Marks a save as the newest for its keys. The answer lands only while no later save has touched one of them. */
+function claim(scope: string, patch: unknown) {
+  const id = ++saves
+  const keys = leafPaths(patch).map((k) => `${scope}:${k}`)
+  for (const k of keys) newest.set(k, id)
+  return () => keys.every((k) => newest.get(k) === id)
+}
+
 /**
- * Save a change. The screen updates at once and main's answer replaces it (main clamps numbers).
- * A failure puts the old settings back and says so, so a control never shows a value that was not saved.
+ * Save a change. The screen updates at once and main's answer replaces it (main clamps numbers). It returns the saved settings,
+ * or undefined when the save failed. A failure puts the old settings back and says so, so a control never shows a value that was
+ * not saved. When two saves touch one key, only the newest answer lands.
  */
-export async function patchSettings(patch: DeepPartial<AppSettings>) {
+export async function patchSettings(patch: DeepPartial<AppSettings>): Promise<AppSettings | undefined> {
   const before = getState().settings
-  if (!before) return
+  if (!before) return undefined
+  const current = claim('app', patch)
   actions.settings.set(merge(before, patch))
   try {
-    actions.settings.set(await call('settings.set', { patch }))
+    const saved = await call('settings.set', { patch })
+    if (current()) actions.settings.set(saved)
+    return saved
   } catch (e) {
-    actions.settings.set(before)
+    if (current()) actions.settings.set(before)
     actions.ui.toast({ title: 'Could not save the setting', sub: cleanError(e) })
+    return undefined
   }
 }
 
@@ -113,15 +135,19 @@ export function applyPreviewUrls(list: RoomSettings['preview']['urls'], sources:
   return urls
 }
 
-/** Save a change to a room's personal settings, `.kernel/settings.local.toml`. Rolls back and says so on a failure. */
-export async function patchRoomSettings(roomId: string, patch: RoomSettingsPatch) {
+/** Save a change to a room's personal settings, `.kernel/settings.local.toml`. Returns the saved settings, or undefined after a failure, which rolls back and says so. */
+export async function patchRoomSettings(roomId: string, patch: RoomSettingsPatch): Promise<RoomSettings | undefined> {
   const before = getState().roomSettings[roomId]
+  const current = claim(`room:${roomId}`, patch)
   if (before) actions.settings.setRoom(roomId, applyRoomPatch(before, patch))
   try {
-    actions.settings.setRoom(roomId, await call('settings.setRoom', { roomId, patch }))
+    const saved = await call('settings.setRoom', { roomId, patch })
+    if (current()) actions.settings.setRoom(roomId, saved)
+    return saved
   } catch (e) {
-    if (before) actions.settings.setRoom(roomId, before)
+    if (before && current()) actions.settings.setRoom(roomId, before)
     actions.ui.toast({ title: 'Could not save the setting', sub: cleanError(e) })
+    return undefined
   }
 }
 

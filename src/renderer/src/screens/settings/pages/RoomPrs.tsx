@@ -61,7 +61,7 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const models = [...claude, ...codex]
   const save = (kind: ReviewKind, own: { [K in keyof ReviewKindConfig]?: ReviewKindConfig[K] | null }) => void patchReview(roomId, { kinds: { [kind]: own } })
   // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
-  const saveOptional = (lines: string[]) => void patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
+  const saveOptional = (lines: string[]) => patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
   const rounds = [...new Set([...ROUNDS, review.rounds])].sort((a, b) => a - b)
   const method = rs?.pr?.mergeMethod
   const sheet = INSTRUCTIONS.find((i) => i.key === editing)
@@ -104,7 +104,7 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Row label="Stop after" desc="Then the pull request comes to you.">
           <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void patchReview(roomId, { rounds: Number(v) })} options={rounds.map((n) => ({ value: String(n), label: `${n} ${n === 1 ? 'round' : 'rounds'}` }))} />
         </Row>
-        <Row label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => void patchAlwaysReview(roomId, paths)} />} />
+        <Row label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(roomId, paths)} />} />
         <Row label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." onReset={isOverride(rs, 'pr.optionalChecks') ? () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }) : undefined} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
         <Row label="Merge method" onReset={method ? () => void patchRoomSettings(roomId, { pr: { mergeMethod: null } }) : undefined}>
           <Select label="Merge method" align="right" value={method ?? USE_DEFAULT} onChange={(v) => void patchRoomSettings(roomId, { pr: { mergeMethod: v ? (v as MergeMethod) : null } })}
