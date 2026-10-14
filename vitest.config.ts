@@ -13,3 +13,4 @@ export default defineConfig({
   },
   test: { include: ['test/**/*.test.ts'], testTimeout: 20000, pool: 'forks', maxWorkers: 4, globalSetup: ['test/support/globalSetup.ts'] }
 })
+// demo
