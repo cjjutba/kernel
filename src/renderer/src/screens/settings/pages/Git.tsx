@@ -36,14 +36,14 @@ export function Git({ s }: { s: AppSettings }) {
   return (
     <Page title="Git and worktrees">
       <Section title="New workspaces">
-        <Row label="Workspace type" desc="A worktree is an isolated copy on its own branch.">
+        <Row setting="workspace.mode" label="Workspace type" desc="A worktree is an isolated copy on its own branch.">
           <SegmentedControl label="Workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
         </Row>
-        <Row label="Branch from"><Select label="Branch from" align="right" value={w.baseRef} options={withCurrent(branches, w.baseRef)} onChange={(v) => set({ baseRef: v })} /></Row>
+        <Row setting="workspace.baseRef" label="Branch from"><Select label="Branch from" align="right" value={w.baseRef} options={withCurrent(branches, w.baseRef)} onChange={(v) => set({ baseRef: v })} /></Row>
         <Row label="Remote" desc="Where agents push and open pull requests.">
           <Select label="Remote" align="right" value={w.remote} options={withCurrent(remotes.length ? remotes : ['origin'], w.remote)} onChange={(v) => set({ remote: v })} />
         </Row>
-        <Row label="Worktree location">
+        <Row setting="worktreeRoot" label="Worktree location">
           <span className="set-actions">
             <span className="set-value">{home(s.worktreeRoot)}</span>
             <Button busy={busy === 'reveal'} busyLabel="Opening" disabled={busy !== null} onClick={() => void reveal()}>Reveal</Button>
@@ -51,17 +51,17 @@ export function Git({ s }: { s: AppSettings }) {
         </Row>
       </Section>
       <Section title="Branch names">
-        <Row label="Workspaces" desc="Renamed from the task once work starts."><BranchPattern value={w.branchPattern} label="Workspace branch name pattern" /></Row>
-        <Row label="Lead chats" desc="Renamed from the chat title until pushed."><BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" /></Row>
+        <Row setting="workspace.branchPattern" label="Workspaces" desc="Renamed from the task once work starts."><BranchPattern value={w.branchPattern} label="Workspace branch name pattern" /></Row>
+        <Row setting="workspace.leadBranchPattern" label="Lead chats" desc="Renamed from the chat title until pushed."><BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" /></Row>
       </Section>
       <Section title="Current branch">
-        <Row label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>
-        <Row label="One current-branch workspace per room"><Toggle label="One current-branch workspace per room" checked={w.oneCurrentBranchPerRoom} onChange={(v) => set({ oneCurrentBranchPerRoom: v })} /></Row>
+        <Row setting="workspace.baselineCurrentBranch" label="Treat existing changes as the baseline" desc="They stay out of the diff, and agents never commit them."><Toggle label="Treat existing changes as the baseline" checked={w.baselineCurrentBranch} onChange={(v) => set({ baselineCurrentBranch: v })} /></Row>
+        <Row setting="workspace.oneCurrentBranchPerRoom" label="One current-branch workspace per room"><Toggle label="One current-branch workspace per room" checked={w.oneCurrentBranchPerRoom} onChange={(v) => set({ oneCurrentBranchPerRoom: v })} /></Row>
       </Section>
       <Section title="Setup and archive" note="The scripts live on each room’s Setup and scripts page.">
-        <Row label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
-        <Row child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
-        <Row label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
+        <Row setting="scripts.setupOnCreate" label="Run setup when a workspace is created"><Toggle label="Run setup when a workspace is created" checked={a.setupOnCreate} onChange={(v) => setScripts({ setupOnCreate: v })} /></Row>
+        <Row setting="workspace.leadWaitForSetup" child label="Wait for setup before the first message" desc="The first message holds until setup passes."><Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} /></Row>
+        <Row setting="scripts.runAfterSetup" label="Start the run script after setup"><Toggle label="Start the run script after setup" checked={a.runAfterSetup} onChange={(v) => setScripts({ runAfterSetup: v })} /></Row>
         <Row label="Run the archive script on archive"><Toggle label="Run the archive script on archive" checked={a.archiveOnArchive} onChange={(v) => setScripts({ archiveOnArchive: v })} /></Row>
         <Row label="Stop setup and archive scripts after" desc="Run scripts have no limit.">
           <Select label="Stop setup and archive scripts after" align="right" value={String(a.timeoutMinutes)} options={[...new Set([...TIMEOUTS, a.timeoutMinutes])].sort((x, y) => x - y).map((n) => ({ value: String(n), label: `${n} minute${n === 1 ? '' : 's'}` }))} onChange={(v) => setScripts({ timeoutMinutes: Number(v) })} />

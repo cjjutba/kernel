@@ -81,7 +81,7 @@ export function Agents() {
         </>
       )}
       {s && <Section title="New rooms">
-        <Row label="New rooms start with"><SegmentedControl label="New rooms start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} /></Row>
+        <Row setting="team.defaultTemplate" label="New rooms start with"><SegmentedControl label="New rooms start with" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} /></Row>
       </Section>}
     </Page>
   )

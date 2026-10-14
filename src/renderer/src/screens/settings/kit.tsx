@@ -1,6 +1,7 @@
 import './settings.css'
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { Room, RoomSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
+import { APP_SETTING_TIMING, ROOM_SETTING_TIMING, type SettingTiming } from '@shared/settingsTiming'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, Kbd, Menu, Spinner, useBusy, type IconName } from '../../ui'
@@ -70,9 +71,49 @@ export function clampText(asked: number, saved: number): string | undefined {
   return `Set to ${saved}, the ${saved < asked ? 'most' : 'least'} allowed`
 }
 
+/** The room whose page is showing, so a row looks its setting up in the room's table and a save checks that room's chats. */
+const RoomScope = createContext<string | undefined>(undefined)
+
+/** What the row around a field says about its setting: when a change reaches agents, and the room it is a value of. */
+const RowTiming = createContext<{ timing?: SettingTiming; roomId?: string }>({})
+
+const TERMINAL_TAB_SETTINGS = new Set(['terminal.preset', 'terminal.onlyInWorktrees'])
+
+const APPLIES: Partial<Record<SettingTiming, string>> = {
+  newChats: 'Applies to new chats',
+  newWorkspaces: 'Applies to new workspaces',
+  newRooms: 'Applies to new rooms',
+  restart: 'Applies the next time Kernel opens'
+}
+
+/** The timing of a setting by dotted path. An entry covers every key under it, as in `APP_SETTING_TIMING`. */
+export function timingOf(path: string, roomId?: string): SettingTiming | undefined {
+  const parts = path.split('.')
+  for (const table of roomId ? [ROOM_SETTING_TIMING, APP_SETTING_TIMING] : [APP_SETTING_TIMING]) {
+    const map: Record<string, SettingTiming> = table
+    for (let n = parts.length; n > 0; n--) { const t = map[parts.slice(0, n).join('.')]; if (t) return t }
+  }
+  return undefined
+}
+
+/** The muted line for a setting whose change doesn't reach running agents, or undefined when it does. */
+export function appliesTo(path: string, roomId?: string): string | undefined {
+  if (TERMINAL_TAB_SETTINGS.has(path)) return 'Applies to new terminal tabs'
+  const timing = timingOf(path, roomId)
+  return timing && APPLIES[timing]
+}
+
+/** Is any chat running in the room, or in any room when `roomId` is unset? Read from the store's running chats, never a timer. */
+function useChatsRunning(roomId?: string): boolean {
+  return useStore((s) => s.workspaces.some((w) => (!roomId || w.roomId === roomId) && (s.chats[w.id] ?? []).some((c) => s.running[c.id])))
+}
+
 export function SaveNote({ state }: { state: SaveState }) {
+  const { timing, roomId } = useContext(RowTiming)
+  const running = useChatsRunning(roomId)
   if (state.kind === 'idle') return null
-  const text = state.kind === 'saving' ? 'Saving' : state.kind === 'clamped' ? state.text : 'Saved'
+  const kept = timing === 'newChats' && running
+  const text = state.kind === 'saving' ? 'Saving' : state.kind === 'clamped' ? state.text : kept ? 'Saved. Running chats keep the old value.' : 'Saved'
   return (
     <span className="set-save" data-state={state.kind} role="status" aria-hidden={state.kind === 'fading' || undefined}>
       {state.kind === 'saving' ? <Spinner label={null} /> : state.kind !== 'clamped' && <Icon name="check" size={12} />}
@@ -146,15 +187,19 @@ export function Section({ title, count, scope, note, action, footnote, collapsib
 
 /**
  * A label and optional description on the left, the control on the right. `full` puts the control on its own line.
- * `source` is the line under the label that says where a room's value came from, and `onReset` adds Reset, which sends `null` for the key.
+ * `setting` is the setting's dotted path (`models.leadPlanMode`): a row whose change doesn't reach running agents says so under its description (KERNEL-725),
+ * and a Saved note in the row says when running chats keep the old value. `source` is the line under the label that says where a room's value came from, and `onReset` adds Reset, which sends `null` for the key.
  * `child` is a row that only matters because of the one above it: it is indented on a guide line. `lead` is a picture before the label
  * (an avatar or a logo). `hover` holds the buttons that show while the pointer is on the row.
  */
-export function Row({ label, source, desc, onReset, children, full, className, child, lead, hover, labelId }: {
-  label: ReactNode; source?: ReactNode; desc?: ReactNode; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
+export function Row({ label, source, desc, setting, onReset, children, full, className, child, lead, hover, labelId }: {
+  label: ReactNode; source?: ReactNode; desc?: ReactNode; setting?: string; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string
   child?: boolean; lead?: ReactNode; hover?: ReactNode; labelId?: string
 }) {
+  const roomId = useContext(RoomScope)
+  const note = setting ? appliesTo(setting, roomId) : undefined
   return (
+    <RowTiming.Provider value={{ timing: setting ? timingOf(setting, roomId) : undefined, roomId }}>
     <div className={['set-row', child && 'set-child', hover && 'set-hoverable', className].filter(Boolean).join(' ')}>
       {child && <span className="set-guide" aria-hidden="true" />}
       {lead && <span className="set-lead">{lead}</span>}
@@ -162,12 +207,14 @@ export function Row({ label, source, desc, onReset, children, full, className, c
         <span className="set-label" id={labelId}>{label}</span>
         {source && <span className="set-desc">{source}</span>}
         {desc && <span className="set-desc">{desc}</span>}
+        {note && <span className="set-desc set-applies">{note}</span>}
       </div>
       {hover && <span className="set-acts">{hover}</span>}
       {onReset && <Button variant="ghost" className="set-reset" aria-label={`Reset ${typeof label === 'string' ? label : 'setting'}`} onClick={onReset}>Reset</Button>}
       {children}
       {full && <div className="set-full">{full}</div>}
     </div>
+    </RowTiming.Provider>
   )
 }
 
@@ -383,5 +430,5 @@ function OpenSettingsFiles({ room, rs, shared }: { room: Room; rs: RoomSettings 
  */
 export function RoomPage({ room, rs, title, shared, children }: { room: Room; rs: RoomSettings | null; title: string; shared?: boolean; children: ReactNode }) {
   const crumb = <button type="button" className="set-crumb" aria-label={`${room.name} settings`} onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>{room.name}</button>
-  return <Page title={title} crumb={crumb} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page>
+  return <RoomScope.Provider value={room.id}><Page title={title} crumb={crumb} action={<OpenSettingsFiles room={room} rs={rs} shared={shared} />}>{children}</Page></RoomScope.Provider>
 }
