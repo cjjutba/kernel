@@ -30,7 +30,7 @@ export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
 
   return (
     <ConfirmDialog
-      title={`Discard changes in ${ws.name}?`} danger busy={!!busy} busyLabel="Discarding" disabled={!git} confirmLabel="Discard changes"
+      title={`Discard changes in ${ws.name}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Discarding" disabled={!git} confirmLabel="Discard changes"
       body="This throws away every uncommitted change in the worktree. Checkpoints keep the last 20 turns if you change your mind."
       onConfirm={() => void discard()} onCancel={actions.ui.closeModal}
     >

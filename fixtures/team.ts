@@ -2,6 +2,7 @@ import type { AgentDef, AgentDraft, Approval, Chat, ChatItem, GithubIssueDetail,
 import type { PushEvent } from '@shared/ipc'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
+import { describeTool } from '../src/main/services/approvals'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 import { grouped, sharedFiles, sharedStills } from './workspace'
 
@@ -287,7 +288,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
       { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'kernel-lead', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
   }
 }
 
@@ -395,7 +396,7 @@ const sidebarChatGroups = (f: Fixture): Partial<Fixture> => {
     push: running.map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true })),
     ui: {
       route: { name: 'workspace', workspaceId: open.ws }, foldedChats: ['t-changed'],
-      workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
+      workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', toolsOpen: false },
       tabs: { [open.ws]: { tab: open.tab, lastChat: open.tab, files: [], diffs: [] } }
     }
   }
@@ -631,6 +632,16 @@ export const teamFixtures: Record<string, Fixture> = {
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
+  InboxMcp: scene((f) => {
+    const home = homeScene(f)
+    const input = { title: 'Export invoices as PDF', team: 'Kernel' }
+    const { title } = describeTool('mcp__claude_ai_Linear__save_issue', input)
+    const ap: Approval = { id: 'ap-linear', kind: 'tool', source: 'sdk', roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', toolName: 'mcp__claude_ai_Linear__save_issue', input, title, status: 'pending', createdAt: ago(MIN) }
+    const said = `${title.charAt(0).toLowerCase()}${title.slice(1)}`
+    const n = note({ id: 'n-linear', kind: 'approval', agentId: 'noor', approvalId: ap.id, title: `Wants to ${said}`, sub: 'Permission · Client A', heading: `Noor wants to ${said}`, needsYou: true, createdAt: ap.createdAt })
+    return { ...home, approvals: [ap, ...home.approvals!], notifications: [n, ...home.notifications!], ui: { route: { name: 'inbox' } } }
+  }),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
   // No PNG: Settings, Appearance, Density set to Compact, which tightens the inbox rows too (KERNEL-538).
   InboxCompact: scene((f) => ({ ...homeScene(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), appearance: { ...DEFAULT_SETTINGS('/Users/you').appearance, density: 'compact' } }, ui: { route: { name: 'inbox' } } })),

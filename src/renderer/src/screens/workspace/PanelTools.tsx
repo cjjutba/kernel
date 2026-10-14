@@ -33,7 +33,7 @@ export function RefreshButton({ ids, label, failTitle }: { ids: string[]; label:
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failed) actions.ui.toast({ title: failTitle, sub: cleanError(failed.reason) })
   })
-  return <ToolButton icon="refresh" label={label} busy={busy === 'refresh'} busyLabel="Refreshing" onClick={refresh} />
+  return <ToolButton icon="refresh" label={label} busy={busy === 'refresh'} busyPattern="rotate" busyLabel="Refreshing" onClick={refresh} />
 }
 
 const NO_FOLDS = new Set<string>()

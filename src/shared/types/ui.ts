@@ -74,6 +74,8 @@ export type Modal =
   | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
+  /** Revert files to a checkpoint from the transcript. `start` says it is the chat's first (KERNEL-766). */
+  | { name: 'confirm'; kind: 'revert'; workspaceId: string; checkpointId: string; start?: boolean }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
   /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
   | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
@@ -95,7 +97,7 @@ export type Modal =
    * and none means the app's mode in Settings, Permissions. `chatId` is a chat that picked Bypass permissions in its composer: only
    * that chat's own mode is set, and Settings stays as it is (KERNEL-456).
    */
-  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string }
+  | { name: 'confirm'; kind: 'bypass'; roomId?: string; chatId?: string; /** New chat's box, whose draft keeps the pick until the chat starts. */ draftKey?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
   /** Set up this account: the checklist of the MCP servers that need the user on one account (KERNEL-661). */
@@ -108,7 +110,7 @@ export type Modal =
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
-  | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
+  | 'plus' | 'model' | 'mode' | 'mention' | 'slash' | 'linkIssue' | 'linkPr' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
   | 'roomTracker' | 'help'
 
@@ -138,7 +140,6 @@ export interface WorkspaceView {
   /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
   leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
-  checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
   /** The Changes tab as a flat list or a folder tree, like VS Code's Source Control (KERNEL-399). The store starts it at what was last picked; a fixture can leave it out. */

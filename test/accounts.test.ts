@@ -61,11 +61,28 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 }
 
 let fake: Awaited<ReturnType<typeof fakeCodex>>
-const saved = { log: process.env.FAKE_CODEX_LOG, codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
-beforeEach(async () => { fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
-afterEach(() => {
-  // Assigning undefined would leave the string "undefined", and a read still running would log to a file of that name.
-  if (saved.log === undefined) delete process.env.FAKE_CODEX_LOG; else process.env.FAKE_CODEX_LOG = saved.log
+// Adding an account reads its usage and its MCP servers in the background and doesn't wait. A test that clears what the fakes were
+// asked then, or counts it, first waits for those reads to end, or one lands after the clear and counts as the test's own.
+let kernels: Kernel[] = []
+let background: { mock: { results: { value: unknown }[] } }[] = []
+async function quiet() {
+  for (let seen = -1; ; ) {
+    const runs = background.flatMap((s) => s.mock.results.map((r) => r.value))
+    if (runs.length === seen) return
+    seen = runs.length
+    await Promise.allSettled(runs)
+  }
+}
+const saved = { codexHome: process.env.CODEX_HOME, claudeDir: process.env.CLAUDE_CONFIG_DIR }
+// The fakes read their answers from FAKE_* variables, and a test sets them on process.env. One left behind (FAKE_LOGIN_WAIT, FAKE_MCP_FAIL,
+// FAKE_CODEX_MCP_STATUS) changes the next test's fake, and a background read of a stopped Kernel sees it too, so each test starts from none.
+const clearFakes = () => { for (const key of Object.keys(process.env)) if (key.startsWith('FAKE_')) delete process.env[key] }
+beforeEach(async () => { kernels = []; background = []; clearFakes(); fake = await fakeCodex(); process.env.FAKE_CODEX_LOG = fake.log; delete process.env.CODEX_HOME; delete process.env.CLAUDE_CONFIG_DIR; sdk.usage = {}; sdk.mcp = {}; sdk.probes = []; sdk.reads = []; sdk.hold = undefined })
+afterEach(async () => {
+  // A Kernel a test leaves running (a failed one, or one it never stops) keeps reading in the background, into the next test's fakes.
+  await Promise.all(kernels.map((k) => k.stop({ budgetMs: 0 })))
+  await quiet()
+  clearFakes()
   if (saved.codexHome) process.env.CODEX_HOME = saved.codexHome
   if (saved.claudeDir) process.env.CLAUDE_CONFIG_DIR = saved.claudeDir
   bus.removeAllListeners('push')
@@ -79,6 +96,8 @@ async function kernel(o: Partial<KernelOptions> = {}) {
   await writeFile(join(root, 'auth.json'), '{"cli":true}')
   const opened: string[] = []
   const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home, cipher, openExternal: async (url) => { opened.push(url) }, ...o })
+  kernels.push(k)
+  background.push(vi.spyOn(k.providers, 'readUsage'), vi.spyOn(k.mcp, 'accountAdded'))
   await k.start()
   await k.providers.setPath('codex', { path: fake.bin })
   return { k, home, root, opened }
@@ -99,7 +118,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     await writeFile(join(root, 'AGENTS.md'), '# me')
     await k.providers.linkCodexHome(home)
     expect(await readlink(join(home, 'AGENTS.md'))).toBe(join(root, 'AGENTS.md'))
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('adds an account with a ChatGPT sign-in in the browser, named by its email, and leaves the CLI login active until the user switches', async () => {
@@ -119,7 +138,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     await rm(join(k.providers.codexHome(added.id)!, 'auth.json'))
     const after = (await k.handlers()['accounts.list']()).filter((a) => a.provider === 'codex')
     expect(after.map((a) => [a.cli, a.signedIn])).toEqual([[true, true], [false, false]])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('runs Codex chats on the account switched to from their next start, keeping the thread', async () => {
@@ -142,7 +161,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     await until(async () => (await started()).length === 2 && !k.sessions.isRunning('chat'))
     expect((await started())[1]).toBe(k.providers.codexHome(added.id))
     expect((await fake.messages()).filter((m) => m.method === 'thread/resume').map((m) => m.params.threadId)).toEqual(['thread-1'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('signs an added account out, and removes it back to the CLI login', async () => {
@@ -157,7 +176,7 @@ describe('Codex accounts (KERNEL-406)', () => {
     expect(k.providers.active('codex')).toBeUndefined()
     expect(existsSync(home)).toBe(false)
     await expect(k.handlers()['accounts.remove']({ provider: 'codex', accountId: 'cli' })).rejects.toThrow("can't be removed")
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -212,7 +231,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await h['account.get'](undefined)
     expect(k.settings.plan).toBe('max')
     expect((await claudeRows(h)).find((a) => a.id === added.id)).toMatchObject({ plan: 'Claude Max' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('says why a sign-in failed, adds nothing, leaves no folder, and can be tried again', async () => {
@@ -224,7 +243,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     expect(await readdir(join(dataDir, 'claude-homes'))).toEqual([])
     delete process.env.FAKE_LOGIN_FAIL
     expect(await h['accounts.add']({ provider: 'claude' })).toMatchObject({ label: 'side@example.com', plan: 'Claude Pro' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("runs the account's processes on its own folder, readied before each, and never on a token from the Mac", async () => {
@@ -248,7 +267,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     sdk.usage = { [folder]: 12 }
     await k.providers.readUsage({ force: true })
     expect(sdk.probes).toContainEqual({ dir: folder })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("signs an added account out of its own folder only, signs it in again on its row, and removes it without touching ~/.claude", async () => {
@@ -272,7 +291,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' } })
     // Every logout named the account's folder, so the CLI's own login was never signed out.
     expect((await claude.calls()).filter((c) => c.args === 'auth logout').map((c) => c.dir)).toEqual([folder, folder])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('renames every account on both providers, the CLI logins included, keeps the names after a restart, and an empty name goes back to the email', async () => {
@@ -289,8 +308,10 @@ describe('Claude accounts (KERNEL-567)', () => {
     const renamed = await h['accounts.rename']({ provider: 'codex', accountId: chatgpt.id, label: 'Side' })
     const labels = (rows: AccountProfile[]) => rows.map((a) => `${a.provider}:${a.label}`)
     expect(labels(renamed)).toEqual(['claude:Work', 'claude:Personal', 'claude:Billing key', 'codex:Codex work', 'codex:Side'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const again = new Kernel({ dataDir, home, cipher })
+    kernels.push(again)
+    background.push(vi.spyOn(again.providers, 'readUsage'), vi.spyOn(again.mcp, 'accountAdded'))
     await again.start()
     await again.providers.setPath('claude', { path: claude.bin })
     await again.providers.setPath('codex', { path: fake.bin })
@@ -299,7 +320,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await ha['accounts.rename']({ provider: 'claude', accountId: side.id, label: '  ' })
     const back = await ha['accounts.rename']({ provider: 'claude', accountId: 'cli', label: '' })
     expect(labels(back).slice(0, 2)).toEqual(['claude:cj@example.com', 'claude:side@example.com'])
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
   })
 
   it('reads the usage of every signed-in account without a turn, each on its own login, and holds only on the account in use', async () => {
@@ -313,7 +334,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     p.load().claude.accounts.push({ id: 'legacy', label: 'Old', createdAt: 1 })
     await p.save()
     sdk.usage = { '': 30, [folder]: 95 }
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     const limits = await k.providers.readUsage({ force: true })
     const hour = (provider: string) => limits.filter((l) => l.type === 'five_hour' && limitProvider(l) === provider).map((l) => [l.accountId ?? 'cli', l.utilization]).sort()
     expect(hour('claude')).toEqual([['cli', 0.3], [side.id, 0.95]].sort())
@@ -324,14 +345,14 @@ describe('Claude accounts (KERNEL-567)', () => {
     await k.config.setSettings({ usage: { pauseNearLimit: true } })
     expect(k.account.nearLimit('claude')).toBeUndefined()
     // Read in the last minute, so opening the account menu again reads nothing new.
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     await h['usage.get'](undefined)
     expect(sdk.probes).toEqual([])
     // A signed-out account isn't asked.
     await claude.setLogin(folder, null)
     await k.providers.readUsage({ force: true })
     expect(sdk.probes.map((x) => x.dir)).toEqual([''])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("answers usage.get with the windows it has at once, and pushes each account's fresh numbers when they arrive", async () => {
@@ -346,7 +367,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     let release!: () => void
     sdk.hold = new Promise((resolve) => { release = resolve })
     sdk.usage = { '': 50, [folder]: 60 }
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
     const pushed: RateLimit[][] = []
     bus.on('push', (e: PushEvent) => { if (e.type === 'usage') pushed.push(e.limits) })
@@ -355,7 +376,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     expect(pushed).toEqual([])
     release()
     await until(() => pushed.length && JSON.stringify(hour(pushed.at(-1)!)) === JSON.stringify([['cli', 0.5], [side.id, 0.6]].sort()))
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('reads every account at once when the account in use nears its limit', async () => {
@@ -364,7 +385,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     const folder = k.providers.claudeHome(side.id)
     await until(() => sdk.probes.some((x) => x.dir === folder))
     sdk.usage = { '': 92, [folder]: 20 }
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     const s = k.sessions as unknown as { mergeLimits: (l: Partial<RateLimit>[]) => void }
     s.mergeLimits([{ type: 'five_hour', utilization: 0.92, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
     await until(() => sdk.probes.some((x) => x.dir === folder))
@@ -372,7 +393,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     s.mergeLimits([{ type: 'five_hour', utilization: 0.93, resetsAt: Math.round(Date.now() / 1000) + 3600 }])
     await new Promise((r) => setTimeout(r, 50))
     expect(sdk.probes.filter((x) => x.dir === folder)).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   /** A Claude chat in a room on a temp repo, whose turns `turnDone` finishes on `account` (KERNEL-673). */
@@ -392,7 +413,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await until(() => new Set(sdk.reads).size === 2)
     const turnDone = await claudeChat(k)
     sdk.usage = { '': 30, [folder]: 40 }
-    sdk.reads = []
+    await quiet(); sdk.reads = []
     // Adding the account read it a moment ago, which a minute's wait would leave behind.
     ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
     const pushed: RateLimit[][] = []
@@ -412,7 +433,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     // Ten turns, one read, and only of the account they ran on.
     expect(asked.mock.calls).toEqual([[{ provider: 'claude', account: side.id }]])
     expect(sdk.reads).toEqual([folder])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('keeps the last numbers when the read after a turn fails, and the turn ends as usual (KERNEL-673)', async () => {
@@ -422,7 +443,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await k.providers.readUsage({ force: true })
     // Claude Code refuses the usage call for the CLI's own login.
     sdk.usage = {}
-    sdk.reads = []
+    await quiet(); sdk.reads = []
     ;(k.providers as unknown as { usageReadAt: Map<string, number> }).usageReadAt.clear()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
@@ -433,7 +454,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     const hour = (await k.providers.readUsage()).filter((l) => l.type === 'five_hour' && limitProvider(l) === 'claude').map((l) => [l.accountId ?? 'cli', l.utilization])
     expect(hour).toEqual([['cli', 0.3]])
     expect(k.store.chat('chat')?.unreadAt).toBeTruthy()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('saves one Inbox notice when an account signs out, and none again after a restart', async () => {
@@ -451,8 +472,10 @@ describe('Claude accounts (KERNEL-567)', () => {
     expect(notices(k)).toMatchObject([{ title: 'Personal is signed out', sub: 'Sign in again in Settings, Providers.', body: 'Personal is signed out. Sign in again in Settings, Providers.' }])
     await k.providers.readUsage({ force: true })
     expect(notices(k)).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const again = new Kernel({ dataDir, home, cipher })
+    kernels.push(again)
+    background.push(vi.spyOn(again.providers, 'readUsage'), vi.spyOn(again.mcp, 'accountAdded'))
     await again.start()
     await again.providers.setPath('claude', { path: claude.bin })
     await again.providers.setPath('codex', { path: fake.bin })
@@ -468,7 +491,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await rm(join(again.providers.codexHome(chatgpt.id)!, 'auth.json'))
     await again.providers.readUsage({ force: true })
     expect(notices(again).map((n) => n.title)).toContain('Side is signed out')
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
   })
 
   it('signs the account in use out when a session is refused, lifts the hold once a read finds it signed in, and says so once a day', async () => {
@@ -488,7 +511,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     k.account.signedOut('claude')
     await until(async () => (await claudeRows(h)).find((a) => a.id === side.id)?.signedIn === false)
     expect(notices()).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('keeps a legacy token account running, and moves it to a full login on Sign in again with its id and nickname', async () => {
@@ -512,7 +535,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     expect(k.settings.plan).toBe('max')
     expect(k.providers.usageReads({ provider: 'claude' }).map((r) => r.accountId)).toEqual([undefined, 'old'])
     expect((await claude.logins()).cli).toEqual({ email: 'cj@example.com', plan: 'max' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('reads an account whose data folder moved as signed out, and Remove signs out the path it signed in with too', async () => {
@@ -526,7 +549,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await h['accounts.remove']({ provider: 'claude', accountId: 'moved' })
     expect((await claude.calls()).filter((c) => c.args === 'auth logout').map((c) => c.dir)).toEqual([old, k.providers.claudeHome('moved')])
     expect(await claude.logins()).toEqual({ cli: { email: 'cj@example.com', plan: 'max' } })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("reads the Claude account through Kernel's own executable, not the claude on the PATH (KERNEL-277)", async () => {
@@ -538,7 +561,7 @@ describe('Claude accounts (KERNEL-567)', () => {
     await k.providers.setPath('claude', { path: bin })
     expect(await k.readAccount()).toMatchObject({ signedIn: true, email: 'kernel@example.com', plan: 'Claude Max' })
     expect(await k.signedInReader()).toBe(true)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -569,7 +592,7 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     k.sessions.releaseAll('codex-auth')
     k.sessions.holdAll('offline')
     expect([k.sessions.waitsFor('claude'), k.sessions.waitsFor('codex')]).toEqual(['offline', 'offline'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('pauses a room for a limit only when every provider its agents run on is limited', async () => {
@@ -590,7 +613,7 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     expect(k.store.room(room.id)?.paused).toBeFalsy()
     k.account.applyLimits([claude, codex])
     expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("lets a Claude limit hold only Claude's chats, and only on the account it was hit on", async () => {
@@ -604,7 +627,7 @@ describe('holds and limits per provider (KERNEL-406)', () => {
     p.load().claude.accounts.push({ id: 'work', label: 'Work', createdAt: 1 })
     await k.handlers()['accounts.switch']({ provider: 'claude', accountId: 'work' })
     expect(s.limitHolds(k.store.chat('claude')!)).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -659,7 +682,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     const { k, ids, room, folder, switched } = await setUp(['Side', 'Personal'])
     sdk.usage = { '': 100, [folder('Side')]: 60, [folder('Personal')]: 20 }
     await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     reject(k)
     await switched()
     expect(k.providers.active('claude')).toBe(ids.Personal)
@@ -676,7 +699,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     const resets = k.store.notifications().filter((n) => n.id.startsWith('n-reset-'))
     expect(resets).toHaveLength(1)
     expect(resets[0]).toMatchObject({ title: "Work's 5-hour limit reset", sub: 'You can switch back any time.', body: "Work's 5-hour limit reset. You can switch back any time." })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('runs each of three logins on its own folder and item through A to B to C to A, and a late refusal signs out only the login it came from', async () => {
@@ -704,26 +727,28 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     expect(await row(ids.Side)).toMatchObject({ active: true, signedIn: true })
     expect(k.sessions.heldFor('claude')).toEqual([])
     expect(k.providers.active('claude')).toBe(ids.Side)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     // After a restart Kernel is still on Side, in its own folder.
     const again = new Kernel({ dataDir: k.o.dataDir, home, cipher })
+    kernels.push(again)
+    background.push(vi.spyOn(again.providers, 'readUsage'), vi.spyOn(again.mcp, 'accountAdded'))
     await again.start()
     expect(again.providers.active('claude')).toBe(ids.Side)
     expect(again.providers.claudeEnv()).toEqual({ CLAUDE_CONFIG_DIR: folder('Side'), CLAUDE_SECURESTORAGE_CONFIG_DIR: folder('Side') })
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
   })
 
   it('changes nothing with the switch off: the limit pauses the room and Kernel stays on the account', async () => {
     const { k, room, folder } = await setUp(['Personal'])
     sdk.usage = { '': 100, [folder('Personal')]: 10 }
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     reject(k)
     expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     await new Promise((r) => setTimeout(r, 100))
     expect(k.providers.active('claude')).toBeUndefined()
     expect(moving(k)).toEqual([])
     expect(sdk.probes.filter((p) => p.dir === folder('Personal'))).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('never moves to an API key account, keeps the rooms paused while every other account is at its limit, and moves once one has room', async () => {
@@ -739,7 +764,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     expect(k.providers.active('claude')).toBeUndefined()
     expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     // The same rejection read again, its reset a second off, reads nothing new.
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     const limits = k.store.meta<RateLimit[]>('limits') ?? []
     k.account.applyLimits(limits.map((l) => (l.accountId === undefined && l.type === 'five_hour' ? { ...l, resetsAt: l.resetsAt! + 1 } : l)))
     await new Promise((r) => setTimeout(r, 100))
@@ -749,6 +774,29 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await until(() => k.providers.active('claude') === ids.Personal)
     await until(() => !k.store.room(room.id)?.paused)
     expect(moving(k)).toEqual(['done'])
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it('tells the Lead what Kernel does about a limit: waits with the earliest reset, then moves (KERNEL-777)', async () => {
+    const { k, ids, folder } = await setUp(['Personal'])
+    const stuck = vi.spyOn(k.leadUpdates, 'limitStuck')
+    sdk.usage = { '': 100, [folder('Personal')]: 100 }
+    reject(k)
+    // The switch is off, so the chat waits for this account's own reset.
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ provider: 'claude', window: '5-hour limit', account: 'Work', stuck: 'off' })
+    reject(k, { accountId: ids.Personal })
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+    await until(() => moving(k).includes('waiting'))
+    // No account has room: the Lead hears it once, with the reset that comes first across them.
+    const sooner = Math.min(...(k.store.meta<RateLimit[]>('limits') ?? []).filter((l) => l.type === 'five_hour' && l.status === 'rejected').map((l) => l.resetsAt!))
+    expect(stuck.mock.calls).toEqual([['claude', { stuck: 'full', resetsAt: sooner }]])
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', stuck: 'full', resetsAt: sooner })
+    // Personal resets and Kernel moves there: a chat cut off on Work is on its way to Personal.
+    k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
+    await until(() => k.providers.active('claude') === ids.Personal)
+    expect(k.account.limitNews('claude', undefined, 'claude-sonnet-5-5')).toMatchObject({ account: 'Work', switching: { to: 'Personal' } })
+    expect(stuck).toHaveBeenCalledTimes(1)
     await k.stop()
   })
 
@@ -777,7 +825,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     expect((await fake.messages()).filter((m) => 'started' in m && m.cwd === cwd).map((m) => m.started)).toEqual([null, k.providers.codexHome(added.id)])
     // Claude's chats stay where they are.
     expect(k.providers.active('claude')).toBeUndefined()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("notes a switch the user made without a reason, and a switch from the limit banner with the account's limit", async () => {
@@ -790,7 +838,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     // Personal's reset says so once, and asking with "Notify me" on the account in use still works per account.
     k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
     expect(k.store.notifications().filter((n) => n.title === "Personal's 5-hour limit reset")).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('reports a switch by the user and one from the limit banner with its limit, and none to the account in use (KERNEL-694)', async () => {
@@ -808,7 +856,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
     expect(listed).toBe(1)
     expect(switches).toHaveLength(2)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("reports Kernel's own switch at a limit with the limit the account hit (KERNEL-694)", async () => {
@@ -820,7 +868,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     reject(k)
     await switched()
     expect(switches).toEqual([{ type: 'accountSwitched', provider: 'claude', from: 'cli', to: ids.Personal, reason: 'limit', limit: 'five_hour' }])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has room (KERNEL-616)", async () => {
@@ -849,7 +897,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
       expect(warned).toMatchObject({ title: "Side doesn't offer Opus 5.5", sub: `${joinLabels([...lead].sort())} can't run on it. Pick another model in Settings, Models.` })
       // Each account's models were read once.
       expect(read).toEqual([ids.Side, ids.Personal])
-      await k.stop()
+      await k.stop({ budgetMs: 0 })
     } finally {
       if (plan === undefined) delete process.env.FAKE_PLAN; else process.env.FAKE_PLAN = plan
     }
@@ -911,7 +959,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
       for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/-access|-refresh|-login/)
       spy.mockRestore()
     }
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lists the servers that need a sign-in on each login, and signs one in on its folder, a claude.ai connector included', async () => {
@@ -922,12 +970,13 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
       [folder]: [{ name: 'linear', status: 'needs-auth', scope: 'user' }, { name: 'claude.ai Google Drive', status: 'needs-auth', scope: 'claudeai' }, { name: 'neon', status: 'connected', scope: 'user' }],
       '': [{ name: 'claude.ai Google Drive', status: 'connected', scope: 'claudeai' }, { name: 'linear', status: 'connected', scope: 'user' }]
     }
+    await quiet(); sdk.probes = []
     expect((await rows()).map((a) => a.mcpSignIns)).toEqual([undefined, undefined])
     const checked = await h['accounts.checkMcp']({ provider: 'claude', accountId: side.id })
     expect(checked.find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }, { server: 'claude.ai Google Drive', connector: true }])
     expect((await h['accounts.checkMcp']({ provider: 'claude', accountId: 'cli' })).find((a) => a.id === 'cli')?.mcpSignIns).toEqual([])
     // The check ran on each login.
-    expect(sdk.probes.slice(-2).map((p) => p.dir)).toEqual([folder, ''])
+    expect(sdk.probes.map((p) => p.dir)).toEqual([folder, ''])
     // linear signs in on the account's folder, and is off its list.
     const after = await h['accounts.mcpSignIn']({ provider: 'claude', accountId: side.id, server: 'linear' })
     expect(after.find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'claude.ai Google Drive', connector: true }])
@@ -946,7 +995,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     p.load().claude.accounts.push({ id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
     await expect(h['accounts.checkMcp']({ provider: 'claude', accountId: 'key' })).rejects.toThrow("This account's MCP servers use Claude Code's own login.")
     expect(kc.writes).toEqual([])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses to add a Claude login that is the CLI login or already added, and lets the same email in another organization in', async () => {
@@ -972,7 +1021,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     expect(team).toMatchObject({ email: 'cj@example.com', plan: 'Claude Team' })
     await expect(h['accounts.add']({ provider: 'claude' })).rejects.toThrow('That account is already in Kernel.')
     expect(await rows()).toHaveLength(3)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses to add a Codex login that is the CLI login or already added', async () => {
@@ -986,7 +1035,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     const added = await h['accounts.add']({ provider: 'codex' })
     await expect(h['accounts.add']({ provider: 'codex' })).rejects.toThrow('That account is already in Kernel.')
     expect((await rows('codex')).map((a) => a.id)).toEqual(['cli', added.id])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("names the agents whose model the account switched to doesn't offer, on its row and once in the Inbox", async () => {
@@ -1018,7 +1067,7 @@ describe('MCP sign-ins, an account added twice, and models an account lacks (KER
     // The Lead moves to a model the account offers. Kai's file still pins Opus.
     await k.config.setSettings({ models: { roles: { lead: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' } } } })
     expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.missingModels).toEqual([{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Kai'] }])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -1075,7 +1124,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     // The account's own login stays its own.
     expect((await config(acctFile)).oauthAccount).toEqual({ emailAddress: 'side@example.com' })
     expect((await config(cliFile)).oauthAccount).toEqual({ emailAddress: 'cj@example.com' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('says an account waits for Keychain access instead of signing it out, holds its chats only while the prompt is up, and goes on once allowed', async () => {
@@ -1105,7 +1154,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     await until(async () => (await row())?.keychainWait === undefined)
     expect(await row()).toMatchObject({ signedIn: true })
     expect(notices().map((n) => n.title)).toEqual(['Personal is waiting for Keychain access'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("stops holding chats when nobody allows the prompt, asks again only later, and still never signs the account out", async () => {
@@ -1127,7 +1176,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     expect(k.sessions.heldFor('claude')).toEqual([])
     expect(kc.accesses.filter((i) => i === item)).toHaveLength(1)
     expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toEqual([])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lets chats held for a Keychain prompt go on when Claude moves to another account', async () => {
@@ -1143,7 +1192,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
     expect(k.sessions.heldFor('claude')).toEqual([])
     kc.deny(item)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('signs an account out as before when its Keychain item reads, or is gone', async () => {
@@ -1155,7 +1204,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     expect(k.sessions.heldFor('claude')).toContain('auth')
     expect((await row())?.keychainWait).toBeUndefined()
     expect(k.notifications.list().map((n) => n.title)).toContain('side@example.com is signed out')
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('names the accounts in one organization on each row, and moves at a limit to one of them only once its own windows say it has room', async () => {
@@ -1185,7 +1234,7 @@ describe('MCP servers added on an account, Keychain prompts and shared organizat
     // A reading of the seat's own windows shows room, and Kernel moves there.
     merge({ status: 'allowed', utilization: 0.1, accountId: seat.id })
     await until(() => k.providers.active('claude') === seat.id)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -1232,7 +1281,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
       '': [codexServer('github', 'bearerToken', ['search']), codexServer('vercel', 'notLoggedIn'), codexServer('vapi', 'unsupported')],
       [workHome]: [codexServer('github', 'bearerToken', ['search']), codexServer('vercel', 'notLoggedIn'), codexServer('figma', 'unsupported')]
     })
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     const all = await h['mcp.accounts'](undefined)
     expect(all.map((a) => [a.provider, a.accountId])).toEqual([['claude', 'cli'], ['claude', side.id], ['codex', 'cli'], ['codex', work.id]])
     const on = (list: McpAccount[], provider: string, id: string) => list.find((a) => a.provider === provider && a.accountId === id)
@@ -1248,7 +1297,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     expect((await h['accounts.list'](undefined)).find((a) => a.id === side.id)?.mcpSignIns).toEqual([{ server: 'linear', connector: false }])
     expect(sdk.probes.map((p) => p.dir).sort()).toEqual(['', folder])
     // Opening the page again checks nothing.
-    sdk.probes = []
+    await quiet(); sdk.probes = []
     const spy = vi.spyOn(k.providers, 'mcpServersOn')
     expect(await h['mcp.accounts']({})).toEqual(all)
     expect(spy).not.toHaveBeenCalled()
@@ -1258,7 +1307,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     expect(spy.mock.calls).toEqual([['claude', side.id]])
     expect(states(on(again, 'claude', side.id))).toEqual([['claude.ai Gmail', 'not-set-up', 'connector'], ['claude.ai Google Drive', 'not-set-up', 'connector'], ['linear', 'ready'], ['neon', 'ready']])
     spy.mockRestore()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("signs in to every server an account needs one after another, moves on from one that fails, and reports it at the end", async () => {
@@ -1283,7 +1332,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
       for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/token|access_token|refresh/i)
       spy.mockRestore()
     }
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('stops Sign in to all on Cancel, so no server after the current one starts', async () => {
@@ -1306,7 +1355,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     // It can run again once it ended.
     delete process.env.FAKE_LOGIN_WAIT
     expect((await h['accounts.mcpSignInAll']({ provider: 'claude', accountId: side.id })).done).toEqual(['figma', 'linear'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('says once when servers need a sign-in on a Claude account just added, and nothing when none do', async () => {
@@ -1327,7 +1376,7 @@ describe("Every account's MCP servers, Sign in to all, and the notice after addi
     await h['accounts.add']({ provider: 'codex' })
     await new Promise((r) => setTimeout(r, 200))
     expect(needed).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -1398,7 +1447,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     ])
     expect(all.flatMap((a) => a.servers).every((s) => STATES.includes(s.state) && s.connector === (s.kind === 'connector'))).toBe(true)
     expect((await fake.messages()).some((m) => m.method === 'thread/start' && m.params?.ephemeral === true)).toBe(true)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('signs a Codex server in through Codex, ready on every Codex account, and Sign in to all goes through the rest', async () => {
@@ -1445,7 +1494,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
       for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/token|access_token|refresh/i)
       spy.mockRestore()
     }
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('shares a plugin installed on an added account with the CLI login before either starts Claude again', async () => {
@@ -1464,7 +1513,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     k.providers.claudeEnv(side.id)
     expect(JSON.parse(await readFile(join(root, 'plugins', 'installed_plugins.json'), 'utf8')).plugins['vercel@official'][0].installPath).toBe(join(root, 'plugins', 'cache', 'official', 'vercel', '0.50.0'))
     expect((await lstat(own)).isSymbolicLink()).toBe(true)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('keeps an ignored server across a restart and leaves it, and one off in every room, out of every warning', async () => {
@@ -1492,15 +1541,17 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     expect(await logins()).toEqual(['linear'])
     // Ignore is kept in accounts.json, so a new Kernel on the same data folder still ignores it.
     const dataDir = (k.o as KernelOptions).dataDir
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const again = new Kernel({ dataDir, home, cipher })
+    kernels.push(again)
+    background.push(vi.spyOn(again.providers, 'readUsage'), vi.spyOn(again.mcp, 'accountAdded'))
     await again.start()
     expect(again.providers.mcpIgnored('claude', side.id)).toEqual(['figma'])
     // Stop ignoring takes it out of accounts.json.
     await again.providers.setMcpIgnored('claude', side.id, 'figma', false)
     expect(again.providers.mcpIgnored('claude', side.id)).toEqual([])
     expect(JSON.parse(await readFile(join(dataDir, 'accounts.json'), 'utf8')).claude.accounts[0].mcpIgnored).toBeUndefined()
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
   })
 })
 
@@ -1549,7 +1600,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     expect([codex?.needsYou, codex?.ready]).toEqual([2, 1])
     process.env.FAKE_MCP_FAIL = 'supabase'
     expect((await h['accounts.mcpSignInAll']({ provider: 'codex', accountId: 'cli' })).servers).toEqual(['supabase'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('sets an account up from a ticked list: ignores the rest in one write, sends the connectors as one step, signs in in order and reports failures', async () => {
@@ -1583,7 +1634,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
       for (const call of spy.mock.calls) expect(JSON.stringify(call)).not.toMatch(/token|access_token|refresh/i)
       spy.mockRestore()
     }
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('checks an account again after each sign-in, and on focus only the accounts with something pending, once every 10 seconds', async () => {
@@ -1617,7 +1668,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     clock.mockRestore()
     expect(checks).toHaveBeenCalledTimes(1)
     checks.mockRestore()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('marks Codex accounts whose servers read the same as shared, and stops when they differ', async () => {
@@ -1635,7 +1686,7 @@ describe('Off on purpose, Set up this account, re-check on return and one Codex 
     // Ignoring a server on one of them makes them read differently.
     const apart = await h['accounts.mcpIgnore']({ provider: 'codex', accountId: work.id, server: 'supabase', ignored: true })
     expect(apart.filter((a) => a.sharedWith)).toEqual([])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -1680,7 +1731,7 @@ describe('One login, one row (KERNEL-701)', () => {
     // Run login onto another email brings the CLI's own row back.
     await runLogin('other@example.com')
     expect((await rows()).map((a) => [a.id, a.alsoCli])).toEqual([['cli', undefined], [side.id, undefined]])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("counts a twin whose organization hasn't been read as the same login", async () => {
@@ -1692,7 +1743,7 @@ describe('One login, one row (KERNEL-701)', () => {
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; orgId?: string }[] } } }
     p.load().claude.accounts.find((a) => a.id === side.id)!.orgId = 'org-personal'
     expect((await rows()).map((a) => a.id)).toEqual(['cli', side.id])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('folds a Codex twin into one row', async () => {
@@ -1702,7 +1753,7 @@ describe('One login, one row (KERNEL-701)', () => {
     // Codex's own login in Terminal signs in as the added account's email.
     process.env.FAKE_CODEX_EMAIL = 'ChatGPT@example.com'
     expect((await rows('codex')).map((a) => [a.id, a.alsoCli, a.active])).toEqual([[added.id, true, true]])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses Sign in again onto a login another row has, and leaves that row signed out with its email', async () => {
@@ -1724,7 +1775,7 @@ describe('One login, one row (KERNEL-701)', () => {
     await expect(h['providers.signIn']({ provider: 'codex', accountId: two.id })).rejects.toThrow('That account is already in Kernel.')
     expect((await rows('codex')).map((a) => [a.id, a.email, a.signedIn])).toEqual([['cli', 'cj@example.com', true], [one.id, 'one@example.com', true], [two.id, 'two@example.com', false]])
     expect(existsSync(join(k.providers.codexHome(two.id)!, 'auth.json'))).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('never moves at a limit onto a twin of the login in use, on Claude or Codex', async () => {
@@ -1745,7 +1796,7 @@ describe('One login, one row (KERNEL-701)', () => {
     process.env.FAKE_CODEX_EMAIL = 'chatgpt@example.com'
     await h['accounts.list'](undefined)
     expect(k.providers.spareAccount('codex', [window(undefined, 'rejected', 1, 'codex'), window(chatgpt.id, 'allowed', 0.1, 'codex')])).toBeUndefined()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('saves one sign-out notice for one login, not one per row', async () => {
@@ -1758,7 +1809,7 @@ describe('One login, one row (KERNEL-701)', () => {
     await claude.setLogin('cli', null)
     await k.providers.readUsage({ force: true })
     expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("still says the CLI login signed out when it signs out alone, and the added account doesn't", async () => {
@@ -1774,6 +1825,6 @@ describe('One login, one row (KERNEL-701)', () => {
     await claude.setLogin(k.providers.claudeHome(side.id), null)
     await k.providers.readUsage({ force: true })
     expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toHaveLength(1)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })

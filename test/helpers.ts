@@ -1,18 +1,32 @@
 import { expect, vi } from 'vitest'
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { run } from '../src/main/services/exec'
 import type { Kernel } from '../src/main/kernel'
 
-export async function tempRepo(files: Record<string, string> = { 'README.md': '# demo\n' }) {
-  const dir = await mkdtemp(join(tmpdir(), 'kernel-'))
+const templates = new Map<string, Promise<string>>()
+
+async function buildRepo(files: Record<string, string>) {
+  const dir = await mkdtemp(join(tmpdir(), 'kernel-template-'))
   await run('git', ['init', '-q', '-b', 'main', dir])
   await run('git', ['-C', dir, 'config', 'user.email', 't@t.dev'])
   await run('git', ['-C', dir, 'config', 'user.name', 'Test'])
   for (const [f, c] of Object.entries(files)) { await mkdir(dirname(join(dir, f)), { recursive: true }); await writeFile(join(dir, f), c) }
   await run('git', ['-C', dir, 'add', '-A'])
   await run('git', ['-C', dir, 'commit', '-q', '-m', 'init'])
+  return dir
+}
+
+/** A new git repo on main with `files` committed. Each distinct file set is built once per worker and copied, so every call gets its own folder. */
+export async function tempRepo(files: Record<string, string> = { 'README.md': '# demo\n' }) {
+  const key = JSON.stringify(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)))
+  let template = templates.get(key)
+  if (!template) { template = buildRepo(files); templates.set(key, template) }
+  const dir = await mkdtemp(join(tmpdir(), 'kernel-'))
+  await cp(await template, dir, { recursive: true })
+  // The copy's files have new inodes and times, which leaves git's index stale until it looks again: `git stash create` fails on it.
+  await run('git', ['-C', dir, 'update-index', '-q', '--refresh'])
   return dir
 }
 

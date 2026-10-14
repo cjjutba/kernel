@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, Effort, PermissionMode, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
@@ -91,9 +91,9 @@ export class Lead extends Feature {
    * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
    * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
    * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps the Lead on the
-   * checkout with no setup, as before KERNEL-355.
+   * checkout with no setup, as before KERNEL-355. A `mode` picked in New chat is the chat's own before its first turn (KERNEL-776).
    */
-  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
+  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
     const role = this.k.team.pickFor(lead)
     // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
@@ -104,7 +104,8 @@ export class Lead extends Feature {
     catch (e) { this.store.deleteThread(thread.id); throw e }
     // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
     const ws = cut.ws.mode === 'worktree' ? this.updateWs(cut.ws.id, { naming: 'branch' }) : cut.ws
-    const chat = this.saveChat(cut.chat)
+    // Through the composer's own path, so Bypass where policy or the workspace doesn't allow it still runs as Accept edits.
+    const chat = o.mode ? await this.sessions.configure(this.saveChat(cut.chat).id, { mode: o.mode }) : this.saveChat(cut.chat)
     this.userSpoke(chat.id)
     const parts = messageOf(o.prompt, o.parts)
     if (ws.mode === 'current') {

@@ -20,9 +20,10 @@ type Deps = {
 
 /**
  * A finished turn, as Kernel reports it. `lead` and `queued` come from outside: the team and the chat's queue. `by` sent
- * the message that started it (KERNEL-116).
+ * the message that started it (KERNEL-116). `account` is the one it ran on, undefined for the CLI's own login, and `limit`
+ * says a usage limit cut it off, so it carries on by itself later (KERNEL-777).
  */
-export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy }
+export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy; account?: string; limit?: true }
 
 const IDLE_AFTER_MS = 10 * 60_000
 /** How long a row that no longer needs you stays in the inbox (D-137). */

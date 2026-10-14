@@ -90,17 +90,17 @@ function phaseOf(seed: string) {
 }
 
 /**
- * The loader: a 3x3 grid of dots whose opacity loops once a second, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 12px grid, and it always sits beside words.
+ * The loader: a 3x3 grid of round dots that swell and sink in a 0.8s loop, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 13px grid, and it always sits beside words.
  * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. `seed` starts the loop at a point taken from an id. Under reduced motion it holds a still frame that shows the pattern's shape (KERNEL-714, KERNEL-740, KERNEL-759).
  */
 export function Spinner({ label = 'Loading', pattern = 'wave', seed, className }: { label?: string | null; pattern?: SpinnerPattern; seed?: string; className?: string }) {
   const a11y = label === null ? { 'aria-hidden': true as const } : { role: 'status', 'aria-label': label }
   const cls = `dots${className ? ` ${className}` : ''}`
-  const { n, shape, dots, still } = dotPatterns[pattern]
+  const { n, short, dots, still } = dotPatterns[pattern]
   const style = { '--n': n, ...(seed ? { '--phase': phaseOf(seed) } : null) } as CSSProperties
   return (
-    <span className={cls} data-pattern={pattern} data-shape={shape} style={style} {...a11y}>
-      {dots.map((d, i) => <i key={i} data-shape={d.shape} style={{ '--k': d.at, '--a': d.peak, '--s': still.includes(i) ? 0.4 : undefined } as CSSProperties} />)}
+    <span className={cls} data-pattern={pattern} data-swell={short ? 'short' : undefined} style={style} {...a11y}>
+      {dots.map((d, i) => <i key={i} style={{ '--k': d.at, '--a': d.peak, '--s': still.includes(i) ? 1 : undefined } as CSSProperties} />)}
     </span>
   )
 }

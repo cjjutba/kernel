@@ -155,6 +155,8 @@ export interface KernelApi {
   'workspaces.commit': { req: { workspaceId: string; hunkIds: string[]; message?: string }; res: Ok }
   'workspaces.discard': { req: { workspaceId: string }; res: Ok }
   'git.branches': { req: { roomId: string }; res: string[] }
+  /** New chat's branch menu: the same branches as `git.branches`, newest commit first, each with its last commit's time in ms (KERNEL-776). */
+  'git.branchList': { req: { roomId: string }; res: { name: string; committedAt: number }[] }
   'github.prs': { req: { roomId: string; query?: string }; res: PrSummary[] }
   /** + > Link issue, GitHub tab: the room's open issues through gh. */
   'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
@@ -282,7 +284,7 @@ export interface KernelApi {
    * tab and its workspace are saved, before the fetch and the worktree, which the workspace's `worktreePending` covers. The prompt
    * waits in the tab's queue until the worktree exists, then for setup when Wait for setup says so (KERNEL-542).
    */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }; res: Chat }
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string; mode?: PermissionMode }; res: Chat }
   /**
    * Starts a fetch of the room's remote and answers without waiting for it, so the fetch Create needs is done or under way by
    * then. New chat calls it when it opens. A failed fetch says nothing (KERNEL-542).

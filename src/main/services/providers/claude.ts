@@ -4,6 +4,7 @@ import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPa
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
+import { toolView } from '@shared/toolView'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
@@ -584,7 +585,7 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
     if (p.type === 'text' && p.text.trim()) text(p.text)
     else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
-    else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
+    else if (p.type === 'issue' || p.type === 'pr' || p.type === 'workspace') text(linkText(p))
     else if (p.type === 'agent') text(`@${p.name}`)
     else if (p.type === 'image' && p.path) text(imageMarker(++images, { ...p, path: p.path }))
     else if (p.type === 'image' && p.dataUrl) {
@@ -643,6 +644,9 @@ function toolDetail(name: string, input: any): string {
   if (SUBAGENT_TOOLS.has(name) && input?.description) return String(input.description)
   if (input?.file_path) return String(input.file_path)
   if (input?.pattern) return String(input.pattern)
+  // A tool the chat's own wording knows keeps what that wording says about it, not its raw input (KERNEL-785).
+  const view = toolView({ name, input: input ?? {}, status: 'running' })
+  if (!view.hidden && view.verb !== name) return view.detail ?? view.object ?? ''
   return JSON.stringify(input ?? {}).slice(0, 120)
 }
 

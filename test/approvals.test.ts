@@ -3,7 +3,9 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Store } from '../src/main/db'
-import { Approvals } from '../src/main/services/approvals'
+import { Approvals, describeTool } from '../src/main/services/approvals'
+import { toActivity } from '../src/main/services/hookServer'
+import { permissionTitle } from '../src/renderer/src/screens/workspace/cards/steps'
 
 const tempStore = async () => new Store(join(await mkdtemp(join(tmpdir(), 'kernel-approvals-')), 'kernel.db'))
 
@@ -117,5 +119,40 @@ describe('plan cards outlive a quit (plan-cards-survive-restart)', () => {
     expect(next.decide(plan.approval.id, { behavior: 'allow' })).toBeUndefined()
     expect(next.settle(plan.approval.id, { behavior: 'allow' })?.status).toBe('allowed')
     expect(next.waitingPlan(plan.approval.id)).toBeUndefined()
+  })
+})
+
+describe('approval titles say what the chat says (KERNEL-785)', () => {
+  it('names an MCP call as the chat row does, not as server and tool', () => {
+    const input = { title: 'Export invoices as PDF', team: 'Kernel' }
+    expect(describeTool('mcp__claude_ai_Linear__save_issue', input)).toEqual({ title: 'File issue in Linear: Export invoices as PDF' })
+    expect(describeTool('mcp__claude_ai_Linear__save_issue', { id: 'KERNEL-785' }).title).toBe('Update KERNEL-785 in Linear')
+    expect(describeTool('mcp__kernel__create_workspace', { agent: 'kai', title: 'Toasts rise from the bottom' }).title).toBe('Hand to Kai: Toasts rise from the bottom')
+    expect(describeTool('mcp__acme__sync_widgets', {}).title).toBe('Sync widgets in Acme')
+  })
+
+  it('keeps the folder of a file it edits', () => {
+    expect(describeTool('Edit', { file_path: '/Users/you/kernel/src/main/db.ts' }).title).toBe('Edit: kernel/src/main/db.ts')
+  })
+
+  it("keeps Kernel's share and plan tools readable", () => {
+    expect(describeTool('mcp__kernel__share_file', { path: '.kernel/shared/checkout.html' }).title).toBe('Share checkout.html')
+    expect(describeTool('mcp__kernel__read_plans', {}).title).toBe("Read this chat's plans")
+  })
+
+  it('shows the exact command on a Bash approval, and the whole address on a fetch', () => {
+    expect(describeTool('Bash', { command: 'cd /tmp && pnpm drizzle-kit push\nmore', description: 'Push the schema' })).toEqual({ title: 'Run cd /tmp && pnpm drizzle-kit push', detail: 'Push the schema' })
+    expect(describeTool('WebFetch', { url: 'https://example.com/a?b=1' })).toEqual({ title: 'Fetch: example.com', detail: 'https://example.com/a?b=1' })
+  })
+
+  it('logs an MCP call outside Kernel with the same title', () => {
+    const line = toActivity({ hook_event_name: 'PreToolUse', session_id: 's', tool_name: 'mcp__claude_ai_Linear__save_issue', tool_input: { title: 'Export invoices as PDF' }, tool_use_id: 't' } as never, { roomId: 'r' } as never)
+    expect(line?.object).toBe('File issue in Linear: Export invoices as PDF')
+  })
+  it("heads the approval card with the same words, and keeps the command and file wording", () => {
+    expect(permissionTitle({ toolName: 'mcp__claude_ai_Linear__save_issue', input: { title: 'Export invoices as PDF' } }, 'Noor')).toBe('Noor wants to file issue in Linear: Export invoices as PDF')
+    expect(permissionTitle({ toolName: 'mcp__kernel__share_file', input: { path: '.kernel/shared/checkout.html' } }, 'Noor')).toBe('Noor wants to share checkout.html')
+    expect(permissionTitle({ toolName: 'Bash', input: { command: 'pnpm test' } }, 'Noor')).toBe('Noor wants to run a command')
+    expect(permissionTitle({ toolName: 'Edit', input: { file_path: 'src/a.ts' } }, 'Noor')).toBe('Noor wants to edit a file')
   })
 })
