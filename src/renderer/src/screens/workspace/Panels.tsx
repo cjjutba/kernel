@@ -181,7 +181,7 @@ interface CheckRow { state: CheckState; label: string; meta?: string; dim?: bool
 const ciState: Record<PrCheck['state'], CheckState> = { pass: 'ok', fail: 'fail', running: 'run', queued: 'run', skipped: 'idle' }
 
 function CheckIcon({ state }: { state: CheckState }) {
-  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" /></span>
+  if (state === 'run') return <span style={{ margin: '0 1px', display: 'inline-flex' }}><Spinner label="Running" kind="process" /></span>
   const icon = state === 'ok' ? 'check' : state === 'fail' ? 'close' : state === 'warn' ? 'warning' : 'minus'
   const color = state === 'ok' ? 'var(--add)' : state === 'fail' ? 'var(--del)' : state === 'warn' ? 'var(--ink-2)' : 'var(--faint)'
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>

@@ -479,6 +479,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  // KERNEL-759: a click on the other account holds main's answer, so its chip shows the swap loader.
+  AccountSwitching: usageHome({ hold: ['accounts.switch'] }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),

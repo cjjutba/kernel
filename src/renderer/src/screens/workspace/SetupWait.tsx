@@ -105,13 +105,13 @@ export function SetupWait({ ws, chat }: { ws: Workspace; chat?: Chat }) {
           </div>
         ) : making ? (
           <div className="setup-line" role="status">
-            <Spinner label={null} />
+            <Spinner label={null} kind="process" />
             <span className="ink2">Creating worktree</span>
             {ws.baseRef && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{ws.baseRef}</span>}
           </div>
         ) : (
           <div className="setup-line" role="status">
-            <Spinner label={null} />
+            <Spinner label={null} kind="process" />
             <span className="ink2">Running setup</span>
             {cmd && <span className="mono muted ellipsis" style={{ fontSize: 11.5 }}>{cmd}</span>}
             <span className="grow" />

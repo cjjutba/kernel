@@ -116,7 +116,7 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
                     <span className="plan-other-name">{o.label}</span>
                     <span className="plan-other-plan ellipsis">{o.plan}</span>
                     {switching
-                      ? <span className="plan-other-use"><Spinner label={null} />Switching</span>
+                      ? <span className="plan-other-use"><Spinner label={null} kind="swap" />Switching</span>
                       : !compact && o.nums.length > 0
                         ? <span className="plan-other-use">{o.nums.map((n, i) => <span key={n.short} className="plan-num">{i > 0 && <span className="plan-sep" aria-hidden="true">·</span>}{n.short} <span className="pm-mp" data-tone={tone(n.value)}>{pct(n.value)}</span></span>)}</span>
                         : o.use && <span className="plan-other-use">{o.use}</span>}

@@ -694,6 +694,8 @@ export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-590: the repo's `[team] reviewer = "none"` turned review off, so the picker says No reviewer and no line claims a review.
   RoomSetupTeamNoReviewer: scene((f) => roomSetupTeam(f, { reviewer: 'none' })),
   Issues: scene((f) => issuesScene(f)),
+  // KERNEL-759: the tracker read never answers, so the page shows Loading issues with the load loader.
+  IssuesLoading: scene((f) => ({ ...issuesScene(f), hold: ['issues.tracker'] })),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),
   // Nothing assigned to CJ, so the default Mine filter finds nothing.

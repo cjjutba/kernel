@@ -75,7 +75,7 @@ export function SignInLine({ label, needs, run, running, canceling, disabled, on
         <span className="set-warn" role="status">
           <Icon name="warning" size={12} />
           {run?.current ? `Signing in to ${serverName(run.current)}, ${at} of ${total}` : 'Signing in'}
-          <button type="button" className="set-link" aria-label={`Cancel setting up ${label}`} aria-busy={canceling || undefined} disabled={canceling} onClick={onCancel}>{canceling ? <><Spinner label={null} />Canceling</> : 'Cancel'}</button>
+          <button type="button" className="set-link" aria-label={`Cancel setting up ${label}`} aria-busy={canceling || undefined} disabled={canceling} onClick={onCancel}>{canceling ? <><Spinner label={null} kind="action" />Canceling</> : 'Cancel'}</button>
         </span>
       )}
       {!live && needs > 0 && (
