@@ -19,6 +19,7 @@ import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ModeMenu } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
+import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { MODE_ICON, buttonName, modeAria, cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
@@ -151,6 +152,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) } })
       }
       else await call('chats.send', { chatId: chat.id, parts })
+      noteSent(id, chat.model)
     }
     catch (e) {
       // Back into the chat it came from, ahead of anything typed there since.
@@ -160,7 +162,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
   }
 
-  const pickModel = (m: string, effort: Effort) => void configure({ model: m, effort })
+  noteOpened(chat.id, chat.model)
+  const pickModel = (m: string, effort: Effort) => {
+    const warn = warnsOnSwitch(!!chat.sessionId, lastRanOn(chat.id), m)
+    void configure({ model: m, effort }, warn ? () => actions.ui.toast(SWITCH_TOAST, SWITCH_TOAST_MS) : undefined)
+  }
   // KERNEL-406: the chat's provider, its models, and a new tab on the other provider for a chat that has started.
   const provider = chatProvider(chat)
   const grouped = useCodexInUse(provider)
@@ -214,7 +220,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
+  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode | undefined }, onDone?: () => void) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); onDone?.(); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
     const id = chat.id
     void attempt('Could not edit the message', async () => {

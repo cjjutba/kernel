@@ -168,6 +168,11 @@ export interface SessionDeps {
    * Personal", and why when a limit moved it (KERNEL-568). Without it the chat says nothing.
    */
   switchNote?: (provider: Provider, accountId: string) => string
+  /**
+   * A note the agent reads at the start of the chat's next turn, taken as the turn starts so it goes once, as after its files
+   * were reverted (KERNEL-764). The chat's row doesn't show it.
+   */
+  turnNote?: (chat: Chat) => string | undefined
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -867,7 +872,8 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])
+    const note = this.d.turnNote?.(chat)
+    live.sent = [...(note ? [{ type: 'text' as const, text: note }] : []), ...this.withMentions(chat, ws, [...parts, ...more.flatMap((m) => m.parts)])]
     this.push(chat.id, ws, live)
     this.setRunning(chat, ws, live, true)
   }
@@ -1602,7 +1608,7 @@ export class Sessions {
     this.placeApproval(chatId, approval.id, { afterTurn: o.afterTurn })
     o.placed?.(approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
-      void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
+      void savePlan(ws.path, plan, { reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
     this.turns.get(chatId)?.plans?.delete(approval.id)

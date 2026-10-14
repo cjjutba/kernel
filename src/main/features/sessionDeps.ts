@@ -98,6 +98,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     // Undefined is the CLI's own login, which is never a key account.
     authOf: (provider, accountId) => (accountId ? k.providers.auth(provider, accountId) : 'subscription'),
     switchNote: (provider, accountId) => k.providers.switchNote(provider, accountId),
+    turnNote: (chat) => k.checkpoints.turnNote(chat.id),
     onFailure: (failure, _ws, provider, account) => {
       if (failure === 'auth') k.account.signedOut(provider, { account })
       else if (failure === 'network') void k.account.network?.lost()

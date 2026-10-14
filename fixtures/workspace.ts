@@ -2162,6 +2162,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
     ] }
   }),
+  /** KERNEL-771: picking another model in a chat that has run a turn warns about the cache. Title only, up about 6s. */
+  WorkspaceModelSwitchToast: prScene('merged', [], {
+    prs: prInfo('merged'),
+    ui: { toasts: [{ id: 't1', title: 'Switching models mid-chat makes the next reply slower and uses more tokens.' }] }
+  }),
   WorkspacePaste: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },

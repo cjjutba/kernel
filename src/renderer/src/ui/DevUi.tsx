@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
+import { spinnerPatterns } from './dotPatterns'
 
 const kinds = Object.keys(bannerIcon) as BannerKind[]
 const bannerCopy: Record<BannerKind, string> = {
@@ -65,8 +66,8 @@ function Display() {
       <Section title="Banners">
         <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
       </Section>
-      <Section title="Loader kinds">
-        <div className="devui-row">{(['action', 'agent', 'process', 'load', 'swap'] as const).map((k) => <span key={k} className="row" style={{ gap: 6 }}><Spinner kind={k} />{k}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
+      <Section title="Loader patterns">
+        <div className="devui-row">{spinnerPatterns.map((p) => <span key={p} className="row" style={{ gap: 6 }}><Spinner pattern={p} />{p}</span>)}<Button busy busyLabel="Archiving">Archive</Button></div>
       </Section>
       <Section title={`Icons (${iconNames().length})`}>
         <div className="devui-icons">{iconNames().map((n) => <span key={n} title={n}><Icon name={n} /></span>)}</div>

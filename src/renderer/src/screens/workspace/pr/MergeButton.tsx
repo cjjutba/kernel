@@ -109,6 +109,6 @@ export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; v
  * button a person pressed (KERNEL-757). `why` is its tooltip.
  */
 export function PrStatusTag({ status, why }: { status: PrStatus; why?: string }) {
-  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} />{status.label}</span>
+  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} pattern="checker" />{status.label}</span>
   return <span className="pr-word" data-tone={status.tone} data-tip={why}>{status.label}</span>
 }

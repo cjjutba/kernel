@@ -19,7 +19,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
   const cls = ['btn', variant !== 'secondary' && variant, size === 'lg' && 'lg', className].filter(Boolean).join(' ')
   return (
     <button type={type} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} kind="action" /> : icon && <Icon name={icon} size={14} />}
+      {busy ? <Spinner label={null} pattern="ripple-out" /> : icon && <Icon name={icon} size={14} />}
       {busy && busyLabel !== undefined ? busyLabel : children}
     </button>
   )
@@ -29,7 +29,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLab
 export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: IconSize; busy?: boolean; busyLabel?: string }) {
   return (
     <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
-      {busy ? <Spinner label={null} kind="action" /> : <Icon name={icon} size={size} />}
+      {busy ? <Spinner label={null} pattern="ripple-out" /> : <Icon name={icon} size={size} />}
     </button>
   )
 }
@@ -83,7 +83,7 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   return (
     <div role="radiogroup" aria-label={label} className="segmented">
       {options.map((o, i) => (
-        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} kind="action" />}{o.label}</button>
+        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <Spinner label={null} pattern="ripple-out" />}{o.label}</button>
       ))}
     </div>
   )
