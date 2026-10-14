@@ -190,6 +190,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .step-cut { display: block; margin-top: 6px; color: var(--muted); }
 .step-text { font-size: 13px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .step-text .md { color: inherit; font-size: inherit; white-space: normal; }
+/* An opened message row (KERNEL-840): its text in the same muted ink as thinking, with Copy in the corner on hover and focus. */
+.step-msg { position: relative; padding-right: 28px; }
+.step-copy { position: absolute; top: -2px; right: 0; opacity: 0; transition: opacity 0.12s; }
+.step-msg:hover .step-copy, .step-msg:focus-within .step-copy { opacity: 1; }
+.step-copy .icon-btn { width: 22px; height: 22px; border-radius: var(--r-sm); }
 .live-row { min-height: 22px; }
 .group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
 .group-btn:hover { color: var(--ink-2); }

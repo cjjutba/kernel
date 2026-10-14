@@ -17,7 +17,7 @@ import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
-import { buildThread, countsLabel, fmtDuration, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
+import { buildThread, countsLabel, fmtDuration, messageLabel, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
 import { userView } from './sender'
@@ -364,6 +364,20 @@ const ThinkingRow = memo(function ThinkingRow({ item }: { item: Extract<ChatItem
   return <StepRow icon="bulb" label="Thought">{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
 })
 
+/** An in-between message as a step (KERNEL-840): its first line as the label, the whole message as Markdown once open, in the muted ink of thinking, with Copy on hover and focus. */
+const MessageRow = memo(function MessageRow({ item }: { item: Extract<ChatItem, { kind: 'text' }> }) {
+  const [copied, copy] = useCopy(item.text)
+  const label = messageLabel(item.text)
+  return (
+    <StepRow icon="chat" label={label} name={`Message: ${label}`}>
+      <div className="step-msg">
+        <div className="step-text"><Markdown text={item.text} /></div>
+        <div className="step-copy"><IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy message'} onClick={copy} /></div>
+      </div>
+    </StepRow>
+  )
+})
+
 const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
 
 /** One side of a diff per line, prefixed: what an edit took out in red and put in in green. */
@@ -612,7 +626,7 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta?: string }) {
   if (item.kind === 'tool') return toolView(item).hidden ? null : <div className="group-item"><ToolRow item={item} meta={meta} /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} /></div>
-  if (item.kind === 'text') return <div className="group-item"><StepRow icon="chat" label="Message" detail={item.text}>{item.text.trim() && <div className="step-text"><Markdown text={item.text} /></div>}</StepRow></div>
+  if (item.kind === 'text') return <div className="group-item"><MessageRow item={item} /></div>
   return null
 })
 
@@ -671,7 +685,7 @@ function Elapsed({ since }: { since: number }) {
 function LiveLine({ item, since }: { item: Extract<ThreadBlock, { kind: 'live' }>['item']; since: number }) {
   return (
     <>
-      {item.kind === 'tool' ? <LiveTool item={item} /> : <div className="trow live-row"><StepLine icon="bulb" label="Thinking" /></div>}
+      {item.kind === 'tool' ? <LiveTool item={item} /> : <div className="trow live-row"><StepLine icon={item.kind === 'text' ? 'chat' : 'bulb'} label={item.kind === 'text' ? messageLabel(item.text) : 'Thinking'} /></div>}
       <Elapsed since={since} />
     </>
   )
@@ -754,7 +768,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'run') return <RunRow run={block.run} changes={changes} />
-  if (block.kind === 'live') return block.item.kind === 'tool' ? <ToolRow item={block.item} /> : <ThinkingRow item={block.item} />
+  if (block.kind === 'live') return block.item.kind === 'tool' ? <ToolRow item={block.item} /> : block.item.kind === 'text' ? <MessageRow item={block.item} /> : <ThinkingRow item={block.item} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
