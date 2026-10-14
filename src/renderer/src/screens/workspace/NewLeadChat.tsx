@@ -84,6 +84,16 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   useEffect(() => { focusAsked() }, [])
   useEffect(() => onComposerFocusAsked(focusAsked))
 
+  // ⌘L puts the caret back in the box, as in a chat's composer. ⌘⇧L is the Lead chat (App.tsx).
+  useEffect(() => {
+    const onKeyL = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented || getState().ui.modal) return
+      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyL') { e.preventDefault(); d.focus() }
+    }
+    window.addEventListener('keydown', onKeyL)
+    return () => window.removeEventListener('keydown', onKeyL)
+  })
+
   // A source arrives as a chip in the box, once: a chip already there, from the draft or an earlier visit, is the same one.
   const sourceKey = source ? JSON.stringify(source) : ''
   useEffect(() => {
