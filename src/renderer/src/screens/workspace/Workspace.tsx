@@ -246,7 +246,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
   // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
   // chrome, not a PR action, so it stays in the window's top right corner: the header's last item while the panel is hidden, the end of
-  // the panel's head while it is open, in a neutral cell beside the PR band so it never takes the band's tone (KERNEL-769).
+  // the panel's head while it is open, at the same spot and in the same neutral colour, so it never moves or takes the band's tone (KERNEL-769).
   return (
     <div className="panel ws-panel">
       {newChatShown ? <NewChatHeader room={room} /> : <header className="header">
