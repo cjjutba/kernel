@@ -761,3 +761,70 @@ describe('switching accounts while a chat waits on the user, on Claude (KERNEL-6
     expect(t.notes()).toEqual(['Now on personal'])
   })
 })
+
+describe('a limit cut-off and its carry-on, for the Lead (KERNEL-777)', () => {
+  afterEach(() => { bus.removeAllListeners('push') })
+  const flush = () => new Promise((r) => setTimeout(r, 10))
+
+  async function setup() {
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat({ id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 })
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    const turns: Parameters<NonNullable<SessionDeps['onTurnDone']>>[2][] = []
+    const carried: [string, CutOffReason][] = []
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {},
+      onTurnDone: (_ws, _chat, t) => { turns.push(t) }, onCarriedOn: (id, reason) => { carried.push([id, reason]) }
+    })
+    /** A turn a 5-hour rejection cuts off. */
+    const cutOff = async () => {
+      await sessions.send('chat', [{ type: 'text', text: 'Go' }])
+      const call = sdk.calls.at(-1)!
+      call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+      call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 3600 } })
+      call.feed({ type: 'result', subtype: 'success', uuid: 'r-limit', duration_ms: 5 })
+      await flush()
+      return call
+    }
+    return { store, sessions, turns, carried, cutOff }
+  }
+
+  it('says a turn ended cut off by a limit, and an ordinary one not', async () => {
+    const { sessions, turns, cutOff } = await setup()
+    await cutOff()
+    expect(turns.at(-1)).toMatchObject({ ok: true, limit: true })
+    sessions.resetLimit('five_hour')
+    sessions.drainWaiting()
+    await flush()
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r-after', duration_ms: 5 })
+    await flush()
+    expect(turns.at(-1)).not.toHaveProperty('limit')
+  })
+
+  it('reports the carry-on when Kernel sends its nudge once the limit lifts', async () => {
+    const { store, sessions, carried, cutOff } = await setup()
+    await cutOff()
+    expect(carried).toEqual([])
+    sessions.resetLimit('five_hour')
+    sessions.drainWaiting()
+    expect(carried).toEqual([['chat', 'limit']])
+    expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+  })
+
+  it('reports the carry-on when what waited in the chat goes instead of the nudge', async () => {
+    const { store, sessions, carried, cutOff } = await setup()
+    await cutOff()
+    // The limit paused the room, as Kernel does, so the message waits in the chat.
+    sessions.pause('room')
+    expect(await sessions.send('chat', [{ type: 'text', text: 'Also add a test' }])).toMatchObject({ queued: true })
+    sessions.resetLimit('five_hour')
+    sessions.drainWaiting()
+    expect(carried).toEqual([])
+    sessions.resume('room')
+    expect(carried).toEqual([['chat', 'limit']])
+    expect(store.items('chat').filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'Also add a test' }] })
+  })
+})

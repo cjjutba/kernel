@@ -21,7 +21,7 @@ function Fix({ check, busy, onFix, onRecheck }: { check: PreflightCheck; busy: s
   const [showProcess, setShowProcess] = useState(false)
   const { fix } = check
   if (!fix) return null
-  const recheck = <Button variant={check.blocking ? 'primary' : 'secondary'} busy={busy === `recheck:${check.id}`} busyLabel="Checking" disabled={busy !== null} onClick={onRecheck}>Check again</Button>
+  const recheck = <Button variant={check.blocking ? 'primary' : 'secondary'} busy={busy === `recheck:${check.id}`} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={onRecheck}>Check again</Button>
   if (fix.command) {
     return (
       <>

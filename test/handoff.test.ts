@@ -1,4 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,6 +10,8 @@ import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE, UPDATE_HEADER } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
+import { reviewPolicyOf } from '../src/main/services/settings'
+import { kindsFor } from '../src/main/services/lenses'
 import { teammateTools } from '../src/main/services/teammateMcp'
 import { briefParts, ISSUE_CAPS, issueText, issueTools } from '../src/main/services/issueMcp'
 import { LINEAR_SIGNED_OUT } from '../src/main/services/trackers/linear'
@@ -386,8 +389,9 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     }
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
     // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
-    // about mentions, 80 characters past that, and KERNEL-747 its sentence about proposed hand-offs, 61 more.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(5536)
+    // about mentions, 80 characters past that, KERNEL-747 its sentence about proposed hand-offs, 61 more, and KERNEL-777 its
+    // sentence about limit replies, 176 more.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(5712)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.
@@ -753,6 +757,41 @@ describe('reviews block only on real problems (KERNEL-377)', () => {
     expect(rule).toContain('check only your earlier blockers and anything the fix broke')
     expect(rule).toContain('Raise nothing new unless the fix caused it.')
     expect(rule).toContain('Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.')
+  })
+
+  // KERNEL-773: the method behind the blockers an audit of 46 verdicts found real, and a shorter approval.
+  const codeReviews = () => Promise.all([join('docs', 'lenses', 'code.md'), join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+
+  it('gives all three code reviews the same way of finding bugs and the same short approval', async () => {
+    const lines = [
+      'Check each acceptance criterion against the code, one at a time.',
+      'For each changed function, find its callers, and follow any loop or retry it joins.',
+      'When CSS changes, grep the selector across the app and render the screens it touches.',
+      'Ask what else could be running when the code runs: another copy of the app, a restart, the Mac waking from sleep, a second account.',
+      'Before blocking on a suspected bug, confirm it by running a test, a script or a hidden-window click.',
+      'When nothing blocks, approve. Say what you checked in one or two sentences, plus at most three short notes.'
+    ]
+    for (const text of await codeReviews()) for (const line of lines) expect(text).toContain(line)
+  })
+
+  it('makes a file outside Owns a note in this repo, while kernel.ts, hex values and release notes still block', async () => {
+    const theo = (await codeReviews())[2]
+    expect(theo).toContain("A file outside the issue's Owns doesn't block. Name it in a note, and the Lead decides.")
+    expect(theo.split('\n').find((l) => l.includes('a broken AGENTS.md rule'))).toBe('- In this repo, a broken AGENTS.md rule includes code added to kernel.ts, a hex value in screen code and a missing release note.')
+  })
+
+  it("doesn't approve while a check runs", () => {
+    expect(rule).toContain("Don't approve while a check is still running. Wait for it to finish, or block and say which check.")
+    expect(reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main', lens: 'security' })).toContain("Don't approve while a check is still running.")
+  })
+
+  it("runs the security review on this repo's risky paths only, and keeps it required", async () => {
+    const { review } = reviewPolicyOf(await readFile(join(__dirname, '..', '.kernel', 'settings.toml'), 'utf8'))
+    expect(review.kinds.security).toMatchObject({ enabled: true, required: true })
+    for (const f of ['src/main/services/bashGuard.ts', 'src/main/services/providers/codex/runner.ts', 'src/main/features/hooks.ts', 'src/main/services/kernelMcp.ts']) expect(kindsFor(review, [f])).toEqual(['code', 'security'])
+    expect(kindsFor(review, ['src/renderer/src/App.tsx'])).toEqual(['code'])
+    // A renamed file would drop out of the review without a word.
+    for (const path of review.kinds.security.paths) expect(existsSync(join(__dirname, '..', path)), path).toBe(true)
   })
 
   it('has the Lead pass on blockers only and mention notes to the user', () => {

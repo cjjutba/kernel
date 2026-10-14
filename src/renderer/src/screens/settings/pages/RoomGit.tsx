@@ -61,7 +61,7 @@ function PushAccess({ roomId, remote }: { roomId: string; remote: string }) {
     <Section label="Push access" plain>
       <StatusLine
         icon={!check ? 'clock' : failed ? 'xCircle' : 'check'} tone={failed ? 'warn' : check?.push.state === 'ok' ? 'ok' : undefined} title={title} sub={sub}
-        action={<Button busy={busy === 'recheck'} busyLabel="Checking" disabled={busy !== null || !check} onClick={() => void recheck()}>Check again</Button>}
+        action={<Button busy={busy === 'recheck'} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null || !check} onClick={() => void recheck()}>Check again</Button>}
       />
       {failed && <FailDetail row={failed} />}
     </Section>

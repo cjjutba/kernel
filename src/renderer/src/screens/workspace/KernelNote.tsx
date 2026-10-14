@@ -1,7 +1,8 @@
-import { useId, useState } from 'react'
+import { useContext, useId } from 'react'
 import type { ChatItem } from '@shared/types'
 import { Button, Icon } from '../../ui'
 import { useCopy } from './MessageActions'
+import { TranscriptChat, useRowOpen } from './chatPlace'
 
 const textOf = (item: Extract<ChatItem, { kind: 'user' }>) => item.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ').trim()
 
@@ -11,7 +12,7 @@ const textOf = (item: Extract<ChatItem, { kind: 'user' }>) => item.parts.flatMap
  * quit or crash note and folds into it, so a relaunch is one line.
  */
 export function KernelNote({ item, lead }: { item: Extract<ChatItem, { kind: 'user' }>; lead?: string }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), item.id, false)
   const body = useId()
   const text = textOf(item)
   const [copied, copy] = useCopy(text)

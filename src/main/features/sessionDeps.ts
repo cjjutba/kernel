@@ -71,7 +71,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // takes.
       const teammate = !k.team.isLeadWorkspace(ws)
       if (teammate) k.leadUpdates.readingPr(ws.id)
-      k.leadUpdates.turnDone(ws, chat, done)
+      // A limit's cut-off says what Kernel does about it: a switch to another account, or a wait for the reset (KERNEL-777).
+      k.leadUpdates.turnDone(ws, chat, done, turn.limit ? k.account.limitNews(chatProvider(chat), turn.account, chat.model) : undefined)
       // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
       void k.workspaces.changes(ws.id).catch(() => undefined)
@@ -108,6 +109,14 @@ export function sessionDeps(k: Kernel): SessionDeps {
       if (midTurn) k.leadUpdates.crashed(k.store.workspace(ws.id) ?? ws, reason, { resumed })
       // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
       if (k.autoArchive.reviewsToArchive.has(ws.id)) void k.autoArchive.archiveMarked(ws.id).catch(() => undefined)
+    },
+    // A teammate a limit stopped carries on, on the account its provider runs on now. The Lead hears it when it heard of the pause (KERNEL-777).
+    onCarriedOn: (chatId, reason) => {
+      const chat = k.store.chat(chatId)
+      const ws = chat && k.store.workspace(chat.workspaceId)
+      if (reason !== 'limit' || !chat || !ws) return
+      const provider = chatProvider(chat)
+      k.leadUpdates.limitLifted(ws, { provider, account: k.providers.label(provider, k.providers.active(provider)) })
     },
     onLimits: (limits) => k.account.applyLimits(limits),
     onCutOff: (chatIds) => k.store.saveMeta('cutOff', chatIds),
