@@ -12,7 +12,7 @@ import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
-import { baseName, dirName, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
+import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
@@ -81,7 +81,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const acOpen = !!acKey && dismissed !== acKey && !blocked
   const slashGroups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
   const slashRows = slashGroups.flatMap((g) => g.rows)
-  const mentionGroups = useMemo(() => mentionMenu(files), [files])
+  // Only the Lead's chat can @ a teammate (KERNEL-746): its message goes to the Lead, who acts for them.
+  const mentionAgents = useMemo(() => (agent?.lead && mention ? filterAgents(team, mention.query) : EMPTY_TEAM), [agent?.lead, team, mention?.query])
+  const mentionGroups = useMemo(() => mentionMenu(files, mentionAgents), [files, mentionAgents])
   const mentionRows = mentionGroups.flatMap((g) => g.rows)
   const rows = mention ? mentionRows : slashRows
   const roomId = ws?.roomId
@@ -122,7 +124,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
   const pickRow = (i: number, run: boolean) => {
-    if (mention) { const f = mentionRows[i]; if (f) d.insert(mentionPart(f), mention.query.length + 1) }
+    if (mention) { const r = mentionRows[i]; if (r) d.insert(mentionPart(r), mention.query.length + 1) }
     else if (slash) {
       const s = slashRows[i]
       if (!s) return
@@ -276,11 +278,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 ? mentionGroups.map((g) => (
                   <Fragment key={g.label}>
                     <p>{g.label}</p>
-                    {g.rows.map((f) => {
-                      const i = mentionRows.indexOf(f)
-                      return (
-                        <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <FileIcon path={f.path} dir={f.dir} /><span className="mono">{baseName(f.path)}{f.dir && '/'}</span><span className="sub ellipsis">{dirName(f.path)}</span>
+                    {g.rows.map((r) => {
+                      const i = mentionRows.indexOf(r)
+                      return r.kind === 'agent' ? (
+                        <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <Icon name="user" size={14} /><span className="mono">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
+                        </button>
+                      ) : (
+                        <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{dirName(r.entry.path)}</span>
                         </button>
                       )
                     })}
@@ -301,7 +307,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 ))}
             </div>
           )}
-          {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
+          {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
             <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
           )}
           <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} data-blocked={blocked || undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>

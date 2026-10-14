@@ -78,6 +78,7 @@ export function noteFromParts(parts: ChatPart[]): string {
     if (p.type === 'text') return p.text
     if (p.type === 'skill') return `/${p.name}`
     if (p.type === 'file') return p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`
+    if (p.type === 'agent') return `@${p.name}`
     if (p.type === 'issue' || p.type === 'workspace') return linkText(p)
     return ''
   }).filter((t) => t.trim()).join(' ').trim()
