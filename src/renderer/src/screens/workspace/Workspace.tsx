@@ -16,6 +16,7 @@ import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
+import { WhereBranch, WhereRow } from './composer/WhereRow'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
@@ -279,7 +280,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onOpenDiff={openDiff} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} where={<WhereRow room={room} mode={ws.mode} branch={<WhereBranch branch={ws.branch} />} />} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
         </section>
       </OpenText.Provider>
       </OpenImage.Provider>

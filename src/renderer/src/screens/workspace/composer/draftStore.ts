@@ -1,10 +1,10 @@
-import { EFFORT_LABELS, type ChatPart, type Effort } from '@shared/types'
+import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type PermissionMode } from '@shared/types'
 
 /**
  * What a New chat box picked for its chat, a field only once it is picked. A field left out follows the Lead, so a box nobody
  * touched follows Settings, Models and effort as it changes (KERNEL-544). Picks live with the box's draft, in memory and on disk.
  */
-export interface DraftPicks { model?: string; effort?: Effort; plan?: boolean }
+export interface DraftPicks { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }
 
 /**
  * Unsent messages by chat id: the parts in the box, text and chips in order, and the workspace the chat belongs to. Module level, so
@@ -40,11 +40,12 @@ let listening = false
 /** The picks a file holds, field by field: a value that isn't a model id, an effort or a boolean is dropped. */
 function picksOf(v: unknown): DraftPicks | undefined {
   if (!v || typeof v !== 'object') return undefined
-  const { model, effort, plan } = v as Record<string, unknown>
+  const { model, effort, plan, mode } = v as Record<string, unknown>
   const out: DraftPicks = {}
   if (typeof model === 'string' && model.trim()) out.model = model
   if (typeof effort === 'string' && Object.keys(EFFORT_LABELS).includes(effort)) out.effort = effort as Effort
   if (typeof plan === 'boolean') out.plan = plan
+  if (typeof mode === 'string' && PERMISSION_MODES.includes(mode as PermissionMode)) out.mode = mode as PermissionMode
   return Object.keys(out).length ? out : undefined
 }
 

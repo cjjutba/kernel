@@ -417,20 +417,21 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .term .xterm-viewport { background-color: transparent !important; }
 .chat-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .chat-empty h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
-/* New chat's composer, 640px wide. */
-.chat-empty-box { width: 100%; max-width: 640px; margin-top: 34px; text-align: left; }
-/* New chat sits a third of the way down, so Up next has room under the composer: the space above is about half the space below. */
-.chat-empty.lead-new { justify-content: flex-start; gap: 0; padding: 0 24px; }
-.chat-empty.lead-new::before { content: ''; flex: 0.55 1 0; min-height: 32px; }
-.chat-empty.lead-new::after { content: ''; flex: 1 1 0; min-height: 24px; }
-.lead-new .chat-empty-box { margin-top: 24px; }
+/* New chat is a chat's page without a transcript: the title block takes the space above Up next, Up next sits on the box, and the box is the composer shell, pinned to the bottom edge like a chat's.
+   A long draft grows the box up. The title block gives way first (NewLeadChat hides it), then Up next scrolls. */
+.lead-new { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.lead-top { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; padding: 0 24px; text-align: center; }
+.lead-title { flex-shrink: 0; }
+.lead-title h2 { margin: 0; font-size: 20px; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.lead-up { flex: 0 1 auto; min-height: 0; overflow-y: auto; padding: 0 24px 16px; }
+.lead-up .up-next { max-width: 760px; margin: 0 auto; }
 /* What the room is doing, under the title. Its height holds when it is empty, so the composer never moves. */
 .lead-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; min-height: 20px; margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
 .lead-status-sep { margin: 0 8px; color: var(--faint); }
 .lead-status-link { padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; text-decoration: underline; text-decoration-color: var(--line-3); text-underline-offset: 3px; }
 .lead-status-link:hover { color: var(--ink); text-decoration-color: var(--ink-3); }
 /* Up next: the tracker's issues nobody has started, one hairline row each, with Plan at the end. */
-.up-next { width: 100%; max-width: 640px; margin-top: 36px; text-align: left; }
+.up-next { width: 100%; max-width: 640px; text-align: left; }
 .up-next-head { display: flex; align-items: baseline; justify-content: space-between; padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
 .up-next-head h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--muted); }
 .up-next-all { padding: 0; border: 0; background: none; font-size: 12px; color: var(--muted); }
