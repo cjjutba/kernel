@@ -181,7 +181,8 @@ export interface SharedComment { id: string; sharedId: string; version: number; 
  */
 export type ChatPart =
   | { type: 'text'; text: string }
-  | { type: 'file'; name: string; path?: string; lines?: number; text?: string }
+  /** `dir` marks a folder from the @ menu: `path` ends in `/` and the agent gets the path, not the files in it. */
+  | { type: 'file'; name: string; path?: string; lines?: number; text?: string; dir?: boolean }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number; path?: string }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */

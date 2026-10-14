@@ -17,7 +17,7 @@ export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image'
 
 /** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
 export function ChipIcon({ part }: { part: ChatPart }) {
-  return part.type === 'file' && part.path ? <FileIcon path={part.path} size={14} /> : <Icon name={chipIcon(part)} size={12} />
+  return part.type === 'file' && part.path ? <FileIcon path={part.path} dir={part.dir} size={14} /> : <Icon name={chipIcon(part)} size={12} />
 }
 
 export type ImagePart = Extract<ChatPart, { type: 'image' }> & { dataUrl: string }

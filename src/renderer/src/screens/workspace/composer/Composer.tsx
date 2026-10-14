@@ -12,7 +12,7 @@ import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
-import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
+import { baseName, dirName, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
@@ -79,9 +79,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const slash = slashAt(d.before, !d.first)
   const acKey = mention ? `@${mention.query}` : slash ? `/${slash.query}` : ''
   const acOpen = !!acKey && dismissed !== acKey && !blocked
-  const groups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
-  const slashRows = groups.flatMap((g) => g.rows)
-  const rows = mention ? files : slashRows
+  const slashGroups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
+  const slashRows = slashGroups.flatMap((g) => g.rows)
+  const mentionGroups = useMemo(() => mentionMenu(files), [files])
+  const mentionRows = mentionGroups.flatMap((g) => g.rows)
+  const rows = mention ? mentionRows : slashRows
   const roomId = ws?.roomId
 
   // The queue and what it waits for are also pushed as events; this reads what was queued before the screen opened.
@@ -120,7 +122,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
   const pickRow = (i: number, run: boolean) => {
-    if (mention) { const f = files[i]; if (f) d.insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
+    if (mention) { const f = mentionRows[i]; if (f) d.insert(mentionPart(f), mention.query.length + 1) }
     else if (slash) {
       const s = slashRows[i]
       if (!s) return
@@ -269,14 +271,22 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         {banner}
         <div className="cmp-box">
           {acOpen && rows.length > 0 && (
-            <div role="listbox" aria-label={mention ? 'Files' : groups.map((g) => g.label).join(' and ')} className="cmp-ac">
+            <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
               {mention
-                ? <><p>Files</p>{files.map((f, i) => (
-                  <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                    <FileIcon path={f.path} /><span className="mono">{baseName(f.path)}</span><span className="sub ellipsis">{dirName(f.path)}</span>
-                  </button>
-                ))}</>
-                : groups.map((g) => (
+                ? mentionGroups.map((g) => (
+                  <Fragment key={g.label}>
+                    <p>{g.label}</p>
+                    {g.rows.map((f) => {
+                      const i = mentionRows.indexOf(f)
+                      return (
+                        <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <FileIcon path={f.path} dir={f.dir} /><span className="mono">{baseName(f.path)}{f.dir && '/'}</span><span className="sub ellipsis">{dirName(f.path)}</span>
+                        </button>
+                      )
+                    })}
+                  </Fragment>
+                ))
+                : slashGroups.map((g) => (
                   <Fragment key={g.label}>
                     <p>{g.label}</p>
                     {g.rows.map((s) => {

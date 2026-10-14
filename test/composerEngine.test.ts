@@ -7,6 +7,9 @@ import { discoverSkills, searchFiles } from '../src/main/services/files'
 import { commitHunks, listHunks } from '../src/main/services/hunks'
 import { git } from '../src/main/services/exec'
 import { chatMode } from '../src/main/services/permissions'
+import { mentionMenu, mentionPart } from '../src/renderer/src/screens/workspace/composer/autocomplete'
+import { noteFromParts } from '../src/renderer/src/screens/workspace/cards/steps'
+import { toUserMessage } from '../src/main/services/providers/claude'
 import { ModeMenu } from '../src/renderer/src/screens/workspace/composer/ModeMenu'
 import { MODE_ORDER, buttonName, modeAria, modePatch, modeRows, nextMode, offLine, shownMode, whyLine, type ComposerMode } from '../src/renderer/src/screens/workspace/composer/modes'
 import { apply, getState } from '../src/renderer/src/store'
@@ -24,6 +27,29 @@ describe('@ file search', () => {
     expect(hits).not.toContain('src/app/invoices/table.tsx')
     expect((await searchFiles(repo, 'tbl')).map((f) => f.path)).toEqual(['src/app/invoices/table.tsx'])
     expect(await searchFiles(repo, 'zzz')).toEqual([])
+  })
+
+  it('lists folders from the parent paths, an exact folder name first', async () => {
+    const repo = await tempRepo({ 'src/a.ts': 'a\n', 'src/lib/b.ts': 'b\n', 'docs/src-notes.md': 'c\n' })
+    const hits = await searchFiles(repo, 'src')
+    expect(hits[0]).toEqual({ path: 'src', dir: true })
+    expect(hits.filter((h) => h.dir).map((h) => h.path)).toContain('src')
+    expect((await searchFiles(repo, 'lib')).slice(0, 2)).toEqual([{ path: 'src/lib', dir: true }, { path: 'src/lib/b.ts', dir: false }])
+    expect((await searchFiles(repo, '')).every((h) => !h.dir)).toBe(true)
+  })
+})
+
+describe('picking a folder in the @ menu', () => {
+  const rows = [{ path: 'src', dir: true }, { path: 'src/a.ts', dir: false }]
+  it('turns a folder row into a chip with a trailing slash and a file row into the file', () => {
+    expect(mentionMenu(rows)).toEqual([{ label: 'Files', rows }])
+    expect(mentionPart(rows[0])).toEqual({ type: 'file', name: 'src/', path: 'src/', dir: true })
+    expect(mentionPart(rows[1])).toEqual({ type: 'file', name: 'a.ts', path: 'src/a.ts' })
+  })
+  it('sends the folder path to the agent, not file contents', () => {
+    const parts = [{ type: 'text' as const, text: 'look at' }, mentionPart(rows[0])]
+    expect(noteFromParts(parts)).toBe('look at @src/')
+    expect(JSON.stringify(toUserMessage(parts))).toContain('@src/')
   })
 })
 
