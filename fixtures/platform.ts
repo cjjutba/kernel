@@ -698,6 +698,13 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomTracker: trackerRoom(ids.roomB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
   SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  // KERNEL-750: Client A's General page with no reference folders, then with two, one of them gone from this Mac.
+  SettingsReferenceFoldersEmpty: scene(settingsRoom),
+  SettingsReferenceFolders: scene((f) => {
+    const room = settingsRoom(f)
+    const rs = room.roomSettings![ids.roomA]
+    return { ...room, roomSettings: { [ids.roomA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
+  }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),
