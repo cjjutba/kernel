@@ -439,7 +439,7 @@ describe('kernel recovery paths', () => {
     await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     expect(texts(k, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
@@ -450,7 +450,7 @@ describe('kernel recovery paths', () => {
     await flush()
     const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
     expect(users).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-    await k2.stop()
+    await k2.stop({ budgetMs: 0 })
   })
 
   // A workspace that waits for a PR is ready with its brief still held (KERNEL-259), so this holds for the ones that don't.
@@ -469,7 +469,7 @@ describe('kernel recovery paths', () => {
     try { expect((await k.retrySetup(ws.id)).status).toBe('ready') } finally { bus.off('push', on) }
     // Anything Kernel saves after the workspace reads as ready already has the brief out of the held queue.
     expect(heldWhenReady).toBeNull()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
@@ -484,11 +484,11 @@ describe('kernel recovery paths', () => {
     k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
     await k.archiveWorkspace(other.id)
     await k.archive.cleanedUp(other.id)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const k2 = await again()
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
     expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([chat.id])
-    await k2.stop()
+    await k2.stop({ budgetMs: 0 })
   })
 
   it('saves the brief before setup runs, so a quit during setup keeps it (KERNEL-128)', async () => {
@@ -500,7 +500,7 @@ describe('kernel recovery paths', () => {
     await k.archive.cleanedUp(ws.id)
     await made
     expect(k.store.meta('setups')).toEqual({})
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('turns a workspace Kernel quit during setup into a failed one, with its brief held and a note (KERNEL-128)', async () => {
@@ -510,13 +510,13 @@ describe('kernel recovery paths', () => {
     // As if Kernel quit while setup ran: the workspace says setup, and the brief and a message wait in the saved hold.
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'setup' })
     k.store.saveMeta('setups', { [ws.id]: { chatId: chat.id, brief: [{ type: 'text', text: 'Build T-14' }], from: 'lead', later: [[{ type: 'text', text: 'Use EmptyState' }]] } })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const k2 = await again()
     expect(k2.store.workspace(ws.id)?.status).toBe('failed')
     expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     expect(k2.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toContain('Setup stopped when Kernel quit. Click Run again.')
     expect(k2.store.meta('setups')).toEqual({})
-    await k2.stop()
+    await k2.stop({ budgetMs: 0 })
   })
 
   it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
@@ -537,7 +537,7 @@ describe('kernel recovery paths', () => {
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     expect((await k.retrySetup(ws.id)).status).toBe('ready')
     expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("doesn't tell the Lead setup failed when the user archived the workspace during Run again (KERNEL-126)", async () => {
@@ -554,7 +554,7 @@ describe('kernel recovery paths', () => {
     await k.archive.cleanedUp(ws.id)
     await rerun
     expect(waiting()).toEqual(before)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('stops setup from the Setup tab: failed with no exit code, the brief still held, and no word to the Lead (KERNEL-430)', async () => {
@@ -575,7 +575,7 @@ describe('kernel recovery paths', () => {
     expect(after.setupRun?.endedAt).toBeGreaterThanOrEqual(after.setupRun!.startedAt)
     expect(k.sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Build T-14'])
     expect(waiting()).toEqual(before)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('sends a brief anyway after setup failed, once, with a note above it, and the Lead hears setup passed (KERNEL-430)', async () => {
@@ -598,7 +598,7 @@ describe('kernel recovery paths', () => {
     expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
     // A workspace that isn't failed has nothing to skip.
     expect((await k.setup.skipSetup(ws.id)).status).toBe('ready')
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('writes no note above the brief when Run again passes (KERNEL-430, KERNEL-533)', async () => {
@@ -611,7 +611,7 @@ describe('kernel recovery paths', () => {
     expect((await k.setup.retrySetup(ws.id)).status).toBe('ready')
     expect(k.store.items(chat.id).filter((i) => i.kind === 'note')).toEqual([])
     expect(k.store.workspace(ws.id)?.setupRun).toMatchObject({ end: 0 })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("tells the Lead when a teammate's session dies partway through a turn (KERNEL-124)", async () => {
@@ -625,7 +625,7 @@ describe('kernel recovery paths', () => {
     await flush()
     const waiting = [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; workspaceId: string }[] }> }).pending.values()].flatMap((p) => p.events)
     expect(waiting).toEqual([expect.objectContaining({ kind: 'crash', workspaceId: ws.id })])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("Retry now sends a Kernel update first, as Kernel's, and leaves a pending hand-off alone (KERNEL-116)", async () => {
@@ -649,7 +649,7 @@ describe('kernel recovery paths', () => {
     await flush()
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel', update })
     expect(k.sessions.handoffs.due(chat.id)).toBe(true)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('Retry now sends an update past a limit pause, as Send now does (KERNEL-116)', async () => {
@@ -658,7 +658,7 @@ describe('kernel recovery paths', () => {
     await k.handlers()['chats.retry']({ chatId: chat.id, itemId: 'old', now: true })
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('holds the first prompt while setup fails, and sends it once Run again passes', async () => {
@@ -677,7 +677,7 @@ describe('kernel recovery paths', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(sdk.calls.length).toBe(before + 1)
     expect(k.store.items(chat.id).find((i) => i.kind === 'user')).toMatchObject({ parts: [{ type: 'text', text: 'Build T-14' }] })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('pauses every room on a 5-hour rejection and resumes them when it lifts', async () => {
@@ -694,7 +694,7 @@ describe('kernel recovery paths', () => {
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.1 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.room(room.id)?.paused).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lifts a limit pause when Claude Code reports room before the reset time, and sends what queued', async () => {
@@ -710,7 +710,7 @@ describe('kernel recovery paths', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'hi' }] })
     sdk.usage = null
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lifts a limit pause by the clock when its timer runs late, as after the Mac sleeps', async () => {
@@ -721,7 +721,7 @@ describe('kernel recovery paths', () => {
       await k.checkLimits()
     } finally { vi.useRealTimers() }
     expect(k.store.room(room.id)?.paused).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('asks with a short session when a limit pauses the rooms and no session is live', async () => {
@@ -735,7 +735,7 @@ describe('kernel recovery paths', () => {
     expect(probe.options.abortController.signal.aborted).toBe(true)
     expect(k.store.room(room.id)?.paused).toBe(false)
     sdk.usage = null
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('sends a queued message past a limit pause on Send now, and lifts the pause when Claude Code says the limit is gone', async () => {
@@ -748,7 +748,7 @@ describe('kernel recovery paths', () => {
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.01 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.room(room.id)?.paused).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('carries on a chat the limit stopped mid-turn once the limit lifts', async () => {
@@ -759,7 +759,7 @@ describe('kernel recovery paths', () => {
     expect(k.store.room(room.id)?.paused).toBe(false)
     expect(k.sessions.isRunning(chat.id)).toBe(true)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('carries on a chat the limit stopped on an account the banner switched away from mid-turn, and notes the switch (KERNEL-568)', async () => {
@@ -782,20 +782,20 @@ describe('kernel recovery paths', () => {
     expect(k.sessions.isRunning(chat.id)).toBe(true)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
     expect(k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))).toEqual(['Now on Work (Personal hit its 5-hour limit)'])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('keeps a limit pause across a restart while the limit holds, and carries the stopped chat on once it resets', async () => {
     const { k, room, chat, resetsAt } = await limited()
     const dataDir = k.o.dataDir
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const again = new Kernel({ dataDir })
     // A start with a cut-off chat checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
     again.signedInReader = async () => true
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     expect(again.sessions.isPaused(room.id)).toBe(true)
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
     // Kernel stayed closed through the reset: the next start lifts the pause and the Lead picks up where it left off.
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
@@ -808,7 +808,7 @@ describe('kernel recovery paths', () => {
       expect(later.store.room(room.id)?.paused).toBe(false)
       expect(later.sessions.isRunning(chat.id)).toBe(true)
       expect(later.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
-      await later.stop()
+      await later.stop({ budgetMs: 0 })
     } finally { vi.useRealTimers() }
   })
 
@@ -827,7 +827,7 @@ describe('kernel recovery paths', () => {
     await k.handlers()['chats.configure']({ chatId: chat.id, model: 'claude-opus-5-5' })
     expect(k.sessions.isRunning(chat.id)).toBe(true)
     expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('marks a sign-out from a session and holds sends until sign in', async () => {
@@ -841,7 +841,7 @@ describe('kernel recovery paths', () => {
     expect(pushes.find((e) => e.type === 'account')).toMatchObject({ account: { signedIn: false } })
     expect(k.sessions.heldFor()).toEqual(['auth'])
     off()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses to discard on the current branch or while the agent works, and checkpoints before it does', async () => {
@@ -858,7 +858,7 @@ describe('kernel recovery paths', () => {
     await h['workspaces.discard']({ workspaceId: ws.id })
     expect(await readFile(join(ws.path, 'a.ts'), 'utf8')).toBe('one\n')
     expect((await h['checkpoints.list']({ workspaceId: ws.id })).some((c) => c.title === 'Before discarding changes')).toBe(true)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('keeps a branch with unpushed commits on archive, even when asked to delete it', async () => {
@@ -877,7 +877,7 @@ describe('kernel recovery paths', () => {
     await h['workspaces.archive']({ workspaceId: empty.id, deleteBranch: true })
     await k.archive.cleanedUp(empty.id)
     expect((await run('git', ['-C', room.path, 'branch', '--list', empty.branch])).trim()).toBe('')
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lifts a sign-out when the CLI is signed in again from a terminal', async () => {
@@ -898,7 +898,7 @@ describe('kernel recovery paths', () => {
     expect(k.sessions.heldFor()).toEqual([])
     expect(pushes.filter((e) => e.type === 'account').pop()).toMatchObject({ account: { signedIn: true, name: 'Sam Rivera' } })
     off()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('lifts a limit pause left from the last run, and keeps a pause the user chose', async () => {
@@ -906,7 +906,7 @@ describe('kernel recovery paths', () => {
     const other = await k.addRoom(await tempRepo())
     k.pauseRoom(room.id, 'limit')
     k.pauseRoom(other.id, 'you')
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const again = new Kernel({ dataDir: k.o.dataDir })
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: false })
@@ -914,13 +914,13 @@ describe('kernel recovery paths', () => {
     expect(again.sessions.isPaused(room.id)).toBe(false)
     expect(again.store.room(other.id)).toMatchObject({ paused: true, pausedBy: 'you' })
     expect(again.sessions.isPaused(other.id)).toBe(true)
-    await again.stop()
+    await again.stop({ budgetMs: 0 })
   })
 
   it('only promises a reset notification for a limit it has a reset time for', async () => {
     const { k } = await kernel()
     await expect(k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).rejects.toThrow('does not know when')
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -957,7 +957,7 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     await flush()
     expect(weekly(k)).toHaveLength(2)
     expect(weekly(k).find((n) => n.id === `n-weekly-${NEXT_WEEK + 7 * 86_400}`)?.title).toBe("You've used 95% of this week's limit")
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('names the day in the weekly notification instead of saying tomorrow', async () => {
@@ -972,7 +972,7 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     await flush()
     const day = tomorrow.toLocaleDateString('en-US', { weekday: 'long' })
     expect(weekly(k)[0]).toMatchObject({ sub: `Resets ${day} at 4:00 AM`, body: `Your weekly limit resets ${day} at 4:00 AM.` })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('warns about nothing when the switch in Settings, Account is off', async () => {
@@ -983,7 +983,7 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     sdk.calls[sdk.calls.length - 1].feed(near('seven_day', 0.9, NEXT_WEEK))
     await flush()
     expect(weekly(k)).toEqual([])
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('sends what a held teammate waited for when the window resets, by its own timer', async () => {
@@ -1006,7 +1006,7 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     expect(k.sessions.queued(chat.id)).toEqual([])
     // Nothing holds any more, so nothing keeps asking for fresh numbers.
     expect((k.account as unknown as { limitCheck?: unknown }).limitCheck).toBeUndefined()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   }, 20000)
 
   it("doesn't poll for usage when nothing is held, or when the switch is off", async () => {
@@ -1018,13 +1018,13 @@ describe('the usage guards in a Kernel (KERNEL-220)', () => {
     await flush()
     expect((off.k.account as unknown as { limitCheck?: unknown }).limitCheck).toBeUndefined()
     expect(off.k.sessions.waitsFor(chat.id)).toBe('running')
-    await off.k.stop()
+    await off.k.stop({ budgetMs: 0 })
   })
 
   it('still lets the user ask to hear about a rejected limit', async () => {
     const { k, room } = await limited()
     expect(await k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).toEqual({ ok: true })
     expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
