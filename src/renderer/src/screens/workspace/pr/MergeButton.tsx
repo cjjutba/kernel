@@ -39,7 +39,7 @@ const firstSentence = (reason: string) => reason.split(/(?<=\.)\s/)[0]
 
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
- * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. `icon={false}` drops the state's icon, for a row that draws its own. It reads the rules, the PR and the reviewer's name itself, so a
+ * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. `icon={false}` drops the state's static icon, for a row that draws its own. A spinner stays, since something is running. It reads the rules, the PR and the reviewer's name itself, so a
  * caller knows nothing about when a PR may merge. The click spins the pressed button at once. Main then announces the merge
  * (`prPending`), which spins every place showing the PR in the same frame, and the PR reading merging keeps them spinning
  * (KERNEL-417, KERNEL-520). Merge anyway asks first, in a confirm of its own (KERNEL-501).
@@ -109,6 +109,6 @@ export function MergeSlot({ ws, view, busy, short, icon = true, onMerge }: { ws:
  * button a person pressed (KERNEL-757). `why` is its tooltip.
  */
 export function PrStatusTag({ status, why, icon = true }: { status: PrStatus; why?: string; icon?: boolean }) {
-  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}>{icon && <Spinner label={null} pattern="checker" />}{status.label}</span>
+  if (status.spin) return <span className="pr-word pr-run" data-tone={status.tone} aria-busy="true" data-tip={why}><Spinner label={null} pattern="checker" />{status.label}</span>
   return <span className="pr-word pr-run" data-tone={status.tone} data-tip={why}>{icon && <Icon name={status.glyph} size={14} />}{status.label}</span>
 }

@@ -293,6 +293,11 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     // Merge anyway is a quiet outline, since the row's red state already says what is wrong (KERNEL-757).
     expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<span class="pr-tone" data-tone="idle"><button[^>]*class="[^"]*pr-outline[^"]*"[^>]*>Merge anyway<\/button><\/span>$/)
     expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toMatch(/^<span class="pr-word pr-run" data-tone="fail"><svg[^>]*>.*<\/svg>Checks failed<\/span>$/)
+    // A row that draws its own glyph (the PRs tab) drops the static icon but keeps the spinner while a merge runs.
+    const bare = (view: Parameters<typeof mod.MergeSlot>[0]['view']) => renderToStaticMarkup(React.createElement(mod.MergeSlot, { ws: ws('w1', { prNumber: 162 }), view, icon: false, onMerge: () => undefined }))
+    expect(bare({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*><span[^>]*>.*<\/span>Merging<\/span>$/)
+    expect(bare({ kind: 'state', label: 'Checks failed', tone: 'fail', glyph: 'prCifail', spin: false })).toBe('<span class="pr-word pr-run" data-tone="fail">Checks failed</span>')
+    expect(bare({ kind: 'merged' })).toBe('<span class="tucard-merged">Merged</span>')
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
     expect(draw({ kind: 'merged' })).toContain('tucard-merged')
