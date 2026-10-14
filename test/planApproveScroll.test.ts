@@ -10,7 +10,7 @@ import type { Chat } from '../src/shared/types'
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true })
 
-vi.mock('../src/renderer/src/api', async (original) => ({ ...(await original<object>()), call: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../src/renderer/src/api', async (original) => ({ ...(await original<object>()), call: () => Promise.resolve(undefined) }))
 
 const chat = { id: 'c1', workspaceId: 'w1', kind: 'agent', title: 'Plan chat' } as unknown as Chat
 
