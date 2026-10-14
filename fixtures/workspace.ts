@@ -1089,14 +1089,14 @@ const revertPreviews: Record<string, CheckpointPreview> = {
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
       { path: 'tests/invoices.spec.ts', status: 'D', added: 9, removed: 118 }
     ],
-    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false
+    stat: { files: 4, added: 38, removed: 412 }, commitsAhead: 0, pushed: false, conflicts: []
   },
   '2': {
     files: [
       { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
     ],
-    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true
+    stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true, conflicts: []
   }
 }
 const revertScene = (ui: Partial<Fixture['ui']>) => scene(() => ({
