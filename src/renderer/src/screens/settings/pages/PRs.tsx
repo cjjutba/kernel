@@ -38,7 +38,7 @@ export function PRs({ s }: { s: AppSettings }) {
   const roomSettings = useStore((x) => x.roomSettings)
   const rooms = useStore((x) => x.rooms)
   useEffect(() => { for (const r of rooms) void call('settings.room', { roomId: r.id }).then((rs) => actions.settings.setRoom(r.id, rs)).catch(() => undefined) }, [rooms.map((r) => r.id).join()])
-  const changedIn = (path: string) => rooms.filter((r) => ['local', 'override'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs' } as const }))
+  const changedIn = (path: string) => rooms.filter((r) => ['local', 'override', 'shared'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs' } as const }))
   const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
     <>
