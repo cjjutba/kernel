@@ -1977,6 +1977,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** A short reply that has finished (KERNEL-837): the message still sits 16px from the top with its reply under it and blank view below, and the end of the turn moved nothing. scripts/shots.ts delivers the send, the reply and the end of the turn after the chat opens. */
+  WorkspaceJustSentDone: scene((f) => ({
+    items: { [ids.tableChat]: tableItems.slice(0, 1) },
+    push: f.push,
+    ui: open
+  })),
   /** The first message sent from New chat (KERNEL-825): the chat opens with it 16px from the top and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
   WorkspaceNewChatJustSent: scene((f) => {
     const base = noPlan(leadNoChats(f))
