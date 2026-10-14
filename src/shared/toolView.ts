@@ -281,3 +281,21 @@ export function toolTitle(name: string, input: Record<string, unknown> = {}): st
   if (v.hidden) return name
   return [v.verb, v.dir && v.object ? `${v.dir}/${v.object}` : v.object].filter(Boolean).join(' ')
 }
+
+/**
+ * A call as the user is asked to allow it, in the verb's base form: "File issue in Linear: Export invoices as PDF". The
+ * running and done tenses are the chat row's, and this is the third, which reads after "Noor wants to" (KERNEL-785).
+ */
+export function toolAsk(name: string, input: Record<string, unknown> = {}, ctx: ToolCtx = {}): string {
+  const v = toolView({ name, input, status: 'running' }, ctx)
+  const mcp = parseMcp(name)
+  const service = mcp ? serviceOf(mcp.server) : undefined
+  let s: Say | undefined
+  if (mcp && service) {
+    s = service === 'linear' ? linear(mcp.tool, input) : service === 'kernel' ? kernel(mcp.tool, input, ctx) : undefined
+    s ??= service === 'mcp' ? humanized(mcp.tool) : generic(mcp.tool, service, input)
+  } else s = builtIn(name, input, ctx)
+  if (v.hidden || !s) return name
+  const verb = maskSecrets(s.fixed ?? `${upperFirst(s.base)}${s.rest ?? ''}`)
+  return verb + v.sentence.slice(v.verb.length, v.detail ? -(v.detail.length + 2) : undefined)
+}
