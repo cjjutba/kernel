@@ -122,6 +122,15 @@ describe('overlap detection across two real worktrees', () => {
     expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
   })
 
+  it("counts a chat in Build here, whose worktree holds the Lead's own edits (KERNEL-778)", async () => {
+    const { kai, noor } = await room()
+    const build: Workspace = { ...noor, agentId: 'kernel', lead: true, threadId: 't', leadMode: 'build' }
+    await edit(kai.path, 'src/invoices.ts', 1, 3)
+    await edit(build.path, 'src/invoices.ts', 2, 4)
+    const [o] = await service(() => [kai, build]).check('r')
+    expect(o.parties.map((p) => [p.agentId, p.workspaceId])).toEqual([['kai', kai.id], ['kernel', noor.id]])
+  })
+
   it('ignores archived workspaces', async () => {
     const { kai, noor } = await room()
     await edit(kai.path, 'src/invoices.ts', 1, 3)

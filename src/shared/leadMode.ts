@@ -1,4 +1,5 @@
 import type { AppSettings, LeadMode, RoomSettings, Workspace } from './types'
+import { isLeadChatWorkspace } from './leadWorkspace'
 
 // Hand off and Build here, the two ways a chat with Kernel works (KERNEL-770).
 
@@ -6,6 +7,12 @@ export const LEAD_MODES: LeadMode[] = ['handoff', 'build']
 
 /** A chat's mode. Unset is Hand off, as every chat with Kernel was before KERNEL-770. */
 export const leadModeOf = (ws: Pick<Workspace, 'leadMode'> | undefined): LeadMode => ws?.leadMode ?? 'handoff'
+
+/**
+ * A chat with Kernel in Build here, whose own PRs take a teammate's path: review, Team updates, auto-merge (KERNEL-778). It
+ * follows the mode, so switching back to Hand off takes the chat's PR off that path.
+ */
+export const buildsHere = (ws: Workspace | undefined): boolean => !!ws && isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
 
 /**
  * The mode a new chat with Kernel starts in: the room's `[agents] lead_mode`, else Settings, Agents, else Hand off. The most

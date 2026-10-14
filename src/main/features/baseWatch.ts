@@ -1,4 +1,5 @@
 import type { Workspace } from '@shared/types'
+import { buildsHere } from '@shared/leadMode'
 import { bus } from '../bus'
 import { exec, git } from '../services/exec'
 import { behindCount, fastForward, fetchOrigin, folderGone, mergeTreeConflicts, snapshotCommit } from '../services/worktrees'
@@ -58,10 +59,16 @@ export class BaseWatch extends Feature {
     return next.finally(() => { if (this.chain.get(roomId) === next) this.chain.delete(roomId) })
   }
 
-  /** Workspaces an open PR doesn't cover yet: GitHub's own conflict check takes over once it exists. */
+  /**
+   * Workspaces an open PR doesn't cover yet: GitHub's own conflict check takes over once it exists, and its news reaches the
+   * chat as a Team update. A Build here chat's own work counts as a teammate's (KERNEL-778).
+   */
   private watched(ws: Workspace): boolean {
-    return ws.status === 'ready' && ws.mode === 'worktree' && !ws.reviewOf && !this.isLeadWorkspace(ws) && (ws.prState === 'none' || ws.prState === 'creating')
+    return ws.status === 'ready' && ws.mode === 'worktree' && !ws.reviewOf && this.teammateLike(ws) && (ws.prState === 'none' || ws.prState === 'creating')
   }
+
+  /** A teammate's workspace, or a Build here chat's, which builds like one (KERNEL-778). */
+  private teammateLike(ws: Workspace) { return !this.isLeadWorkspace(ws) || buildsHere(ws) }
 
   /** One read and one write, with nothing awaited between them, so two rooms' checks never undo each other's change. */
   private put(id: string, state?: Watched) {
@@ -129,7 +136,7 @@ export class BaseWatch extends Feature {
   private async catchUp(roomId: string, remote: string): Promise<Set<string>> {
     const done = new Set<string>()
     for (const ws of this.store.workspaces(roomId)) {
-      if (!ws.fetchFailed || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.reviewOf || this.isLeadWorkspace(ws)) continue
+      if (!ws.fetchFailed || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.reviewOf || !this.teammateLike(ws)) continue
       if (await this.catchUpOne(ws, remote).catch(() => false)) done.add(ws.id)
     }
     return done

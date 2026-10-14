@@ -103,6 +103,11 @@ export interface KernelToolDeps {
   ownChanges?: () => Promise<number>
   /** Puts Build here's suggestion to switch to Hand off under Kernel's reply (KERNEL-770). Left out, suggest_hand_off refuses. */
   suggestHandoff?: (why: string) => void
+  /**
+   * Links this Build here chat's own work to a tracker issue (KERNEL-778): the branch it renamed to, when nothing was pushed
+   * yet. Left out, link_issue refuses.
+   */
+  linkIssue?: (issue: string) => Promise<{ id: string; title: string; branch?: string }>
 
   /** Whether the Lead chat is in plan mode now. Read on each call, since the toggle can change mid-session. Left out, it counts as off (KERNEL-176). */
   planMode?: () => boolean
@@ -378,7 +383,7 @@ const SAVE = 'Save'
 export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
 /** What the Lead's server tells the model in a Build here chat (KERNEL-770). */
-export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. create_workspace only starts a review, with review_of. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
+export const LEAD_BUILD_INSTRUCTIONS = 'You lead a team of agents in Kernel, and this chat is in Build here: you make the change yourself in this chat\'s worktree and open the pull request. While the chat is in plan mode, ask for approval with request_plan_approval first, then build it. create_workspace only starts a review, with review_of. When the work is for a tracker issue, call link_issue before the first push. When the work is bigger than one PR or spans lanes, call suggest_hand_off with the reason. Follow up on teammates\' work with message_agent. Use say for a short status line people see on your card in the sidebar.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -753,6 +758,18 @@ export function kernelTools(d: KernelToolDeps) {
       if (!d.suggestHandoff) return { ...text('Not suggested: this chat can\'t switch modes.'), isError: true }
       d.suggestHandoff(reason.trim())
       return text('Suggested. The user sees a button to switch this chat to Hand off. Stop here, and build nothing until they answer.')
+    }),
+    tool('link_issue', 'In Build here: link this chat\'s work to a tracker issue. Before the first push the branch is renamed after the issue, after it only the link changes. Name the issue in the PR body so it closes on merge.', {
+      issue: z.string().min(1).max(80).describe('The issue key, for example "KERNEL-760" or "#41"')
+    }, async ({ issue }) => {
+      if (!build) return { ...text('Not linked: this chat is in Hand off. A teammate\'s workspace takes the issue in create_workspace.'), isError: true }
+      if (!d.linkIssue) return { ...text('Not linked: this chat can\'t link an issue.'), isError: true }
+      try {
+        const r = await d.linkIssue(issue.trim())
+        return text(`Linked ${r.id}, "${r.title}".${r.branch ? ` The branch is now ${r.branch}.` : ' The branch keeps its name, since it was pushed.'} Write "Closes ${r.id}" in the PR body.`)
+      } catch (e) {
+        return { ...text(`Not linked: ${firstLine(e instanceof Error ? e.message : String(e))}`), isError: true }
+      }
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working' })

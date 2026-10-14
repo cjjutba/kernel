@@ -11,6 +11,7 @@ import { agentPrompt } from '../src/main/services/sessions'
 import { loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { sharesFile } from '../src/main/services/providers/codex/runner'
 import { Kernel } from '../src/main/kernel'
+import { git } from '../src/main/services/exec'
 import { setUp, tempRepo, trustRoom } from './helpers'
 
 // Hand off and Build here: the two ways a chat with Kernel works (KERNEL-770).
@@ -183,6 +184,19 @@ describe("Kernel's tools in each mode (KERNEL-770)", () => {
     expect(handoff.suggested).toEqual([])
   })
 
+  it('link_issue links in Build here, says whether the branch was renamed, and refuses in Hand off (KERNEL-778)', async () => {
+    const linked: string[] = []
+    const t = tools({ leadMode: 'build', linkIssue: async (issue) => { linked.push(issue); return { id: 'KERNEL-760', title: 'Retry button', branch: 'feat/kernel-760-retry-button' } } })
+    const r = await t.call('link_issue', { issue: ' KERNEL-760 ' })
+    expect(linked).toEqual(['KERNEL-760'])
+    expect(r).toEqual({ text: 'Linked KERNEL-760, "Retry button". The branch is now feat/kernel-760-retry-button. Write "Closes KERNEL-760" in the PR body.', isError: false })
+    const pushed = tools({ leadMode: 'build', linkIssue: async () => ({ id: 'KERNEL-760', title: 'Retry button' }) })
+    expect((await pushed.call('link_issue', { issue: 'KERNEL-760' })).text).toContain('The branch keeps its name, since it was pushed.')
+    const failed = tools({ leadMode: 'build', linkIssue: async () => { throw new Error('That chat no longer exists.') } })
+    expect(await failed.call('link_issue', { issue: 'KERNEL-760' })).toEqual({ text: 'Not linked: That chat no longer exists.', isError: true })
+    expect((await tools({ linkIssue: async () => { throw new Error('unreached') } }).call('link_issue', { issue: 'KERNEL-760' })).isError).toBe(true)
+  })
+
   it('request_plan_approval with plan mode off says to build in Build here', async () => {
     const t = tools({ leadMode: 'build', planMode: () => false })
     expect(await t.call('request_plan_approval', { title: 'x', plan: 'y', steps: ['z'] })).toEqual({ text: BUILD_PLAN_MODE_OFF, isError: true })
@@ -243,5 +257,85 @@ describe("the Lead's prompt and tools in each mode (KERNEL-770)", () => {
     expect(sharesFile('/tmp/ws', '.kernel/shared/../plans/x.md')).toBe(false)
     expect(sharesFile('/tmp/ws', 'src/app.ts')).toBe(false)
     expect(sharesFile('/tmp/ws', '/tmp/other/.kernel/shared/x.html')).toBe(false)
+  })
+})
+
+describe("a Build here chat's pull requests (KERNEL-778)", () => {
+  /** A chat in Build here with a commit of its own on its branch. */
+  async function building() {
+    const t = await setup()
+    const c = await t.chat()
+    t.k.lead.setMode(c.workspaceId, 'build')
+    const ws = t.k.store.workspace(c.workspaceId)!
+    await writeFile(join(ws.path, 'retry.ts'), 'export {}\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, 'commit', '-qm', 'retry')
+    return { ...t, c, ws }
+  }
+  const notes = (k: Kernel, chatId: string) => k.store.items(chatId).filter((i): i is Extract<ChatItem, { kind: 'note' }> => i.kind === 'note').map((n) => n.text)
+
+  it('starts a new branch from the base once the PR merged and the worktree is clean, and says why it waits while it is not', async () => {
+    const { k, room, c, ws, chat } = await building()
+    const head = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    k.store.saveWorkspace({ ...ws, prNumber: 54, prState: 'merged', prUrl: 'https://x/54', prHead: head, mergedAt: 2, source: { kind: 'issue', id: 'KERNEL-760', title: 'Retry button' } })
+    await writeFile(join(ws.path, 'README.md'), '# edited\n')
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prNumber: 54, prState: 'merged' })
+    expect(notes(k, c.id)).toEqual([`PR #54 merged, but this worktree has uncommitted changes, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
+
+    // Committed after the merge: the commit isn't in the PR, so the chat stays where it is, and hears why once.
+    await git(ws.path, 'commit', '-qam', 'after the merge')
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+    expect((await git(ws.path, 'log', '-1', '--format=%s')).trim()).toBe('after the merge')
+    expect(notes(k, c.id).slice(1)).toEqual([`PR #54 merged, but ${ws.branch} has a commit the PR didn't include, so Kernel kept this chat on ${ws.branch}. It starts a new branch from main once nothing here is left out of the merge.`])
+    // Pushed to the merged branch, it still isn't in the PR. Dropping it lets the chat go on.
+    await git(room.path, 'update-ref', `refs/remotes/origin/${ws.branch}`, 'HEAD')
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: ws.branch, prState: 'merged' })
+    await git(ws.path, 'reset', '-q', '--hard', head)
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    const next = k.store.workspace(ws.id)!
+    expect(next.branch).not.toBe(ws.branch)
+    expect(next.branch).toMatch(/^kernel\//)
+    expect(next).toMatchObject({ baseRef: 'main', prState: 'none' })
+    for (const f of ['prNumber', 'prUrl', 'prHead', 'mergedAt', 'source'] as const) expect(next[f], f).toBeUndefined()
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(next.branch)
+    expect((await git(ws.path, 'rev-parse', 'HEAD')).trim()).toBe((await git(room.path, 'rev-parse', 'main')).trim())
+    expect(notes(k, c.id).at(-1)).toBe(`PR #54 merged. This chat now works on ${next.branch}, from main.`)
+    // The next PR is a new one, opened from the new branch, and its merge starts another.
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prNumber: 55, prState: 'merged' })
+    await k.lead.syncLead(room.id, { workspaceId: ws.id })
+    expect(k.store.workspace(ws.id)).toMatchObject({ prState: 'none' })
+    expect(k.store.workspace(ws.id)!.branch).not.toBe(next.branch)
+
+    // A chat in Hand off keeps its merged PR's branch.
+    const other = await chat()
+    const handoff = k.store.workspace(other.workspaceId)!
+    k.store.saveWorkspace({ ...handoff, prNumber: 56, prState: 'merged' })
+    await k.lead.syncLead(room.id, { workspaceId: handoff.id })
+    expect(k.store.workspace(handoff.id)).toMatchObject({ branch: handoff.branch, prState: 'merged' })
+  })
+
+  it("links an issue, renaming the branch before the first push and only linking after it, and refuses a chat in Hand off", async () => {
+    const { k, room, ws, chat } = await building()
+    const linked = await k.handlers()['lead.linkIssue']({ workspaceId: ws.id, issue: 'KERNEL-760' })
+    expect(linked.source).toMatchObject({ kind: 'issue', id: 'KERNEL-760' })
+    expect(linked.branch).toMatch(/^feat\/kernel-760/)
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(linked.branch)
+    // Pushed: the branch keeps its name, and only the link changes.
+    await git(room.path, 'update-ref', `refs/remotes/origin/${linked.branch}`, 'HEAD')
+    const relinked = await k.lead.linkIssue(ws.id, 'KERNEL-761')
+    expect(relinked).toMatchObject({ branch: linked.branch, source: { kind: 'issue', id: 'KERNEL-761' } })
+    // So does a branch with a PR.
+    const other = await chat()
+    k.lead.setMode(other.workspaceId, 'build')
+    k.store.saveWorkspace({ ...k.store.workspace(other.workspaceId)!, prNumber: 57, prState: 'open' })
+    const before = k.store.workspace(other.workspaceId)!.branch
+    expect((await k.lead.linkIssue(other.workspaceId, 'KERNEL-762')).branch).toBe(before)
+    k.lead.setMode(other.workspaceId, 'handoff')
+    await expect(k.lead.linkIssue(other.workspaceId, 'KERNEL-763')).rejects.toThrow('Only a chat in Build here links an issue')
   })
 })

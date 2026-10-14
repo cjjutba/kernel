@@ -437,6 +437,23 @@ describe('archiving a chat with Kernel (KERNEL-405)', () => {
     ])
   })
 
+  it("archives a chat in Build here as a teammate's work: it warns about unpushed work, keeps the branch, and a merge doesn't archive it (KERNEL-778)", async () => {
+    const { k, repo, chat, own } = await chatWithWork({ archiveChatWorkspaces: false })
+    k.lead.setMode(own.id, 'build')
+    await writeFile(join(own.path, 'retry.ts'), 'export {}\n')
+    await git(own.path, 'add', '-A')
+    await git(own.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'retry')
+    await writeFile(join(own.path, 'draft.ts'), 'export {}\n')
+    k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prNumber: 58, prState: 'merged' })
+    await k.autoArchive.archiveMerged(own.id)
+    expect(k.store.workspace(own.id)?.status).toBe('ready')
+    k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prState: 'open' })
+    expect((await k.lead.archivePreview(chat.threadId!)).workspaces).toEqual([{ id: own.id, name: own.name, own: true, running: false, pr: 58, dirty: 1, unpushed: 1 }])
+    await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(own.id)
+    expect((await git(repo, 'branch', '--list', own.branch)).trim()).toBe(own.branch)
+  })
+
   it('restores the chat with its tabs and a new branch when the old one was deleted, and sets it up again', async () => {
     const { k, repo, chat, own } = await chatWithWork()
     await k.lead.archiveLeadChat(chat.threadId!)
