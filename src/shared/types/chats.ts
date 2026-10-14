@@ -258,6 +258,8 @@ export type TeamEventKind =
   | 'shared'
   // A teammate asked the Lead with ask_lead, or proposed handing part of its work to another agent with propose_handoff (KERNEL-747).
   | 'question' | 'handoff.proposed'
+  // A usage limit cut a teammate's turn off, and Kernel carried it on after, on another account or at the reset (KERNEL-777).
+  | 'limit' | 'limit.lifted'
 
 /**
  * One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead.
