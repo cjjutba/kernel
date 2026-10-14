@@ -3,20 +3,20 @@ import { mergeChatList, rowHolder, slotKey, slotsFor, sidebarRows, threadTab } f
 import type { AgentDef, Chat, Room, Thread, Workspace } from '../src/shared/types'
 
 const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'main', paused: false, createdAt: 0 }
-const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
+const rowan: AgentDef = { id: 'rowan', name: 'Kernel', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 const kai: AgentDef = { ...rowan, id: 'kai', name: 'Kai', role: 'Frontend', lead: false }
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
 const chat = (id: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId: 'home', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, ...over })
 const thread = (id: string, over: Partial<Thread> = {}): Thread => ({ id, roomId: 'a', title: id, createdAt: 1, ...over })
 const threadsOf = (...list: Thread[]) => Object.fromEntries(list.map((t) => [t.id, t]))
-/** A chat with Rowan's own workspace for the thread `t`, and its tabs (KERNEL-405). */
+/** A Lead chat's own workspace for the thread `t`, and its tabs (KERNEL-405). */
 const own = (t: string, over: Partial<Workspace> = {}) => ws(`ws-${t}`, { name: t, branch: `rowan/${t}`, agentId: 'rowan', lead: true, threadId: t, ...over })
 const tabsOf = (t: string, ...list: Chat[]) => ({ [`ws-${t}`]: list.length ? list : [chat(`${t}-tab`, { workspaceId: `ws-${t}`, threadId: t })] })
 const agents = { a: [rowan, kai] }
 const keys = (rows: ReturnType<typeof sidebarRows>) => rows.map(slotKey)
 
 describe('sidebar rows (KERNEL-405)', () => {
-  it('lists each open chat with Rowan, newest first, followed by the workspaces it handed off, then the workspaces nobody owns', () => {
+  it('lists each open Lead chat, newest first, followed by the workspaces it handed off, then the workspaces nobody owns', () => {
     const workspaces = [own('t2'), ws('w1', { threadId: 't2' }), ws('loose'), own('t1'), ws('w2', { threadId: 't1' }), ws('w3', { threadId: 't2' }), own('t3')]
     const threads = threadsOf(thread('t1', { createdAt: 1 }), thread('t2', { createdAt: 2 }), thread('t3', { createdAt: 3 }))
     const rows = sidebarRows(room, agents, workspaces, { ...tabsOf('t1'), ...tabsOf('t2'), ...tabsOf('t3') }, threads)
@@ -148,7 +148,7 @@ describe('the room and chat that hold the page in view', () => {
     expect(rowHolder({ name: 'workspace', workspaceId: 'lead-ws' }, [room], agents, [lead, ws('w1')], {}, {}, [])).toEqual({ roomId: 'a' })
   })
 
-  it('holds New chat with Rowan in its room only while the Lead row is listed', () => {
+  it('holds New Lead chat in its room only while the Lead row is listed', () => {
     expect(rowHolder({ name: 'leadNew', roomId: 'a' }, [room], agents, [ws('w1')], {}, {}, [])).toEqual({ roomId: 'a' })
     expect(rowHolder({ name: 'leadNew', roomId: 'a' }, [room], agents, workspaces, lists, threads, [])).toBeUndefined()
   })

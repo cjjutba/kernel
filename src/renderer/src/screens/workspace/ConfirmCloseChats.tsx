@@ -98,7 +98,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
 
   const close = () => run('close', async () => {
     setError(null)
-    // A chat with Rowan's last tabs archive the chat, which asks in its own words when that stops something (KERNEL-405).
+    // A Lead chat's last tabs archive the chat, which asks in its own words when that stops something (KERNEL-405).
     const thread = whole && isLeadChatWorkspace(ws) ? getState().threads[whole.id] : undefined
     if (thread) { actions.ui.closeModal(); return archiveChatFromSidebar(thread) }
     try {

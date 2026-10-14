@@ -29,7 +29,7 @@ export const plain = (text: string) => text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$
 const listItems = (blocks: Block[]) => blocks.flatMap((b) => (b.type === 'ol' || b.type === 'ul' ? b.items : []))
 
 /**
- * The rows of a plan as a task list. Rowan sends `steps`, next to the write-up. A plan-mode plan with sections gives one row per section
+ * The rows of a plan as a task list. The Lead sends `steps`, next to the write-up. A plan-mode plan with sections gives one row per section
  * heading; one without gives its list items, and plain lines as a last resort.
  */
 export function planSteps(a: PlanSource): PlanStep[] {

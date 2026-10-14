@@ -182,8 +182,8 @@ export function LeadCard({ roomId, at, id, hold }: { roomId: string; at: DOMRect
   if (!lead || !room) return null
   const g = leadGlyph(status, waiting)
   return (
-    <HoverCard at={at} id={id} hold={hold} label={lead.name}>
-      <Card eyebrow={`${room.name} · Lead`} state={<State g={g} />} title={lead.name} line={last ? lineOf(last, lead.name) : 'No recent activity'} when={last && agoShort(last.ts)} />
+    <HoverCard at={at} id={id} hold={hold} label="New chat">
+      <Card eyebrow={room.name} state={<State g={g} />} title="New chat" line={last ? lineOf(last, lead.name) : 'No recent activity'} when={last && agoShort(last.ts)} />
     </HoverCard>
   )
 }

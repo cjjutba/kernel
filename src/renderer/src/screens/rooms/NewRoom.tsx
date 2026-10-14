@@ -48,9 +48,9 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
       title="New room" onClose={close} bare width={640} top={92}
       footer={
         <>
-          <Toggle checked={d.autostart} onChange={(v) => patchDraft({ autostart: v })} label="Brief Rowan right away" />
+          <Toggle checked={d.autostart} onChange={(v) => patchDraft({ autostart: v })} label="Brief Kernel right away" />
           <span className="grow" style={{ fontSize: 13, color: 'var(--ink-2)' }}>
-            {error ? <span role="alert" className="del">{error}</span> : 'Brief Rowan right away'}
+            {error ? <span role="alert" className="del">{error}</span> : 'Brief Kernel right away'}
           </span>
           <Button variant="ghost" size="lg" onClick={close}>Cancel</Button>
           <Button variant="primary" size="lg" busy={!!busy} busyLabel="Creating" disabled={!ready} onClick={() => void create()}>Create room</Button>
@@ -116,7 +116,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
               )
             })}
           </div>
-          <p className="nr-hint">Rowan is built into Kernel and always joins. The others are copied into .claude/agents.</p>
+          <p className="nr-hint">Kernel is built in and always joins. The others are copied into .claude/agents.</p>
         </div>
       </div>
     </Modal>

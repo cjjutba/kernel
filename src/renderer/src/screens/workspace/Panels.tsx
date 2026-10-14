@@ -401,7 +401,7 @@ function useSuggestions(roomId: string) {
 /** The Setup tab of a room with no setup script: take Kernel's suggestion, ask the Lead to write one, or type it in Settings (KERNEL-685). */
 function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }) {
   const found = useSuggestions(roomId)
-  const lead = useStore((s) => leadOf(s.agents, roomId)?.name ?? 'Rowan')
+  const lead = useStore((s) => leadOf(s.agents, roomId)?.name ?? 'Kernel')
   const [busy, doing] = useBusy<'use' | 'ask'>()
   // The first suggestion that has a setup script, in the order the engine returns them.
   const pick = found.find((s) => s.patch.scripts?.setup)
@@ -433,7 +433,7 @@ function AddSetup({ roomId, onManual }: { roomId: string; onManual: () => void }
 
 /**
  * The bottom pane: Setup, Run and Terminal under the files, a third of the panel until it is dragged (KERNEL-513). The chevron folds it to its tab bar, and
- * pressing a tab opens it again. Rowan's chats and teammates' workspaces each remember whether it is folded.
+ * pressing a tab opens it again. Lead chats and teammates' workspaces each remember whether it is folded.
  */
 export function BottomPanel({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)

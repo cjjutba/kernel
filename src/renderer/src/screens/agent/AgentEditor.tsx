@@ -67,14 +67,14 @@ function PinHint({ agent, model, onClear, disabled }: { agent: AgentDef; model: 
 
 /**
  * The fields of an agent file, shared by the profile and Settings, Agents: description, model, effort, tools, skills and instructions.
- * `builtIn` is Kernel's own Rowan or Theo, shown as it runs, and `readOnly` is a plugin's agent. Both disable every field.
+ * `builtIn` is Kernel as it ships, or Theo, shown as it runs (a customized Kernel has a file and edits like any agent), and `readOnly` is a plugin's agent. Both disable every field.
  */
 export function AgentFields({ agent, form, set, skillNames, readOnly = false, noSkillsHint = 'No skills found in this room.' }: {
   agent: AgentDef; form: AgentForm; set: (patch: Partial<AgentForm>) => void; skillNames: string[]; readOnly?: boolean; noSkillsHint?: string
 }) {
   const defaultEffort = useStore((s) => s.settings?.models.roles.engineers.effort)
   const models = useStore((s) => s.settings?.models)
-  const builtIn = !!agent.builtIn
+  const builtIn = !!agent.builtIn && !agent.file
   const locked = builtIn || readOnly
   const toolList = withExtras(STANDARD_TOOLS, agent.tools)
   const skillList = withExtras(skillNames, agent.skills?.map(slash))
@@ -90,7 +90,9 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
     <>
       {builtIn && (
         <p className="ap-note" role="note">
-          {agent.name} is built into Kernel and {agent.lead ? 'leads' : 'reviews for'} this room because <span className="mono">.claude/agents</span> has no {agent.lead ? 'Lead' : 'reviewer'}. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/{agent.lead ? 'rowan' : 'theo'}.md</span>, where you can change it like any agent.
+          {agent.lead
+            ? <>Kernel leads every room and plans with you. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/kernel.md</span>, where you can change it like any agent.</>
+            : <>{agent.name} is built into Kernel and reviews for this room because <span className="mono">.claude/agents</span> has no reviewer. It isn{'’'}t a file in this repo, so it can{'’'}t be edited here. Customize copies it to <span className="mono">.claude/agents/theo.md</span>, where you can change it like any agent.</>}
         </p>
       )}
       {!locked && !!agent.warnings?.length && (
@@ -102,7 +104,7 @@ export function AgentFields({ agent, form, set, skillNames, readOnly = false, no
         <div className="ap-field">
           <label className="ap-label" htmlFor="ap-desc">Description</label>
           <textarea id="ap-desc" className="ap-text" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
-          <span className="hint">Rowan reads this to decide what to hand {agent.name}.</span>
+          <span className="hint">Kernel reads this to decide what to hand {agent.name}.</span>
         </div>
         <div className="ap-two">
           <div className="ap-field">

@@ -8,8 +8,8 @@ import { useLeadPrs } from './pr/leadPrList'
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /**
- * Several PRs ready to merge open the PRs tab in the room's newest chat with Rowan, where Merge all is. One opens its own
- * workspace, and so does the first when the room has no chat with Rowan open.
+ * Several PRs ready to merge open the PRs tab in the room's newest Lead chat, where Merge all is. One opens its own
+ * workspace, and so does the first when the room has no Lead chat open.
  */
 async function openReady(roomId: string, ready: Workspace[]): Promise<void> {
   if (ready.length > 1) {
@@ -28,7 +28,7 @@ async function openReady(roomId: string, ready: Workspace[]): Promise<void> {
 }
 
 /**
- * The line under New chat with Rowan's title: what the room is doing, from the same signals the sidebar reads. Agents working are the
+ * The line under New chat's title: what the room is doing, from the same signals the sidebar reads. Agents working are the
  * workspaces with a turn running, the rows that spin. Waiting on you are the room's Inbox rows that need you. PRs ready to merge are
  * the PRs tab's ready rows. Each part shows only when it has something, and the line keeps its height when none does, so the
  * composer under it never moves.

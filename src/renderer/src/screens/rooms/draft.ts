@@ -3,11 +3,9 @@ import type { NewRoomRequest, RoomKind } from '@shared/types'
 import { actions, getState } from '../../store'
 
 /**
- * Everyone a new room starts with. Rowan leads from Kernel itself, so Rowan always sits and no file is written (`builtIn`).
- * The others, Theo included, are starter files copied into .claude/agents (KERNEL-397, KERNEL-553).
+ * The teammates a new room starts with, starter files copied into .claude/agents (KERNEL-397, KERNEL-553). Kernel leads from the app itself, so it is not listed.
  */
 export const STARTER_TEAM = [
-  { id: 'rowan', name: 'Rowan', role: 'Lead', builtIn: true },
   { id: 'kai', name: 'Kai', role: 'Frontend', builtIn: false },
   { id: 'noor', name: 'Noor', role: 'Backend', builtIn: false },
   { id: 'ivy', name: 'Ivy', role: 'QA', builtIn: false },

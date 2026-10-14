@@ -33,7 +33,7 @@
 .na-two .segmented { display: flex; }
 .na-two .segmented button { flex: 1; height: 32px; font-size: 12.5px; }
 .na-by { display: flex; align-items: center; gap: 10px; }
-.na-by .tm-av { width: 26px; height: 26px; font-size: 11px; }
+.na-by .tm-av { width: 26px; height: 26px; font-size: 11px; color: var(--ink); background: none; border: 1px solid var(--line-3); }
 .na-file { border-radius: var(--r-md); border: 1px solid var(--line-2); overflow: hidden; }
 .na-file-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: 12px; }
 .na-tag { height: 18px; padding: 0 7px; border-radius: var(--r-pill); border: 1px solid var(--line-3); font-family: var(--font); font-size: 11px; line-height: 16px; color: var(--muted); }

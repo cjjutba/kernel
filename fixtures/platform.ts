@@ -136,7 +136,7 @@ const footerUsage = (codex5 = 31): RateLimit[] => [
 /** KERNEL-697: Claude Code with six accounts, so two show inline and the rest fold into "more". Fourth reports nothing yet, and Fifth shares limits with Main account and lacks Opus 5.5. */
 const manyClaude = [
   subscription('claude', 'fourth', '4th account', 'fourth@example.com', 'Claude Pro'),
-  subscription('claude', 'fifth', 'Fifth account with a long name', 'fifth@example.com', 'Claude Team', { sameOrg: ['main'], missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Rowan'] }] }),
+  subscription('claude', 'fifth', 'Fifth account with a long name', 'fifth@example.com', 'Claude Team', { sameOrg: ['main'], missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Kernel'] }] }),
   subscription('claude', 'sixth', '6th account', 'sixth@example.com', 'Claude Pro')
 ]
 const manyUsage = (): RateLimit[] => [
@@ -310,10 +310,10 @@ const sharedCodex = (): McpAccount[] => {
 const setUpRun: McpSignInAll = { accountId: 'personal', servers: ['Linear', 'Vercel', 'claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'], current: 'Vercel', done: ['Linear'], failed: [], ignored: ['plugin:vercel:vercel'] }
 const setUpConnect = { provider: 'claude' as const, accountId: 'personal', email: 'cj@jutba.example', url: connectUrl, servers: ['claude.ai Gmail', 'claude.ai Google Drive', 'claude.ai Notion'] }
 const personalMcpSignIns = [{ server: 'Linear', connector: false }, { server: 'claude.ai Gmail', connector: true }, { server: 'claude.ai Google Drive', connector: true }]
-/** As Kernel resolves them (KERNEL-397): Rowan leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
-const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', reviewer: id === 'theo', member: id !== 'rowan' && id !== 'theo', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
+/** As Kernel resolves them (KERNEL-397): Kernel leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
+const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'kernel-lead', reviewer: id === 'theo', member: id !== 'kernel-lead' && id !== 'theo', prompt: '', ...(id === 'kernel-lead' ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` }), model: id === 'kernel-lead' || id === 'theo' ? 'opus' : 'sonnet' })
 const sixAgents: AgentDef[] = [
-  agentFile('rowan', 'Rowan', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
+  agentFile('kernel-lead', 'Kernel', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
   agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
   agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('lumi', 'Lumi', 'Designer', 'Joined today')
 ]
@@ -336,7 +336,7 @@ const whatsNewNotes = [
   { title: 'Checkpoints', body: 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.' },
   { title: 'Pause room', body: 'Freeze every agent in a room with one click. They finish the current step, then wait.' },
   { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T, in the same worktree as your chats.' },
-  { title: 'Overlap warnings', body: 'Rowan flags it when two agents edit the same file in different worktrees.' }
+  { title: 'Overlap warnings', body: 'Kernel flags it when two agents edit the same file in different worktrees.' }
 ]
 const whatsNew: Fixture = {
   ...teamFixtures.UpdateReady,
@@ -353,7 +353,7 @@ const whatsNewCurrent: Fixture = {
     currentNotes: [
       { title: 'New', body: 'Hovering a workspace in the sidebar shows an archive button, so you can archive it without opening it.\nA new chat takes a short title from its first message instead of staying "New chat".' },
       { title: 'Improved', body: 'A file\'s diff opens in its own tab, so the chat stays where you left it.' },
-      { title: 'Fixed', body: 'Fixed Create PR showing in a workspace with no changes.\nFixed Rowan starting a new turn right after you pressed Stop.' }
+      { title: 'Fixed', body: 'Fixed Create PR showing in a workspace with no changes.\nFixed Kernel starting a new turn right after you pressed Stop.' }
     ]
   },
   ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
@@ -367,12 +367,12 @@ const bigTerminal: Partial<Fixture> = {
 }
 
 
-/** Rowan's chat in its own workspace while its setup runs, or once it failed with `code`, the first message in the queue (KERNEL-405). */
+/** Kernel's chat in its own workspace while its setup runs, or once it failed with `code`, the first message in the queue (KERNEL-405). */
 function leadSetup(f: Fixture, lines: Omit<ScriptLine, 'kind'>[], code?: number): Partial<Fixture> {
   const queue = [{ id: 'q-lead', chatId: ids.leadChat, parts: [{ type: 'text' as const, text: 'Add PDF export to invoices. Spec first.' }], ts: at(10, 40) }]
   return {
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
-    workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'rowan/add-pdf-export-to-invoices' }),
+    workspaces: withWorkspace(f, ids.lead, { status: code === undefined ? 'setup' : 'failed', name: 'add-pdf-export-to-invoices', branch: 'kernel/add-pdf-export-to-invoices' }),
     threads: [{ id: 't-lead', roomId: ids.roomA, title: 'Add PDF export to invoices', createdAt: at(10, 40) }],
     chats: f.chats.map((c) => (c.id === ids.leadChat ? { ...c, title: 'New tab' } : c)),
     items: {},
@@ -582,10 +582,13 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsHooksWorkspaceRun: settingsPage('hooks', { hooks: { port: 4669, listening: true, installed: false, build: 'run', problem: { kind: 'workspace-run' }, events: hookEvents.map((e) => ({ ...e, installed: false, lastSeen: undefined })) } }),
   // KERNEL-493: Agents working at once is 4, so the Open workspaces row's first option reads "Same as agents working at once (4)".
   SettingsTeam: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  // KERNEL-696: Kernel row in Roles as it ships (Default, Customize), and with the room's kernel.md (Customized, Open file, Reset to default).
+  SettingsTeamKernelDefault: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  SettingsTeamKernelCustomized: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: sixAgents.map((a) => (a.lead ? { ...a, file: '/Users/you/Projects/client-a/.claude/agents/kernel.md' } : a)) }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // An empty room with another room that has agents: Add the team, Copy from another room and New agent. No PNG, built from the Settings kit.
   SettingsTeamEmpty: scene((f) => ({ ...clientA(), ...empty, rooms: f.rooms, agents: { ...f.agents, [ids.roomA]: [] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // KERNEL-639: the room's agents grouped by where they come from, scrolled to In this repo. Yours has a personal agent, and From plugins two with View, one with a long description cleaned to two lines.
-  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: [...sixAgents.filter((a) => ['rowan', 'kai', 'noor', 'ivy', 'theo'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  SettingsTeamOrigins: scene((f) => ({ ...clientA(), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, agentLimit: 4 } }, agents: { ...f.agents, [ids.roomA]: [...sixAgents.filter((a) => ['kernel-lead', 'kai', 'noor', 'ivy', 'theo'].includes(a.id)), ...extraAgents] }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   // KERNEL-641: Settings, Agents with no room open: Yours has a personal agent and From plugins two. No PNG, built from the Settings kit and AgentProfile.png's fields.
   SettingsAgents: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: [...sixAgents, ...extraAgents] }, ui: { route: { name: 'settings', page: 'agents' } } })),
   // KERNEL-641: a personal agent's editor, opened from Settings, Agents: Back says Agents, and there is no status, workspace or recent work.
@@ -639,9 +642,9 @@ export const platformFixtures: Record<string, Fixture> = {
     }
   }),
   // KERNEL-472: Client B's repo is on GitHub and Linear isn't connected, so detection says GitHub Issues, and the menu marks it.
-  SettingsRoomTracker: trackerRoom(ids.roomB, ['rowan', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
+  SettingsRoomTracker: trackerRoom(ids.roomB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
-  SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['rowan', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),
@@ -776,7 +779,7 @@ export const platformFixtures: Record<string, Fixture> = {
     ],
     ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
   })),
-  // A chat with Rowan sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
+  // A chat with Kernel sets up like a teammate's before its first message goes out (KERNEL-405): the skeleton, and the message in the queue.
   WorkspaceLeadSetup: scene((f) => leadSetup(f, [
     { line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
     { line: 'Progress: resolved 812, reused 806, downloaded 6, added 0', stream: 'stdout' }

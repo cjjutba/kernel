@@ -10,7 +10,7 @@ import { useRemote } from '../../settings/useSettings'
 const FILTER_FROM = 8
 
 /**
- * The branch a new chat with Rowan starts from: the picked one, else the repo's default on the room's remote. A chat with Rowan
+ * The branch a new Lead chat starts from: the picked one, else the repo's default on the room's remote. A Lead chat
  * never takes the workspace base from Settings (KERNEL-405), so the default here is the default branch, as the engine's is.
  */
 export function useBaseBranch(roomId: string, picked: string): { target: string; fallback: string; remote: string } {
@@ -27,7 +27,7 @@ export function branchRows(branches: string[], fallback: string, remote: string)
 }
 
 /**
- * New branch from main, in New chat with Rowan's composer. The button names the branch the chat's worktree branches from, and its
+ * New branch from main, in New chat's composer. The button names the branch the chat's worktree branches from, and its
  * menu lists the remote's branches with the default checked and marked. The list and its filter are the compare menu's
  * (PanelCompare.png): arrow keys, Home and End move between the rows, Enter picks, Escape closes. `picked` is empty for the default.
  */

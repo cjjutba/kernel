@@ -187,7 +187,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       {shown.kind === 'connect' && (
         <div className="is-center is-state">
           <h2>Connect Linear</h2>
-          <p>See the issues assigned to you, plan them with Rowan and start a chat from any of them.</p>
+          <p>See the issues assigned to you, plan them with Kernel and start a chat from any of them.</p>
           <Button variant="primary" size="lg" onClick={() => go({ name: 'settings', page: 'integrations' })}>Open Settings, Integrations</Button>
         </div>
       )}

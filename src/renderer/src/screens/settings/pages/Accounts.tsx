@@ -18,7 +18,7 @@ import './accounts.css'
 
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
 const EXECUTABLES = [{ value: 'bundled', label: 'Bundled with Kernel' }, { value: 'system', label: 'System, from your PATH' }]
-const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your chat with Rowan is never held.'
+const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your Lead chat is never held.'
 
 /** Both providers use account id `cli` for their own login, so every state is keyed by provider and id. */
 const keyOf = (a: Pick<AccountProfile, 'provider' | 'id'>) => `${a.provider}:${a.id}`

@@ -63,7 +63,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   const team = issue?.team.key
   const linkedRoom = team ? choices.find((r) => roomSettings[r.id]?.linear?.team?.toUpperCase() === team.toUpperCase()) : undefined
   const room = choices.find((r) => r.id === (picked?.issue === id ? picked.room : undefined)) ?? linkedRoom ?? choices.find((r) => r.id === lastRoomId) ?? choices[0]
-  const lead = (room && agents[room.id]?.find((a) => a.lead)?.name) || 'Rowan'
+  const lead = (room && agents[room.id]?.find((a) => a.lead)?.name) || 'Kernel'
   const linked = linkedWorkspaces(id, workspaces)
   const unlinked = !!issue && settled && !linkedRoom && !!room
 

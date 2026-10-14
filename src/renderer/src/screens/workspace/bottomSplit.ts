@@ -26,7 +26,7 @@ export function ratioFor(height: number, container: number) {
   return container > 0 ? Math.round((height / container) * 10_000) / 10_000 : BOTTOM_RATIO_DEFAULT
 }
 
-/** Rowan's chats and teammates' workspaces each remember whether the bottom pane is collapsed. */
+/** Lead chats and teammates' workspaces each remember whether the bottom pane is collapsed. */
 export const bottomKindOf = (s: Pick<State, 'agents'>, ws: Workspace): BottomKind => (isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id) ? 'lead' : 'teammate')
 
 /** ⌘J. On a workspace screen it collapses or opens the bottom pane; with the right panel hidden it brings the panel back with the pane open. */

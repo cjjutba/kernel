@@ -18,11 +18,11 @@ const room = (id: string, name: string, path: string, repo?: string): Room => ({
 export const invaderIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAIAAAAn5KxJAAAAYUlEQVR42u3ZsQ3AIAxFQeaKqLI0DSWDsUIKo4ivk15p4atNe/p7RQ0UFBQ0BDrmKgkUFBQ0HVq1uOodUFBQ0BToX/OgoKCgKdDTgYKCgqZDqw6zoKCgoOlQP3egoKCgn9qfdyqiBNJgiwAAAABJRU5ErkJggg=='
 
 export const agent = (id: string, name: string, role: string, model: string, lead = false): AgentDef => ({
-  id, name, role, description: `${role} for this room.`, model, lead, prompt: '', file: `.claude/agents/${id}.md`
+  id, name, role, description: `${role} for this room.`, model, lead, prompt: '', ...(lead ? { builtIn: 'lead' as const, file: '' } : { file: `.claude/agents/${id}.md` })
 })
 
 export const team: AgentDef[] = [
-  agent('rowan', 'Rowan', 'Lead', 'opus', true),
+  agent('kernel-lead', 'Kernel', 'Lead', 'opus', true),
   agent('kai', 'Kai', 'Frontend', 'sonnet'),
   agent('noor', 'Noor', 'Engine', 'opus'),
   agent('theo', 'Theo', 'Reviewer', 'sonnet'),
@@ -92,7 +92,7 @@ const tableSource = [
 /** Pending in other rooms, so the Inbox shows 3 while Client A shows nothing waiting (Inbox.png). */
 const waiting: Approval[] = [
   { id: 'ap-migrate', kind: 'tool', source: 'sdk', roomId: ids.roomB, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm db:migrate' }, title: 'Run pnpm db:migrate', detail: 'Applies 2 pending migrations to the local database.', status: 'pending', createdAt: at(10, 48) },
-  { id: 'ap-plan', kind: 'plan', source: 'sdk', roomId: ids.roomOwn, agentId: 'rowan', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },
+  { id: 'ap-plan', kind: 'plan', source: 'sdk', roomId: ids.roomOwn, agentId: 'kernel-lead', title: 'Plan for the settings page', detail: '1. Kai builds the form\n2. Noor adds the settings table\n3. Ivy covers both with tests', status: 'pending', createdAt: at(10, 44) },
   { id: 'ap-question', kind: 'question', source: 'sdk', roomId: ids.roomPortfolio, agentId: 'kai', title: 'Should the case studies page keep the old URLs?', options: ['Keep them with redirects', 'Use the new URLs only'], status: 'pending', createdAt: at(10, 40) }
 ]
 
@@ -105,11 +105,11 @@ export const base: Fixture = {
   ],
   agents: { [ids.roomA]: team, [ids.roomB]: team, [ids.roomOwn]: team, [ids.roomPortfolio]: team },
   status: {
-    [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
+    [ids.roomA]: { 'kernel-lead': 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
   },
   workspaces: [
-    // Rowan's chat, in a workspace of its own (KERNEL-405).
-    ws(ids.lead, 'lead', 'rowan/lead', 'rowan', 4300, { lead: true, threadId: 't-lead', path: '/Users/you/kernel/worktrees/client-a/rowan-lead', createdAt: at(9, 5) }),
+    // Kernel's chat, in a workspace of its own (KERNEL-405).
+    ws(ids.lead, 'lead', 'kernel/lead', 'kernel-lead', 4300, { lead: true, threadId: 't-lead', path: '/Users/you/kernel/worktrees/client-a/kernel-lead', createdAt: at(9, 5) }),
     ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
     ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
     ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })

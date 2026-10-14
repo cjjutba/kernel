@@ -5,7 +5,7 @@ import './archiveMotion.css'
 
 /**
  * The archive beat (KERNEL-580, DESIGN.md Motion). When the workspace on screen is archived, the main panel swaps to the destination at once
- * (KERNEL-636). The beat is the stage the sidebar rows read (`useStage`): the destination's selected fill fades in, and Rowan's Lead row opens
+ * (KERNEL-636). The beat is the stage the sidebar rows read (`useStage`): the destination's selected fill fades in, and the Lead row opens
  * in the place of the row the archived one stood on. It follows the store, not the call that archives, so a row's Archive, a PR's Archive,
  * closing a chat's last tab, ConfirmArchive, ConfirmArchiveChat and Kernel archiving after a merge all play it, and a failed archive, which
  * never stores the status, plays nothing.

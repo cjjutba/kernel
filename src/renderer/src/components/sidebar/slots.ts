@@ -9,7 +9,7 @@ const MAX_SLOTS = 9
 
 /**
  * One row under a room: the Lead (only while it has no open chat to list), one of the Lead's open chats, or a live workspace.
- * A chat with Rowan is its own workspace (`ws`, KERNEL-405) holding several tabs (`tabs`, the open ones in tab order), so it is
+ * A Lead chat is its own workspace (`ws`, KERNEL-405) holding several tabs (`tabs`, the open ones in tab order), so it is
  * one row, whatever its tab count (KERNEL-338). A workspace is `nested` under the chat that handed it off (`Workspace.threadId`).
  * A chat carries those workspaces (`owned`, shown or not) and whether it is `folded`, which hides them.
  */
@@ -18,14 +18,14 @@ export type Slot =
   | { kind: 'chat'; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean }
   | { kind: 'workspace'; ws: Workspace; nested: boolean }
 
-/** The workspace rows under a room, in store order. A chat with Rowan's own workspace is its chat's row, not one of these. */
+/** The workspace rows under a room, in store order. A Lead chat's own workspace is its chat's row, not one of these. */
 export const liveWorkspaces = (workspaces: Workspace[], roomId: string): Workspace[] =>
   workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && !w.lead)
 
 /** A stable key for a row, so the sidebar can look up its number without holding slot objects. */
 export const slotKey = (slot: Slot): string => (slot.kind === 'lead' ? 'lead' : slot.kind === 'chat' ? `chat:${slot.thread.id}` : `workspace:${slot.ws.id}`)
 
-/** The open chat tabs of a chat with Rowan's workspace, in tab order: chats, not terminals, and not closed. */
+/** The open chat tabs of a Lead chat's workspace, in tab order: chats, not terminals, and not closed. */
 export const openTabs = (chats: Record<string, Chat[]>, workspaceId: string): Chat[] => (chats[workspaceId] ?? []).filter((c) => c.kind === 'chat' && !c.closed)
 
 /** The tab a Lead chat's row opens: the one last shown in it while it is still open, else its first tab. */
@@ -34,7 +34,7 @@ export function threadTab(tabs: Chat[], lastTabs: Record<string, string>, thread
 }
 
 /**
- * The room's open chats with Rowan, each with its workspace and open tabs (D-139, KERNEL-338, KERNEL-405). The chat the user last sent a
+ * The room's open Lead chats, each with its workspace and open tabs (D-139, KERNEL-338, KERNEL-405). The chat the user last sent a
  * message in comes first, and one with no send yet goes by when it started (KERNEL-498). The title is the thread's, or the first tab's
  * while the thread hasn't reached the store.
  */
@@ -47,7 +47,7 @@ export function openThreads(room: Room, workspaces: Workspace[], chats: Record<s
 }
 
 /**
- * Every row under a room, top to bottom (D-139). Each open chat with Rowan, the one last sent in first (KERNEL-498), is followed by the
+ * Every row under a room, top to bottom (D-139). Each open Lead chat, the one last sent in first (KERNEL-498), is followed by the
  * workspaces it handed off, oldest first, then come the workspaces no open chat owns (an archived chat's too). A room whose Lead has no
  * open chat keeps one Lead row; a room with no Lead has only workspaces. A chat in `folded` that handed off workspaces hides them; one
  * with none never counts as folded. The sidebar draws these and the shortcuts count them, so the two can't disagree. Workspaces group
@@ -74,7 +74,7 @@ export function sidebarRows(
 
 /**
  * What holds the row of the page in view: its room, and the chat that folded it away when it is a workspace under a folded chat. Nothing when no
- * row stands for the page (any page but a workspace or New chat with Rowan, an archived workspace, a room that isn't listed). The sidebar opens
+ * row stands for the page (any page but a workspace or New chat, an archived workspace, a room that isn't listed). The sidebar opens
  * these two, and no other room or chat, when you arrive on a page whose row is hidden. Reads the rows the sidebar draws, so the two agree.
  */
 export function rowHolder(
@@ -127,7 +127,7 @@ export function openSlot(n: number): void {
 
 /**
  * Opens a row with the caret in the message box of the chat it shows, whether it was clicked or reached with ⌘1 to ⌘9.
- * The Lead row asks the engine which chat to open, and lands on New chat with Rowan when none is open (KERNEL-405).
+ * The Lead row asks the engine which chat to open, and lands on New chat when none is open (KERNEL-405).
  */
 export function openRow(roomId: string, slot: Slot): void {
   if (slot.kind === 'lead') { void openLead(roomId).then((ws) => focusComposerIn(ws ? ws.id : leadNewKey(roomId))); return }
@@ -145,5 +145,5 @@ export function openRow(roomId: string, slot: Slot): void {
   go({ name: 'workspace', workspaceId: slot.ws.id })
 }
 
-/** The key New chat with Rowan's composer takes focus requests under, since no workspace exists before its first message. */
+/** The key New chat's composer takes focus requests under, since no workspace exists before its first message. */
 export const leadNewKey = (roomId: string) => `leadNew:${roomId}`

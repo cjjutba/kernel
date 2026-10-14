@@ -88,13 +88,13 @@ export interface PaletteInput {
     newChat: (workspaceId: string, kind?: 'terminal') => void
     /** A chat of the room, on the tab last shown in it, in its own workspace (KERNEL-405). */
     openChat: (roomId: string, thread: Thread, tabs: Chat[], ws?: Workspace) => void
-    /** The room's newest chat with Rowan, or New chat with Rowan when none is open (`lead.open`, KERNEL-405). */
+    /** The room's newest Lead chat, or New chat when none is open (`lead.open`, KERNEL-405). */
     openLead: (roomId: string) => void
     /** Where a room opens: its Lead chat, or Team when it has no Lead (D-104). */
     openRoom: (roomId: string) => void
     /** Opens a shared file's tab in a workspace and shows that workspace. */
     openShared: (workspaceId: string, sharedId: string) => void
-    /** Opens the room's newest chat with Rowan, then the file's tab in it. */
+    /** Opens the room's newest Lead chat, then the file's tab in it. */
     openSharedInLead: (roomId: string, sharedId: string) => void
     /** A toast with only a title. */
     toast: (title: string) => void
@@ -112,7 +112,7 @@ export function roomInView(route: Route, rooms: Room[], workspaces: Workspace[])
 /** How many shared files the palette lists before you type. */
 const SHARED_DEFAULT = 5
 
-/** A workspace row of the sidebar. A chat with Rowan's own workspace is its chat, listed under Chats (KERNEL-405). */
+/** A workspace row of the sidebar. A Lead chat's own workspace is its chat, listed under Chats (KERNEL-405). */
 const live = (w: Workspace) => w.status !== 'archived' && !w.lead
 
 /** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Noor: pnpm drizzle-kit push". */
@@ -212,7 +212,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
       const roomLead = i.agents[r.id]?.find((a) => a.lead)
       return [
         goto(`go-agents-${r.id}`, `${r.name} agents`, roomAgents(r.id), { also: 'team subagents' }),
-        // The room in view has "Open Rowan's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
+        // The room in view has "Open the Lead's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
         // so a shorter room name can't outrank it.
         ...(roomLead && r.id !== room?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${roomLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
       ]

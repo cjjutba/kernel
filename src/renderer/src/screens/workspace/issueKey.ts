@@ -12,7 +12,7 @@ export const isGithubKey = (id: string) => id.startsWith('#')
 export const issueTracker = (source: IssueSource): TrackerKind => source.tracker ?? (isGithubKey(source.id) ? 'github' : 'linear')
 
 /**
- * The page a GitHub issue key opens. Rowan saves the source without a url, so it falls back to the room's repo when that is a GitHub
+ * The page a GitHub issue key opens. The Lead saves the source without a url, so it falls back to the room's repo when that is a GitHub
  * owner/repo (a scratch room's repo is its template, not where the issues live). Undefined when there is nothing to open.
  */
 export function githubIssueUrl(source: IssueSource, room?: Pick<Room, 'kind' | 'repo'>): string | undefined {

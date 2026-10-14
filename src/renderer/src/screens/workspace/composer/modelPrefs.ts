@@ -35,7 +35,7 @@ const CLAUDE_DEFAULT: RoleModel = { provider: 'claude', model: 'claude-opus-5-5'
 export interface LeadStart extends RoleModel { plan: boolean }
 
 /**
- * What a box that starts a Lead chat opens on while nothing is picked in it (KERNEL-544): Rowan's agent file pin if it has one, else
+ * What a box that starts a Lead chat opens on while nothing is picked in it (KERNEL-544): the Lead's agent file pin if it has one, else
  * the Lead row of Settings, Models and effort, with the Lead's plan mode. A Lead on Codex while Codex can't run starts on Claude
  * Code's default model, at the Lead's effort or the nearest one that model takes.
  */

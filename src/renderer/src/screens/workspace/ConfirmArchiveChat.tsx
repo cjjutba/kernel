@@ -27,7 +27,7 @@ function stops(w: ChatArchivePreview['workspaces'][number]): string {
 }
 
 /**
- * Archive a chat with Rowan that would stop something (KERNEL-405), laid out like ConfirmArchive.png: a line per workspace that goes
+ * Archive a Lead chat that would stop something (KERNEL-405), laid out like ConfirmArchive.png: a line per workspace that goes
  * with it, its own last, saying what each stops. The worktrees go. Branches with commits stay, and the chat and its workspaces wait in
  * History.
  */

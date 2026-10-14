@@ -193,6 +193,11 @@ export function LargeMark({ size, stroke }: { size: number; stroke: number }) {
   return <HugeiconsIcon icon={H.layers} size={size} strokeWidth={stroke * (24 / 16)} aria-hidden="true" />
 }
 
+/** Kernel's own mark at avatar size: the Lead's avatar, in place of a letter. */
+export function KernelMark({ size = 16 }: { size?: IconSize }) {
+  return <HugeiconsIcon icon={H.layers} size={size} strokeWidth={STROKE} aria-hidden="true" />
+}
+
 export type IconName = keyof typeof H
 export const iconNames = (): IconName[] => Object.keys(H) as IconName[]
 

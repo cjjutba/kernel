@@ -12,7 +12,7 @@ const archiving = new Set<string>()
 export const archivingChat = (threadId: string) => archiving.has(threadId)
 
 /**
- * Archives the chat with Rowan and its workspaces (KERNEL-405). The row leaving the sidebar says so, so there is no toast (KERNEL-495).
+ * Archives the Lead chat and its workspaces (KERNEL-405). The row leaving the sidebar says so, so there is no toast (KERNEL-495).
  * Where you go is not decided here: the chat or workspace on screen going archived takes you to the room's front door, the same for every
  * way to archive (archiveLanding.ts, KERNEL-596). That happens in the step that stores the archived status, before main answers, and a failed
  * archive never reaches it, so you stay on the chat and the error is thrown for the caller to show.
