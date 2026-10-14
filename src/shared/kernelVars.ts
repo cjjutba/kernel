@@ -23,7 +23,7 @@ export const SCRIPT_VARS = {
 
 /**
  * `KERNEL_WORKSPACE_SLUG` (KERNEL-449): `kernel_` and the first 12 letters and digits of the workspace's id, in lowercase.
- * The id is fixed when the workspace is made, so the name holds through a rename and a folder move, which a chat with Rowan
+ * The id is fixed when the workspace is made, so the name holds through a rename and a folder move, which a Lead chat
  * makes after setup ran (KERNEL-424). It is a valid Postgres or MySQL database name and Docker Compose project name.
  */
 export const workspaceSlug = (ws: { id: string }): string => `kernel_${ws.id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 12) || 'workspace'}`

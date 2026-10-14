@@ -118,7 +118,7 @@ export class AgentChanges extends Feature {
       const file = (await loadAgents(room.path)).find((a) => a.id === agent.id)
       if (!file) throw new Error(`${agent.id} is not in .claude/agents.`)
       if (isUnreadable(file)) throw new Error(`Kernel can't read ${basename(file.file)}: ${file.warnings![0].detail}. Fix the file, then save again.`)
-      if (!(patch.description ?? agent.description).trim()) throw new Error('Add a description so Rowan knows what to hand this agent.')
+      if (!(patch.description ?? agent.description).trim()) throw new Error('Add a description so Kernel knows what to hand this agent.')
       const own = (await this.own.of(roomId))[agent.id]
       await this.own.set(roomId, agent.id, { ...own, edit: ownEditOf(file, agent, patch) })
       return undefined
@@ -126,7 +126,7 @@ export class AgentChanges extends Feature {
     const rel = await this.teamFile(room.path, agent, 'edit')
     const changed = editedFields(agent, patch)
     if (!Object.keys(changed).length) throw new Error(`Nothing to change: ${agent.name}'s file already says that.`)
-    if (changed.description !== undefined && !changed.description.trim()) throw new Error('Add a description so Rowan knows what to hand this agent.')
+    if (changed.description !== undefined && !changed.description.trim()) throw new Error('Add a description so Kernel knows what to hand this agent.')
     return this.openPr(roomId, {
       title: `Change ${agent.name}'s agent file`,
       body: `Changes ${fieldsOf(changed)} in \`${rel}\`. Everyone gets it once this merges.`,

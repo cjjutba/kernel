@@ -94,26 +94,26 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     const { k, repo, room: r, root } = await room()
     const chat = await k.lead.startLeadChat(r.id, { prompt: 'in a setup script tab in the workspace the Run button does the same as Play' })
     const ws = await setUp(k, chat.id)
-    expect(ws).toMatchObject({ branch: 'rowan/in-setup-script-tab-in', naming: 'branch' })
-    expect(ws.path).toBe(join(root, 'rowan-in-setup-script-tab-in'))
+    expect(ws).toMatchObject({ branch: 'kernel/in-setup-script-tab-in', naming: 'branch' })
+    expect(ws.path).toBe(join(root, 'kernel-in-setup-script-tab-in'))
     const first = await vi.waitFor(() => { const c = callIn(ws.path)[0]; expect(c).toBeDefined(); return c })
     first.feed(init('S1'))
     await vi.waitFor(() => expect(k.store.chat(chat.id)?.sessionId).toBe('S1'))
 
     // Claude Code titles the chat mid-turn. The branch takes the whole title at once, and the folder waits for the turn.
     titled(k, chat, 'Setup script tab Run button redundancy')
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ branch: 'rowan/setup-script-tab-run-button-redundancy', name: 'setup-script-tab-run-button-redundancy', naming: 'folder' }))
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ branch: 'kernel/setup-script-tab-run-button-redundancy', name: 'setup-script-tab-run-button-redundancy', naming: 'folder' }))
     expect(k.store.workspace(ws.id)).toMatchObject({ path: ws.path, title: 'Setup script tab Run button redundancy' })
     expect(k.store.thread(chat.threadId!)!.title).toBe('Setup script tab Run button redundancy')
-    expect(await branchOf(ws.path)).toBe('rowan/setup-script-tab-run-button-redundancy')
-    expect(await git(repo, 'branch', '--list', 'rowan/in-setup-script-tab-in')).toBe('')
+    expect(await branchOf(ws.path)).toBe('kernel/setup-script-tab-run-button-redundancy')
+    expect(await git(repo, 'branch', '--list', 'kernel/in-setup-script-tab-in')).toBe('')
 
     first.feed(result('r1'))
-    const moved = join(root, 'rowan-setup-script-tab-run-button-redundancy')
+    const moved = join(root, 'kernel-setup-script-tab-run-button-redundancy')
     await vi.waitFor(() => expect(k.store.workspace(ws.id)!.path).toBe(moved), { timeout: 10_000 })
     expect(k.store.workspace(ws.id)!.naming).toBeUndefined()
     expect(existsSync(ws.path)).toBe(false)
-    expect(await branchOf(moved)).toBe('rowan/setup-script-tab-run-button-redundancy')
+    expect(await branchOf(moved)).toBe('kernel/setup-script-tab-run-button-redundancy')
     expect((await git(repo, 'worktree', 'list', '--porcelain'))).toContain(`${await realpath(moved)}\n`)
     // The turn's checkpoint was saved before the folder moved.
     const saved = await k.handlers()['checkpoints.list']({ workspaceId: ws.id })
@@ -132,27 +132,27 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     // A later title, and a name the user types, name the chat and the breadcrumb only.
     titled(k, chat, 'Snippets overflow fix approved')
     expect(k.store.thread(chat.threadId!)!.title).toBe('Snippets overflow fix approved')
-    expect(k.store.workspace(ws.id)).toMatchObject({ title: 'Snippets overflow fix approved', branch: 'rowan/setup-script-tab-run-button-redundancy', path: moved })
+    expect(k.store.workspace(ws.id)).toMatchObject({ title: 'Snippets overflow fix approved', branch: 'kernel/setup-script-tab-run-button-redundancy', path: moved })
     await k.handlers()['threads.rename']({ threadId: chat.threadId!, title: 'Run button' })
-    expect(k.store.workspace(ws.id)).toMatchObject({ title: 'Run button', branch: 'rowan/setup-script-tab-run-button-redundancy', path: moved })
+    expect(k.store.workspace(ws.id)).toMatchObject({ title: 'Run button', branch: 'kernel/setup-script-tab-run-button-redundancy', path: moved })
     await k.lead.nameChatBranch(ws.id, 'Something else')
-    expect(k.store.workspace(ws.id)).toMatchObject({ branch: 'rowan/setup-script-tab-run-button-redundancy', path: moved })
-    expect(await branchOf(moved)).toBe('rowan/setup-script-tab-run-button-redundancy')
+    expect(k.store.workspace(ws.id)).toMatchObject({ branch: 'kernel/setup-script-tab-run-button-redundancy', path: moved })
+    expect(await branchOf(moved)).toBe('kernel/setup-script-tab-run-button-redundancy')
   })
 
   it('takes the free-name suffix when the branch or the folder is taken', async () => {
     const { k, repo, room: r, root } = await room()
-    await run('git', ['-C', repo, 'branch', 'rowan/plan-the-release'])
+    await run('git', ['-C', repo, 'branch', 'kernel/plan-the-release'])
     const a = await idleChat(k, r.id)
     titled(k, a.chat, 'Plan the release')
-    await vi.waitFor(() => expect(k.store.workspace(a.ws.id)).toMatchObject({ branch: 'rowan/plan-the-release-2', path: join(root, 'rowan-plan-the-release-2') }))
+    await vi.waitFor(() => expect(k.store.workspace(a.ws.id)).toMatchObject({ branch: 'kernel/plan-the-release-2', path: join(root, 'kernel-plan-the-release-2') }))
     // A folder left in the worktree root, that git doesn't know.
-    await mkdir(join(root, 'rowan-check-the-docs'))
+    await mkdir(join(root, 'kernel-check-the-docs'))
     const b = await idleChat(k, r.id)
     titled(k, b.chat, 'Check the docs')
-    await vi.waitFor(() => expect(k.store.workspace(b.ws.id)).toMatchObject({ branch: 'rowan/check-the-docs', path: join(root, 'rowan-check-the-docs-2') }))
+    await vi.waitFor(() => expect(k.store.workspace(b.ws.id)).toMatchObject({ branch: 'kernel/check-the-docs', path: join(root, 'kernel-check-the-docs-2') }))
     expect(k.store.workspace(b.ws.id)!.naming).toBeUndefined()
-    expect(await branchOf(join(root, 'rowan-check-the-docs-2'))).toBe('rowan/check-the-docs')
+    expect(await branchOf(join(root, 'kernel-check-the-docs-2'))).toBe('kernel/check-the-docs')
   })
 
   it('leaves a pushed branch, one with a PR, and a chat from before alone', async () => {
@@ -213,7 +213,7 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     await vi.waitFor(() => expect(k.ptys.busy(shell)).toBe(false), { timeout: 10_000 })
 
     await k.lead.syncLead(r.id, { workspaceId: ws.id })
-    const moved = join(root, 'rowan-watch-the-build')
+    const moved = join(root, 'kernel-watch-the-build')
     expect(k.store.workspace(ws.id)!.path).toBe(moved)
     expect(k.store.workspace(ws.id)!.naming).toBeUndefined()
     const real = await realpath(moved)
@@ -227,7 +227,7 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     const { chat, ws } = await idleChat(k, r.id)
     k.store.saveChat({ ...k.store.chat(chat.id)!, sessionId: 'S3' })
     titled(k, chat, 'Plan the fork')
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)!.path).toBe(join(root, 'rowan-plan-the-fork')))
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)!.path).toBe(join(root, 'kernel-plan-the-fork')))
     // The SDK looks for the transcript in the new folder's project, which has none, then in every project.
     const asked: (string | undefined)[] = []
     k.forkSession = async (id, o) => {
@@ -237,7 +237,7 @@ describe("naming a chat with Rowan's branch and folder once (KERNEL-424)", () =>
     }
     const fork = await k.handlers()['chats.fork']({ chatId: chat.id })
     expect(fork.sessionId).toBe('F3')
-    expect(asked).toEqual([join(root, 'rowan-plan-the-fork'), undefined])
+    expect(asked).toEqual([join(root, 'kernel-plan-the-fork'), undefined])
   })
 })
 

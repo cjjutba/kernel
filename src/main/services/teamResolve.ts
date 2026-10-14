@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import type { AgentDef, AgentWarning, RosterAdvice, TeamConfig } from '@shared/types'
-import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER, RESERVED_AGENT_IDS } from '@shared/team'
+import { KERNEL_FILE, KERNEL_LEAD, KERNEL_NAME, KERNEL_REVIEWER, NO_REVIEWER, RESERVED_AGENT_IDS } from '@shared/team'
 import type { Builtins } from './builtins'
 import { canOpenPr, toolName } from './agentTools'
 import { isUnreadable } from './agents'
@@ -35,8 +35,9 @@ export function adviseRoster(agents: AgentDef[], config?: TeamConfig): RosterAdv
 }
 
 /**
- * Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). A reviewer from `builtin` is no agent:
- * the room has no reviewer of its own, and Kernel's code review runs (KERNEL-553).
+ * Where a room's Lead and reviewer came from, for `team.resolved` (KERNEL-397). The Lead is always Kernel: `file` when a
+ * file customizes it, else `builtin` (KERNEL-692). A reviewer from `builtin` is no agent: the room has no reviewer of its
+ * own, and Kernel's code review runs (KERNEL-553).
  */
 export interface Resolved {
   agents: AgentDef[]
@@ -45,9 +46,12 @@ export interface Resolved {
 }
 
 /**
- * A room's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel's own Rowan when the files have no Lead.
+ * A room's team (KERNEL-397): its agent files, what `[team]` overrides, and Kernel, the Lead (KERNEL-692).
  * Exactly one agent leads, at most one reviews, and every file agent either takes tasks or doesn't.
- * - Lead: `[team] lead`, else a file marked Lead (the first by name when several are), else Kernel's Rowan.
+ * - Lead: always Kernel, under `kernel-lead`. One file customizes it: .claude/agents/kernel.md, else the file `[team] lead`
+ *   names, else the first file marked Lead by name. Its prompt, tools, model and effort replace the built-in's, and the file
+ *   leaves the team list. The other files marked Lead get `second-lead`, and another agent named Kernel shows as
+ *   "Kernel (agent)".
  * - Reviewer: `[team] reviewer`, else the first other file whose role says review, else none. With no reviewer, Kernel's
  *   code review runs, unless `[team] reviewer` is `none`. `kernel-reviewer` names that code review (KERNEL-553).
  * - Takes tasks: `[team] members` and `helpers` decide, else whether its tools can open a pull request and it isn't
@@ -55,8 +59,9 @@ export interface Resolved {
  * - On the team: every file, or only those `[team] roster` lists, plus the Lead and the reviewer. They are picked from every
  *   file first, so a roster never changes who leads or reviews (KERNEL-465).
  * A file with a reserved id, or the same id as an earlier file, is left out with a warning. A file Kernel can't read stays
- * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent leads or reviews only
- * when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first, then by name.
+ * on the team with its error, but never leads, reviews or takes a task (KERNEL-451). A plugin agent customizes Kernel or
+ * reviews only when `[team]` names it, since a plugin brings its agents to every room (KERNEL-463). The Lead comes first,
+ * then by name.
  */
 export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtins: Builtins }): Resolved {
   const cfg = o.config ?? {}
@@ -76,47 +81,53 @@ export function resolveTeam(o: { files: AgentDef[]; config?: TeamConfig; builtin
   const byName = (a: AgentDef, b: AgentDef) => a.name.localeCompare(b.name)
   const named = (id: string | undefined) => (id ? files.find((a) => a.id === id && !isUnreadable(a)) : undefined)
 
-  // The Lead.
-  let lead: AgentDef | undefined
-  let leadFrom: Resolved['leadFrom'] = 'none'
-  if (cfg.lead === KERNEL_LEAD && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'setting' }
-  else if (named(cfg.lead)) { lead = named(cfg.lead); leadFrom = 'setting' }
-  else if (cfg.lead) warn('$lead', { kind: 'setting-missing', detail: `lead = "${cfg.lead}"` })
+  // The file that customizes Kernel, if any.
+  const project = (a: AgentDef) => (a.origin ?? 'project') === 'project'
   const marked = files.filter((a) => a.lead && a.origin !== 'plugin').sort(byName)
-  if (!lead && marked.length) { lead = marked[0]; leadFrom = 'file' }
-  if (!lead && o.builtins.lead) { lead = o.builtins.lead; leadFrom = 'builtin' }
-  for (const a of marked) if (a !== lead) warn(a.id, { kind: 'second-lead', detail: lead?.name })
+  const kernelFile = files.find((a) => project(a) && basename(a.file) === KERNEL_FILE && !isUnreadable(a))
+  if (cfg.lead && cfg.lead !== KERNEL_LEAD && !named(cfg.lead)) warn('$lead', { kind: 'setting-missing', detail: `lead = "${cfg.lead}"` })
+  const custom = kernelFile ?? (cfg.lead !== KERNEL_LEAD ? named(cfg.lead) : undefined) ?? marked.find((a) => !isUnreadable(a))
 
-  // The reviewer, never the Lead. `none` and Kernel's code review are no agent.
+  // The Lead: Kernel, as it ships or as the file customizes it.
+  const base = o.builtins.lead ?? (custom && { ...custom, id: KERNEL_LEAD, name: KERNEL_NAME, role: 'Lead', builtIn: 'lead' as const })
+  const lead: AgentDef | undefined = base && (custom
+    ? { ...base, prompt: custom.prompt, tools: custom.tools, disallowedTools: custom.disallowedTools, model: custom.model, provider: custom.provider, effort: custom.effort, file: custom.file, lead: true, ...(custom.warnings?.length ? { warnings: custom.warnings } : {}) }
+    : { ...base, lead: true })
+  const leadFrom: Resolved['leadFrom'] = !lead ? 'none' : custom ? 'file' : 'builtin'
+  for (const a of marked) if (a !== custom) warn(a.id, { kind: 'second-lead', detail: lead?.name })
+  const rest = files.filter((a) => a !== custom)
+
+  // The reviewer, never the Lead's file. `none` and Kernel's code review are no agent.
   let reviewer: AgentDef | undefined
   let reviewerFrom: Resolved['reviewerFrom'] = 'builtin'
   const noAgent = cfg.reviewer === NO_REVIEWER || cfg.reviewer === KERNEL_REVIEWER
   if (noAgent) reviewerFrom = 'setting'
-  else if (named(cfg.reviewer) && named(cfg.reviewer) !== lead) { reviewer = named(cfg.reviewer); reviewerFrom = 'setting' }
+  else if (named(cfg.reviewer) && named(cfg.reviewer) !== custom) { reviewer = named(cfg.reviewer); reviewerFrom = 'setting' }
   else if (cfg.reviewer) warn('$reviewer', { kind: 'setting-missing', detail: `reviewer = "${cfg.reviewer}"` })
   if (!reviewer && !noAgent) {
-    reviewer = files.filter((a) => a !== lead && a.origin !== 'plugin' && /\breview/i.test(a.role)).sort(byName)[0]
+    reviewer = rest.filter((a) => a.origin !== 'plugin' && /\breview/i.test(a.role)).sort(byName)[0]
     if (reviewer) reviewerFrom = 'file'
   }
 
-  const onRoster = (a: AgentDef) => !cfg.roster?.length || cfg.roster.includes(a.id) || a === lead || a === reviewer
-  const team: AgentDef[] = files.filter(onRoster).map((a) => {
+  const onRoster = (a: AgentDef) => !cfg.roster?.length || cfg.roster.includes(a.id) || a === reviewer
+  const team: AgentDef[] = rest.filter(onRoster).map((a) => {
+    // Kernel leads, so another agent named Kernel is told apart.
+    if (a.name.toLowerCase() === KERNEL_NAME.toLowerCase()) { warn(a.id, { kind: 'kernel-name' }); a = { ...a, name: `${KERNEL_NAME} (agent)` } }
     // Its error is the one thing to say about it.
     if (isUnreadable(a)) return { ...a, lead: false, reviewer: false, member: false }
-    const isLead = a === lead
-    const isReviewer = a === reviewer
+    const isReviewer = a.id === reviewer?.id
     const opens = canOpenPr(a.tools, a.disallowedTools)
     const byDefault = takesTasksByDefault(a)
-    const member = isLead ? false : cfg.helpers?.includes(a.id) ? false : cfg.members?.includes(a.id) ? true : byDefault
-    if (!isLead && !isReviewer && !cfg.members?.includes(a.id) && !cfg.helpers?.includes(a.id)) {
+    const member = cfg.helpers?.includes(a.id) ? false : cfg.members?.includes(a.id) ? true : byDefault
+    if (!isReviewer && !cfg.members?.includes(a.id) && !cfg.helpers?.includes(a.id)) {
       if (!opens) warn(a.id, { kind: 'cant-open-pr' })
       else if (!byDefault) warn(a.id, { kind: 'looks-like-subagent' })
     }
     if (!a.description.trim()) warn(a.id, { kind: 'no-description' })
-    if (!isLead && !a.lead && /\blead\b/i.test(a.role)) warn(a.id, { kind: 'looks-like-lead' })
-    return { ...a, lead: isLead, reviewer: isReviewer, member }
+    if (!a.lead && /\blead\b/i.test(a.role)) warn(a.id, { kind: 'looks-like-lead' })
+    return { ...a, lead: false, reviewer: isReviewer, member }
   })
-  if (lead?.builtIn) team.push({ ...lead, lead: true, reviewer: false, member: false })
+  if (lead) team.push({ ...lead, lead: true, reviewer: false, member: false })
 
   // A setting that names nobody, and a file Kernel skipped, are flagged on whoever holds the role, or the Lead.
   const holder = (role: '$lead' | '$reviewer') => (role === '$lead' ? lead : reviewer ?? lead)?.id

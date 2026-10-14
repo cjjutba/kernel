@@ -51,7 +51,7 @@ export interface KernelApi {
   'rooms.overlaps': { req: { roomId: string }; res: Overlap[] }
   /** By agent id, the time of each agent's newest event in the room, read from the whole log. */
   'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
-  /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
+  /** "Let Kernel sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
   /** What the room's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
   'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
@@ -100,6 +100,8 @@ export interface KernelApi {
   'agents.setTeam': { req: { roomId: string; team: TeamPatch; from?: 'setup' | 'settings' }; res: AgentDef[] }
   /** Copies Kernel's own Lead or reviewer into .claude/agents so the user can edit it, and returns the new file's agent. */
   'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
+  /** Deletes .claude/agents/kernel.md, so the room's Lead is Kernel as it ships again, and returns the team (KERNEL-692). */
+  'agents.resetLead': { req: { roomId: string }; res: AgentDef[] }
   /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
   'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
   /**
@@ -153,7 +155,7 @@ export interface KernelApi {
   'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   /**
-   * Up next in New chat with Rowan: the room tracker's issues nobody has started, the most pressing first. Linear lists its Todo
+   * Up next in New chat: the room tracker's issues nobody has started, the most pressing first. Linear lists its Todo
    * issues by priority; a tracker with no such order lists its open issues as `issues.list` does.
    */
   'issues.next': { req: { roomId: string }; res: IssueSummary[] }
@@ -175,7 +177,7 @@ export interface KernelApi {
   /** One issue by identifier, with its description and comments. */
   'linear.issue': { req: { id: string }; res: LinearIssueDetail }
   'linear.scope': { req: void; res: LinearScope }
-  /** Plan with Rowan: a fresh Lead chat in plan mode, briefed with the issue. */
+  /** Plan with Kernel: a fresh Lead chat in plan mode, briefed with the issue. */
   'linear.plan': { req: { id: string; roomId: string }; res: { chatId: string; workspaceId: string } }
 
   // Jira issues (KERNEL-474)
@@ -263,7 +265,7 @@ export interface KernelApi {
   /** Settings, Notifications, Play: shows one macOS banner with the sound, so the user hears it (KERNEL-680). */
   'notifications.playSound': { req: { sound: AppSettings['notifications']['sound'] }; res: Ok }
   /**
-   * The workspace of the room's newest open chat with Rowan, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
+   * The workspace of the room's newest open Lead chat, for the sidebar row, Cmd+K and Cmd+Shift+L. Null when no chat
    * is open: it never starts one (KERNEL-405).
    */
   'lead.open': { req: { roomId: string }; res: Workspace | null }
@@ -283,16 +285,16 @@ export interface KernelApi {
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
   'threads.rename': { req: { threadId: string; title: string }; res: Thread }
-  /** What archiving a chat with Rowan would stop, per workspace, its own last (KERNEL-405). */
+  /** What archiving a Lead chat would stop, per workspace, its own last (KERNEL-405). */
   'threads.archivePreview': { req: { threadId: string }; res: ChatArchivePreview }
-  /** Archives a chat with Rowan: the workspaces it handed off, unless Settings says otherwise, then its own (KERNEL-405). */
+  /** Archives a Lead chat: the workspaces it handed off, unless Settings says otherwise, then its own (KERNEL-405). */
   'threads.archive': { req: { threadId: string }; res: Ok }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
   'pr.create': { req: { workspaceId: string; draft?: boolean }; res: Workspace }
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
-  /** `override` is a person's Merge anyway past a reviewer's blockers. Rowan and Merge all never send it (KERNEL-497). */
+  /** `override` is a person's Merge anyway past a reviewer's blockers. The Lead and Merge all never send it (KERNEL-497). */
   'pr.merge': { req: { workspaceId: string; override?: boolean }; res: Workspace }
   /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
@@ -321,7 +323,7 @@ export interface KernelApi {
 
   /** The scripts the room could take from Conductor, Superset or its lockfiles, without the ones it already runs. Reads only, and `settings.setRoom` saves one (KERNEL-682). */
   'scripts.suggest': { req: { roomId: string }; res: ScriptSuggestion[] }
-  /** Ask Rowan: a new Lead chat in the room that reads the repo and proposes its scripts with set_room_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
+  /** Ask Kernel: a new Lead chat in the room that reads the repo and proposes its scripts with set_room_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
   'scripts.askLead': { req: { roomId: string }; res: Chat }
 
   // activity, usage and account (KERNEL-21, 25, 28)

@@ -132,8 +132,8 @@ export async function initGit(path: string, home = homedir()) {
 }
 
 /**
- * The starter agents New room and Team can seat. Kernel's own Rowan leads without a file, so Rowan isn't seated (KERNEL-397),
- * and Customize on Rowan's profile copies the file in. Theo reviews as a starter like the others (KERNEL-553).
+ * The starter agents New room and Team can seat. Kernel leads without a file, so no Lead is seated (KERNEL-397),
+ * and Customize on Kernel's profile writes kernel.md (KERNEL-692). Theo reviews as a starter like the others (KERNEL-553).
  */
 export const STARTER_IDS = ['kai', 'noor', 'ivy', 'theo'] as const
 

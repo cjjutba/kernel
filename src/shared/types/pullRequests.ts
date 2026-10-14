@@ -110,6 +110,6 @@ export interface IssueSummary {
   title: string
   url?: string
   source?: TrackerKind
-  /** Linear's priority, 0 none, 1 urgent to 4 low, where the tracker has one. Up next in New chat with Rowan shows it. */
+  /** Linear's priority, 0 none, 1 urgent to 4 low, where the tracker has one. Up next in New chat shows it. */
   priority?: number
 }

@@ -1,6 +1,6 @@
 import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType, Tracker } from '@shared/types'
 
-// Linear issues: the new workspace modal's search, the Issues screen, Plan with Rowan and the move to In Progress (D-140).
+// Linear issues: the new workspace modal's search, the Issues screen, Plan with Kernel and the move to In Progress (D-140).
 // The token comes from Settings > Integrations (KERNEL-26), else LINEAR_API_KEY in the environment.
 // Field names follow Linear's GraphQL schema (github.com/linear/linear, packages/sdk/src/schema.graphql).
 
@@ -55,7 +55,7 @@ const NEXT = `query NextIssues($filter: IssueFilter) {
 const urgency = (p: number) => (p > 0 ? p : 5)
 
 /**
- * Up next in New chat with Rowan: Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so the
+ * Up next in New chat: Todo issues, the ones in an unstarted state, urgent first. Linear only orders by date, so the
  * 50 last updated are sorted here, and issues of one priority keep that order.
  */
 export async function nextIssues(token: string | undefined, fetchImpl: typeof fetch = fetch): Promise<IssueSummary[]> {
@@ -195,7 +195,7 @@ export async function moveToStarted(token: string | undefined, id: string, fetch
   return target.name
 }
 
-/** Plan with Rowan's first message: the issue chip, its description, and how to hand it off. */
+/** Plan with Kernel's first message: the issue chip, its description, and how to hand it off. */
 export function planParts(issue: LinearIssueDetail): ChatPart[] {
   const description = issue.description.trim() || 'The issue has no description.'
   return [

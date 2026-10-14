@@ -29,7 +29,7 @@ import { Feature } from './feature'
 /** The room's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 export class Lead extends Feature {
   /**
-   * "Let Rowan sort it": the Lead gets both workspaces and the file, and the overlap card is dismissed.
+   * "Let Kernel sort it": the Lead gets both workspaces and the file, and the overlap card is dismissed.
    * The overlap itself clears on its own once the agents stop touching the same file.
    */
   async sortOverlap(overlapId: string): Promise<void> {
@@ -53,8 +53,9 @@ export class Lead extends Feature {
   }
 
   /**
-   * The room's Lead is now `leadId`: a file marked Lead, `[team] lead`, or Kernel's own Rowan (KERNEL-397). The Lead's open
-   * workspaces go to it with their chats, so the chats with the Lead carry on. Returns the first workspace that moved.
+   * The room's Lead is now `leadId` (KERNEL-397), which is `kernel-lead` since KERNEL-692, so a room that a file led before
+   * hands that file's chats to Kernel. The Lead's open workspaces go to it with their chats, so the chats with the Lead carry
+   * on. Returns the first workspace that moved.
    */
   adoptLeadWorkspace(roomId: string, leadId: string): Workspace | undefined {
     const all = this.store.workspaces(roomId).filter((w) => w.lead && w.agentId !== leadId)
@@ -70,26 +71,26 @@ export class Lead extends Feature {
   /** The room's Lead agent, or a throw that says how to get one. */
   private async leadOf(roomId: string): Promise<AgentDef> {
     const lead = (await this.k.team.agents(roomId)).find((a) => a.lead)
-    if (!lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one on this room\'s Agents page in Settings.')
+    if (!lead) throw new Error("Kernel can't lead in this build: its starter file is missing.")
     return lead
   }
 
-  /** The workspaces of the room's open chats with Rowan, oldest chat first (KERNEL-405). */
+  /** The workspaces of the room's open Lead chats, oldest chat first (KERNEL-405). */
   chatWorkspaces(roomId: string): Workspace[] {
     const born = (w: Workspace) => this.store.thread(w.threadId!)?.createdAt ?? w.createdAt
     return this.store.workspaces(roomId).filter((w) => isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => born(a) - born(b) || a.createdAt - b.createdAt)
   }
 
-  /** The workspace of the room's newest open chat with Rowan, the one Kernel's own sends join (KERNEL-405). */
+  /** The workspace of the room's newest open Lead chat, the one Kernel's own sends join (KERNEL-405). */
   newestChatWorkspace(roomId: string): Workspace | undefined { return this.chatWorkspaces(roomId).at(-1) }
 
   /**
-   * A new chat with Rowan in its own workspace (KERNEL-405): the chat, its first tab, and a workspace with its branch and folder
+   * A new Lead chat in its own workspace (KERNEL-405): the chat, its first tab, and a workspace with its branch and folder
    * picked. It returns then, before the network and git, and `buildChat` fetches, makes the worktree from the latest
    * `<remote>/<default>` or from `baseRef`, and runs setup (KERNEL-542). The first message waits in the tab's queue until the
    * worktree exists. Then it goes while setup runs, or, with "Wait for setup" on and a setup script that runs on create, waits
    * until files.copy and setup pass (KERNEL-490). What can fail without the network still throws before anything is saved: no
-   * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps Rowan on the
+   * Lead, a base that isn't here and isn't on the remote, a branch name git won't take. A room with no commit keeps the Lead on the
    * checkout with no setup, as before KERNEL-355.
    */
   async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
@@ -122,7 +123,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * What a new chat with Rowan does after `lead.start` answers (KERNEL-542): the worktree first (`Workspaces.makeWorktree`),
+   * What a new Lead chat does after `lead.start` answers (KERNEL-542): the worktree first (`Workspaces.makeWorktree`),
    * then its tabs, held until now, go, unless "Wait for setup" holds them through setup (KERNEL-490), then setup. A worktree git
    * won't make leaves the workspace failed with the tabs still held, and Run again comes back here.
    */
@@ -143,7 +144,7 @@ export class Lead extends Feature {
     }
     const done = await this.k.workspaces.setUpWorkspace(ws, room, repo, chat)
     if (this.stopped) return done
-    // A message that went before setup started Rowan before setup handed over its variables. Its sessions end once idle, and
+    // A message that went before setup started the Lead before setup handed over its variables. Its sessions end once idle, and
     // the next message resumes each with them, as after a folder move (KERNEL-490).
     if (!wait && done.status === 'ready') this.sessions.restartIdle([ws.id])
     this.leadUpdates.flush(ws.roomId)
@@ -165,7 +166,7 @@ export class Lead extends Feature {
   private refused = new Map<string, string>()
 
   /**
-   * Keeps each chat with Rowan on the latest main (KERNEL-181, KERNEL-405): a fast-forward of its branch to the base it started
+   * Keeps each Lead chat on the latest main (KERNEL-181, KERNEL-405): a fast-forward of its branch to the base it started
    * from, only while that chat is idle, has nothing queued, and has no commits of its own and no tracked file changed. It never
    * merges or rebases. `fetch` fetches once first, after a merge, then syncs every open chat. `workspaceId` syncs only that chat.
    */
@@ -194,8 +195,8 @@ export class Lead extends Feature {
   }
 
   /**
-   * Moves a chat with Rowan's worktree folder to match the branch its first title named, once (KERNEL-424): the branch's
-   * folder name under the room's worktree root, `rowan-setup-script-tab-run-button-redundancy`, with the free-name suffix when
+   * Moves a Lead chat's worktree folder to match the branch its first title named, once (KERNEL-424): the branch's
+   * folder name under the room's worktree root, `kernel-setup-script-tab-run-button-redundancy`, with the free-name suffix when
    * that is taken. Only while the chat is ready and nothing runs in its folder (`folderBusy`), after the turn's checkpoint is
    * saved. Its tabs wait through the move, so a message sent meanwhile goes out from the new folder. Idle processes end, and
    * the next message resumes each session by its id there, on Claude and on Codex. Running terminals start again there. A move
@@ -278,7 +279,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Moves the chats with Rowan from the room's one shared Lead workspace into a workspace each, once, at startup after the
+   * Moves the Lead chats from the room's one shared Lead workspace into a workspace each, once, at startup after the
    * agents load and before any chat carries on (KERNEL-405). Without a fetch: each chat starts from `<remote>/<default>` as
    * last fetched. An open chat gets a worktree on its own branch, and every tab of it, closed ones too, moves there with the
    * plans its chats wrote. Its chats resume by their session ids from the new folder (KERNEL-348). Setup runs with the chat
@@ -339,7 +340,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * The newest open chat with Rowan's first tab, for Kernel's own sends: a brief, an overlap, a comment on a shared file.
+   * The newest open Lead chat's first tab, for Kernel's own sends: a brief, an overlap, a comment on a shared file.
    * With no chat open, a new one, with setup (KERNEL-405). Opening the room doesn't come here, so it starts no chat (KERNEL-365).
    */
   async leadChat(roomId: string): Promise<Chat> {
@@ -379,7 +380,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * A new tab in a chat with Rowan (KERNEL-337), the one its workspace hosts (KERNEL-405). The old shared Lead workspace hosts
+   * A new tab in a Lead chat (KERNEL-337), the one its workspace hosts (KERNEL-405). The old shared Lead workspace hosts
    * none, so there `threadId` names the chat, or the tab starts one. A tab opened while the chat's first message waits for
    * setup or trust waits with it. Saved, not pushed, like `newChat`.
    */
@@ -426,8 +427,8 @@ export class Lead extends Feature {
   private renaming = new Map<string, Promise<void>>()
 
   /**
-   * Names a new chat with Rowan's branch from the chat's first title, once (KERNEL-424): every word of it, cut to 60
-   * characters, `rowan/setup-script-tab-run-button-redundancy`, with a free-name suffix when that is taken. The workspace's name
+   * Names a new Lead chat's branch from the chat's first title, once (KERNEL-424): every word of it, cut to 60
+   * characters, `kernel/setup-script-tab-run-button-redundancy`, with a free-name suffix when that is taken. The workspace's name
    * follows, and its folder moves to match once the chat is idle (`moveNow`). A branch that was pushed or has a PR keeps its
    * name and folder. Later names, Kernel's or the user's, name only the chat.
    */
@@ -448,7 +449,7 @@ export class Lead extends Feature {
       const pushed = (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
         || (upstream.code === 0 && upstream.stdout.trim() !== ws.baseRef)
       if (pushed) { this.updateWs(id, { naming: undefined }); return }
-      // Two chats with Rowan named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
+      // Two Lead chats named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
       const to = wanted === ws.branch ? wanted : await this.k.workspaces.withBranchLock(room.id, async () => {
         const free = await freeBranch(room.path, wanted, remote, this.k.workspaces.pendingNames(room.id).branches)
         if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
@@ -516,7 +517,7 @@ export class Lead extends Feature {
         if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat)
         // The user's words that approved it, kept as the record of the go-ahead (KERNEL-678).
         if (goAhead) this.updateWs(ws.id, { goAhead })
-        // Rowan named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
+        // The Lead named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
           // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
@@ -547,7 +548,7 @@ export class Lead extends Feature {
       // An image a teammate in this room shared, at the version the Lead names (KERNEL-659).
       sharedImage: (id, version) => this.k.sharing.sharedImage(roomId, id, version),
       askUser: async (o, signal) => {
-        // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
+        // The card goes in the chat the Lead is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.k.team.agents(roomId)
         const reuse = o.kind === 'plan' ? revisedPlanFile(this.store.approvals({ roomId }), chat.id) : undefined
         // A turn that stopped while the team was read shows no card: an abort that has already fired never fires again.
@@ -654,7 +655,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * The user sent a message in a chat. The loop guard starts over, and a chat with Rowan records the send, which puts it on top
+   * The user sent a message in a chat. The loop guard starts over, and a Lead chat records the send, which puts it on top
    * of the sidebar (KERNEL-498). Kernel's own messages call `sessions.send` or `sessions.post` directly and never come here.
    */
   userSpoke(chatId: string) {
@@ -677,7 +678,7 @@ export class Lead extends Feature {
     this.nudges.reset(...this.store.workspaces(ws.roomId).filter((w) => !this.isLeadWorkspace(w) && this.leadUpdateTarget(ws.roomId, w.leadChatId)?.chat.id === chatId).map((w) => w.id))
   }
 
-  /** The newest open chat with Rowan's first open tab. Unlike `leadChat`, never creates one (KERNEL-405). */
+  /** The newest open Lead chat's first open tab. Unlike `leadChat`, never creates one (KERNEL-405). */
   private existingLeadChat(roomId: string): Chat | undefined {
     for (const ws of this.chatWorkspaces(roomId).reverse()) {
       const tab = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
@@ -694,7 +695,7 @@ export class Lead extends Feature {
   /**
    * Where teammate updates about work handed off in the tab `owner` go (KERNEL-105, KERNEL-337): that tab while it's open,
    * else the newest open tab of its Lead chat (forks included, since a fork stays in the chat), else its newest open fork
-   * from before Lead chats had tabs, else the room's newest open chat with Rowan, naming the archived chat (KERNEL-405).
+   * from before Lead chats had tabs, else the room's newest open Lead chat, naming the archived chat (KERNEL-405).
    * `from` names where the work came from when it moves: the tab inside its own chat, the chat otherwise. Work no Lead tab
    * handed off goes to the newest open chat. Never creates a tab, and never restores an archived chat.
    */
@@ -709,11 +710,11 @@ export class Lead extends Feature {
     return first && { chat: first, ...(was ? { from: { title: this.chatTitleOf(was) } } : {}) }
   }
 
-  /** New chats with Rowan Kernel is starting for a Team update, by room, so a second update waits for the same chat. */
+  /** New Lead chats Kernel is starting for a Team update, by room, so a second update waits for the same chat. */
   private opening = new Map<string, Promise<unknown>>()
 
   /**
-   * A Team update that needs the Lead found no open chat with Rowan (KERNEL-365). An open chat with no open tab gets a new
+   * A Team update that needs the Lead found no open Lead chat (KERNEL-365). An open chat with no open tab gets a new
    * tab, saved and pushed so the sidebar shows it. With no chat open, Kernel starts a new one, with setup, and the update
    * waits for it (`opening`): an archived chat is never restored for it (KERNEL-405). A room with no Lead has nobody to tell.
    */
@@ -735,7 +736,7 @@ export class Lead extends Feature {
   }
 
   /**
-   * Archives the chat with Rowan `threadId` (KERNEL-405): the open workspaces it handed off first, unless "Archive a chat's
+   * Archives the Lead chat `threadId` (KERNEL-405): the open workspaces it handed off first, unless "Archive a chat's
    * workspaces" is off and they stay at room level, then its own. Each goes through the workspace archive, archive script
    * included. Its own sets the chat's `closedAt`. A chat with no workspace of its own, from before KERNEL-405, only closes.
    */
@@ -844,7 +845,7 @@ export class Lead extends Feature {
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
-      // Opening the room shows its newest chat with Rowan, and none when no chat is open: it starts none (KERNEL-365, KERNEL-405).
+      // Opening the room shows its newest Lead chat, and none when no chat is open: it starts none (KERNEL-365, KERNEL-405).
       'lead.open': async ({ roomId }) => { await this.leadOf(roomId); return this.newestChatWorkspace(roomId) ?? null },
       'lead.start': async ({ roomId, ...o }) => this.newLeadChat(roomId, o),
       'lead.prefetch': async ({ roomId }) => { this.prefetch(roomId); return { ok: true } },

@@ -123,7 +123,9 @@ describe('the PR state', () => {
     ['conflicts, by mergeStateStatus', { mergeStateStatus: 'DIRTY', mergeable: 'MERGEABLE' }, 'conflict', undefined],
     ['fails a check the repo does not require', { mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Release note', 'SUCCESS', true), run('Test', 'FAILURE', false)] }, 'ready', undefined],
     ['fails a required check', { mergeStateStatus: 'BLOCKED', statusCheckRollup: [run('Release note', 'FAILURE', true), run('Test', 'SUCCESS', false)] }, 'cifail', undefined],
-    ['still runs an optional check', { mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Release note', 'SUCCESS', true), run('Test', null, false)] }, 'ready', undefined],
+    // KERNEL-703: a check the repo doesn't require holds ready while it runs, though its failure doesn't.
+    ['still runs an optional check', { mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Release note', 'SUCCESS', true), run('Test', null, false)] }, 'checks', undefined],
+    ['still runs an optional check with changes requested', { mergeStateStatus: 'BLOCKED', reviewDecision: 'CHANGES_REQUESTED', statusCheckRollup: [run('Release note', 'SUCCESS', true), run('Test', null, false)] }, 'changes', undefined],
     ['still runs a required check', { mergeStateStatus: 'BLOCKED', statusCheckRollup: [run('Release note', null, true)] }, 'checks', undefined],
     ['fails a check in a repo that requires none', { mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Test', 'FAILURE', false)] }, 'cifail', undefined],
     ['waits for a required review', { mergeStateStatus: 'BLOCKED', reviewDecision: 'REVIEW_REQUIRED' }, 'ready', 'review'],
@@ -144,6 +146,7 @@ describe('the PR state', () => {
     const v = view({ mergeStateStatus: 'UNSTABLE', statusCheckRollup: [run('Vercel', 'FAILURE', false)] })
     expect(prStateOf(v)).toBe('cifail')
     expect(prStateOf(v, { optional: ['Vercel'] })).toBe('ready')
+    expect(prStateOf(view({ statusCheckRollup: [run('Vercel', null, false)] }), { optional: ['Vercel'] })).toBe('checks')
     expect(infoOf('w', v, [], [], { optional: ['Vercel'] })).toMatchObject({ state: 'ready', checks: [{ name: 'Vercel', state: 'fail', optional: true }] })
   })
 

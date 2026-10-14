@@ -109,7 +109,7 @@ export interface Thread {
 }
 
 /**
- * What archiving a chat with Rowan would stop, one row per workspace, the chat's own last (KERNEL-405). A row with none of the
+ * What archiving a Lead chat would stop, one row per workspace, the chat's own last (KERNEL-405). A row with none of the
  * four loses nothing. `pr` is the number of an open PR Kernel stops checking. `unknown` means Kernel couldn't read its git state.
  */
 export interface ChatArchivePreview {

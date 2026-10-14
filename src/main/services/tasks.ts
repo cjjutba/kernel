@@ -45,7 +45,7 @@ const parentOf = (id: string) => /^(T-\d+)[a-z]$/.exec(id)?.[1]
 
 /**
  * A room's tasks (KERNEL-18). Created from approved plans and from TaskCreated hooks, linked to
- * workspaces as Rowan hands them out, and moved only by real events: workspace, PR and approval changes.
+ * workspaces as the Lead hands them out, and moved only by real events: workspace, PR and approval changes.
  */
 export class Tasks {
   private off: () => void = () => undefined
@@ -76,7 +76,7 @@ export class Tasks {
 
   detach() { this.off() }
 
-  /** One task per step of an approved plan, in Plan until Rowan hands it to someone. Safe to call twice for one plan. */
+  /** One task per step of an approved plan, in Plan until the Lead hands it to someone. Safe to call twice for one plan. */
   fromPlan(plan: Approval): Task[] {
     if (!plan.roomId || !plan.steps?.length) return []
     const made = this.list(plan.roomId).filter((t) => t.approvalId === plan.id)
@@ -98,7 +98,7 @@ export class Tasks {
   }
 
   /**
-   * Rowan created a workspace for `agentId`: the first waiting task for that agent in the latest plan is now being built.
+   * The Lead created a workspace for `agentId`: the first waiting task for that agent in the latest plan is now being built.
    * `approvalIds` limits it to those plans, the ones approved in the Lead chat that handed it off (KERNEL-105).
    */
   link(roomId: string, agentId: string, workspaceId: string, o: { approvalIds?: Set<string> } = {}): Task | undefined {

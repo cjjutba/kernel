@@ -58,6 +58,12 @@ export interface AccountProfile {
   /** The CLI's own login rather than one Kernel added. It can be signed out but not removed. */
   cli: boolean
   /**
+   * An added account that is also the CLI's own login: the same email, and on Claude the same organization unless either is
+   * unknown. The list shows it once, as this row, and leaves the CLI's own row out. It is in use while the CLI's own login is
+   * (KERNEL-701).
+   */
+  alsoCli?: true
+  /**
    * An API key account has no plan and no usage windows, so it never hits a usage limit, and Kernel never switches to it
    * on its own. A key the API refuses signs it out until the user gives it a new one (KERNEL-523).
    */
@@ -118,7 +124,7 @@ export interface MissingModel {
   model: string
   /** "Opus 5.5", or the id when Kernel has no name for it. */
   label: string
-  /** The names of the agents whose role or file puts them on it, "Rowan". */
+  /** The names of the agents whose role or file puts them on it, "Kernel". */
   agents: string[]
 }
 

@@ -157,6 +157,40 @@ describe('usage', () => {
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 1, resetsAt: 1001 }, 999_000).status).toBe('rejected')
   })
 
+  describe.each([
+    ['Claude', {}],
+    ['Codex', { provider: 'codex' as const, accountId: 'acct' }]
+  ])('a %s window', (_name, who) => {
+    const at = (utilization: number, resetsAt = 1000, status?: 'allowed' | 'rejected') => ({ type: 'five_hour' as const, utilization, resetsAt, ...who, ...(status ? { status } : {}) })
+    const merge = (prev: ReturnType<typeof at>, patch: LimitPatch, now = 999_000) => mergeLimit({ status: 'allowed', ...prev }, patch, now)
+
+    it('keeps its highest reading when an older snapshot lands late (KERNEL-700)', () => {
+      let stored = mergeLimit(undefined, at(0.026), 999_000)
+      for (const u of [0.024, 0.026]) {
+        stored = mergeLimit(stored, at(u), 999_000)
+        expect(stored.utilization).toBe(0.026)
+      }
+      expect(stored).toMatchObject(who)
+    })
+
+    it('takes a lower reading from a new window, a passed reset or a clear drop', () => {
+      expect(merge(at(0.4), at(0.05, 1061)).utilization).toBe(0.05)
+      expect(merge(at(0.4), at(0.39, 1061)).utilization).toBe(0.39)
+      expect(merge(at(0.4), at(0.39), 1_000_000).utilization).toBe(0.39)
+      expect(merge(at(0.4), at(0.05)).utilization).toBe(0.05)
+      expect(merge(at(0.4), at(0.38, 1060)).utilization).toBe(0.4)
+    })
+
+    it('still lifts a rejected window on a reading under 95% (D-069)', () => {
+      expect(merge(at(1, 1000, 'rejected'), at(0.9))).toMatchObject({ status: 'allowed', utilization: 0.9 })
+      expect(merge(at(1, 1000, 'rejected'), at(0.97))).toMatchObject({ status: 'rejected', utilization: 1 })
+    })
+
+    it('takes a status-only patch as before', () => {
+      expect(merge(at(0.5), { type: 'five_hour', status: 'rejected', ...who })).toMatchObject({ status: 'rejected', utilization: 0.5 })
+    })
+  })
+
   /** A live Claude process on `account` (undefined: the CLI's own login) whose usage call runs `usage`. */
   const claudeLive = (usage: () => Promise<void>, account?: string) => {
     const r = Object.create(ClaudeRunner.prototype) as ClaudeRunner

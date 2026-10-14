@@ -133,10 +133,24 @@ const footerUsage = (codex5 = 31): RateLimit[] => [
   window5('codex', 'cli', codex5, next(18, 36)), windowWeek('codex', 'cli', 16, inDays(8, 13, 36)),
   window5('codex', 'work', 40, next(19, 0)), windowWeek('codex', 'work', 30, inDays(8, 14, 0))
 ]
+/** KERNEL-697: Claude Code with six accounts, so two show inline and the rest fold into "more". Fourth reports nothing yet, and Fifth shares limits with Main account and lacks Opus 5.5. */
+const manyClaude = [
+  subscription('claude', 'fourth', '4th account', 'fourth@example.com', 'Claude Pro'),
+  subscription('claude', 'fifth', 'Fifth account with a long name', 'fifth@example.com', 'Claude Team', { sameOrg: ['main'], missingModels: [{ model: 'claude-opus-5-5', label: 'Opus 5.5', agents: ['Rowan'] }] }),
+  subscription('claude', 'sixth', '6th account', 'sixth@example.com', 'Claude Pro')
+]
+const manyUsage = (): RateLimit[] => [
+  ...footerUsage(),
+  window5('claude', 'fifth', 22, next(21, 0)), windowWeek('claude', 'fifth', 18, nextOn(4, 3, 0)),
+  window5('claude', 'sixth', 55, next(20, 0)), windowWeek('claude', 'sixth', 33, nextOn(5, 3, 0))
+]
+const manyAccounts = [secondClaude, mainClaude, footerKey(), thirdClaude, ...manyClaude, footerCodex]
 /** The home screen with an update ready, so the footer has its pill, and the Claude Code and Codex accounts above (KERNEL-674). */
 const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => ({
   ...teamFixtures.UpdateReady, accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex], usage: footerUsage(), ...extra, ui: { ...teamFixtures.UpdateReady.ui, ...ui }
 })
+/** The footer after a switch: the accounts push comes first, as it does from the engine, so the notice can name both accounts (KERNEL-699). */
+const switchedHome = (accounts: AccountProfile[], switched: PushEvent): Fixture => usageHome({ accounts, push: [{ type: 'accounts', accounts }, switched] })
 /** The popover open over the same home, in Detailed unless `view` says Compact. */
 const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
 /** Settings, Accounts with each account's nickname, plan and usage windows (KERNEL-561, KERNEL-680). `tab` scrolls to that provider. */
@@ -464,6 +478,17 @@ export const platformFixtures: Record<string, Fixture> = {
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
   // KERNEL-674: Codex's 5-hour window is full, so its bar and number go red.
   UsageFooterCodexFull: usageHome({ usage: footerUsage(100) }),
+  // KERNEL-697: another account's chip has a swap icon and a tooltip. One account shows only the active chip, six fold into "more", a narrow window folds the inline ones too, and an account at its limit keeps its red number.
+  UsageFooterSingleAccount: usageHome({ accounts: [secondClaude, footerCodex] }),
+  UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
+  UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
+  UsageFooterAtLimit: usageHome({ usage: [...footerUsage().filter((l) => !(l.accountId === 'third')), { ...window5('claude', 'third', 100, next(15, 0)), status: 'rejected' }, windowWeek('claude', 'third', 40, nextOn(3, 3, 0))] }),
+  // KERNEL-699: every switch shows a notice with Undo. Your own says what you now use, and Kernel's at a limit says why it moved.
+  UsageSwitchToast: switchedHome([{ ...secondClaude, active: false }, { ...mainClaude, active: true }, footerKey(), thirdClaude, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'main', reason: 'user' }),
+  UsageSwitchToastAtLimit: switchedHome([{ ...secondClaude, active: false }, mainClaude, footerKey(), { ...thirdClaude, active: true }, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'main', to: 'third', reason: 'limit', limit: 'five_hour' }),
+  // KERNEL-697: Codex's chip opens the popover with Codex expanded and Claude Code folded.
+  UsagePopoverFromCodex: usagePopover({}, { usageOpen: ['codex'] }),
+  UsagePopoverManyAccounts: usagePopover({ accounts: manyAccounts, usage: manyUsage() }),
   // KERNEL-674: the popover opens upward from the footer. Claude Code is open in Detailed and Codex shows both windows folded.
   UsagePopover: usagePopover(),
   UsagePopoverCompact: usagePopover({}, { usageView: 'compact', usageOpen: [] }),

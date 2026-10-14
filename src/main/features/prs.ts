@@ -217,7 +217,7 @@ export class Prs extends Feature {
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
-    // A chat with Rowan whose worktree isn't made yet has no branch on GitHub to read (KERNEL-542).
+    // A Lead chat whose worktree isn't made yet has no branch on GitHub to read (KERNEL-542).
     if (asked.status === 'archived' || asked.worktreePending) return asked
     const remote = await this.k.config.remoteOfWs(asked)
     let read: PrInfo | null
@@ -257,6 +257,8 @@ export class Prs extends Feature {
     // A read that changes nothing isn't saved or pushed, so each poll doesn't redraw the window and refresh every task (KERNEL-216).
     const same = (Object.keys(patch) as (keyof Workspace)[]).every((key) => patch[key] === ws[key])
     const next = same ? ws : this.updateWs(id, patch)
+    // A ready PR whose checks ran again between two reads changes no field, so no workspace event weighs it (KERNEL-703).
+    if (same && info && next.prState === 'ready') this.considerAutoMerge(next)
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info, ws.prBlocked === 'behind')
@@ -348,7 +350,7 @@ export class Prs extends Feature {
   /**
    * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
-   * and no blockers on it. `override` is a person's Merge anyway past those blockers; Rowan and Merge all never pass it
+   * and no blockers on it. `override` is a person's Merge anyway past those blockers; the Lead and Merge all never pass it
    * (KERNEL-497). `head` is the commit auto-merge weighed: a PR GitHub reads at another one doesn't merge (KERNEL-556).
    */
   mergePr(id: string, o: { override?: boolean; head?: string } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
@@ -426,15 +428,17 @@ export class Prs extends Feature {
 
   /**
    * A workspace changed (wiring.ts). A teammate's PR that reads ready, with an approval of its head and no blockers on it, is
-   * weighed for auto-merge once per head, set of approvals and GitHub block (KERNEL-556). Until the user's auto-merge is on,
+   * weighed for auto-merge once per head, set of approvals, GitHub block (KERNEL-556) and settled checks (KERNEL-703). Until the user's auto-merge is on,
    * that costs reading the room's two settings files. While it is on, the Lead's updates on the PR wait for the outcome, so
-   * Rowan doesn't say "ready to merge" about a PR Kernel is merging.
+   * The Lead doesn't say "ready to merge" about a PR Kernel is merging.
    */
   considerAutoMerge(ws: Workspace) {
     if (this.stopped || ws.status === 'archived' || ws.reviewOf || ws.prState !== 'ready' || !ws.prNumber) return
     const s = kindStates(ws)
     if (!s.approved.length || s.blocking.length) return
-    const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? ''].join(':')
+    // The checks as the last read settled them, so a check that ran after a weigh refused it brings a new one (KERNEL-703).
+    const checks = (this.infos.get(ws.id)?.info.checks ?? []).map((c) => `${c.name}=${c.state}${c.url ? `@${c.url}` : ''}`).join(',')
+    const key = [ws.prNumber, ws.prHead ?? '', s.approved.join(','), ws.prBlocked ?? '', checks].join(':')
     if (this.weighed.get(ws.id) === key) return
     this.weighed.set(ws.id, key)
     const room = this.store.room(ws.roomId)
@@ -595,7 +599,7 @@ export class Prs extends Feature {
    */
   async syncBranch(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
-    // A chat with Rowan whose worktree isn't made yet is on the branch it picked (KERNEL-542).
+    // A Lead chat whose worktree isn't made yet is on the branch it picked (KERNEL-542).
     if (ws.mode !== 'worktree' || ws.status === 'archived' || ws.worktreePending) return ws
     const now = await currentBranch(ws.path).catch(() => null)
     if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)

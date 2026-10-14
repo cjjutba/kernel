@@ -80,7 +80,7 @@ async function pushElsewhere(bare: string, file: string, branch = 'main') {
 }
 
 describe('a workspace per chat with Rowan (KERNEL-405)', () => {
-  it('fetches, then makes a worktree on rowan/<slug> from the latest origin/main, and sends the first message once it exists', async () => {
+  it('fetches, then makes a worktree on kernel/<slug> from the latest origin/main, and sends the first message once it exists', async () => {
     const { repo, bare } = await withOrigin()
     const where = await dirs()
     const k = await boot(where)
@@ -91,8 +91,8 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     sdk.calls.length = 0
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan wave 3 of the invoices work' })
     const ws = k.store.workspace(chat.workspaceId)!
-    expect(ws).toMatchObject({ lead: true, threadId: chat.threadId, agentId: 'rowan', mode: 'worktree', branch: 'rowan/plan-wave-3-of-invoices', baseRef: 'origin/main', status: 'setup' })
-    expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'rowan-plan-wave-3-of-invoices'))
+    expect(ws).toMatchObject({ lead: true, threadId: chat.threadId, agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/plan-wave-3-of-invoices', baseRef: 'origin/main', status: 'setup' })
+    expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'kernel-plan-wave-3-of-invoices'))
     // lead.start answers before the fetch and the worktree, and the message waits for them (KERNEL-542).
     await k.workspaces.worktreeMade(ws.id)
     expect(await sha(ws.path, 'HEAD')).toBe(merged)
@@ -116,10 +116,10 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     const b = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
     const [wa, wb] = [await setUp(k, a.id), await setUp(k, b.id)]
     expect(wa.id).not.toBe(wb.id)
-    expect([wa.branch, wb.branch]).toEqual(['rowan/plan-release', 'rowan/plan-release-2'])
+    expect([wa.branch, wb.branch]).toEqual(['kernel/plan-release', 'kernel/plan-release-2'])
     expect(wa.path).not.toBe(wb.path)
     expect(Math.abs(wa.port - wb.port)).toBeGreaterThanOrEqual(10)
-    expect(k.env.envFor(wb)).toMatchObject({ KERNEL_PORT: String(wb.port), KERNEL_WORKSPACE: wb.path, KERNEL_BRANCH: 'rowan/plan-release-2', KERNEL_BASE_REF: 'origin/main', KERNEL_DEFAULT_BRANCH: 'main' })
+    expect(k.env.envFor(wb)).toMatchObject({ KERNEL_PORT: String(wb.port), KERNEL_WORKSPACE: wb.path, KERNEL_BRANCH: 'kernel/plan-release-2', KERNEL_BASE_REF: 'origin/main', KERNEL_DEFAULT_BRANCH: 'main' })
     const tab = await k.handlers()['chats.create']({ workspaceId: wb.id })
     expect(tab).toMatchObject({ workspaceId: wb.id, threadId: b.threadId, title: 'New tab' })
     expect(k.chatTabs(wa.id).map((c) => c.id)).toEqual([a.id])
@@ -133,7 +133,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     const release = await pushElsewhere(bare, 'release-fix', 'release/v2')
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Check the release', baseRef: 'origin/release/v2' })
     const ws = await setUp(k, chat.id)
-    expect(ws).toMatchObject({ baseRef: 'origin/release/v2', branch: 'rowan/check-release' })
+    expect(ws).toMatchObject({ baseRef: 'origin/release/v2', branch: 'kernel/check-release' })
     expect(await sha(ws.path, 'HEAD')).toBe(release)
   })
 
@@ -180,7 +180,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     const k = await boot(await dirs({ leadBranchPattern: 'lead/{slug}' }))
     const room = await k.addRoom(repo)
     const ws = await setUp(k, (await k.lead.startLeadChat(room.id, { prompt: 'Release notes' })).id)
-    expect(ws.branch).toBe('plans/rowan-release-notes')
+    expect(ws.branch).toBe('plans/kernel-release-notes')
   })
 
   it('keeps Rowan on the checkout in a repo with no commit yet, with no setup', async () => {
@@ -328,7 +328,7 @@ async function legacy(mode: 'current' | 'worktree') {
     await mkdir(root, { recursive: true })
     await run('git', ['-C', repo, 'worktree', 'add', '-q', '--detach', path, 'origin/main'])
   }
-  const old: Workspace = { id: 'old-lead', roomId: room.id, name: 'lead', branch: mode === 'current' ? 'main' : 'HEAD', baseRef: mode === 'current' ? 'main' : 'origin/main', path, mode, agentId: 'rowan', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+  const old: Workspace = { id: 'old-lead', roomId: room.id, name: 'lead', branch: mode === 'current' ? 'main' : 'HEAD', baseRef: mode === 'current' ? 'main' : 'origin/main', path, mode, agentId: 'kernel-lead', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   store.saveWorkspace(old)
   const t = (id: string, title: string, at: number, closedAt?: number) => store.saveThread({ id, roomId: room.id, title, createdAt: at, ...(closedAt ? { closedAt } : {}) })
   t('plan', 'Plan wave 3', 1)
@@ -361,7 +361,7 @@ describe('moving the open chats out of the shared Lead workspace at startup (KER
       const headBefore = await sha(repo, 'HEAD')
       const k = await boot(where)
       const moved = k.lead.chatWorkspaces(room.id)
-      expect(moved.map((w) => [w.threadId, w.branch, w.mode, w.lead])).toEqual([['plan', 'rowan/plan-wave-3', 'worktree', true], ['icons', 'rowan/chat-icons-sizing', 'worktree', true]])
+      expect(moved.map((w) => [w.threadId, w.branch, w.mode, w.lead])).toEqual([['plan', 'kernel/plan-wave-3', 'worktree', true], ['icons', 'kernel/chat-icons-sizing', 'worktree', true]])
       // Every tab of each open chat moves with it, a closed one too, and keeps its session (KERNEL-348).
       const plan = moved[0]
       expect(k.store.chats(plan.id).map((c) => [c.id, c.sessionId, !!c.closed])).toEqual([['plan-1', 'session-plan-1', false], ['plan-2', 'session-plan-2', true], ['plan-3', 'session-plan-3', false]])
@@ -430,7 +430,7 @@ async function syncedRoom() {
   return { k, repo, bare, room, a, b, wa, wb }
 }
 
-const syncNotes = (k: Kernel, roomId: string) => k.store.activity(roomId, 500).filter((x) => x.actor === 'kernel' && /^(updated|didn't update) Rowan's worktree/.test(x.text)).reverse()
+const syncNotes = (k: Kernel, roomId: string) => k.store.activity(roomId, 500).filter((x) => x.actor === 'kernel' && /^(updated|didn't update) Kernel's worktree/.test(x.text)).reverse()
 
 describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-405)", () => {
   it('fast-forwards each idle chat on its own branch, logs one line each, and does nothing once it is current', async () => {
@@ -442,7 +442,7 @@ describe("keeping each chat's worktree on the latest main (KERNEL-181, KERNEL-40
       expect(await branchOf(w.path)).toBe(w.branch)
     }
     await k.lead.syncLead(room.id)
-    expect(syncNotes(k, room.id).map((x) => [x.workspaceId, x.text]).sort()).toEqual([wa.id, wb.id].map((id) => [id, "updated Rowan's worktree to origin/main, 3 new commits"]).sort())
+    expect(syncNotes(k, room.id).map((x) => [x.workspaceId, x.text]).sort()).toEqual([wa.id, wb.id].map((id) => [id, "updated Kernel's worktree to origin/main, 3 new commits"]).sort())
   })
 
   it('moves only the chat that is idle, and a turn that ends syncs only its own chat', async () => {

@@ -38,7 +38,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const room = await k.addRoom(repo)
     await trustRoom(k, room.id)
     const agents = await k.agents(room.id)
-    expect(agents.map((a) => [a.id, a.lead])).toEqual([['rowan', true], ['kai', false]])
+    expect(agents.map((a) => [a.id, a.lead])).toEqual([['kernel-lead', true], ['kai', false]])
     // The preview reads the room's saved list, or the patterns the user is typing (KERNEL-245).
     expect(await k.handlers()['files.preview']({ roomId: room.id })).toEqual([{ path: '.env.local', size: 9 }])
     expect(await k.handlers()['files.preview']({ roomId: room.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
@@ -74,12 +74,12 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // with files.copy and setup run like a teammate's (KERNEL-405).
     const lead = await k.leadChat(room.id)
     const opened = await setUp(k, lead.id)
-    expect(opened).toMatchObject({ agentId: 'rowan', mode: 'worktree', branch: 'rowan/chat', baseRef: 'main', lead: true, threadId: lead.threadId })
+    expect(opened).toMatchObject({ agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/chat', baseRef: 'main', lead: true, threadId: lead.threadId })
     expect(opened.path).not.toBe(repo)
     expect(await readFile(join(opened.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
     expect((await k.handlers()['lead.open']({ roomId: room.id }))?.id).toBe(opened.id)
     expect((await k.leadChat(room.id)).id).toBe(lead.id)
-    expect(k.statusOf(room.id)).toEqual({ rowan: 'idle', kai: 'idle' })
+    expect(k.statusOf(room.id)).toEqual({ 'kernel-lead': 'idle', kai: 'idle' })
 
     // A brief logs an activity line with the brief quoted.
     const logged: ActivityEvent[] = []
@@ -87,7 +87,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     bus.on('activity', onActivity)
     await k.handlers()['rooms.brief']({ roomId: room.id, text: 'Add PDF export to invoices. Spec first.' })
     bus.off('activity', onActivity)
-    expect(logged.find((e) => e.kind === 'brief')).toMatchObject({ roomId: room.id, actor: 'you', agentId: 'rowan', workspaceId: lead.workspaceId, text: 'briefed Rowan', quote: 'Add PDF export to invoices. Spec first.' })
+    expect(logged.find((e) => e.kind === 'brief')).toMatchObject({ roomId: room.id, actor: 'you', agentId: 'kernel-lead', workspaceId: lead.workspaceId, text: 'briefed Kernel', quote: 'Add PDF export to invoices. Spec first.' })
     expect(sent[sent.length - 1]).toBe('Add PDF export to invoices. Spec first.')
     await k.stop()
   })
@@ -115,7 +115,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const start = k.handlers()['lead.start']
 
     const solo = await k.addRoom(leadless)
-    await expect(start({ roomId: solo.id, prompt: 'Hello' })).rejects.toThrow('No Lead in this room. Mark one agent with "lead: true", or pick one on this room\'s Agents page in Settings.')
+    await expect(start({ roomId: solo.id, prompt: 'Hello' })).rejects.toThrow("Kernel can't lead in this build: its starter file is missing.")
 
     const room = await k.addRoom(repo)
     const chats = (wsId: string) => k.store.chats(wsId).filter((c) => c.kind !== 'terminal')
@@ -124,7 +124,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // the prompt (KERNEL-405).
     const first = await start({ roomId: room.id, prompt: 'Add PDF export to invoices' })
     const ws = k.store.workspace(first.workspaceId)!
-    expect(ws).toMatchObject({ agentId: 'rowan', mode: 'worktree', branch: 'rowan/add-pdf-export-to-invoices', lead: true, threadId: first.threadId })
+    expect(ws).toMatchObject({ agentId: 'kernel-lead', mode: 'worktree', branch: 'kernel/add-pdf-export-to-invoices', lead: true, threadId: first.threadId })
     expect(chats(ws.id)).toHaveLength(1)
     expect(first).toMatchObject({ title: 'New tab', kind: 'chat', model: 'claude-opus-5-5', effort: 'medium', plan: true })
     expect(waiting(first.id)).toEqual(['Add PDF export to invoices'])

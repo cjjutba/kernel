@@ -56,7 +56,7 @@ export class History extends Feature {
       const skip = (reason: string) => { skipped.push({ id, name: ws?.name ?? id, reason }) }
       if (!ws) { skip('Kernel no longer has it.'); continue }
       if (ws.status !== 'archived') { skip('It is not archived.'); continue }
-      // The shared Lead workspace from before KERNEL-405. A chat with Rowan's own workspace deletes like any other.
+      // The shared Lead workspace from before KERNEL-405. A Lead chat's own workspace deletes like any other.
       if (ws.lead && !ws.threadId) { skip("It is the Lead's workspace."); continue }
       if (!this.store.room(ws.roomId)) { skip('Its room is gone.'); continue }
       const waiting = this.k.waits.waitersOn(id)
@@ -154,7 +154,7 @@ export class History extends Feature {
     }
     // The same order as removeRoom: the rows, then the files they point at.
     const sharedIds = deleted.flatMap((id) => this.store.sharedFiles({ workspaceId: id }).map((file) => file.id))
-    // A chat with Rowan goes with its workspace (KERNEL-405).
+    // A Lead chat goes with its workspace (KERNEL-405).
     const threads = deleted.map((id) => this.store.workspace(id)).filter((w) => !!w && isLeadChatWorkspace(w)).map((w) => w!.threadId!)
     this.store.deleteWorkspaces(deleted)
     for (const id of threads) this.store.deleteThread(id)

@@ -2,6 +2,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import type { Provider } from '@shared/types'
 import {
   Add01Icon,
+  ArrowDataTransferHorizontalIcon,
   Alert02Icon,
   Archive02Icon,
   ArrowDown01Icon,
@@ -93,6 +94,8 @@ const H = {
   inbox: InboxIcon,
   issues: Task01Icon,
   refresh: RefreshIcon,
+  /** Another account's chip in the footer: pressing it switches to that account (KERNEL-697). */
+  swap: ArrowDataTransferHorizontalIcon,
   rooms: GridViewIcon,
   history: HistoryIcon,
   layers: Layers01Icon,

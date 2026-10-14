@@ -357,7 +357,7 @@ export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | un
 
 /**
  * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces:
- * Rowan proposes a plan, waits for the user to approve it, then creates one workspace per task.
+ * The Lead proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
   return kernelServer(kernelTools(d), LEAD_INSTRUCTIONS)
@@ -392,7 +392,7 @@ export function kernelTools(d: KernelToolDeps) {
   const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
   /**
    * A hand-off Kernel made wait because the tracker marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
-   * messages it when the blocking PRs merge. Rowan's own wait_for always holds the brief, so a wait that doesn't is the
+   * messages it when the blocking PRs merge. The Lead's own wait_for always holds the brief, so a wait that doesn't is the
    * tracker's. Named as the issue's source has it (KERNEL-473).
    */
   const blocked = (ws: Workspace, team: AgentDef[], pick: AgentDef, queued: boolean) => {
