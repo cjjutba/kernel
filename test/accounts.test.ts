@@ -793,6 +793,36 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop()
   })
 
+  it('reports a switch by the user and one from the limit banner with its limit, and none to the account in use (KERNEL-694)', async () => {
+    const { k, h, ids } = await setUp(['Personal'])
+    const switches: PushEvent[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'accountSwitched') switches.push(e) })
+    await h['accounts.switch']({ provider: 'claude', accountId: ids.Personal })
+    expect(switches).toEqual([{ type: 'accountSwitched', provider: 'claude', from: 'cli', to: ids.Personal, reason: 'user' }])
+    reject(k, { accountId: ids.Personal })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli', reason: 'banner' })
+    expect(switches.at(-1)).toEqual({ type: 'accountSwitched', provider: 'claude', from: ids.Personal, to: 'cli', reason: 'banner', limit: 'five_hour' })
+    // Switching to the account already in use still pushes the accounts, but reports no switch.
+    let listed = 0
+    bus.on('push', (e: PushEvent) => { if (e.type === 'accounts') listed++ })
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(listed).toBe(1)
+    expect(switches).toHaveLength(2)
+    await k.stop()
+  })
+
+  it("reports Kernel's own switch at a limit with the limit the account hit (KERNEL-694)", async () => {
+    const { k, ids, folder, switched } = await setUp(['Personal'])
+    const switches: PushEvent[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'accountSwitched') switches.push(e) })
+    sdk.usage = { '': 100, [folder('Personal')]: 20 }
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    reject(k)
+    await switched()
+    expect(switches).toEqual([{ type: 'accountSwitched', provider: 'claude', from: 'cli', to: ids.Personal, reason: 'limit', limit: 'five_hour' }])
+    await k.stop()
+  })
+
   it("prefers an account that offers the models agents start on, and moves to one that doesn't only when no other has room (KERNEL-616)", async () => {
     // Every account is on Max, so the Lead stays on Opus 5.5 wherever it runs.
     const plan = process.env.FAKE_PLAN

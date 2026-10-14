@@ -835,7 +835,7 @@ export class Providers extends Feature {
   /**
    * Use: the provider runs on this account from its next turn. A running turn finishes on the account it started on, and
    * idle processes end now (`restartProvider`). A limit on the account switched to holds its chats; one on the old account
-   * no longer does. `reason` says who switched (KERNEL-568). From the limit banner or by Kernel at a limit, the account it
+   * no longer does. `reason` says who switched (KERNEL-568), and a switch to another account pushes `accountSwitched` (KERNEL-694). From the limit banner or by Kernel at a limit, the account it
    * left had hit a window: the chats' next turns say so, and its reset sends a notification. `from` is the account it
    * left, the one in use by default. Agents that start on a model the account doesn't offer are named in the Inbox and on
    * its row (`warnMissing`, KERNEL-616).
@@ -864,7 +864,11 @@ export class Providers extends Feature {
     this.sessions.drainWaiting()
     await this.warnMissing(provider, to)
     const accounts = await this.list()
-    if (!this.stopped) bus.push({ type: 'accounts', accounts })
+    if (!this.stopped) {
+      bus.push({ type: 'accounts', accounts })
+      // Who switched and why, for the renderer's notice with Undo (KERNEL-694).
+      if (to !== from) bus.push({ type: 'accountSwitched', provider, from, to, reason: o.reason ?? 'user', ...(hit ? { limit: hit.type } : {}) })
+    }
     return accounts
   }
 
