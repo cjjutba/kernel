@@ -53,7 +53,7 @@ export function useSkillNames(roomId?: string): string[] {
 }
 
 /** Settings, Models and effort's name for the role an agent takes its default from. */
-const roleTitle = (a: AgentDef) => (a.lead ? 'Lead' : isReviewer(a) ? 'Reviewer' : /qa/i.test(a.role) ? 'QA' : 'Frontend and Backend')
+const roleTitle = (a: AgentDef) => (a.lead ? 'Kernel' : isReviewer(a) ? 'Reviewer' : /qa/i.test(a.role) ? 'QA' : 'Frontend and Backend')
 
 /**
  * Whether the agent follows Settings or its file pins a model (KERNEL-406), with Use Settings to clear the pin. Saved with

@@ -79,7 +79,7 @@ function LeadPattern({ value, placeholder, save }: { value: string; placeholder:
     if (!next.includes('{slug}')) return setText(value)
     save(next)
   }
-  return <input className="set-inline set-boxed" aria-label="Lead chat branch names" spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input className="set-inline set-boxed" aria-label="Branch names for chats with Kernel" spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }
 
 /** Settings > a room > Git (MorePage roomGit, KERNEL-680): the room's overrides of the app's Git defaults. Each Select starts with "Default (the app's value)", and Reset goes back to it. */
@@ -115,7 +115,7 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Row label="Remote" onReset={reset('remote')}>
           <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v || null })} options={choice(app.remote, named(remotes.length ? remotes : ['origin'], own('remote')))} />
         </Row>
-        <Row setting="workspace.leadBranchPattern" label="Lead chat branch names" onReset={reset('leadBranchPattern')}>
+        <Row setting="workspace.leadBranchPattern" label="Branch names for chats with Kernel" onReset={reset('leadBranchPattern')}>
           <LeadPattern value={rs?.workspace.leadBranchPattern ?? ''} placeholder={`${app.leadBranchPattern}  Default`} save={(v) => set({ leadBranchPattern: v })} />
         </Row>
       </Section>

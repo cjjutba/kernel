@@ -52,7 +52,7 @@ export function PRs({ s }: { s: AppSettings }) {
           </Row>
           <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
           <Row label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
-          <Row label="Let the Lead merge when you ask" desc="Only when your own message asks."><Toggle label="Let the Lead merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
+          <Row label="Let Kernel merge when you ask" desc="Only when your own message asks."><Toggle label="Let Kernel merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
         </Section>
         <Section title="Reviews" note="Each room picks which reviews run.">
           <Row label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>

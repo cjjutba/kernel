@@ -17,7 +17,7 @@ export const NAV: NavGroup[] = [
     { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard', keywords: ['keyboard', 'keys', 'hotkeys'] }
   ] },
   { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip', keywords: ['model', 'effort', 'compact', 'lead', 'reviewer', 'planning', 'agents at once', 'agent teams'] },
+    { page: 'models', label: 'Models and effort', icon: 'chip', keywords: ['model', 'effort', 'compact', 'lead', 'kernel', 'reviewer', 'planning', 'agents at once', 'agent teams'] },
     { page: 'agents', label: 'Agents', icon: 'team', keywords: ['personal agents', 'plugins', 'new rooms start with', 'default team'] },
     { page: 'mcp', label: 'MCP servers', icon: 'layers', keywords: ['mcp', 'servers', 'connectors', 'sign in'] },
     { page: 'permissions', label: 'Permissions', icon: 'shield', keywords: ['mode', 'bypass', 'always ask', 'never allow', 'protected branches', 'network', 'approval timeout'] },

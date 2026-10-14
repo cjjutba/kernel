@@ -86,7 +86,7 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
   ) : plugin ? undefined : (
     <div className="set-actions">
       {saved && !dirty && <span role="status" className="ap-save-note">Saved to {shortFile(agent.file)}</span>}
-      {roomId && agent.lead && <span className="set-desc">{agent.name} leads this room. Pick another Lead in <SettingsLink to={{ page: 'room', roomId, section: 'agents' }}>Settings, {room?.name ?? 'room'}, Agents</SettingsLink> first.</span>}
+      {roomId && agent.lead && <span className="set-desc">{agent.name} leads this room. Pick another lead in <SettingsLink to={{ page: 'room', roomId, section: 'agents' }}>Settings, {room?.name ?? 'room'}, Agents</SettingsLink> first.</span>}
       {roomId && <Button variant="ghost" disabled={agent.lead || !!busy} onClick={retire}>Retire</Button>}
       <Button variant={dirty ? 'primary' : 'secondary'} busy={!asking && busy === 'save'} busyLabel="Saving" disabled={!dirty || !form.description.trim() || !!busy} onClick={() => (asksScope ? setAsking(true) : void save())}>Save changes</Button>
     </div>

@@ -13,9 +13,18 @@ export function agentGroup(a: { builtIn?: AgentDef['builtIn']; origin?: AgentOri
   return a.origin === 'personal' ? 'personal' : a.origin === 'plugin' ? 'plugin' : 'repo'
 }
 
-export function agentLabel(a: Pick<AgentDef, 'name' | 'role'>): string {
-  const role = a.role.trim()
-  return !role || role.toLowerCase() === a.name.trim().toLowerCase() ? a.name : `${a.name} · ${role}`
+/** The role Settings shows for an agent. Kernel's def still carries the engine's `Lead`, so it reads Kernel, which the name repeats and rows hide. */
+export const agentRole = (a: Pick<AgentDef, 'role'> & { lead?: boolean }): string => (a.lead ? 'Kernel' : a.role.trim())
+
+/** The role to show beside the name, or '' when it is empty or repeats the name. */
+export function shownRole(a: Pick<AgentDef, 'name' | 'role'> & { lead?: boolean }): string {
+  const role = agentRole(a)
+  return role.toLowerCase() === a.name.trim().toLowerCase() ? '' : role
+}
+
+export function agentLabel(a: Pick<AgentDef, 'name' | 'role'> & { lead?: boolean }): string {
+  const role = shownRole(a)
+  return role ? `${a.name} · ${role}` : a.name
 }
 
 /** The plugin an agent comes from: the part of its id before the colon. */
