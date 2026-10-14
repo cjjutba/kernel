@@ -57,6 +57,13 @@ Fixed a pull request sometimes showing its old status after a quick refresh.
 
 Releases go through `/release` (`docs/RELEASING.md`).
 
+## Writing tests
+
+- Extend the feature's existing test file. Reuse its setup instead of starting a new Kernel, room and worktree for each test, unless the test needs a clean one. Tests that don't change shared state can share one built in `beforeAll`.
+- Test each behavior once, at the level where it lives. Don't repeat an engine rule in a screen or IPC test.
+- `tempRepo` copies a repo built once per worker, so call it freely. End a test's Kernel with `k.stop({ budgetMs: 0 })`: the default waits up to 3 seconds for a scripted turn that never ends.
+- A fake that reads `process.env` starts each test from none: clear what the test set, or the next test, and any read still running, sees it.
+
 ## Rules
 
 - A screenshot or mock in the brief is the spec for that task. Without one, match the current app and `DESIGN.md`. Check your work with `pnpm shots` and share the shot.

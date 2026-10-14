@@ -98,7 +98,7 @@ describe("a teammate's wait_for_merge", () => {
     }
     expect(k.store.workspace(noor.id)!.waitsFor).toBeUndefined()
     expect(k.store.items(chatOf(k, kai).id).filter((i) => i.kind === 'note').at(-1)).toMatchObject({ text: 'Waiting for PR #164 by Noor to merge. Kernel asks Kai to rebase onto it then.' })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses refs it cannot wait for, with what to pass instead', async () => {
@@ -115,14 +115,14 @@ describe("a teammate's wait_for_merge", () => {
     k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, waitsFor: { on: [kai.id], held: false } })
     expect(await refused('#164')).toBe(`Not set: ${noor.name} already waits for ${kai.name}, so both would wait forever.`)
     expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('tells a teammate on the main checkout to say it in its reply instead', async () => {
     const { k, kai, call } = await setup()
     k.store.saveWorkspace({ ...k.store.workspace(kai.id)!, mode: 'current' })
     expect(await call(kai, { on: '#164' })).toEqual({ isError: true, text: "Not set: you work on the main checkout, which has no branch of its own to rebase later, so you can't wait for a PR. Say in your reply what you are waiting for, and the Lead picks it up." })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('refuses work that merges into another base, which the branch would never get (KERNEL-693)', async () => {
@@ -133,7 +133,7 @@ describe("a teammate's wait_for_merge", () => {
     // The remote's copy of the same branch is the same base.
     k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/main' })
     expect((await call(kai, { on: '#164' })).isError).toBe(false)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it('records nothing for work that already merged', async () => {
@@ -141,7 +141,7 @@ describe("a teammate's wait_for_merge", () => {
     await mergeOnGitHub(noor)
     expect(await call(kai, { on: '#164' })).toEqual({ isError: false, text: 'PR #164 already merged, so there is nothing to wait for. Rebase onto it and carry on.' })
     expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("keeps what the Lead set it waiting for, and adds the teammate's own", async () => {
@@ -150,7 +150,7 @@ describe("a teammate's wait_for_merge", () => {
     await k.setWait(kai.id, [ivy.id])
     await call(kai, { on: '#164' })
     expect(k.store.workspace(kai.id)!.waitsFor).toEqual({ on: [ivy.id, noor.id], held: false })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("is news for the Lead, with the teammate's reason, while the Lead's own wait isn't", async () => {
@@ -160,7 +160,7 @@ describe("a teammate's wait_for_merge", () => {
     expect(pending(k).find((e) => e.kind === 'wait.started')!.wait).not.toHaveProperty('told')
     await k.setWait(kai.id, [noor.id])
     expect(pending(k).find((e) => e.kind === 'wait.started')!.wait).toMatchObject({ told: true })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("gets Kernel's rebase message once the PR it waits for merges", async () => {
@@ -175,7 +175,7 @@ describe("a teammate's wait_for_merge", () => {
     await run('git', ['-C', kai.path, 'rebase', '-q', 'origin/main'])
     callsIn(kai)[0].feed(result('r2'))
     await vi.waitFor(() => expect(k.store.workspace(kai.id)?.waitsFor).toBeUndefined(), SLOW)
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
 
@@ -193,7 +193,7 @@ describe('who gets wait_for_merge', () => {
     expect(deps.rulesFor(review, agent('theo'))).not.toContain('wait_for_merge')
     expect(deps.rulesFor(leadWs, agent('kernel-lead'))).not.toContain('wait_for_merge')
     expect(TEAMMATE_RULE).toContain("If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop.")
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 
   it("runs in the teammate's session without asking for permission, as submit_review does", async () => {
@@ -204,6 +204,6 @@ describe('who gets wait_for_merge', () => {
     // A prompt would wait on the user; this answers at once.
     const answer = await (options.canUseTool as CanUseTool)('mcp__kernel__wait_for_merge', { on: '#164' }, { signal: new AbortController().signal, toolUseID: 'w1', requestId: 'r1' } as never)
     expect(answer).toEqual({ behavior: 'allow', updatedInput: { on: '#164' } })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
   })
 })
