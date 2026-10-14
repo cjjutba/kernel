@@ -28,6 +28,8 @@ export interface Fixture {
   // Optional data for screens built after KERNEL-8. A missing field reads as empty, or as the defaults in src/main/fixtures.ts.
   /** By room id. */
   tasks?: Record<string, Task[]>
+  /** The chat New chat's Send lands on, by chat id. Without it a send fails, since fixture mode starts nothing (KERNEL-825). */
+  leadStart?: string
   /** By workspace id. */
   checkpoints?: Record<string, Checkpoint[]>
   /** What reverting would do, by workspace id, then checkpoint id (KERNEL-764). A missing one reads as no files and no commits. */

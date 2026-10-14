@@ -6,4 +6,7 @@
 - Team updates, Lead hand-offs, PR notes and teammate messages aren't a send and never move the view.
 - The rules for the reader's own scrolling are unchanged: scrolling up unpins, Scroll to bottom and scrolling back to the end follow again. Scrolling down by hand into the padding follows again, as reaching the end always did.
 
+- The scroll aims again while it glides (KERNEL-825): rows far above the message are measured after the glide passes them and shift it, so the target is retaken each frame until the message has sat 16px from the top for a few frames. The reader's own scrolling ends the aiming.
+- The first message sent from New chat anchors the same way (KERNEL-825). `startChat` marks the new chat (`markJustSent`), the transcript that mounts for it takes the mark and runs the same `sendAnchor` step as a later send. A chat reopened with the reader's message last has no mark and opens as before.
+
 Rule: `anchorPad` and `anchorSend` in `Transcript.tsx`. KERNEL-803.

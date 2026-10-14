@@ -2,6 +2,7 @@ import type { ChatPart, Effort, HeldChat, LeadMode, PermissionMode } from '@shar
 import { call, cleanError } from '../../api'
 import { actions, getState, loadWorkspace } from '../../store'
 import { openLeadChat, openNewChat } from '../../lead'
+import { markJustSent } from '../workspace/chatPlace'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { clearDraft, loadPicks, newChatDraftOf } from '../workspace/composer/draftStore'
 import { briefParts, leadMessage } from './brief'
@@ -35,6 +36,7 @@ export async function startChat(c: ChatStart): Promise<string | undefined> {
   // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
   try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
   // The engine answered before the worktree exists and pushes the workspace, so the chat opens now and says what it waits for.
+  markJustSent(chat.id)
   actions.chats.upsert(chat)
   actions.ui.holdPanel(chat.workspaceId)
   focusComposerWhenOpen(chat.id)
