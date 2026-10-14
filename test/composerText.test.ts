@@ -47,6 +47,14 @@ describe('composer text rules', () => {
     ])
   })
 
+  it('sends a linked pull request as one line, with or without its URL (KERNEL-776)', () => {
+    const blocks = (m: ReturnType<typeof toUserMessage>) => (m.message.content as { type: string; text?: string }[]).map((b) => b.text)
+    expect(blocks(toUserMessage([
+      { type: 'pr', name: '#42', number: 42, title: 'Invoice table', url: 'https://github.com/a/b/pull/42' },
+      { type: 'pr', name: '#7', number: 7, title: 'Fix login' }
+    ]))).toEqual(['Linked pull request #42: Invoice table (https://github.com/a/b/pull/42)', 'Linked pull request #7: Fix login'])
+  })
+
   it('names saved images where they sat, numbered per message, and asks for a Read of each (KERNEL-545)', () => {
     const content = (m: ReturnType<typeof toUserMessage>) => m.message.content as { type: string; text?: string; source?: unknown }[]
     const shot = (path: string, size?: { width: number; height: number }) => ({ type: 'image' as const, name: 'image.png', dataUrl: 'data:image/png;base64,AAAA', path, ...size })
