@@ -278,6 +278,12 @@ export interface CheckpointPreview {
   commitsAhead: number
   /** Some of those commits are on a remote, as a pushed branch or PR is. False when `commitsAhead` is 0. */
   pushed: boolean
+  /**
+   * Files the base changed since the checkpoint that the checkpoint changed too, differently (KERNEL-797). The revert keeps the
+   * checkpoint's content for them, so it undoes the base's change to them. Every other file the base changed keeps the base's
+   * content. Empty when the base hasn't moved forward since the checkpoint.
+   */
+  conflicts: string[]
 }
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
