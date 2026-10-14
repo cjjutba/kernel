@@ -87,6 +87,16 @@ const SHARE_EVERY_MS = 2_000
 /** Adding a login Kernel already has (KERNEL-616). */
 const ALREADY_IN = 'That account is already in Kernel.'
 
+/**
+ * Whether two logins are one: the same email, ignoring case, and the same organization unless either is unknown, since one
+ * email can have a personal plan and a Team seat. Codex says no organization, so its email decides. A login with no email
+ * matches nothing (KERNEL-616, KERNEL-701).
+ */
+const sameLogin = (a: { email?: string; orgId?: string } | undefined, b: { email?: string; orgId?: string } | undefined) => {
+  const email = a?.email?.toLowerCase()
+  return !!email && email === b?.email?.toLowerCase() && (!a!.orgId || !b.orgId || a!.orgId === b.orgId)
+}
+
 /** A role's name, for an agent Kernel names by its role before any room's team is read (KERNEL-616). */
 const ROLE_NAMES: Record<Role, string> = { lead: 'Lead', engineers: 'Engineers', qa: 'QA', reviewer: 'Reviewer' }
 
@@ -442,7 +452,10 @@ export class Providers extends Feature {
       const name = a?.label ?? file[provider].cli?.label ?? file[provider].cli?.email ?? OWN_LOGIN[provider]
       // One a day at most: a session the server refuses while `auth status` still reads signed in goes round every 10 seconds.
       const day = new Date().toISOString().slice(0, 10)
-      this.notifications.notice({ id: `n-signed-out-${provider}-${id ?? CLI_ACCOUNT}-${day}`, title: `${name} is signed out`, sub: 'Sign in again in Settings, Providers.', heading: `${name} is signed out`, body: `${name} is signed out. Sign in again in Settings, Providers.` })
+      // The CLI's own login that is also an added account saves under that account's id, so when both sign out, whichever is
+      // read first says so and the other adds nothing. One that signs out alone still says so (KERNEL-701).
+      const on = a?.id ?? this.twinOfCli(provider, rec)?.id ?? CLI_ACCOUNT
+      this.notifications.notice({ id: `n-signed-out-${provider}-${on}-${day}`, title: `${name} is signed out`, sub: 'Sign in again in Settings, Providers.', heading: `${name} is signed out`, body: `${name} is signed out. Sign in again in Settings, Providers.` })
     }
     // The plan defaults follow the plan of the account in use (KERNEL-225).
     if (planChanged && provider === 'claude' && id === this.active('claude')) void this.k.account.accountChanged().catch(() => undefined)
@@ -515,7 +528,11 @@ export class Providers extends Feature {
     }
   }
 
-  /** Every account of both providers, each provider's CLI login first. */
+  /**
+   * Every account of both providers, each provider's CLI login first. A signed-in CLI login that is also an added account
+   * shows once, as that account's row with `alsoCli`, in use while the CLI login is, and other rows name that row for it
+   * (KERNEL-701).
+   */
   async list(): Promise<AccountProfile[]> {
     const file = this.load()
     const out: AccountProfile[] = []
@@ -523,14 +540,24 @@ export class Providers extends Feature {
       const bin = this.binary(provider).path
       const cli = bin ? await this.identity(provider, undefined, bin) : { signedIn: false }
       const saved = file[provider].cli
-      out.push({ id: CLI_ACCOUNT, provider, label: saved?.label ?? cli.email ?? saved?.email ?? OWN_LOGIN[provider], email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: !file[provider].active, signedIn: cli.signedIn, ...this.extras(provider, CLI_ACCOUNT) })
+      const cliActive = !file[provider].active
+      const twin = cli.signedIn ? this.twinOfCli(provider, { email: cli.email, orgId: saved?.orgId }) : undefined
+      const extras = (id: string) => {
+        const e = this.extras(provider, id)
+        if (!twin || !e.sameOrg) return e
+        const { sameOrg, ...rest } = e
+        const peers = [...new Set(sameOrg.map((x) => (x === CLI_ACCOUNT ? twin.id : x)))].filter((x) => x !== id)
+        return peers.length ? { ...rest, sameOrg: peers } : rest
+      }
+      if (!twin) out.push({ id: CLI_ACCOUNT, provider, label: saved?.label ?? cli.email ?? saved?.email ?? OWN_LOGIN[provider], email: cli.email, plan: cli.plan, cli: true, auth: 'subscription', active: cliActive, signedIn: cli.signedIn, ...extras(CLI_ACCOUNT) })
       for (const a of file[provider].accounts) {
         const key = a.auth === 'apiKey'
         const legacy = provider === 'claude' && !key && !a.home
-        const signedIn = key ? this.keySignedIn(a.id) : legacy ? this.tokenSignedIn(a.id)
+        const also = a === twin
+        const signedIn = (also && cliActive) || (key ? this.keySignedIn(a.id) : legacy ? this.tokenSignedIn(a.id)
           : provider === 'claude' ? a.signedIn !== false && !this.moved(a)
-            : a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id, signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}), ...this.extras(provider, a.id) })
+            : a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json')))
+        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, ...(also ? { alsoCli: true as const } : {}), auth: key ? 'apiKey' : 'subscription', active: file[provider].active === a.id || (also && cliActive), signedIn, ...(legacy ? { usageFromTurns: true, legacyToken: true } : {}), ...extras(a.id) })
       }
     }
     return out
@@ -692,22 +719,25 @@ export class Providers extends Feature {
 
   /**
    * Whether a login that just signed in is one Kernel has: an added account of the provider, or its CLI's own login while
-   * that is signed in. The same email is the same account, and on Claude the same organization too when both are known,
-   * since one email can have a personal plan and a Team seat. Codex says only the email (KERNEL-616).
+   * that is signed in (`sameLogin`, KERNEL-616). Sign in again passes its own row as `except`, and leaves the CLI's own login
+   * out (`cli: false`), since that one folds into its row (KERNEL-701).
    */
-  private async alreadyIn(provider: Provider, who: { email?: string; orgId?: string }): Promise<boolean> {
-    const email = who.email?.toLowerCase()
-    if (!email) return false
-    const same = (o: { email?: string; orgId?: string } | undefined) => o?.email?.toLowerCase() === email && (!o.orgId || !who.orgId || o.orgId === who.orgId)
-    if (this.load()[provider].accounts.some((a) => a.auth !== 'apiKey' && same(a))) return true
+  private async alreadyIn(provider: Provider, who: { email?: string; orgId?: string }, o: { except?: string; cli?: boolean } = {}): Promise<boolean> {
+    if (!who.email) return false
+    if (this.load()[provider].accounts.some((a) => a.id !== o.except && a.auth !== 'apiKey' && sameLogin(a, who))) return true
     const bin = this.binary(provider).path
-    if (!bin) return false
+    if (!bin || o.cli === false) return false
     if (provider === 'claude') {
       const cli = await claudeStatus(bin)
-      return !!cli?.signedIn && same(cli)
+      return !!cli?.signedIn && sameLogin(cli, who)
     }
     const r = await readCodexAccount(bin, undefined)
-    return r.account?.type === 'chatgpt' && same({ email: r.account.email ?? undefined })
+    return r.account?.type === 'chatgpt' && sameLogin({ email: r.account.email ?? undefined }, who)
+  }
+
+  /** The added account that is the CLI's own login `cli`, when one is (`sameLogin`, KERNEL-701). */
+  private twinOfCli(provider: Provider, cli: { email?: string; orgId?: string } | undefined): StoredAccount | undefined {
+    return this.load()[provider].accounts.find((a) => a.auth !== 'apiKey' && sameLogin(cli, a))
   }
 
   /** A full Claude login in the new account's folder. Never `claude setup-token` (KERNEL-567). */
@@ -921,14 +951,19 @@ export class Providers extends Feature {
     return ids[0]
   }
 
-  /** Every account `spareAccount` could pick, best first. */
+  /**
+   * Every account `spareAccount` could pick, best first. One that is the login in use (`sameLogin`) never is, since it
+   * shares that login's limits whatever its own windows say (KERNEL-701).
+   */
   private spares(provider: Provider, limits: RateLimit[], now: number): string[] {
     const file = this.load()[provider]
     const signedIn = (a: StoredAccount) => (provider === 'codex' ? a.signedIn !== false && existsSync(join(this.codexHome(a.id)!, 'auth.json'))
       : a.home ? a.signedIn !== false && !this.moved(a) : this.tokenSignedIn(a.id))
     const active = file.active ?? CLI_ACCOUNT
-    const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: signedIn(a) }))]
-      .map((a) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
+    const inUse = file.active ? this.stored(provider, file.active) : file.cli
+    const accounts = [{ id: CLI_ACCOUNT, signedIn: file.cli?.signedIn !== false, login: file.cli }, ...file.accounts.filter((a) => a.auth !== 'apiKey').map((a) => ({ id: a.id, signedIn: signedIn(a), login: a }))]
+      .filter((a) => a.id === active || !sameLogin(inUse, a.login))
+      .map(({ login: _, ...a }) => ({ ...a, provider, active: a.id === active, auth: 'subscription' as const, sameOrg: this.sameOrg(provider, a.id), keychainWait: this.keychain.has(a.id) }))
     return switchChoices(provider, accounts, limits, now).room.map((a) => a.id)
   }
 
@@ -1021,7 +1056,8 @@ export class Providers extends Feature {
   /**
    * Run login, or Sign in again on an account's row: the provider's own sign-in for `accountId`, the active account by
    * default. An added Claude account logs in fully in its folder, and a legacy token account moves to one that way
-   * (KERNEL-567). An API key account signs in again with a new key instead.
+   * (KERNEL-567). An API key account signs in again with a new key instead. Sign in again onto a login another added
+   * account has is refused (`refuseTwin`). Run login onto one is not: the CLI's own login folds into its row (KERNEL-701).
    */
   async signIn(provider: Provider, accountId?: string): Promise<ProviderStatus> {
     const id = accountId === undefined ? this.active(provider) : accountId === CLI_ACCOUNT ? undefined : accountId
@@ -1029,8 +1065,12 @@ export class Providers extends Feature {
     if (id && this.auth(provider, id) === 'apiKey') throw new Error('This account runs on an API key. Add a new key to sign it in again.')
     if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
     if (provider === 'codex') {
-      if (id) await this.linkCodexHome(this.codexHome(id)!)
-      const who = await this.codexSignIn(id ? this.codexHome(id) : undefined)
+      const home = id ? this.codexHome(id) : undefined
+      if (home) await this.linkCodexHome(home)
+      const who = await this.codexSignIn(home)
+      if (id && await this.alreadyIn('codex', who, { except: id, cli: false })) {
+        await this.refuseTwin('codex', id, () => withCodex(this.mustBinary('codex'), home, (rpc) => rpc.request('account/logout')))
+      }
       await this.noteLogin('codex', id, { signedIn: true, ...who }, { push: false })
       this.step({ provider, step: 'done' })
     } else if (id) await this.signInClaude(id)
@@ -1053,6 +1093,14 @@ export class Providers extends Feature {
     }
     const a = this.stored('claude', id)
     if (!a) throw new Error('That account is no longer in Kernel.')
+    if (await this.alreadyIn('claude', who, { except: id, cli: false })) {
+      await this.refuseTwin('claude', id, async () => {
+        const bin = this.binary('claude').path
+        if (bin) await logoutClaude(bin, home)
+        // A legacy token account had no folder before this sign-in, so the new one goes and its token stays.
+        if (!a.home) await removeClaudeHome(home)
+      })
+    }
     const old = a.home
     a.home = home
     await this.noteLogin('claude', id, who, { push: false })
@@ -1066,6 +1114,20 @@ export class Providers extends Feature {
       this.sessions.restartProvider('claude')
       await this.k.account.accountChanged()
     }
+  }
+
+  /**
+   * Sign in again on account `id` signed in to a login another added account has (KERNEL-701). The new sign-in signs out of
+   * the account's folder or home (`signOut`), as Add account's does, so the row keeps its email and reads as signed out,
+   * with no notice since the user did it. The sign-in is refused.
+   */
+  private async refuseTwin(provider: Provider, id: string, signOut: () => Promise<unknown>): Promise<never> {
+    await signOut().catch(() => undefined)
+    const a = this.stored(provider, id)
+    if (a && (provider === 'codex' || a.home)) await this.noteLogin(provider, id, { signedIn: false }, { quiet: true, push: false })
+    this.step({ provider, step: 'failed', error: ALREADY_IN })
+    void this.pushAccounts()
+    throw new Error(ALREADY_IN)
   }
 
   // ---------- MCP sign-ins (KERNEL-616)
