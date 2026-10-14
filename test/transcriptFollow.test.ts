@@ -269,3 +269,20 @@ describe('the first message of a new chat anchors, a reopened chat does not (KER
     expect(sendAnchor(mine, null, false, true, false)).toBe('keep')
   })
 })
+
+describe('a jump ends the send aim (KERNEL-825)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ aimOver: (anchoredId: string | null, id: string, byHand: boolean, pinned: boolean) => boolean }>
+
+  it('keeps aiming while the message is anchored and nobody has taken the view', async () => {
+    const { aimOver } = await load()
+    expect(aimOver('u1', 'u1', false, false)).toBe(false)
+  })
+
+  it('stops when Scroll to bottom pins the view, when the reader or the chat rail takes it, and when another message is anchored', async () => {
+    const { aimOver } = await load()
+    expect(aimOver('u1', 'u1', false, true)).toBe(true)
+    expect(aimOver('u1', 'u1', true, false)).toBe(true)
+    expect(aimOver('u2', 'u1', false, false)).toBe(true)
+    expect(aimOver(null, 'u1', false, false)).toBe(true)
+  })
+})

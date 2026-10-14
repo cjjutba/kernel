@@ -52,6 +52,9 @@ export const ANCHOR_GAP = 16
 const AIM_CALM = 12
 const AIM_FRAMES = 150
 
+/** Whether the aim for message `id` is over: another message took the anchor, the reader scrolled, or the view follows its end again (Scroll to bottom, a jump from the chat rail). */
+export const aimOver = (anchoredId: string | null, id: string, byHand: boolean, pinned: boolean) => anchoredId !== id || byHand || pinned
+
 /** The scroll position that puts the anchored message ANCHOR_GAP under the top of the view, from where it and the view sit on screen now. */
 export const anchorGoal = (scrollTop: number, markTop: number, viewTop: number) => Math.round(scrollTop + markTop - viewTop - ANCHOR_GAP)
 
@@ -939,7 +942,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     const step = () => {
       const el = scroller.current
       const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-      if (!el || !mark || anchored.current !== id || byHand.current || pinned.current) { release(); return }
+      if (!el || !mark || aimOver(anchored.current, id, byHand.current, pinned.current)) { release(); return }
       padReply()
       const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       if (goal !== aimed) {
