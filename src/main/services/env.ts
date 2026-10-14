@@ -24,6 +24,20 @@ export const expandKernelVars = (value: string, kernel: Record<string, string>):
   value.replace(/\$\{(KERNEL_[A-Z_]+)\}/g, (all, name: string) => (Object.hasOwn(KERNEL_VARS, name) && Object.hasOwn(kernel, name) ? kernel[name] : all))
 
 /**
+ * The Mac's environment without what a parent Kernel gave it. Kernel runs inside a Kernel workspace while it is developed,
+ * and then its environment holds that workspace's `KERNEL_*` names and every value made from its slug, like
+ * `COMPOSE_PROJECT_NAME=kernel_<parent>` or a database URL ending in it. Those belong to the parent workspace, so they are
+ * dropped, and the child's own defaults and filled-in values win. A slug is `kernel_` and 12 letters and digits, so a value
+ * the user set themselves doesn't hold one by chance (KERNEL-710).
+ */
+function ownBase(base: NodeJS.ProcessEnv): Record<string, string> {
+  const parent = base.KERNEL_WORKSPACE_SLUG
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(base)) if (v !== undefined && !isKernelVar(k) && !(parent && v.includes(parent))) out[k] = v
+  return out
+}
+
+/**
  * Every variable a process in a workspace gets, where a later layer wins: Kernel's defaults, the Mac's environment, the
  * app's variables, the room's env files in list order, the room's variables, what the workspace's setup wrote to
  * `$KERNEL_ENV` (KERNEL-405), then Kernel's own (KERNEL-247). A default is what Kernel picks unless the user sets the name,
@@ -39,7 +53,7 @@ export function buildEnv(l: {
   kernel: Record<string, string>
 }): Record<string, string> {
   const out: Record<string, string> = { ...l.defaults }
-  for (const [k, v] of Object.entries(l.base)) if (v !== undefined) out[k] = v
+  for (const [k, v] of Object.entries(ownBase(l.base))) out[k] = v
   for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.setup ?? {}]) for (const [k, v] of Object.entries(layer)) out[k] = expandKernelVars(v, l.kernel)
   return Object.assign(out, l.kernel)
 }

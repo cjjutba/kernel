@@ -456,6 +456,18 @@ describe('Kernel variables in values (KERNEL-449)', () => {
     expect(buildEnv({ base: {}, defaults, setup: { COMPOSE_PROJECT_NAME: 'setup' }, kernel: {} }).COMPOSE_PROJECT_NAME).toBe('setup')
   })
 
+  it("drops what a parent Kernel workspace left in the Mac's environment, so the workspace's own names win (KERNEL-710)", () => {
+    const parent = { KERNEL_WORKSPACE_SLUG: 'kernel_9d0ef99c6011', KERNEL_PORT: '4530', KERNEL_ENV: '/tmp/parent.env', COMPOSE_PROJECT_NAME: 'kernel_9d0ef99c6011', DATABASE_URL: 'postgres://localhost:5432/app_kernel_9d0ef99c6011', HOME: '/Users/me' }
+    const kernel = { KERNEL_WORKSPACE_SLUG: 'kernel_8f8933709953', KERNEL_PORT: '4100' }
+    const env = buildEnv({ base: parent, defaults: { COMPOSE_PROJECT_NAME: kernel.KERNEL_WORKSPACE_SLUG }, kernel })
+    expect(env).toMatchObject({ COMPOSE_PROJECT_NAME: 'kernel_8f8933709953', KERNEL_PORT: '4100', HOME: '/Users/me' })
+    expect(env.DATABASE_URL).toBeUndefined()
+    expect(env.KERNEL_ENV).toBeUndefined()
+    // The workspace's own database URL fills in its own slug, and a name the user set on the Mac still wins over the default.
+    expect(buildEnv({ base: parent, files: [{ DATABASE_URL: 'postgres://localhost:5432/app_${KERNEL_WORKSPACE_SLUG}' }], kernel }).DATABASE_URL).toBe('postgres://localhost:5432/app_kernel_8f8933709953')
+    expect(buildEnv({ base: { ...parent, COMPOSE_PROJECT_NAME: 'mac' }, defaults: { COMPOSE_PROJECT_NAME: kernel.KERNEL_WORKSPACE_SLUG }, kernel }).COMPOSE_PROJECT_NAME).toBe('mac')
+  })
+
   it('names a database or a Compose project after the workspace id, so a rename or a folder move keeps it', () => {
     const ws = { id: '3F2A91C4-1111-2222-3333-444455556666', name: 'in-setup-script', path: '/wt/lead-in-setup-script', port: 4100, branch: 'lead/in-setup-script', baseRef: 'origin/main' }
     const slug = kernelVars(ws, undefined).KERNEL_WORKSPACE_SLUG
@@ -551,8 +563,12 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     // A current-branch workspace is the room's own checkout and keeps the project the user's terminal gets there.
     await rm(join(repo, '.env.kernel'))
     const here = k.store.saveWorkspace({ ...a, id: 'here', mode: 'current', path: repo, branch: 'main' })
-    expect(k.env.envFor(here).COMPOSE_PROJECT_NAME).toBe(process.env.COMPOSE_PROJECT_NAME)
-    expect(k.env.envFor(a).DATABASE_URL).toBe(process.env.DATABASE_URL)
+    vi.stubEnv('COMPOSE_PROJECT_NAME', 'terminal')
+    vi.stubEnv('DATABASE_URL', 'postgres://localhost:5432/mac')
+    try {
+      expect(k.env.envFor(here).COMPOSE_PROJECT_NAME).toBe('terminal')
+      expect(k.env.envFor(a).DATABASE_URL).toBe('postgres://localhost:5432/mac')
+    } finally { vi.unstubAllEnvs() }
     expect((await h['env.get']({ roomId: r.id })).files).toEqual([])
     await k.stop()
   })
