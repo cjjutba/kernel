@@ -11,7 +11,7 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
     ignore:
-      # Bumped by hand after the live test (CLAUDE.md), because usage relies on undocumented SDK fields.
+      # Bumped by hand after the live test (AGENTS.md), because usage relies on undocumented SDK fields.
       - dependency-name: '@anthropic-ai/claude-agent-sdk'
       # Major upgrades of Electron, better-sqlite3, node-pty and the rest need a native rebuild and a live test.
       - dependency-name: '*'
