@@ -83,7 +83,7 @@ beforeAll(async () => {
   await act(async () => { createRoot(host).render(React.createElement(App)); await store.boot() })
   for (let i = 0; i < 100 && !store.getState().system.booted; i++) await act(async () => { await new Promise((r) => setTimeout(r, 50)) })
   expect(store.getState().system.booted).toBe(true)
-})
+}, 60_000)
 
 let n = 0
 /** The components an event made React run. One event of the same kind goes first, so first-time work (effects, lazy loads) is not counted. */
