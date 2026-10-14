@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Checkpoint } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { IconButton, useBusy } from '../../../ui'
+import { IconButton, Spinner, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import './checkpoints.css'
 
@@ -67,7 +67,7 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
                   <span>Restore files to {time}? Changes after this turn move to a backup branch.</span>
                   <div className="row" style={{ gap: 8 }}>
                     <button type="button" className="ck-cancel" onClick={() => setAsking(null)}>Cancel</button>
-                    <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <span className="spin" aria-hidden="true" />}{busy ? 'Reverting' : 'Revert'}</button>
+                    <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <Spinner label={null} />}{busy ? 'Reverting' : 'Revert'}</button>
                   </div>
                 </div>
               )}

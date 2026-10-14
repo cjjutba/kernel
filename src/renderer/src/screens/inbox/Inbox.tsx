@@ -4,7 +4,7 @@ import type { AgentDef, Approval, Decision, Overlap } from '@shared/types'
 import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon, Pill, useBusy } from '../../ui'
+import { Button, Icon, Pill, Spinner, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
@@ -94,7 +94,7 @@ function Detail({ item }: { item: InboxItem }) {
           </dl>
           <div className="ib-acts">
             <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
-            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><span className="spin" aria-hidden="true" />Allowing</> : 'Always allow in this room'}</button>
+            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><Spinner label={null} />Allowing</> : 'Always allow in this room'}</button>
             <span className="grow" />
             <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>Approve</Button>
           </div>
