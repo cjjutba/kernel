@@ -10,6 +10,7 @@ import { keepData, keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog
 import { currentRoute } from '@shared/settingsRoutes'
 import { call, cleanError, onPush } from './api'
 import { startupTheme } from './ui/theme'
+import { closeAllLayers } from './ui/hooks'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
@@ -331,6 +332,7 @@ export type HistoryMode = 'push' | 'replace' | 'none'
 const capped = (list: Place[]) => list.length > HISTORY_LIMIT ? list.slice(-HISTORY_LIMIT) : list
 /** Every move ends here, whether it changed the route (`go`) or the tab (`openTab`). The place-keeping lines of the issues after it go here too. */
 function moved(from: Place, to: Place, history: HistoryMode = 'push') {
+  closeAllLayers()
   if (to.route.name === 'settings') {
     if (from.route.name !== 'settings') returnTo = from
     lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }

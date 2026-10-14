@@ -2151,6 +2151,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   ComposerModes: scene((f) => bypassPicked(f)),
   ComposerModeMenu: scene((f) => bypassPicked(f, 'mode')),
+  // KERNEL-751: a modal opened while the mode menu was open closes it, so nothing sits above the backdrop.
+  ComposerModeMenuUnderModal: scene((f) => ({ ...bypassPicked(f, 'mode'), ui: { ...bypassPicked(f).ui, modal: { name: 'newWorkspace', roomId: ids.lead } } })),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [

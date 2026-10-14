@@ -141,7 +141,7 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) latest.current()
     else setClosing(true)
   }, [])
-  useLayer({ onEscape: dismiss })
+  useLayer({ onEscape: dismiss, blocking: true })
   useEffect(() => {
     if (closing) ref.current?.setAttribute('inert', '')
   }, [closing])
