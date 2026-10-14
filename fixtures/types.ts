@@ -1,5 +1,5 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
@@ -30,6 +30,8 @@ export interface Fixture {
   tasks?: Record<string, Task[]>
   /** By workspace id. */
   checkpoints?: Record<string, Checkpoint[]>
+  /** What reverting would do, by workspace id, then checkpoint id (KERNEL-764). A missing one reads as no files and no commits. */
+  checkpointPreviews?: Record<string, Record<string, CheckpointPreview>>
   /** What the Delete confirm in History counts (KERNEL-333). A missing field reads as fixed numbers. */
   deletePreview?: DeletePreview
   notifications?: Notification[]

@@ -126,14 +126,18 @@ export type ChatItem =
   /**
    * `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111).
    * `approvalId` is the plan approval a Kernel message answers, so the chat can show the user's answer instead of Kernel's text.
+   * `checkpointId` is on the chat's first message only: the start checkpoint, taken before it went out (KERNEL-764).
    */
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string }
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
-  /** End of a turn. `files` is the "Changed" chip row under the reply. */
-  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
+  /**
+   * End of a turn. `files` is the "Changed" chip row under the reply. `checkpointId` is the checkpoint taken as the turn ended,
+   * set on every turn that wrote a result, with or without files (KERNEL-764). Both arrive a moment after the row, in a `chat.item` push.
+   */
+  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[]; checkpointId?: string }
   /**
    * `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none.
    * `refs` are spans of `text`, in the order they appear, that open another workspace, such as the PRs a held brief waits for.
