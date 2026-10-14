@@ -264,6 +264,9 @@ describe('Kernel env', () => {
       // Nor does it move the window the chat's role sets (feat-compact-window-per-role-with-plan).
       expect(sessionEnv(k.envFor(ws), {}, { compact: '200k' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
       expect(sessionEnv(k.envFor(ws), {}, { compact: 'full' }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined()
+      // Sessions get the CLI's Artifact tools unless the Mac turns them off (KERNEL-795).
+      expect(sessionEnv({}, {}).CLAUDE_CODE_ARTIFACT).toBe('1')
+      expect(sessionEnv({ CLAUDE_CODE_ARTIFACT: '0' }, {}).CLAUDE_CODE_ARTIFACT).toBe('0')
       expect(k.envFor(ws, { script: true })).toMatchObject({ ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_OAUTH_TOKEN: 'other-account' })
     } finally {
       for (const [k2, v] of [['ANTHROPIC_BASE_URL', mac.base], ['CLAUDE_CODE_USE_BEDROCK', mac.bedrock], ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', mac.teams]] as const) {
