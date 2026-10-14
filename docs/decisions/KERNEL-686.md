@@ -11,5 +11,3 @@ The card under a finished reply lists only the files changed while answering tha
 ## Why
 
 In a Lead or current-branch workspace the Changes tab diffs the whole checkout, including the user's own edits, so its count says nothing about what the agent did and would mislead next to a reply. The button hides there. Older cards stay plain so a chat doesn't fill with repeated links to the same list.
-
-This departs from the retired `design/redesign/TurnFiles*.png` on purpose: those drew the old header and no link.
