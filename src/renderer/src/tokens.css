@@ -324,13 +324,23 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .card { border: 1px solid var(--card-line); border-radius: var(--r-md); background: var(--card-bg); }
 .code { padding: 9px 11px; border-radius: var(--r-md); background: var(--code-bg); font: 12px/1.6 var(--mono); color: var(--ink-3); white-space: pre-wrap; user-select: text; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); vertical-align: middle; }
-/* The dot loader (KERNEL-714, KERNEL-740, KERNEL-755, KERNEL-759). One 3x3 grid of round dots, 12px square everywhere (2px dots, 3px gaps), so it matches the 12 to 13px icons it stands in for. Unlit dots are fully transparent and each dot fades up to 0.9, holds, and fades out. A kind's loop is its step times its number of groups (`--n`: 5 diagonals for agent, 3 for the rest), so every kind loops in `--loop` (1s) and the next wave starts as the last group fades. A dot stays above 0.5 for more than a third of the loop, so some dot is always clearly lit. Only opacity loops. Spinner gives every dot its step `--k` in its kind's order (agent: diagonals, process: columns, load: rows, action: ripple out, swap: ripple in) and a kind sets which step reduced motion holds lit (`--still`). `--phase` offsets the loop for rows that must not run in step (Spinner `seed`). Reduced motion stops the loop and holds the `--still` group dim. Negative delays start the loop mid-wave. */
-.dots { --d: 2px; --g: 3px; --loop: 1s; --n: 3; --step: calc(var(--loop) / var(--n)); --still: 0; display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
-.dots[data-kind='agent'] { --n: 5; --still: 2; }
-.dots > i { display: block; border-radius: 50%; background: var(--spin-ink, var(--faint)); opacity: calc(0.4 * (1 - min(1, abs(var(--k) - var(--still))))); }
-@keyframes dots-wave { 0%, 100% { opacity: 0; } 6% { opacity: 0.9; } 36% { opacity: 0.9; } 48% { opacity: 0; } }
+/* The dot loader (KERNEL-714, KERNEL-740, KERNEL-755, KERNEL-759, revised below). One 3x3 grid of round dots, 12px square everywhere (2px dots, 3px gaps), so it matches the 12 to 13px icons it stands in for. Unlit dots are fully transparent and only opacity animates. A pattern (ui/dotPatterns.ts) splits the 1s `--loop` into `--n` steps and gives every dot the step `--k` where it lights once, at `--a` of the full 0.9. The `data-shape` picks how long a dot stays lit, so some dot is always above 0.5. `--s` is the dim opacity reduced motion holds on the dots that show a pattern's shape. `--phase` shifts the loop for rows that must not run in step. Negative delays start the loop mid-wave. */
+.dots { --d: 2px; --g: 3px; --loop: 1s; --n: 3; --step: calc(var(--loop) / var(--n)); --anim: dots-wave; display: inline-grid; flex-shrink: 0; grid-template-columns: repeat(3, var(--d)); grid-auto-rows: var(--d); gap: var(--g); }
+.dots[data-shape='half'] { --anim: dots-half; }
+.dots[data-shape='one'] { --anim: dots-one; }
+.dots[data-shape='tail'] { --anim: dots-tail; }
+.dots[data-shape='blink'] { --anim: dots-blink; }
+.dots > i { display: block; border-radius: 50%; background: var(--spin-ink, var(--faint)); opacity: var(--s, 0); }
+.dots > i[data-shape='half'] { --anim: dots-half; }
+.dots > i[data-shape='beat'] { --anim: dots-beat; }
+@keyframes dots-wave { 0%, 100% { opacity: 0; } 6% { opacity: calc(var(--a, 1) * 0.9); } 36% { opacity: calc(var(--a, 1) * 0.9); } 48% { opacity: 0; } }
+@keyframes dots-half { 0%, 100% { opacity: 0; } 8% { opacity: 0.9; } 48% { opacity: 0.9; } 70% { opacity: 0; } }
+@keyframes dots-one { 0%, 100% { opacity: 0; } 3% { opacity: 0.9; } 12% { opacity: 0.9; } 26% { opacity: 0; } }
+@keyframes dots-tail { 0%, 100% { opacity: 0; } 3% { opacity: 0.9; } 8% { opacity: 0.9; } 40% { opacity: 0; } }
+@keyframes dots-blink { 0%, 100% { opacity: 0; } 2% { opacity: 0.9; } 13% { opacity: 0.9; } 18% { opacity: 0; } }
+@keyframes dots-beat { 0%, 100% { opacity: 0; } 5% { opacity: 0.9; } 14% { opacity: 0.9; } 20% { opacity: 0.15; } 30% { opacity: 0.9; } 68% { opacity: 0.9; } 80% { opacity: 0; } }
 @media (prefers-reduced-motion: no-preference) {
-  .dots > i { animation: dots-wave var(--loop) ease-in-out infinite; animation-delay: calc(var(--k) * var(--step) - var(--loop) - var(--phase, 0s)); }
+  .dots > i { animation: var(--anim) var(--loop) ease-in-out infinite; animation-delay: calc(var(--k) * var(--step) - var(--loop) - var(--phase, 0s)); }
 }
 .menu { position: absolute; z-index: 60; min-width: 220px; padding: 6px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; font-size: 13px; }

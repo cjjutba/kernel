@@ -415,7 +415,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
 function Elapsed({ since }: { since: number }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  return <span className="running"><Spinner label="Working" />{fmtDuration(now - since)}</span>
+  return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
 }
 
 function ApprovalRow({ id }: { id: string }) {

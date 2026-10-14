@@ -139,7 +139,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
 
-- The dot loader (one 12px size, small round `faint` dots that fade in and out, rippling out from the center as `kind="action"`, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
+- The dot loader (one 12px size, small round `faint` dots that fade in and out, rippling out from the center as `pattern="ripple-out"`, which `Button` and `IconButton` set) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
 - Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color, so it never reads as a hole in the band (KERNEL-274).
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
@@ -162,10 +162,26 @@ A button that waits on the main process shows it is working until the call retur
   - Overlap. Archiving again while a fold runs starts that row's fold at once. The destination row's fill fade that starts over another one jumps the earlier one to its end.
   - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears and the selected fill changes. The screen swaps at once either way.
 - Only opacity and transform loop, and nothing on a button loops.
-- Dot loader (KERNEL-714, KERNEL-740, KERNEL-755, KERNEL-759): a fixed 12px grid of nine round dots, 2px each with 3px gaps, pixel-aligned, so it matches the 12 to 13px icons that sit in the 16px slot. It does not scale with the text beside it. Unlit dots rest at opacity 0. Each dot rises to 0.9, holds and fades out with `ease-in-out`, and at every moment some dot is above 0.5, so it is never blank. Every kind loops in about 1s: a kind's step is the loop divided by its groups (5 diagonals for `agent`, 3 groups for the others), so the next wave starts as the last group fades. Dots take `--spin-ink`, default `faint`.
-- Dot loader kinds: `Spinner` takes a `kind`, and each kind of wait lights the same nine dots in its own order, one pass per cycle. `action` (busy buttons, busy inline links and a segmented control's busy option) ripples out: center, edges, corners. `agent` (default: an agent working, sidebar rows, chat tabs, the hover card, the Working line) crosses the diagonals. `process` (setup and run steps) sweeps the columns left to right. `load` (loading data) sweeps the rows top to bottom. `swap` (account switching, a Settings field saving, Banner retry) ripples in: corners, edges, center. Only the order changes. Running sidebar rows take a `seed` from their id, which offsets the loop by a stable amount so two rows are out of step. Reduced motion stops the loop and holds the first group of the kind lit and dim: center, corners, left column, top row, or the middle diagonal for `agent`.
+- Dot loader (KERNEL-714, KERNEL-759): one 3x3 grid of round dots, 12px square everywhere (2px dots, 3px gaps, pixel-aligned, so it matches the 12 to 13px icons that sit in the 16px slot and does not scale with the text beside it), in `faint` or `--spin-ink`. It loops once a second. Every dot is transparent at rest and lights once per loop, rising to 0.9 and fading out, and at every moment at least one dot is at 0.5 or more, so it is never blank. Only opacity animates. `Spinner` takes a `pattern`, one per kind of wait, so a person can tell a wait apart at a glance. Running sidebar rows take a `seed` from their id, which shifts the loop so rows run out of step. Reduced motion holds a still frame of each pattern's shape. Dots are numbered row by row (0 1 2 / 3 4 5 / 6 7 8), and the patterns are data in `ui/dotPatterns.ts`, shown in DevUi under Loader patterns.
+
+| Pattern | Order | Still frame | Used for |
+| --- | --- | --- | --- |
+| `wave` | diagonals, top left to bottom right | middle diagonal | agent working: sidebar rows, hover card (default) |
+| `wave-back` | the same, bottom right to top left | middle diagonal | switching accounts, a Settings field saving |
+| `arrow-right` | a `>` chevron moving right | the chevron | not used yet |
+| `arrow-down` | a `v` chevron moving down | the chevron | loading data: issue lists, onboarding checks, Starting |
+| `ripple-out` | center, edges, corners | center | busy buttons and inline action links |
+| `ripple-in` | corners, edges, center | corners | not used yet |
+| `spiral` | clockwise around the ring, then center | first three dots | the transcript Working line |
+| `rotate` | corners turn clockwise, edges trail dim, then center | one corner | Banner retrying |
+| `checker` | the X, then the plus, alternating | the X | PR checks running: PRs rows, PR band status |
+| `pulse` | center beats twice, then the ring | center | not used yet |
+| `scatter` | one dot at a time in a fixed shuffle | three dots | not used yet |
+| `twinkle` | two or three dots at once, fixed uneven delays | three dots | chat tabs working |
+| `snake` | one dot tracing the grid with a fading tail | first three dots | setup and run scripts |
+
 - Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
-- Respect reduced motion: jump instead of walk, the dot loader holds still on one dim group of dots, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
+- Respect reduced motion: jump instead of walk, the dot loader holds a dim still frame of its pattern, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 
 ## Accessibility
 

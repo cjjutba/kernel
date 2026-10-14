@@ -69,7 +69,7 @@ function Row({ row }: { row: LeadPr }) {
   return (
     <li className="lp-row" data-group={row.group}>
       <span className="lp-glyph" data-tone={glyph.tone} role="img" aria-label={glyph.label}>
-        {glyph.icon === 'spin' ? <Spinner label={null} /> : <Icon name={glyph.icon} size={14} />}
+        {glyph.icon === 'spin' ? <Spinner label={null} pattern="checker" /> : <Icon name={glyph.icon} size={14} />}
       </span>
       <div className="lp-body">
         <div className="lp-l1">

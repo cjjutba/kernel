@@ -182,7 +182,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
         </div>
       )}
 
-      {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} kind="load" />Loading issues</div>}
+      {shown.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} pattern="arrow-down" />Loading issues</div>}
 
       {shown.kind === 'connect' && (
         <div className="is-center is-state">
