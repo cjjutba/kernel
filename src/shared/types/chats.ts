@@ -193,6 +193,8 @@ export type ChatPart =
   | { type: 'issue'; name: string; title: string; url?: string; source: TrackerKind }
   /** + > Link workspaces: another workspace the agent can read and diff. */
   | { type: 'workspace'; name: string; workspaceId: string; branch: string; path: string; prNumber?: number; prUrl?: string }
+  /** + > Link pull request: a PR the agent can read (KERNEL-776). `name` is "#41", so chips read it like an issue's key. */
+  | { type: 'pr'; name: string; number: number; title: string; url?: string }
   /** @agent in a Lead chat's composer: the user addresses the message to that teammate, and the Lead acts for them (KERNEL-745). */
   | { type: 'agent'; name: string; agentId: string }
 
