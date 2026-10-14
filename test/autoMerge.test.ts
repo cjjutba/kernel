@@ -9,6 +9,7 @@ import { Prs } from '../src/main/features/prs'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
+import { HEAD_MOVED } from '../src/main/services/github'
 import { applySettingsPatch, autoMergeInRoom, DEFAULT_SETTINGS, loadAppSettings, sharedMergeOf } from '../src/main/services/settings'
 import { decide, LeadUpdates, type TeamEvent } from '../src/main/services/leadUpdates'
 import { tempRepo, freePort } from './helpers'
@@ -134,6 +135,33 @@ describe('which PRs merge by themselves', () => {
     k.github = { ...k.github, info: async (...a) => { const got = await read(...a); return ++n > 1 && got ? { ...got, head: 'f'.repeat(40) } : got } }
     expect(await k.prs.autoMerge(ws.id)).toEqual({ refused: 'The pull request has new commits since Kernel checked it.' })
     expect(gh.merged).toEqual([])
+  })
+
+  // KERNEL-829: GitHub merges only the head Kernel weighed, so a push after the fresh read lands nothing.
+  it('holds GitHub to the head it weighed, and lands nothing when a push came after the check', async () => {
+    const { k, gh, pr } = await setup()
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    const weighedHead = gh.pr!.head
+    const heads: (string | undefined)[] = []
+    k.github = { ...k.github, merge: async (_cwd, _ref, _method, o) => {
+      heads.push(o?.head)
+      // A push lands on GitHub between Kernel's read and the merge, and GitHub turns down the old head.
+      throw new Error(HEAD_MOVED)
+    } }
+    expect(await k.prs.autoMerge(ws.id)).toEqual({ refused: HEAD_MOVED })
+    expect(heads).toEqual([weighedHead])
+    expect(gh.merged).toEqual([])
+    expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+  })
+
+  it('reports a merge as merged when gh timed out after GitHub merged it (KERNEL-829)', async () => {
+    const { k, gh, pr, activity } = await setup()
+    const ws = await pr({ 'src/a.ts': 'export const a = 1\n' })
+    const merge = k.github.merge
+    k.github = { ...k.github, merge: async (...a) => { await merge(...a); throw new Error("gh pr merge --squash didn't finish in 60 seconds") } }
+    expect(await k.prs.autoMerge(ws.id)).toEqual({ merged: expect.objectContaining({ prState: 'merged', mergedWith: 'squash' }) })
+    expect(gh.merged).toEqual(['squash'])
+    expect(activity.find((a) => a.text === 'merged automatically')).toMatchObject({ actor: 'kernel', object: 'PR #101' })
   })
 
   it('warns once in the room that the shared settings file sets auto-merge, and ignores it', async () => {
@@ -263,6 +291,24 @@ describe('weighing again', () => {
     settled = true
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
     expect(gh.merged).toEqual(['squash'])
+    expect(told).not.toHaveBeenCalled()
+  })
+
+  it('merges a PR whose merge GitHub turned down because the base branch moved meanwhile (KERNEL-829)', async () => {
+    const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, (pr) => pr)
+    const merge = k.github.merge
+    let tries = 0
+    k.github = { ...k.github, merge: async (...a) => {
+      if (++tries === 1) throw new Error('gh pr merge 101 --squash failed (1): GraphQL: Base branch was modified. Review and try the merge again. (mergePullRequest)')
+      return merge(...a)
+    } }
+    // The poll's read weighs it, so the read after the failed merge finds the same key.
+    await k.prs.refreshPr(ws.id)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    expect(await weighed.mock.results[0].value).toEqual({ refused: expect.stringContaining('Base branch was modified') })
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(gh.merged).toEqual(['squash'])
+    expect(weighed).toHaveBeenCalledTimes(2)
     expect(told).not.toHaveBeenCalled()
   })
 
