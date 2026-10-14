@@ -1,0 +1,146 @@
+import { describe, expect, it } from 'vitest'
+import { maskSecrets, serviceOf, shortPath, stripCd, toolTitle, toolView, type ToolLike } from '../src/shared/toolView'
+
+const call = (name: string, input: Record<string, unknown> = {}, extra: Partial<ToolLike> = {}): ToolLike => ({ name, input, status: 'done', ...extra })
+
+describe('toolView verbs and tenses', () => {
+  it('follows the status', () => {
+    const save = { title: 'Settings say Saving' }
+    expect(toolView(call('mcp__linear__save_issue', save, { status: 'running' })).verb).toBe('Filing issue')
+    expect(toolView(call('mcp__linear__save_issue', save)).verb).toBe('Filed issue')
+    const failed = toolView(call('mcp__linear__save_issue', save, { status: 'failed', output: 'Team not found\nmore' }))
+    expect(failed.verb).toBe("Couldn't file issue")
+    expect(failed.detail).toBe('Team not found')
+    expect(failed.state).toBe('failed')
+  })
+
+  it('reads a refused approval as denied and a cut-off call as stopped', () => {
+    const denied = toolView(call('Bash', { command: 'rm -rf dist' }, { status: 'failed', output: "The user doesn't want to proceed with this tool use." }))
+    expect(denied.verb).toBe('You denied running')
+    expect(denied.state).toBe('denied')
+    const stopped = toolView(call('mcp__linear__save_issue', {}, { status: 'failed', output: 'Stopped when Kernel quit' }))
+    expect(stopped.verb).toBe('Stopped filing issue')
+    expect(stopped.state).toBe('stopped')
+  })
+
+  it('shows Bash by its description, or by its command without a leading cd', () => {
+    expect(toolView(call('Bash', { command: 'pnpm test', description: 'Run the unit tests.' })).verb).toBe('Run the unit tests')
+    const bare = toolView(call('Bash', { command: 'cd /tmp/x && cd y && pnpm test --run\nmore' }))
+    expect(bare).toMatchObject({ verb: 'Ran', object: 'pnpm test --run', mono: true })
+    expect(toolView(call('Bash', { command: 'ls', description: 'List files' }, { status: 'failed', output: 'denied by user: you denied' })).verb).toBe('You denied "List files"')
+  })
+
+  it('names a file by its name with its folder apart', () => {
+    const v = toolView(call('Edit', { file_path: '/Users/cj/kernel/worktrees/k/src/a/b.ts' }), { root: '/Users/cj/kernel/worktrees/k' })
+    expect(v).toMatchObject({ verb: 'Edited', object: 'b.ts', dir: 'src/a', file: '/Users/cj/kernel/worktrees/k/src/a/b.ts' })
+    expect(toolView(call('Write', { file_path: 'x.md' }, { status: 'running' })).verb).toBe('Writing')
+    expect(toolView(call('NotebookEdit', { notebook_path: 'n.ipynb' })).object).toBe('n.ipynb')
+  })
+
+  it('covers search, web, agents and skills', () => {
+    expect(toolView(call('Grep', { pattern: 'foo' }))).toMatchObject({ verb: 'Searched code', object: 'foo' })
+    expect(toolView(call('Glob', { pattern: '**/*.ts' })).verb).toBe('Searched code')
+    expect(toolView(call('WebFetch', { url: 'https://www.example.com/a?b=1' }))).toMatchObject({ verb: 'Fetched', object: 'example.com' })
+    expect(toolView(call('WebSearch', { query: 'electron ipc' })).object).toBe('electron ipc')
+    expect(toolView(call('Task', { description: 'Find callers' })).object).toBe('Find callers')
+    expect(toolView(call('Agent', { description: 'Review it' })).object).toBe('Review it')
+    expect(toolView(call('Skill', { skill: 'unslop' }))).toMatchObject({ verb: 'Used skill', object: 'unslop' })
+  })
+
+  it('reads Kernel tools', () => {
+    expect(toolView(call('mcp__kernel__create_workspace', { agent: 'kai', title: 'Tool rows' }))).toMatchObject({ verb: 'Handed to Kai', object: 'Tool rows', agent: 'kai', service: 'kernel' })
+    expect(toolView(call('mcp__kernel__message_agent', { workspace_id: 'w1', text: 'Rebase please' }), { agentOf: () => 'noor' })).toMatchObject({ verb: 'Messaged Noor', object: 'Rebase please' })
+    expect(toolView(call('mcp__kernel__list_workspaces')).verb).toBe('Checked workspaces')
+    expect(toolView(call('mcp__kernel__get_issue', { key: 'KERNEL-5' })).verb).toBe('Read KERNEL-5')
+    expect(toolView(call('mcp__kernel__share_file', { path: '.kernel/shared/mock.html' })).verb).toBe('Shared mock.html')
+    expect(toolView(call('mcp__kernel__request_plan_approval')).verb).toBe('Asked for plan approval')
+    expect(toolView(call('mcp__kernel__wait_for_merge')).verb).toBe('Set a wait')
+    expect(toolView(call('mcp__kernel__merge_workspace')).verb).toBe('Merged')
+    expect(toolView(call('mcp__kernel__archive_workspace')).verb).toBe('Archived')
+    expect(toolView(call('mcp__kernel__read_plans')).verb).toBe("Read this chat's plans")
+  })
+
+  it('reads Linear and GitHub tools', () => {
+    expect(toolView(call('mcp__linear__save_issue', { id: 'KERNEL-7', title: 'T' })).verb).toBe('Updated KERNEL-7')
+    expect(toolView(call('mcp__linear__list_issues', { query: 'saving' }))).toMatchObject({ verb: 'Searched issues', object: 'saving' })
+    expect(toolView(call('mcp__linear__get_issue', { id: 'KERNEL-3' })).verb).toBe('Read KERNEL-3')
+    expect(toolView(call('mcp__linear__save_comment', { issueId: 'KERNEL-3', body: 'Done\nmore' }))).toMatchObject({ verb: 'Commented on KERNEL-3', object: 'Done' })
+    expect(toolView(call('mcp__linear__list_issue_labels')).verb).toBe('Listed issue labels')
+    expect(toolView(call('mcp__claude_ai_github__list_pull_requests')).verb).toBe('Listed pull requests')
+    expect(toolView(call('mcp__github__get_file_contents')).verb).toBe('Read file contents')
+  })
+
+  it('humanizes an unknown MCP tool and names its server', () => {
+    const v = toolView(call('mcp__my_server__list_issue_labels'))
+    expect(v).toMatchObject({ verb: 'List issue labels', object: 'My Server', service: 'mcp' })
+    expect(v.sentence).toBe('List issue labels in My Server')
+  })
+
+  it('never previews JSON from an MCP tool and falls back to the stored label elsewhere', () => {
+    const v = toolView(call('mcp__linear__list_issues', {}, { detail: '{"team":"Kernel"}' }))
+    expect(v.detail).toBeUndefined()
+    expect(toolView({ name: 'Mystery', status: 'done', label: 'Did a thing', detail: 'about it' })).toMatchObject({ verb: 'Did a thing', detail: 'about it' })
+  })
+})
+
+describe('toolView service and hiding', () => {
+  it('matches the service by the normalized server name', () => {
+    expect(serviceOf('linear')).toBe('linear')
+    expect(serviceOf('claude_ai_Linear')).toBe('linear')
+    expect(serviceOf('claude_ai_github')).toBe('github')
+    for (const s of ['kernel', 'figma', 'notion', 'vercel', 'neon', 'posthog']) expect(serviceOf(s)).toBe(s)
+    expect(serviceOf('context7')).toBe('mcp')
+    expect(toolView(call('mcp__claude_ai_Linear__save_issue')).service).toBe('linear')
+    expect(toolView(call('Bash', { command: 'ls' })).service).toBeUndefined()
+  })
+
+  it('hides the plumbing', () => {
+    for (const n of ['ToolSearch', 'TodoWrite', 'ListMcpResourcesTool', 'ReadMcpResourceTool']) expect(toolView(call(n)).hidden).toBe(true)
+    expect(toolView(call('Bash', { command: 'ls' })).hidden).toBeUndefined()
+  })
+
+  it('says the whole row as a sentence', () => {
+    expect(toolView(call('mcp__linear__save_issue', { title: 'Settings say Saving' })).sentence).toBe('Filed issue in Linear: Settings say Saving')
+  })
+})
+
+describe('paths', () => {
+  it('drops the worktree root and the home folder', () => {
+    expect(shortPath('/w/k/src/a.ts', '/w/k/')).toBe('src/a.ts')
+    expect(shortPath('/Users/cj/Projects/x/a.ts')).toBe('Projects/x/a.ts')
+    expect(shortPath('/home/cj/a.ts')).toBe('a.ts')
+    expect(shortPath('src/a.ts', '/w/k')).toBe('src/a.ts')
+  })
+
+  it('strips a leading cd', () => {
+    expect(stripCd('cd "/a b" && ls')).toBe('ls')
+    expect(stripCd('ls && cd x')).toBe('ls && cd x')
+  })
+})
+
+describe('maskSecrets', () => {
+  it('masks assignments, keys and bearer tokens', () => {
+    expect(maskSecrets('GH_TOKEN=abc123 pnpm x')).toBe('GH_TOKEN=*** pnpm x')
+    expect(maskSecrets('STRIPE_SECRET="a b" run')).toBe('STRIPE_SECRET=*** run')
+    expect(maskSecrets('API_KEY=zzz')).toBe('API_KEY=***')
+    expect(maskSecrets('curl -H "Authorization: Bearer abc.def-ghi"')).toBe('curl -H "Authorization: Bearer ***"')
+    const raw = ['sk-ant-api03-abcdefghijkl', `ghp_${'a'.repeat(30)}`, 'lin_api_ABCDEFGH12345678'].join(' ')
+    expect(maskSecrets(raw)).toBe('sk-*** ghp_*** lin_api_***')
+    expect(maskSecrets('{"api_key": "hunter2", "key": "KERNEL-5"}')).toBe('{"api_key": "***", "key": "KERNEL-5"}')
+  })
+
+  it('masks a secret in a row', () => {
+    const v = toolView(call('Bash', { command: 'LINEAR_API_KEY=lin_api_ABCDEFGH12345678 node x.js' }))
+    expect(v.object).toBe('LINEAR_API_KEY=*** node x.js')
+    const failed = toolView(call('Bash', { command: 'x' }, { status: 'failed', output: 'bad Bearer abcdef123' }))
+    expect(failed.detail).toBe('bad Bearer ***')
+  })
+})
+
+describe('toolTitle', () => {
+  it('gives a one-line title without renderer code', () => {
+    expect(toolTitle('Read', { file_path: 'src/a/b.ts' })).toBe('Reading src/a/b.ts')
+    expect(toolTitle('mcp__kernel__list_workspaces')).toBe('Checking workspaces')
+    expect(toolTitle('ToolSearch')).toBe('ToolSearch')
+  })
+})
