@@ -240,7 +240,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'approvals.decide': async ({ id, decision }) => {
       const a = f.approvals.find((x) => x.id === id)
       if (!a) throw new Error('This request already timed out or was answered.')
-      return decided(a, decision)
+      const done = decided(a, decision)
+      // The engine pushes the decided plan and takes the chat out of plan mode, as `pnpm shots --motion` needs to see Approve do (KERNEL-831).
+      if (a.kind === 'plan' && decision.behavior === 'allow') {
+        bus.push({ type: 'approval', approval: done })
+        const chat = f.chats.find((c) => c.id === a.chatId)
+        if (chat) bus.push({ type: 'chat', chat: { ...chat, plan: false } })
+      }
+      return done
     },
     'approvals.planFile': async ({ id }) => {
       const a = f.approvals.find((x) => x.id === id)

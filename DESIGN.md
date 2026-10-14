@@ -176,6 +176,7 @@ A button that waits on the main process shows it is working until the call retur
 
 ## Motion
 
+- Check an animation with `pnpm shots <Screen> --motion` before it ships: a still can look right while the motion jolts. Give the fixture a `motion` action and share the contact sheet and GIF in the PR.
 - Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over --plan-dur (0.5s), then one light crosses it over 1.6s. Approve closes it in reverse over the same length and easing while the chat scrolls smoothly to its end; reduced motion removes the strip and jumps. Send changes color in 0.16s.
 - Resize edge glow (KERNEL-419): fades in over 200ms ease-out after an 80ms delay and out over 120ms, growing from the middle. Reduced motion turns it on and off with no transition.
 - Toasts (toast-motion-and-swipe): a new toast's gap opens over 0.16s, then the toast rises 16px and fades in over 0.3s, ease-out. On timeout or its action it sinks 16px and fades over 0.2s, then its gap closes over 0.16s. A drag or a two-finger swipe moves it with your finger, locked to right or down after 6px and never left or up. Past 60px, or after a flick, it slides on out the way it went. Short of that it springs back.
