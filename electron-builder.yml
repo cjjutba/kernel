@@ -59,10 +59,10 @@ dmg:
   iconSize: 128
   contents:
     - x: 165
-      y: 214
+      y: 236
       type: file
     - x: 495
-      y: 214
+      y: 236
       type: link
       path: /Applications
 # Where installed copies look for updates (written into the app as app-update.yml). scripts/release.sh uploads the
