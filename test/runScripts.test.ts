@@ -380,6 +380,27 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
     expect(narrowed).toContain('upstream/main')
     expect(narrowed).not.toContain('origin/main')
   })
+
+  it('git.branchList gives the room remote\'s branches with commit times, newest first (KERNEL-776)', async () => {
+    const { h, room, repo } = await kernelOn({})
+    const remote = await tempRepo()
+    await git(remote, 'checkout', '-q', '-b', 'feat/new')
+    await writeFile(join(remote, 'new.txt'), 'new\n')
+    await git(remote, 'add', '-A')
+    await git(remote, 'commit', '-q', '-m', 'new')
+    await git(repo, 'remote', 'add', 'upstream', remote)
+    await git(repo, 'fetch', '-q', 'upstream')
+    await h['settings.setRoom']({ roomId: room.id, patch: { workspace: { remote: 'upstream' } } })
+    const list = await h['git.branchList']({ roomId: room.id })
+    // The same names as git.branches, in the same order.
+    expect(list.map((b) => b.name)).toEqual(await h['git.branches']({ roomId: room.id }))
+    expect(list.map((b) => b.name)).toEqual(expect.arrayContaining(['main', 'upstream/main', 'upstream/feat/new']))
+    const at = (name: string) => list.find((b) => b.name === name)!.committedAt
+    const committed = async (ref: string) => Number((await git(repo, 'log', '-1', '--format=%ct', ref)).trim()) * 1000
+    expect(at('upstream/feat/new')).toBe(await committed('upstream/feat/new'))
+    expect(at('main')).toBe(await committed('main'))
+    expect([...list].sort((a, b) => b.committedAt - a.committedAt).map((b) => b.committedAt)).toEqual(list.map((b) => b.committedAt))
+  })
 })
 
 describe('scripts run in a terminal (KERNEL-655)', () => {

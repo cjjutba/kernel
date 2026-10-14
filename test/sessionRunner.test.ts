@@ -1761,25 +1761,25 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     const { call, store } = await setup()
     call.feed(agent('ag1', { description: 'Explore engine for Linear plan', model: 'haiku' }))
     await flush()
-    expect(row(store, 'ag1')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'running' })
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'running' })
     call.feed(sub('ag1', 'claude-sonnet-5-5', 1))
     call.feed(result('ag1'))
     await flush()
-    expect(row(store, 'ag1')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'done' })
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Run agent: Explore engine for Linear plan · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'done' })
   })
 
   it("names the subagent's real model from its first message and keeps it on the saved done row", async () => {
     const { call, store, kinds } = await setup()
     call.feed(agent('ag2', { description: 'Explore design canvas and docs' }))
     await flush()
-    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent', detail: 'Explore design canvas and docs' })
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Run agent: Explore design canvas and docs', detail: 'Explore design canvas and docs' })
     call.feed(sub('ag2', 'claude-sonnet-5-5', 1))
     call.feed(sub('ag2', 'claude-opus-5-5', 2))
     await flush()
-    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent · Sonnet 5.5', status: 'running' })
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Run agent: Explore design canvas and docs · Sonnet 5.5', status: 'running' })
     call.feed(result('ag2'))
     await flush()
-    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent · Sonnet 5.5', detail: 'Explore design canvas and docs', status: 'done', output: 'Found it' })
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Run agent: Explore design canvas and docs · Sonnet 5.5', detail: 'Explore design canvas and docs', status: 'done', output: 'Found it' })
     // The subagent's own steps stay inside the row.
     expect(kinds()).toEqual(['user', 'tool'])
   })
@@ -1790,7 +1790,7 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     call.feed(result('ag3'))
     call.feed(sub('ag3', 'claude-haiku-4-5-20251001', 1))
     await flush()
-    expect(row(store, 'ag3')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Check the logs', status: 'done', output: 'Found it' })
+    expect(row(store, 'ag3')).toMatchObject({ label: 'Run agent: Check the logs · Haiku 4.5', detail: 'Check the logs', status: 'done', output: 'Found it' })
   })
 
   it('keeps an unknown model id as it is, and reads the old Task name', async () => {
@@ -1798,17 +1798,17 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     call.feed({ type: 'assistant', uuid: 'a-t1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Task', input: { description: 'Check the logs', prompt: 'Go' } }] } })
     call.feed(sub('t1', 'claude-mystery-9', 1))
     await flush()
-    expect(row(store, 't1')).toMatchObject({ label: 'Task · claude-mystery-9', detail: 'Check the logs' })
+    expect(row(store, 't1')).toMatchObject({ label: 'Run agent: Check the logs · claude-mystery-9', detail: 'Check the logs' })
   })
 
   it("names a fork from its first message, since a fork ignores the call's model", async () => {
     const { call, store } = await setup()
     call.feed(agent('f1', { description: 'Try the other approach', subagent_type: 'fork', model: 'haiku' }))
     await flush()
-    expect(row(store, 'f1')).toMatchObject({ label: 'Agent' })
+    expect(row(store, 'f1')).toMatchObject({ label: 'Run agent: Try the other approach' })
     call.feed(sub('f1', 'claude-sonnet-5-5', 1))
     await flush()
-    expect(row(store, 'f1')).toMatchObject({ label: 'Agent · Sonnet 5.5' })
+    expect(row(store, 'f1')).toMatchObject({ label: 'Run agent: Try the other approach · Sonnet 5.5' })
   })
 
   it('leaves the row as Agent when no model is known', async () => {
@@ -1817,7 +1817,7 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     call.feed(sub('ag4', '<synthetic>', 1))
     call.feed(result('ag4'))
     await flush()
-    expect(row(store, 'ag4')).toMatchObject({ label: 'Agent', detail: 'Stopped early' })
+    expect(row(store, 'ag4')).toMatchObject({ label: 'Run agent: Stopped early', detail: 'Stopped early' })
   })
 
   it('leaves other tool rows as they were', async () => {
@@ -1830,8 +1830,8 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     call.feed(sub('b1', 'claude-haiku-4-5-20251001', 1))
     await flush()
     expect(row(store, 'b1')).toMatchObject({ label: 'Run pnpm test', detail: 'pnpm test' })
-    expect(row(store, 'r1')).toMatchObject({ label: 'Read', detail: 'src/main/db.ts' })
-    expect(row(store, 'm1')).toMatchObject({ label: 'kernel · say', detail: '{"text":"Hi","description":"Greet"}' })
+    expect(row(store, 'r1')).toMatchObject({ label: 'Read: src/main/db.ts', detail: 'src/main/db.ts' })
+    expect(row(store, 'm1')).toMatchObject({ label: 'Say', detail: '' })
   })
 })
 

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { Approval, Decision, PlanStep } from '@shared/types'
 import type { Store } from '../db'
 import { bus } from '../bus'
+import { toolAsk, toolView } from '@shared/toolView'
 
 type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
 
@@ -207,15 +208,18 @@ export function parsePlanSteps(lines: string[], agents: { id: string; name: stri
   })
 }
 
-/** Short human title for a tool call, used in the Inbox and on the approval card in the transcript. */
+/**
+ * Short human title for a tool call, used in the Inbox, on Home and in notifications, which put "Noor wants to" before it.
+ * It is the chat row's sentence in the verb's base form, "File issue in Linear: Export invoices as PDF" (KERNEL-785), with
+ * a file's folder kept so the user sees which file. Bash shows the exact command the user is allowing, and WebFetch the
+ * whole address.
+ */
 export function describeTool(toolName: string, input: unknown): { title: string; detail?: string } {
   const i = (input ?? {}) as Record<string, any>
-  switch (toolName) {
-    case 'Bash': return { title: `Run ${String(i.command ?? '').split('\n')[0].slice(0, 80)}`, detail: i.description }
-    case 'Edit': case 'Write': case 'MultiEdit': return { title: `${toolName} ${i.file_path ?? ''}` }
-    case 'WebFetch': return { title: `Fetch ${i.url ?? ''}` }
-    case 'mcp__kernel__share_file': return { title: `Share ${String(i.path ?? '').split('/').pop()}` }
-    case 'mcp__kernel__read_plans': return { title: "Read this chat's plans" }
-    default: return { title: toolName.startsWith('mcp__') ? toolName.split('__').slice(1).join(' · ') : toolName }
-  }
+  if (toolName === 'Bash') return { title: `Run ${String(i.command ?? '').split('\n')[0].slice(0, 80)}`, detail: i.description }
+  const view = toolView({ name: toolName, input: i, status: 'running' })
+  const ask = toolAsk(toolName, i)
+  const title = view.dir && view.object && ask.endsWith(`: ${view.object}`) ? `${ask.slice(0, -view.object.length)}${view.dir}/${view.object}` : ask
+  const detail = toolName === 'WebFetch' && typeof i.url === 'string' ? i.url : view.detail
+  return detail ? { title, detail } : { title }
 }

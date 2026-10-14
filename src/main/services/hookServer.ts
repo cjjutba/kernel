@@ -129,7 +129,7 @@ const objectOf = (tool: string, input: unknown): string => {
   if (tool === 'Bash' && i.command) return String(i.command).trim().split('\n')[0].replace(/\s+/g, ' ').slice(0, 160)
   if (i.pattern) return String(i.pattern)
   if (i.url) return String(i.url)
-  return tool.startsWith('mcp__') ? tool.split('__').pop()! : describeTool(tool, input).title
+  return describeTool(tool, input).title
 }
 
 function readBody(req: IncomingMessage): Promise<string> {

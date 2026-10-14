@@ -235,7 +235,7 @@ export interface Hunk {
   patch: string
 }
 
-/** A snapshot of the worktree after an agent turn (WorkspaceCheckpoints.png). */
+/** A snapshot of the worktree after an agent turn. */
 export interface Checkpoint {
   id: string
   workspaceId: string

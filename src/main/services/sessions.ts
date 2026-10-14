@@ -1552,7 +1552,7 @@ export class Sessions {
   /** The text of the chat's first message that isn't one of Kernel's nudges: the brief a fresh session starts from. */
   private brief(chatId: string): string | undefined {
     const first = this.d.store.items(chatId).find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))
-    const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
+    const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'pr' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
     return text || undefined
   }
 
