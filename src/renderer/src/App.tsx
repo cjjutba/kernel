@@ -42,7 +42,7 @@ import { ConfirmRetire } from './screens/agent/ConfirmRetire'
 import { NewAgent } from './screens/agent/NewAgent'
 import { WhatsNew } from './screens/update/WhatsNew'
 import { EnvVarForm } from './screens/settings/pages/EnvVarForm'
-import { openSlot } from './components/sidebar/slots'
+import { openSlot, openWorkspaceSlot } from './components/sidebar/slots'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
@@ -184,6 +184,13 @@ export function App() {
   useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, rooms, route.name, modal])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // ⌃1 to ⌃9 open the workspaces of the chat in view (KERNEL-814). With no such chat they do nothing and are left to the page.
+      if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const key = /^Digit([1-9])$/.exec(e.code)
+        const s = getState()
+        if (key && !s.ui.modal && s.ui.route.name !== 'onboarding' && openWorkspaceSlot(Number(key[1]))) e.preventDefault()
+        return
+      }
       if (!e.metaKey) return
       // ⌘1 to ⌘9 open the room in view's Lead chats, not its workspaces (KERNEL-357). Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
       const digit = /^Digit([1-9])$/.exec(e.code)
