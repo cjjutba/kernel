@@ -2044,6 +2044,24 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
+  // KERNEL-685: a room with no setup script. The Setup tab offers Kernel's suggestion, Ask Rowan and Add manually.
+  WorkspaceSetupAddConductor: scene((f) => ({
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspaceSetupAddDetected: scene((f) => ({
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    scriptSuggestions: { [ids.roomA]: [{ source: 'detected', file: 'pnpm-lock.yaml', patch: { scripts: { setup: 'pnpm install' } }, notes: [] }] },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspaceSetupAdd: scene((f) => ({
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'setup'),
+    ui: { ...open, workspace: { right: 'changes', bottom: 'setup', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceTerminalPresets: terminalPresets(),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
