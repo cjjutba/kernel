@@ -6,6 +6,8 @@ import { Store } from '../src/main/db'
 import { Approvals, describeTool } from '../src/main/services/approvals'
 import { toActivity } from '../src/main/services/hookServer'
 import { permissionTitle } from '../src/renderer/src/screens/workspace/cards/steps'
+import { answerParts, approvalAnswer } from '../src/shared/approvalAnswer'
+import type { Approval } from '../src/shared/types'
 
 const tempStore = async () => new Store(join(await mkdtemp(join(tmpdir(), 'kernel-approvals-')), 'kernel.db'))
 
@@ -154,5 +156,37 @@ describe('approval titles say what the chat says (KERNEL-785)', () => {
     expect(permissionTitle({ toolName: 'mcp__kernel__share_file', input: { path: '.kernel/shared/checkout.html' } }, 'Noor')).toBe('Noor wants to share checkout.html')
     expect(permissionTitle({ toolName: 'Bash', input: { command: 'pnpm test' } }, 'Noor')).toBe('Noor wants to run a command')
     expect(permissionTitle({ toolName: 'Edit', input: { file_path: 'src/a.ts' } }, 'Noor')).toBe('Noor wants to edit a file')
+  })
+})
+
+describe("the user's answer to a card, as their message (KERNEL-836)", () => {
+  const card = (over: Partial<Approval>): Approval => ({ id: 'a', kind: 'plan', source: 'sdk', title: 'Plan', status: 'pending', createdAt: 1, ...over })
+  const image = { type: 'image' as const, name: 'mock.png', dataUrl: 'data:image/png;base64,iVBORw0KGgo=', path: '.kernel/attachments/mock.png' }
+
+  it('says Approved on a plan, or the notes and images of Request changes', () => {
+    expect(approvalAnswer(card({ status: 'allowed' }))).toBe('Approved')
+    expect(approvalAnswer(card({ kind: 'tool', toolName: 'ExitPlanMode', status: 'allowed' }))).toBe('Approved')
+    expect(answerParts(card({ status: 'denied', answer: ' Split the API work out ', images: [image] }))).toEqual([{ type: 'text', text: 'Split the API work out' }, image])
+    expect(approvalAnswer(card({ status: 'denied' }))).toBe('Changes requested')
+  })
+
+  it('gives one line per answer to several questions, in the order asked', () => {
+    const questions = [{ question: 'Which store?', options: [] }, { question: 'Which region?', options: [] }]
+    expect(approvalAnswer(card({ kind: 'question', status: 'answered', answer: 'S3', questions: questions.slice(0, 1) }))).toBe('S3')
+    expect(approvalAnswer(card({ kind: 'question', status: 'answered', answer: 'S3 · eu', questions, answers: { 'Which region?': 'eu', 'Which store?': 'S3' } }))).toBe('S3\neu')
+  })
+
+  it('says Approve or Not now on an agent proposal', () => {
+    expect(approvalAnswer(card({ kind: 'agent', status: 'allowed' }))).toBe('Approve')
+    expect(approvalAnswer(card({ kind: 'agent', status: 'denied' }))).toBe('Not now')
+  })
+
+  it('has nothing for a tool permission, a card still waiting, or one that expired', () => {
+    expect(approvalAnswer(card({ kind: 'tool', toolName: 'Bash', status: 'allowed' }))).toBeUndefined()
+    expect(approvalAnswer(card({ kind: 'tool', toolName: 'Bash', status: 'denied' }))).toBeUndefined()
+    for (const kind of ['plan', 'question', 'agent'] as const) {
+      expect(answerParts(card({ kind, status: 'pending' }))).toBeUndefined()
+      expect(answerParts(card({ kind, status: 'expired', expiredBy: 'replaced' }))).toBeUndefined()
+    }
   })
 })

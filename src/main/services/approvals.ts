@@ -79,8 +79,8 @@ export class Approvals {
   settle(id: string, decision: Decision, typed?: Typed): Approval | undefined {
     const prev = this.waitingPlan(id)
     if (!prev) return undefined
-    const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
-    return this.save({ ...prev, status, ...answerOf(prev, decision, typed) }, `${status} ${prev.title}`)
+    const next = settledAs(prev, decision, typed)
+    return this.save(next, `${next.status} ${prev.title}`)
   }
 
   /** The chat's plan cards still waiting, newest first, such as one a restart left up. */
@@ -192,6 +192,12 @@ export class Approvals {
 
 /** Only a plan card says why it expired. */
 const expiredBy = (a: Approval, by?: ExpiredBy): Pick<Approval, 'expiredBy'> => (by && isPlan(a) ? { expiredBy: by } : {})
+
+/** A waiting plan as `settle` saves it, so its answer can go in the chat before Kernel's message does. */
+export function settledAs(prev: Approval, decision: Decision, typed?: Typed): Approval {
+  const status = decision.behavior === 'allow' ? 'allowed' : decision.behavior === 'deny' ? 'denied' : 'answered'
+  return { ...prev, status, ...answerOf(prev, decision, typed) }
+}
 
 /**
  * What the row keeps as the user's answer: an answer's text, or the notes and images of Request changes on a plan, which

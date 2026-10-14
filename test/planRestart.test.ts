@@ -43,6 +43,11 @@ const callIn = (cwd: string, after = 0) => sdk.calls.slice(after).find((c) => c.
 const users = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'user' ? [(i.parts[0] as { text: string }).text] : []))
 const notes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i: ChatItem) => (i.kind === 'note' ? [i.text] : []))
 const plans = (k: Kernel, chat: Chat) => k.store.approvals({}).filter((a) => a.chatId === chat.id && a.kind === 'plan')
+/** The user's answer rows (KERNEL-836): user rows with an approval and no sender, as the ids around them. */
+const answers = (k: Kernel, chatId: string) => {
+  const items = k.store.items(chatId)
+  return items.flatMap((i, at) => (i.kind === 'user' && i.approvalId && !i.from ? [{ item: i, before: items[at - 1]?.id, after: items[at + 1] }] : []))
+}
 
 async function until<T>(read: () => T | undefined | false): Promise<T> {
   for (let i = 0; i < 200; i++) { const v = read(); if (v) return v; await new Promise((r) => setTimeout(r, 20)) }
@@ -120,12 +125,17 @@ describe('plan cards outlive a restart', () => {
     expect(note).toBe('Plan approved. Build it from `.kernel/plans/plan.md`.\n\nKernel restarted while the plan waited, so check git status before you start.')
     expect(users(k2, kai).at(-1)).toBe(note)
     expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
+    // The user's answer is its own row after the card and the quit note, and Kernel's message, which the chat hides, follows it (KERNEL-836).
+    expect(answers(k2, kai.id)).toEqual([expect.objectContaining({ item: expect.objectContaining({ id: `answer-${card.id}`, parts: text('Approved') }), after: expect.objectContaining({ from: 'kernel', approvalId: card.id }) })])
+    const ids = k2.store.items(kai.id).map((i) => i.id)
+    expect(ids.indexOf(`answer-${card.id}`)).toBeGreaterThan(ids.indexOf(`approval-${card.id}`))
     // One turn, in the same conversation, out of plan mode. The note is the message itself, so no other note is added.
     expect(k2.sessions.isRunning(kai.id)).toBe(true)
     expect(callIn(ws.path, before)?.options).toMatchObject({ resume: 'kai-session', permissionMode: expect.not.stringMatching(/^plan$/) })
     expect(notes(k2, kai)).toEqual([QUIT_NOTE])
     // A second answer finds nothing waiting.
     await expect(k2.handlers()['approvals.decide']({ id: card.id, decision: { behavior: 'allow' } })).rejects.toThrow(/already/)
+    expect(answers(k2, kai.id)).toHaveLength(1)
   }, 30000)
 
   it('keeps it after a crash or Ctrl+C too, where only the launch sees the card', async () => {
@@ -171,6 +181,8 @@ describe('plan cards outlive a restart', () => {
     expect(decided.images).toEqual([image])
     expect(k2.store.approval(card.id)?.images).toEqual([image])
     expect(k2.store.items(kai.id).filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', approvalId: card.id })
+    // The user's answer row says what they typed, with the image, and not Kernel's lines for it (KERNEL-836).
+    expect(answers(k2, kai.id).map((r) => r.item.parts)).toEqual([[...text('Split the API work out'), image]])
     // The agent writes the revision, which goes to the same file.
     const call = callIn(ws.path, before)!
     void (call.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: `${PLAN}\n3. API in its own task` }, { signal: call.options.abortController.signal, toolUseID: 't2', suggestions: [] } as never)
@@ -193,6 +205,7 @@ describe('plan cards outlive a restart', () => {
     await until(() => plans(k2, kai).length === 2 && plans(k2, kai).every((a) => a.planFile))
     expect(k2.store.approval(card.id)).toMatchObject({ status: 'expired', expiredBy: 'replaced' })
     expect(plans(k2, kai).filter((a) => a.status === 'pending')).toHaveLength(1)
+    expect(answers(k2, kai.id)).toEqual([])
   }, 30000)
 
   it('ends the card when the workspace is archived or the chat is closed', async () => {
@@ -255,8 +268,10 @@ describe('plan cards outlive a restart', () => {
     expect(k2.sessions.queued(codex.id)).toEqual([expect.objectContaining({ from: 'kernel', approvalId: 'codex-plan', parts: text(planApproval({ lead: false, plan: PLAN, restarted: true }).text) })])
     // The queued message keeps the approval when it goes out.
     k2.sessions.resume(room.id)
-    await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user'))
-    expect(k2.store.items(codex.id).find((i) => i.kind === 'user')).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })
+    expect(answers(k2, codex.id).map((r) => r.item)).toEqual([expect.objectContaining({ id: 'answer-codex-plan', parts: text('Approved') })])
+    await until(() => k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from))
+    expect(k2.store.items(codex.id).find((i) => i.kind === 'user' && i.from)).toMatchObject({ from: 'kernel', approvalId: 'codex-plan' })
+    expect(answers(k2, codex.id)).toHaveLength(1)
   }, 30000)
 
   it("has the Lead hand off once after a restart, with the hand-off reminder armed", async () => {
@@ -321,4 +336,35 @@ describe('plan answers while the agent waits', () => {
     expect(b.k.store.approval(b.tool.id)).not.toHaveProperty('expiredBy')
     await b.k.stop({ budgetMs: 0 })
   }, 60000)
+})
+
+describe("a live decision is the user's message in the chat (KERNEL-836)", () => {
+  it('adds the answer under each plan, question and agent card decided in Kernel, and none for a tool or a timeout', async () => {
+    const { k, room, ws, kai, card, answer, tool } = await planning()
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
+    const decide = k.handlers()['approvals.decide']
+    const ask = (kind: 'question' | 'agent', timeoutMs?: number) => {
+      const { approval } = k.approvals.request({ kind, source: 'sdk', roomId: room.id, workspaceId: ws.id, chatId: kai.id, title: kind }, { timeoutMs })
+      k.sessions.placeApproval(kai.id, approval.id)
+      return approval
+    }
+    await decide({ id: tool.id, decision: { behavior: 'allow' } })
+    const question = ask('question')
+    await decide({ id: question.id, decision: { behavior: 'answer', text: 'S3' } })
+    const hire = ask('agent')
+    await decide({ id: hire.id, decision: { behavior: 'deny', message: 'Please change the agent file.' } })
+    await decide({ id: card.id, decision: { behavior: 'allow' } })
+    // The agent gets the plan approval itself, as before.
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+    const late = ask('question', 10)
+    await until(() => k.store.approval(late.id)?.status === 'expired')
+    expect(answers(k, kai.id).map((r) => [r.before, r.item.parts])).toEqual([
+      [`approval-${question.id}`, text('S3')],
+      [`approval-${hire.id}`, text('Not now')],
+      [`answer-${hire.id}`, text('Approved')]
+    ])
+    // The plan's card went up first, so its answer is the latest row after it, not the one under it.
+    const ids = k.store.items(kai.id).map((i) => i.id)
+    expect(ids.indexOf(`answer-${card.id}`)).toBeGreaterThan(ids.indexOf(`approval-${card.id}`))
+  }, 30000)
 })

@@ -5,6 +5,7 @@ import type { AgentDef, Approval, Chat, ChatItem, ChatArchivePreview, ChatPart, 
 import { buildsHere, LEAD_MODES, leadModeOf, newChatLeadMode } from '@shared/leadMode'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
+import { isSentItem } from '@shared/approvalAnswer'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { renderAgentFile } from '../services/agents'
@@ -737,7 +738,7 @@ export class Lead extends Feature {
       userTurn: () => !this.sessions.kernelTurn(chat.id),
       // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
       userSaid: () => {
-        const last = this.store.items(chat.id).reverse().find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !i.from)
+        const last = this.store.items(chat.id).reverse().find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !i.from)
         return last && { text: last.parts.map((p) => (p.type === 'text' ? p.text : '')).join('\n'), at: last.ts }
       },
       setWait: (id, on) => this.k.waits.setWait(id, on),
@@ -787,7 +788,7 @@ export class Lead extends Feature {
     // The turn is keyed by the message that started it, so several messages in one turn are one try.
     const auto = !!leadChatId && this.sessions.kernelTurn(leadChatId)
     // A limit or restart nudge carries the turn on, so the turn is still the message before it.
-    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
+    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => isSentItem(i) && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
     if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
     if (auto) this.nudges.add(ws.id, turn)
     const parts: ChatPart[] = [{ type: 'text', text }, ...images]
