@@ -1,4 +1,4 @@
-import type { BuiltinCommand, Skill } from '@shared/types'
+import type { BuiltinCommand, ChatPart, FileEntry, Skill } from '@shared/types'
 
 /** The @ word at the end of the draft, if the caret is in one. */
 export function mentionAt(draft: string): { start: number; query: string } | null {
@@ -64,6 +64,18 @@ export function runsOnEnter(row: SlashRow, query: string): boolean {
   if ([row.name, ...(row.aliases ?? [])].some((n) => n.toLowerCase() === q)) return true
   const hint = row.argumentHint.trim()
   return row.command && (!hint || hint.startsWith('[') || /optional/i.test(hint))
+}
+
+/**
+ * The @ menu: its rows under their headings. Files and folders share Files. Agents (KERNEL-746) goes above it as another group.
+ */
+export function mentionMenu(entries: FileEntry[]): { label: string; rows: FileEntry[] }[] {
+  return [{ label: 'Files', rows: entries }].filter((g) => g.rows.length)
+}
+
+/** What picking an @ row inserts. A folder's path ends in `/`, so the agent gets the folder, not the files in it. */
+export function mentionPart(f: FileEntry): ChatPart {
+  return f.dir ? { type: 'file', name: `${baseName(f.path)}/`, path: `${f.path}/`, dir: true } : { type: 'file', name: baseName(f.path), path: f.path }
 }
 
 export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
