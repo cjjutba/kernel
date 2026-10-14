@@ -4,16 +4,16 @@ import type { ChatPart } from '@shared/types'
 import { FileIcon } from '../../../components/FileIcon'
 import { Icon, Modal, type IconName } from '../../../ui'
 
-/** A short label under a chip: lines of a pasted text, the size of an image, or a linked issue's title. */
+/** A short label after a chip's name: lines of a pasted text, the size of an image, or a linked issue's or pull request's title. */
 function chipMeta(p: ChatPart): string {
   if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
   if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
-  if (p.type === 'issue') return p.title
+  if (p.type === 'issue' || p.type === 'pr') return p.title
   return ''
 }
 
 /** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
-export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'workspace' ? 'branch' : p.type === 'agent' ? 'user' : 'doc')
+export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'pr' ? 'pr' : p.type === 'workspace' ? 'branch' : p.type === 'agent' ? 'user' : 'doc')
 
 /** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
 export function ChipIcon({ part }: { part: ChatPart }) {
@@ -128,7 +128,7 @@ export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () 
     </>
   )
   return (
-    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
+    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton> : body}
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>

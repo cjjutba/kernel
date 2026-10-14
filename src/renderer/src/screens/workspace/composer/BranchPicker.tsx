@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { call } from '../../../api'
-import { useStore } from '../../../store'
-import { Button, Icon } from '../../../ui'
-import { useLayer } from '../../../ui/hooks'
+import { go, useStore } from '../../../store'
+import { Button, Icon, Kbd } from '../../../ui'
 import { stripRemote } from '../../settings/remote'
 import { useRemote } from '../../settings/useSettings'
-
-/** A branch list this long gets a field to narrow it by name, as the Changes compare menu does. */
-const FILTER_FROM = 8
+import { branchLine, branchRows, type BranchRow } from './branchRows'
+import { PopSearch, WherePop } from './WherePop'
 
 /**
  * The branch a new Lead chat starts from: the picked one, else the repo's default on the room's remote. A Lead chat
@@ -20,92 +18,83 @@ export function useBaseBranch(roomId: string, picked: string): { target: string;
   return { target: picked || fallback, fallback, remote }
 }
 
-/** The branches the menu offers: the default first, then the remote's other branches in the order git lists them. */
-export function branchRows(branches: string[], fallback: string, remote: string): string[] {
-  const onRemote = branches.filter((b) => b.startsWith(`${remote}/`) && b !== `${remote}/HEAD` && b !== fallback)
-  return [fallback, ...onRemote]
-}
-
 /**
- * New branch from main, in New chat's composer. The button names the branch the chat's worktree branches from, and its
- * menu lists the remote's branches with the default checked and marked. The list and its filter are the compare menu's
- * (PanelCompare.png): arrow keys, Home and End move between the rows, Enter picks, Escape closes. `picked` is empty for the default.
+ * The branch New chat's chat starts from, in the where row. The button names it, and its menu searches the room's branches: each row has the
+ * branch's name in mono and a muted line, its age and a tag (default, remote, has a workspace). A branch with an open workspace offers
+ * Open workspace (⌘↵) on hover and focus, and picking the row still sets the base. Arrow keys, Home and End move, Enter picks, Escape closes.
+ * `picked` is empty for the default.
  */
-export function BranchPicker({ roomId, lead, picked, open, disabled, onToggle, onClose, onPick }: { roomId: string; lead: string; picked: string; open: boolean; disabled?: boolean; onToggle: () => void; onClose: () => void; onPick: (ref: string) => void }) {
+export function BranchPicker({ roomId, picked, open, disabled, onToggle, onClose, onPick }: { roomId: string; picked: string; open: boolean; disabled?: boolean; onToggle: () => void; onClose: () => void; onPick: (ref: string) => void }) {
   const { target, fallback, remote } = useBaseBranch(roomId, picked)
   const anchor = useRef<HTMLSpanElement>(null)
   const close = (refocus?: boolean) => { onClose(); if (refocus) anchor.current?.querySelector<HTMLButtonElement>('.cmp-branch')?.focus() }
   const name = stripRemote(target, remote)
   return (
     <span ref={anchor} className="cmp-branch-anchor">
-      <Button variant="ghost" className="cmp-model cmp-branch" disabled={disabled} aria-label={`New branch from ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>
-        <Icon name="branch" size={14} /><span className="cmp-branch-name">New branch from {name}</span><Icon name="chevron" size={12} />
+      <Button variant="ghost" className="cmp-model cmp-branch cmp-where-btn" disabled={disabled} aria-label={`New branch from ${name}`} aria-haspopup="menu" aria-expanded={open} onClick={onToggle}>
+        <Icon name="branch" size={14} /><span className="cmp-branch-name mono">{name}</span><Icon name="chevron" size={12} />
       </Button>
-      {open && <BranchMenu roomId={roomId} lead={lead} target={target} fallback={fallback} remote={remote} anchorRef={anchor} onClose={close} onPick={(ref) => { onPick(ref === fallback ? '' : ref); close(true) }} />}
+      {open && <BranchMenu roomId={roomId} target={target} fallback={fallback} remote={remote} anchorRef={anchor} onClose={close} onPick={(ref) => { onPick(ref === fallback ? '' : ref); close(true) }} />}
     </span>
   )
 }
 
-type Read = { ok: string[] } | { failed: true } | null
+type Read = { ok: { name: string; committedAt: number }[] } | { failed: true } | null
 
-function BranchMenu({ roomId, lead, target, fallback, remote, anchorRef, onClose, onPick }: { roomId: string; lead: string; target: string; fallback: string; remote: string; anchorRef: React.RefObject<HTMLElement | null>; onClose: (refocus?: boolean) => void; onPick: (ref: string) => void }) {
-  const ref = useRef<HTMLDivElement>(null)
+function BranchMenu({ roomId, target, fallback, remote, anchorRef, onClose, onPick }: { roomId: string; target: string; fallback: string; remote: string; anchorRef: React.RefObject<HTMLElement | null>; onClose: (refocus?: boolean) => void; onPick: (ref: string) => void }) {
   const [read, setRead] = useState<Read>(null)
   const [text, setText] = useState('')
-  useLayer({ onEscape: () => onClose(true), onOutside: () => onClose(), ref, anchorRef })
+  const workspaces = useStore((s) => s.workspaces)
+  const list = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let live = true
-    call('git.branches', { roomId }).then((ok) => { if (live) setRead({ ok }) }, () => { if (live) setRead({ failed: true }) })
+    call('git.branchList', { roomId }).then((ok) => { if (live) setRead({ ok }) }, () => { if (live) setRead({ failed: true }) })
     return () => { live = false }
   }, [roomId])
 
-  // A pick from before stays listed, even when the remote no longer has it, so the check always shows.
+  // A pick from before stays listed, even when the repo no longer has it, so the check always shows.
   const rows = useMemo(() => {
-    const all = read && 'ok' in read ? branchRows(read.ok, fallback, remote) : [fallback]
-    return all.includes(target) ? all : [...all, target]
-  }, [read, fallback, remote, target])
+    const all = branchRows({ list: read && 'ok' in read ? read.ok : [], fallback, remote, workspaces, roomId })
+    return all.some((r) => r.ref === target) ? all : [...all, { ref: target, name: stripRemote(target, remote), age: '', tag: '' } satisfies BranchRow]
+  }, [read, fallback, remote, workspaces, roomId, target])
   const needle = text.trim().toLowerCase()
-  const shown = needle ? rows.filter((b) => b.toLowerCase().includes(needle)) : rows
+  const shown = needle ? rows.filter((r) => r.name.toLowerCase().includes(needle)) : rows
 
-  const stops = () => [...(ref.current?.querySelectorAll<HTMLElement>('button, input') ?? [])]
   // The menu opens on its checked row, and again once the branches arrive.
-  useEffect(() => { (ref.current?.querySelector<HTMLElement>('[aria-checked="true"]') ?? stops()[0])?.focus({ preventScroll: true }) }, [read])
-  const onKey = (e: KeyboardEvent) => {
-    const all = stops()
-    const i = all.indexOf(document.activeElement as HTMLElement)
-    const move = (to: number) => { e.preventDefault(); e.stopPropagation(); all[(to + all.length) % all.length]?.focus() }
-    // Home and End belong to the caret while the filter has focus.
-    const typing = e.target instanceof HTMLInputElement
-    if (e.key === 'ArrowDown') move(i + 1)
-    else if (e.key === 'ArrowUp') move(i - 1)
-    else if (e.key === 'Home' && !typing) move(0)
-    else if (e.key === 'End' && !typing) move(all.length - 1)
-    else if (e.key === 'Tab') { e.preventDefault(); onClose(true) }
+  useEffect(() => { list.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.scrollIntoView?.({ block: 'nearest' }) }, [read])
+  const openWorkspace = (workspaceId: string | undefined) => {
+    if (!workspaceId) return false
+    onClose()
+    go({ name: 'workspace', workspaceId })
+    return true
+  }
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && e.metaKey && openWorkspace((document.activeElement as HTMLElement | null)?.dataset.workspace)) e.preventDefault()
+    else if (e.key === 'Enter' && e.target instanceof HTMLInputElement && shown[0]) { e.preventDefault(); onPick(shown[0].ref) }
   }
 
   return (
-    <div ref={ref} className="menu compare-menu cmp-branch-menu" role="menu" aria-label="Branch from" onKeyDown={onKey}>
-      <div className="cmp-branch-head muted">Branch from</div>
-      {rows.length >= FILTER_FROM && (
-        <div className="compare-filter">
-          <Icon name="search" size={14} />
-          <input type="text" aria-label="Filter branches" placeholder="Filter branches" value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
-        </div>
-      )}
-      <div className="compare-list" role="group" aria-label="Branches">
-        {shown.map((b) => (
-          <button key={b} type="button" role="menuitemradio" aria-checked={b === target} className="compare-row" onClick={() => onPick(b)}>
-            <span className="compare-ck">{b === target && <Icon name="check" size={16} />}</span>
-            <span className="mono ellipsis grow">{b}</span>
-            {b === fallback && <span className="cmp-branch-tag">Default</span>}
-          </button>
+    <WherePop anchorRef={anchorRef} label="Branch from" width={440} onClose={onClose} onKey={onKey} focusFirst={false}>
+      <PopSearch label="Search branches…" value={text} onChange={setText} />
+      <div ref={list} className="where-list where-branches" role="group" aria-label="Branches">
+        {shown.map((r) => (
+          <div key={r.ref} className="where-branch">
+            <button type="button" role="menuitemradio" aria-checked={r.ref === target} data-workspace={r.workspaceId} className="menu-item where-row where-mode" onMouseEnter={(e) => e.currentTarget.focus({ preventScroll: true })} onClick={() => onPick(r.ref)}>
+              <Icon name="branch" size={16} />
+              <span className="where-tx"><span className="where-t mono ellipsis">{r.name}</span><span className="where-d">{branchLine(r)}</span></span>
+              {r.ref === target && <Icon name="check" size={14} />}
+            </button>
+            {r.workspaceId && (
+              <button type="button" tabIndex={-1} className="where-open" aria-label={`Open the workspace on ${r.name}`} onClick={() => openWorkspace(r.workspaceId)}>
+                Open workspace <Kbd>⌘↵</Kbd>
+              </button>
+            )}
+          </div>
         ))}
-        {read === null && <p className="compare-note">Loading branches</p>}
-        {read && 'failed' in read && <p className="compare-note">Could not list branches</p>}
-        {!shown.length && <p className="compare-note">No branch matches</p>}
+        {read === null && <p className="where-note">Loading branches</p>}
+        {read && 'failed' in read && <p className="where-note">Could not list branches</p>}
+        {!shown.length && read !== null && <p className="where-note">No branch matches</p>}
       </div>
-      <div className="compare-rule" role="separator" />
-      <p className="cmp-branch-hint">{lead}'s chat gets its own worktree, on a new branch from the one you pick.</p>
-    </div>
+    </WherePop>
   )
 }

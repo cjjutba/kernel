@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type { ChatPart, IssueSummary, Workspace } from '@shared/types'
+import type { ChatPart, IssueSummary, PrSummary, Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
 import { Button, Icon, Tabs } from '../../../ui'
@@ -7,7 +7,7 @@ import { useLayer } from '../../../ui/hooks'
 import { chooseTracker, JIRA_NOT_BROWSABLE } from '../../issues/parts'
 import { useRoomTracker } from '../../issues/useRoomTracker'
 
-// + > Link issue and Link workspaces (D-093). Each adds chips the agent reads as a line of context.
+// + > Link issue, Link pull request and Link workspaces (D-093, KERNEL-786). Each adds chips the agent reads as a line of context.
 
 type Source = 'linear' | 'github'
 type Load = { state: 'loading' } | { state: 'ready'; rows: IssueSummary[] } | { state: 'error'; message: string }
@@ -102,6 +102,46 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
           </div>
         )}
         {load.state === 'ready' && source && !rows.length && <p className="link-note">{q.trim() ? 'No open issues match.' : 'No open issues.'}</p>}
+      </div>
+    </Panel>
+  )
+}
+
+/** The room's open pull requests, from gh. Enter links the active one, as in the issue picker. */
+export function PrPicker({ roomId, anchorRef, onPick, onClose, style }: { roomId: string; anchorRef: React.RefObject<HTMLElement | null>; onPick: (part: ChatPart) => void; onClose: () => void; style?: CSSProperties }) {
+  const [q, setQ] = useState('')
+  const [at, setAt] = useState(0)
+  const [load, setLoad] = useState<{ state: 'loading' } | { state: 'ready'; rows: PrSummary[] } | { state: 'error'; message: string }>({ state: 'loading' })
+  useEffect(() => {
+    let stale = false
+    setLoad({ state: 'loading' })
+    const t = setTimeout(() => {
+      call('github.prs', { roomId, query: q.trim() || undefined }).then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
+    }, q ? 200 : 0)
+    return () => { stale = true; clearTimeout(t) }
+  }, [q, roomId])
+  useEffect(() => { setAt(0) }, [q])
+
+  const rows = load.state === 'ready' ? load.rows : []
+  const pick = (p: PrSummary) => onPick({ type: 'pr', name: `#${p.number}`, number: p.number, title: p.title })
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
+    else if (e.key === 'Enter') { e.preventDefault(); if (rows[at]) pick(rows[at]) }
+  }
+  return (
+    <Panel label="Link pull request" placeholder="Search pull requests" query={q} onQuery={setQ} onKey={onKey} anchorRef={anchorRef} onClose={onClose} style={style}>
+      <div className="link-rows" role="listbox" aria-label="Open pull requests">
+        {rows.map((p, i) => (
+          <button key={p.number} type="button" role="option" aria-selected={i === at} tabIndex={-1} className="menu-item link-row" data-active={i === at}
+            onMouseEnter={() => setAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}>
+            <span className="link-id mono">#{p.number}</span>
+            <span className="grow ellipsis">{p.title}</span>
+          </button>
+        ))}
+        {load.state === 'loading' && <p className="link-note">Loading</p>}
+        {load.state === 'error' && <p role="alert" className="link-note">{load.message}</p>}
+        {load.state === 'ready' && !rows.length && <p className="link-note">{q.trim() ? 'No open pull requests match.' : 'No open pull requests.'}</p>}
       </div>
     </Panel>
   )
