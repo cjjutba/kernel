@@ -13,7 +13,7 @@ import { hookTokenFile } from './services/hookToken'
 import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
-import { BOOT_UPDATE_MS, readNotes, Updater } from './updater'
+import { BOOT_UPDATE_MS, readNotes, runUpdateTest, Updater, updateTestArgs } from './updater'
 import { dataDirs, moveToDev, unshareHookToken } from './dataDir'
 import { isInstalledCopy, loginItemSettings, offerMove, replaceBox, runsFrom, type CopyInfo } from './loginItem'
 import { lastFolder } from './picker'
@@ -58,6 +58,21 @@ if (smokeTest) {
   }
 }
 
+// The end-to-end update test (KERNEL-713) runs a packaged Kernel against a local feed. It keeps everything in <dir>: no
+// database, no Kernel, no hooks in Claude Code's user settings, no single-instance lock, no window and no Dock icon. With
+// no feed it prints the version, so the test can tell which build is installed.
+const updateTest = updateTestArgs(process.argv)
+if (updateTest) {
+  app.setActivationPolicy('accessory')
+  if (!updateTest.feed) {
+    writeSync(1, `version ${app.getVersion()}\n`)
+    app.exit(0)
+  } else if (!updateTest.dir) {
+    console.error('[kernel] usage: --kernel-update-test <feed-url> <dir>')
+    app.exit(1)
+  } else app.setPath('userData', updateTest.dir)
+}
+
 // Only the dev server sets ELECTRON_RENDERER_URL. A packaged app ignores it, so nothing in the environment can point
 // the window, and the bridge, at another page (KERNEL-208).
 const rendererUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL
@@ -79,7 +94,7 @@ if (headless) app.setActivationPolicy('accessory')
 // release can't read (KERNEL-408). Each has its own hook token, port and entries in ~/.claude/settings.json, so both run
 // at once (KERNEL-675). Fixture runs and the smoke test keep their own folder. A dev run started inside a Kernel workspace
 // gets a folder of its own, so it holds its own lock and opens next to the Kernel that started it (KERNEL-679).
-const dirs = smokeTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged, process.env.KERNEL_WORKSPACE_ID)
+const dirs = smokeTest || updateTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged, process.env.KERNEL_WORKSPACE_ID)
 /** Said in a dialog once the app is ready, before Kernel quits without opening its data. */
 let refusal: { message: string; detail?: string } | undefined
 if (dirs) app.setPath('userData', dirs.own)
@@ -87,8 +102,8 @@ if (dirs) app.setPath('userData', dirs.own)
 // Two copies would share kernel.db, and the second one's start expires the first one's pending approvals. A second
 // launch (open -n) hands over to the running copy and quits. Fixture runs have no database and a userData of their own,
 // so they skip the lock.
-const primary = !smokeTest && (!!fixtureName || app.requestSingleInstanceLock())
-if (!primary) app.quit()
+const primary = !smokeTest && !updateTest && (!!fixtureName || app.requestSingleInstanceLock())
+if (!primary && !updateTest) app.quit()
 app.on('second-instance', () => focusWindow())
 
 // A dev run's first launch moves the data over from Kernel, once it holds its own lock. The move never copies a database
@@ -118,7 +133,7 @@ const redaction = {
   home: app.getPath('home'),
   secrets: () => { try { return [readFileSync(hookTokenFile(app.getPath('userData')), 'utf8').trim()] } catch { return [] } }
 }
-// The smoke test and a second launch, which only hands over and quits, write nothing.
+// The smoke test, the update test and a second launch, which only hands over and quits, write nothing.
 const log = logDir && primary ? new Log({ dir: logDir, ...redaction }) : undefined
 log?.captureConsole()
 log?.info(`[kernel] Kernel ${app.getVersion()} started on macOS ${process.getSystemVersion()}`)
@@ -267,6 +282,16 @@ app.whenReady().then(async () => {
     console.error(`[kernel] ${refusal.message}`)
     if (!headless) await dialog.showMessageBox({ type: 'info', message: refusal.message, detail: refusal.detail, buttons: ['OK'] })
     return app.quit()
+  }
+  if (updateTest?.feed && updateTest.dir) {
+    return runUpdateTest({
+      feed: updateTest.feed,
+      dir: updateTest.dir,
+      current: app.getVersion(),
+      engine: electronUpdater.autoUpdater,
+      print: (line) => writeSync(1, `${line}\n`),
+      exit: (code) => app.exit(code)
+    })
   }
   if (!primary) return
   // A packaged app takes its icon from build/icon.icns. Dev runs would show Electron's, so set the same mark here.

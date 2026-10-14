@@ -352,3 +352,60 @@ export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
   }
   return notes.filter((n) => n.title)
 }
+
+/** The flag for the end-to-end update test (KERNEL-713). */
+export const UPDATE_TEST_FLAG = '--kernel-update-test'
+
+/**
+ * `--kernel-update-test [<feed-url> <dir>]` from the command line, or undefined without the flag. The values are the
+ * arguments after the flag up to the next one starting with `-`, so a `-psn_` argument macOS adds is never read as one.
+ */
+export function updateTestArgs(argv: string[]): { feed?: string; dir?: string } | undefined {
+  const at = argv.indexOf(UPDATE_TEST_FLAG)
+  if (at < 0) return undefined
+  const rest = argv.slice(at + 1)
+  const end = rest.findIndex((a) => a.startsWith('-'))
+  const values = end < 0 ? rest : rest.slice(0, end)
+  return { feed: values[0], dir: values[1] }
+}
+
+/** The part of electron-updater's autoUpdater the update test sets as well. */
+export interface UpdateTestEngine extends UpdateEngine {
+  allowDowngrade: boolean
+  autoRunAppAfterInstall: boolean
+  setFeedURL(feed: { provider: 'generic'; url: string }): void
+}
+
+/**
+ * The update test (KERNEL-713): points the updater at a generic feed, waits for the update, prints `ready <version>` and
+ * quits so it installs, or prints `none` and exits 1. It never relaunches, so the new build never opens a full Kernel.
+ *
+ * Squirrel.Mac checks the new build's code signature against the running app's, and `allowDowngrade` stays false, so the
+ * test can only install a newer build signed by the same team. Nothing here turns either check off.
+ *
+ * On macOS, electron-updater reports the download before Squirrel has fetched it, so the test quits through
+ * `quitAndInstall`, which waits for Squirrel. With `autoRunAppAfterInstall` off that is a plain quit, and Squirrel
+ * installs the update as the app exits. A quit that hasn't happened `within` later exits 1.
+ */
+export async function runUpdateTest(o: {
+  feed: string; dir: string; current: string; engine: UpdateTestEngine
+  print(line: string): void; exit(code: number): void; within?: number
+}) {
+  const within = o.within ?? BOOT_UPDATE_MS
+  o.engine.setFeedURL({ provider: 'generic', url: o.feed })
+  o.engine.allowDowngrade = false
+  o.engine.autoRunAppAfterInstall = false
+  // No `outside`: Squirrel replaces the app wherever it runs, and the test runs a copy outside Applications.
+  const updater = new Updater({ current: o.current, dataDir: o.dir, engine: o.engine })
+  const version = await updater.readyWithin(within)
+  if (!version) {
+    o.print('none')
+    return o.exit(1)
+  }
+  o.print(`ready ${version}`)
+  setTimeout(() => {
+    console.error(`[kernel] update test: ${version} did not install within ${within / 1000} s`)
+    o.exit(1)
+  }, within)
+  updater.install()
+}
