@@ -23,7 +23,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const [folded, setFolded] = useState<string | null>(null)
   const list = useRef<HTMLDivElement>(null)
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
-  const match = (label: string, keywords?: Keyword[]) => navMatch(q, label, keywords)
+  const match = (label: string, keywords?: Keyword[], terms?: string[]) => navMatch(q, label, keywords, terms)
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
   // Menus and modals take Escape before it gets here, so it only counts when none is open.
   useEffect(() => {
@@ -48,12 +48,12 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
     list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
-  const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label, i.keywords)) })).filter((g) => g.items.length)
+  const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label, i.keywords, i.terms)) })).filter((g) => g.items.length)
   // Only the room whose page is open is expanded. On an app page every room is folded.
   const open = page === 'room' ? rooms.find((r) => r.id === roomId)?.id : undefined
   const searching = !!q.trim()
   // A search that matches a room's name shows all its pages, and one that matches a page name shows that page.
-  const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label, p.keywords)) })).filter((r) => r.pages.length)
+  const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label, p.keywords, p.terms)) })).filter((r) => r.pages.length)
   // A result opens its page and names the row, which Settings scrolls to, highlights and focuses (KERNEL-727).
   const found = (keywords: Keyword[], to: (row: string) => Parameters<typeof go>[0]) => keywordHits(q, keywords).map((k) => (
     <button key={k.rowId} type="button" className="nav-item set-item set-sub set-hit-item" onClick={() => go(to(k.rowId))}>{k.label}</button>

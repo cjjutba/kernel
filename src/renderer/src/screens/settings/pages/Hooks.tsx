@@ -91,7 +91,7 @@ export function Hooks({ s }: { s: AppSettings }) {
         </Section>
       )}
       {status && (
-        <Section title="Advanced" collapsible>
+        <Section title="Advanced" collapsible holds={['hook-port']}>
           <Row id="hook-port" label="Hook server port" desc="Moving it restarts the server and rewrites the hooks.">
             <span className="set-actions">
               <input className="set-token sys-port" aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />

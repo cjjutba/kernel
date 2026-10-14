@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { NAV_PAGES, ROOM_PAGES, keywordHits, type Keyword } from '../src/renderer/src/screens/settings/nav'
+import { NAV_PAGES, ROOM_PAGES, keywordHits, navMatch, type Keyword } from '../src/renderer/src/screens/settings/nav'
 
 const dir = 'src/renderer/src/screens/settings'
 const read = (f: string) => readFileSync(join(dir, f), 'utf8')
@@ -46,5 +46,16 @@ describe('Settings search (KERNEL-727)', () => {
       const ids = p.keywords.map((k) => k.rowId)
       expect(new Set(ids).size).toBe(ids.length)
     }
+  })
+
+  it.each([
+    ['keyboard', 'shortcuts'], ['secrets', 'env'], ['variables', 'env'], ['usage', 'accounts'], ['dark', 'appearance'], ['light', 'appearance'], ['version', 'about']
+  ])('"%s" still finds the %s page', (q, page) => {
+    const p = NAV_PAGES.find((x) => x.page === page)!
+    expect(navMatch(q, p.label, p.keywords, p.terms)).toBe(true)
+  })
+
+  it('opens a folded section that holds a row search lands on', () => {
+    expect(read('pages/Hooks.tsx')).toMatch(/title="Advanced" collapsible holds=\{\[[^\]]*'hook-port'/)
   })
 })

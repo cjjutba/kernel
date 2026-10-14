@@ -159,15 +159,18 @@ export function ScopeBadge({ scope }: { scope: Scope }) {
 }
 
 /**
- * A heading and a card of rows. `id` makes the section a search target when it holds no single row (the theme picker). `count` is a number after the title, `scope` the badge saying where the values are saved, `note` a
+ * A heading and a card of rows. `holds` lists the ids of rows inside a `collapsible` section that search can land on: landing on one opens it. `id` makes the section a search target when it holds no single row (the theme picker). `count` is a number after the title, `scope` the badge saying where the values are saved, `note` a
  * muted line beside the heading and `action` a button at its right (Add run script). `footnote` is the line under the card.
  * `collapsible` folds the card behind the heading, open when `defaultOpen`. `plain` leaves out the card, for a table or status line.
  */
-export function Section({ id, title, count, scope, note, action, footnote, collapsible, defaultOpen = false, plain, label, children }: {
-  id?: string; title?: string; count?: number | string; scope?: Scope; note?: ReactNode; action?: ReactNode; footnote?: ReactNode
+export function Section({ id, holds, title, count, scope, note, action, footnote, collapsible, defaultOpen = false, plain, label, children }: {
+  id?: string; holds?: string[]; title?: string; count?: number | string; scope?: Scope; note?: ReactNode; action?: ReactNode; footnote?: ReactNode
   collapsible?: boolean; defaultOpen?: boolean; plain?: boolean; label?: string; children: ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
+  // A search result for a row inside a folded section opens it first, so the row is there to land on.
+  const route = useStore((s) => s.ui.route)
+  useEffect(() => { if (holds && route.name === 'settings' && route.row && holds.includes(route.row)) setOpen(true) }, [route])
   const shown = !collapsible || open
   const n = count !== undefined && count !== '' && <span className="set-count">{count}</span>
   const heading = collapsible
