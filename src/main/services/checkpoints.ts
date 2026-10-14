@@ -1,7 +1,7 @@
 import { copyFile, mkdtemp, readdir, rm, rmdir, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import type { ChangedFile, Checkpoint, DiffStat } from '@shared/types'
+import type { ChangedFile, Checkpoint, CheckpointPreview, DiffStat } from '@shared/types'
 import { exec, run, SLOW_MS } from './exec'
 import { freeBranch } from './worktrees'
 
@@ -15,7 +15,8 @@ import { freeBranch } from './worktrees'
  * worktree is at now: the newest one, or the one last reverted to.
  *
  * Each checkpoint also records its base, where HEAD meets the workspace's remote base, so a turn's files leave out what only
- * arrived from that base since the last checkpoint (KERNEL-603).
+ * arrived from that base since the last checkpoint (KERNEL-603). It records HEAD too, so a revert preview can count the commits
+ * made since (KERNEL-764).
  */
 
 /** The parts of a workspace checkpoints need. `baseRef` is the base it started from, as the workspace has it. */
@@ -149,7 +150,7 @@ async function withoutBase(cwd: string, rows: DiffRow[], was: string, now: strin
 
 const statOf = (files: ChangedFile[]): DiffStat => ({ files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) })
 
-interface Stored { sha: string; turn: number; base?: string; checkpoint: Checkpoint }
+interface Stored { sha: string; turn: number; base?: string; head?: string; checkpoint: Checkpoint }
 
 function trailer(body: string, key: string): string | undefined {
   return new RegExp(`^${key}: (.*)$`, 'm').exec(body)?.[1]?.trim()
@@ -167,7 +168,7 @@ async function readAll(ws: CheckpointWorkspace): Promise<Stored[]> {
     if (!Number.isInteger(turn)) continue
     const [files, added, removed] = (trailer(body, 'Kernel-Stat') ?? '0 0 0').split(' ').map(Number)
     list.push({
-      sha, turn, base: trailer(body, 'Kernel-Base'),
+      sha, turn, base: trailer(body, 'Kernel-Base'), head: trailer(body, 'Kernel-Head'),
       checkpoint: {
         id: String(turn), workspaceId: ws.id, chatId: trailer(body, 'Kernel-Chat') ?? '', ts: Number(trailer(body, 'Kernel-Time')) || 0,
         title: body.split('\n')[0] ?? '', stat: { files: files || 0, added: added || 0, removed: removed || 0 }, ref,
@@ -220,7 +221,7 @@ export function snapshotWithFiles(ws: CheckpointWorkspace, o: { chatId: string; 
     const stat = statOf(files)
     const ts = o.ts ?? Date.now()
     const title = checkpointTitle(o.title) || `Turn ${turn}`
-    const message = [title, '', `Kernel-Chat: ${o.chatId}`, `Kernel-Turn: ${turn}`, `Kernel-Time: ${ts}`, `Kernel-Stat: ${stat.files} ${stat.added} ${stat.removed}`, ...(base ? [`Kernel-Base: ${base}`] : []), ...(start ? ['Kernel-Start: true'] : [])].join('\n') + '\n'
+    const message = [title, '', `Kernel-Chat: ${o.chatId}`, `Kernel-Turn: ${turn}`, `Kernel-Time: ${ts}`, `Kernel-Stat: ${stat.files} ${stat.added} ${stat.removed}`, ...(base ? [`Kernel-Base: ${base}`] : []), ...(head ? [`Kernel-Head: ${head}`] : []), ...(start ? ['Kernel-Start: true'] : [])].join('\n') + '\n'
     const parent = prev ?? head
     const sha = (await git(ws.path, ['commit-tree', tree, ...(parent ? ['-p', parent] : [])], IDENTITY, message)).trim()
     const ref = checkpointRef(ws.id, turn)
@@ -279,6 +280,28 @@ export function revertTo(ws: CheckpointWorkspace, checkpointId: string, o: { now
     const { written, removed } = await writeTree(ws.path, now, `${target.sha}^{tree}`)
     await git(ws.path, ['update-ref', headRef(ws.id), target.sha])
     return { checkpoint: { ...target.checkpoint, current: true }, backupBranch, restored: written, removed }
+  })
+}
+
+/**
+ * What reverting to a checkpoint would do (KERNEL-764): the files it would write or remove, read as the revert does them, and
+ * the commits HEAD gained since the checkpoint, which the revert leaves in place. `pushed` says whether any of them is on a
+ * remote. A checkpoint saved before HEAD was recorded counts from the checkpoint itself, which can count commits from turns
+ * before it too.
+ */
+export function previewRevert(ws: CheckpointWorkspace, checkpointId: string): Promise<CheckpointPreview> {
+  return serial(ws.id, async () => {
+    const target = (await readAll(ws)).find((c) => c.checkpoint.id === checkpointId)
+    if (!target) throw new Error('That checkpoint no longer exists.')
+    const rows = await treeDiff(ws.path, await worktreeTree(ws.path), `${target.sha}^{tree}`)
+    const files = rows.filter((r) => !r.was.startsWith(GITLINK) && !r.now.startsWith(GITLINK)).map(({ path, status, added, removed }) => ({ path, status, added, removed }))
+    const head = await revParse(ws.path, 'HEAD^{commit}')
+    // A HEAD git has collected since, as after a rebase, counts from the checkpoint instead.
+    const since = (target.head && await revParse(ws.path, `${target.head}^{commit}`)) || target.sha
+    const count = async (...more: string[]) => head ? Number((await git(ws.path, ['rev-list', '--count', `${since}..${head}`, ...more])).trim()) || 0 : 0
+    const commitsAhead = await count()
+    const pushed = commitsAhead > 0 && (await count('--not', '--remotes')) < commitsAhead
+    return { files, stat: statOf(files), commitsAhead, pushed }
   })
 }
 

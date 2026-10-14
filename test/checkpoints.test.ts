@@ -5,9 +5,10 @@ import { dirname, join } from 'node:path'
 import { setUp, tempRepo } from './helpers'
 import { exec, git, run } from '../src/main/services/exec'
 import { createWorktree, fastForward, snapshotBaseline } from '../src/main/services/worktrees'
-import { listCheckpoints, revertTo, snapshot, snapshotWithFiles } from '../src/main/services/checkpoints'
+import { clock, listCheckpoints, previewRevert, revertTo, snapshot, snapshotWithFiles } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
 import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
+import { revertNote } from '../src/main/features/checkpoints'
 
 const read = (dir: string, f: string) => readFile(join(dir, f), 'utf8')
 const exists = (dir: string, f: string) => stat(join(dir, f)).then(() => true, () => false)
@@ -365,6 +366,43 @@ describe('a turn leaves out what arrived from the base (KERNEL-603)', () => {
   })
 })
 
+describe('what a revert would do (KERNEL-764)', () => {
+  it('lists the files it would change and counts the commits since, none, local only, then pushed', async () => {
+    const dir = await tempRepo({ 'a.ts': 'a\n', 'b.ts': 'b\n' })
+    const bare = await mkdtemp(join(tmpdir(), 'kernel-bare-'))
+    await run('git', ['init', '-q', '--bare', '-b', 'main', bare])
+    await git(dir, 'remote', 'add', 'origin', bare)
+    await git(dir, 'push', '-q', '-u', 'origin', 'main')
+    const ws = { id: 'ws-preview', name: 'preview', path: dir }
+    await snapshot(ws, { chatId: 'c', title: 'Go', start: true })
+    await writeFile(join(dir, 'a.ts'), 'a\na2\n')
+    await writeFile(join(dir, 'new.ts'), 'n\n')
+    await rm(join(dir, 'b.ts'))
+    const before = await state(dir)
+
+    const none = await previewRevert(ws, '0')
+    expect(none.files.sort((x, y) => x.path.localeCompare(y.path))).toEqual([
+      { path: 'a.ts', status: 'M', added: 0, removed: 1 }, { path: 'b.ts', status: 'A', added: 1, removed: 0 }, { path: 'new.ts', status: 'D', added: 0, removed: 1 }
+    ])
+    expect(none).toMatchObject({ stat: { files: 3, added: 1, removed: 2 }, commitsAhead: 0, pushed: false })
+    // A preview changes nothing.
+    expect(await state(dir)).toEqual(before)
+
+    await git(dir, 'add', '-A')
+    await git(dir, 'commit', '-q', '-m', 'One')
+    await snapshot(ws, { chatId: 'c', title: 'One' })
+    await writeFile(join(dir, 'a.ts'), 'a\na2\na3\n')
+    await git(dir, 'commit', '-q', '-am', 'Two')
+    expect(await previewRevert(ws, '0')).toMatchObject({ commitsAhead: 2, pushed: false })
+    // The checkpoint taken after the first commit counts only the one made since.
+    expect(await previewRevert(ws, '1')).toMatchObject({ files: [{ path: 'a.ts', status: 'M', added: 0, removed: 1 }], commitsAhead: 1, pushed: false })
+
+    await git(dir, 'push', '-q', 'origin', 'main')
+    expect(await previewRevert(ws, '1')).toMatchObject({ commitsAhead: 1, pushed: true })
+    await expect(previewRevert(ws, '9')).rejects.toThrow('no longer exists')
+  })
+})
+
 describe('checkpoints in the kernel', () => {
   it('saves the start and each turn, reverts with a note in the chat, and waits for a running agent', async () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
@@ -404,6 +442,63 @@ describe('checkpoints in the kernel', () => {
     const note = k.store.items(chat.id).find((i) => i.kind === 'note')
     expect(note?.kind === 'note' && note.text).toBe(`Reverted files to the start of the chat. Later changes are saved on ${backupBranch}.`)
     await k.stop()
+  })
+
+  it('links each turn and the first message to their checkpoints, and tells only the next turn about a revert (KERNEL-764)', async () => {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop())
+    // The brief becomes the chat's first message, as a real send makes it.
+    k.sessions.send = async (chatId, parts) => { k.store.saveItem(chatId, { kind: 'user', id: 'brief', ts: 1, parts }); return { queued: false } }
+    const room = await k.addRoom(repo)
+    const ws = await setUp(k, (await k.createWorkspace(room.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const chat = k.store.chats(ws.id)[0]
+    const row = (id: string) => k.store.items(chat.id).find((i) => i.id === id)
+    // Linked just after the workspace counts as ready.
+    await vi.waitFor(() => expect(row('brief')).toMatchObject({ kind: 'user', checkpointId: '0' }))
+
+    // A turn that changed no files still gets its checkpoint.
+    k.store.saveItem(chat.id, { kind: 'result', id: 'r1', ts: 2, durationMs: 1, ok: true })
+    await k.checkpoints.checkpoint(ws, chat)
+    expect(row('r1')).toEqual({ kind: 'result', id: 'r1', ts: 2, durationMs: 1, ok: true, checkpointId: '1' })
+
+    k.store.saveItem(chat.id, { kind: 'user', id: 'u2', ts: 3, parts: [{ type: 'text', text: 'Add the empty state' }] })
+    await writeFile(join(ws.path, 'empty.tsx'), 'x\n')
+    k.store.saveItem(chat.id, { kind: 'result', id: 'r2', ts: 4, durationMs: 1, ok: true })
+    const c = await k.checkpoints.checkpoint(ws, chat)
+    expect(row('r2')).toMatchObject({ checkpointId: '2', files: [{ path: 'empty.tsx', status: 'A' }] })
+    expect(row('u2')).not.toHaveProperty('checkpointId')
+
+    // No revert yet, so no note.
+    expect(k.checkpoints.turnNote(chat.id)).toBeUndefined()
+    await k.handlers()['checkpoints.revert']({ workspaceId: ws.id, checkpointId: '1' })
+    expect(k.checkpoints.turnNote(chat.id)).toBe(revertNote(clock((await listCheckpoints(ws)).find((x) => x.id === '1')!.ts)))
+    expect(k.checkpoints.turnNote(chat.id)).toBeUndefined()
+    expect(c.id).toBe('2')
+  })
+
+  it('links the start checkpoint when the brief goes out after it, at the end of the first turn (KERNEL-764)', async () => {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop())
+    k.sessions.send = async () => ({ queued: true })
+    const room = await k.addRoom(repo)
+    const ws = await setUp(k, (await k.createWorkspace(room.id, { prompt: 'Build T-14 from the plan', agentId: 'kai', title: 'Invoice table' })).id)
+    const chat = k.store.chats(ws.id)[0]
+    // The brief is still waiting, so the start checkpoint waits for it.
+    await vi.waitFor(() => expect((k.checkpoints as unknown as { starts: Map<string, string> }).starts.get(chat.id)).toBe('0'))
+    k.store.saveItem(chat.id, { kind: 'user', id: 'brief', ts: 1, parts: [{ type: 'text', text: 'Build T-14 from the plan' }] })
+    k.store.saveItem(chat.id, { kind: 'result', id: 'r1', ts: 2, durationMs: 1, ok: true })
+    await k.checkpoints.checkpoint(ws, chat)
+    expect(k.store.items(chat.id).map((i) => [i.id, 'checkpointId' in i ? i.checkpointId : undefined])).toEqual([['brief', '0'], ['r1', '1']])
   })
 })
 

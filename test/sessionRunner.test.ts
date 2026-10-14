@@ -792,6 +792,23 @@ describe('Approve and hand off (KERNEL-67)', () => {
   })
 })
 
+describe('a note before the next turn (KERNEL-764)', () => {
+  it('starts only the next turn with the note, and the chat row shows the message alone', async () => {
+    const note = 'Files were reverted to 10:24. Re-read files before editing.'
+    const notes = [note]
+    const s = await setup('acceptEdits', { deps: { turnNote: () => notes.shift() } })
+    const texts = async () => ((await s.call.prompt[Symbol.asyncIterator]().next()).value.message.content as { text: string }[]).map((c) => c.text)
+    expect(await texts()).toEqual([note, 'Add a pdf_url column'])
+    expect(s.store.items('chat').find((i) => i.kind === 'user')).toMatchObject({ parts: [{ type: 'text', text: 'Add a pdf_url column' }] })
+
+    s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    await s.sessions.send('chat', [{ type: 'text', text: 'Backfill it' }])
+    expect(await texts()).toEqual(['Backfill it'])
+  })
+})
+
 describe('compact window per role (feat-compact-window-per-role-with-plan)', () => {
   const WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
   const compact: AppSettings['models']['compact'] = { lead: 'full', engineers: '200k', qa: '200k', reviewer: '200k' }
