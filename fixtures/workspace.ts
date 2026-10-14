@@ -418,6 +418,66 @@ const toolCalls: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** Opened Bash rows: a short command and a scan whose output runs past the 260px cap, so its section fades at the bottom (KERNEL-802). */
+const stepCardBashItems: ChatItem[] = [
+  userMsg('sb-u', 'Find what is using the disk.'),
+  tool('sb2', 'List the biggest folders', 'du -xk -d 3 ~ | sort -rn | head -40', {
+    durationMs: 3200, input: { command: 'du -xk -d 3 ~ | sort -rn | head -40', description: 'List the biggest folders' },
+    output: Array.from({ length: 40 }, (_, i) => `${String(48_000_000 - i * 1_150_000).padStart(9)}\t/Users/sam/${['Library', 'Projects', 'Downloads', 'Movies', 'Documents'][i % 5]}/folder-${i + 1}`).join('\n')
+  }),
+  { kind: 'text', id: 'sb-x', ts: at(10, 28), text: 'Next step.' },
+  tool('sb1', 'Wait while the scan runs', 'sleep 120; echo waited', { durationMs: 120_400, input: { command: 'sleep 120; echo waited', description: 'Wait while the scan runs' }, output: 'waited' }),
+  ...tableItems.slice(-2)
+]
+
+/** Opened MCP rows: a JSON response that is pretty-printed, one that is plain text, and a request with no response yet to show (KERNEL-802). */
+const stepCardMcpItems: ChatItem[] = [
+  userMsg('sm-u', 'Check the Settings issues.'),
+  mcpCall('sm1', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings', updatedAt: '-P30D' }, {
+    output: JSON.stringify({ issues: [{ id: 'KERNEL-716', title: 'Room settings title misaligned', state: 'In Review', labels: ['Bug', 'Workspace'] }, { id: 'KERNEL-721', title: 'Settings say Saving and Saved next to the control', state: 'In Progress', labels: ['Workspace'] }], total: 2 })
+  }),
+  mcpCall('sm2', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)\nws-714 Replace the ring spinner (ready to merge)' }),
+  ...tableItems.slice(-2)
+]
+
+const codexPatch = (path: string, old: string[], next: string[], context = ['export function InvoiceTable() {']) =>
+  [`diff --git a/${path} b/${path}`, `--- a/${path}`, `+++ b/${path}`, `@@ -10,${old.length + 1} +10,${next.length + 1} @@`, ` ${context[0]}`, ...old.map((l) => `-${l}`), ...next.map((l) => `+${l}`)].join('\n')
+
+/** What Codex's file changes and a MultiEdit open to: red and green diff lines, as an Edit shows (KERNEL-802). A fileChange has no old and new text, so its output, a unified diff, is what is drawn. */
+const stepCardCodexItems: ChatItem[] = [
+  userMsg('sc-u', 'Sort the invoice table.'),
+  tool('sc1', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx' }, output: codexPatch('src/app/invoices/table.tsx', ["  const rows = sortBy(invoices, 'amount')", '  return <Table rows={rows} />'], ['  const rows = sortBy(invoices, sort.key, sort.dir)', '  return <Table rows={rows} sort={sort} />']) }),
+  { kind: 'text', id: 'sc-x1', ts: at(10, 28), text: 'Next step.' },
+  tool('sc2', 'Edit page.tsx', 'src/app/invoices/page.tsx', { name: 'MultiEdit', durationMs: 150, input: { file_path: 'src/app/invoices/page.tsx', edits: [
+    { old_string: "import { Table } from './table'", new_string: "import { Table, useSort } from './table'" },
+    { old_string: 'const rows = invoices', new_string: 'const sort = useSort()\nconst rows = invoices' }
+  ] } }),
+  ...tableItems.slice(-2)
+]
+
+const emptyStateSource = [
+  "import { Button } from '../../ui'",
+  '',
+  'export function EmptyState({ onCreate }: { onCreate: () => void }) {',
+  '  return (',
+  '    <div className="empty">',
+  '      <h2>No invoices yet</h2>',
+  '      <p>Invoices you send show up here, newest first.</p>',
+  '      <Button onClick={onCreate}>Create invoice</Button>',
+  '    </div>',
+  '  )',
+  '}',
+  '',
+  ...Array.from({ length: 30 }, (_, i) => `export const EMPTY_COPY_${i + 1} = 'No invoices in view ${i + 1}'`)
+].join('\n')
+
+/** A Write opens capped, with its line count in the heading (KERNEL-802). */
+const stepCardWriteItems: ChatItem[] = [
+  userMsg('sw-u', 'Add the empty state.'),
+  tool('sw1', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: emptyStateSource }}),
+  ...tableItems.slice(-2)
+]
+
 /** The messages in the setup wait shots (KERNEL-430): a pasted screenshot with a question, then a follow-up with a pasted log. */
 const setupAsk: QueuedMessage = { id: 'q-setup', chatId: ids.tableChat, ts: at(10, 0), parts: [{ type: 'image' as const, name: 'image.png' }, { type: 'text' as const, text: 'In a setup script tab in the right sidebar panel, there is a redundancy in terms of Run. Can you fix that?' }] }
 const setupFollow: QueuedMessage = { id: 'q-follow', chatId: ids.tableChat, ts: at(10, 0, 40), parts: [{ type: 'text' as const, text: 'Check the Terminal tab for the same problem. The console output is in' }, { type: 'file' as const, name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] }
@@ -1755,6 +1815,23 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  /** The four opened cards (KERNEL-802), each with its rows opened by scripts/shots.ts: Bash, MCP, Codex diffs and a MultiEdit, and a Write. */
+  WorkspaceStepCardBash: scene(() => ({
+    items: { [ids.tableChat]: stepCardBashItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardMcp: scene(() => ({
+    items: { [ids.tableChat]: stepCardMcpItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardCodexDiff: scene(() => ({
+    items: { [ids.tableChat]: stepCardCodexItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceStepCardWrite: scene(() => ({
+    items: { [ids.tableChat]: stepCardWriteItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
   })),
   /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
