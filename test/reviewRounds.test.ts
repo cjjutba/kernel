@@ -214,6 +214,74 @@ describe('review rounds', () => {
   })
 })
 
+describe("Kernel's own update of a PR from its base (KERNEL-832)", () => {
+  /** Main moves on, and Kai's branch merges it, the way `gh pr update-branch` would. `extra` adds a change of its own to the merge. */
+  async function update(t: Awaited<ReturnType<typeof setup>>, extra?: Record<string, string>) {
+    await writeFile(join(t.repo, 'README.md'), '# shop, moved on\n')
+    await git(t.repo, 'commit', '-qam', 'main moves on')
+    const ws = t.of()
+    await git(ws.path, 'merge', '-q', '--no-ff', '--no-commit', 'main')
+    for (const [f, c] of Object.entries(extra ?? {})) { await writeFile(join(ws.path, f), c); await git(ws.path, 'add', f) }
+    await git(ws.path, 'commit', '-qm', 'Merge main')
+    const to = (await git(ws.path, 'rev-parse', 'HEAD')).trim()
+    t.k.store.saveWorkspace({ ...ws, prHead: to })
+    return { from: ws.prHead!, to }
+  }
+
+  it('keeps the approval on the updated head and starts no review', async () => {
+    const t = await setup()
+    await t.k.reviews.onReady(t.of().id)
+    await t.verdict('code', 'approved')
+    t.record()
+    const { from, to } = await update(t)
+    expect(await t.k.reviews.recordBaseUpdate(t.of().id, from, to)).toBe(true)
+    expect(t.of().baseUpdates).toEqual([{ from, to }])
+    await t.k.reviews.onReady(t.of().id)
+    expect(t.sent).toEqual([])
+    expect(t.of().reviewRound).toMatchObject({ n: 1, head: from })
+    expect(t.k.reviews.reviewState(t.of())).toMatchObject({ approved: ['code'], blocking: [], waiting: [] })
+    expect(mergeBlock(t.of(), info(t.of()), { requireGreen: false, requireReviewer: true })).toBeUndefined()
+  })
+
+  it('keeps blockers on the updated head, so it stays blocked', async () => {
+    const t = await setup()
+    await t.k.reviews.onReady(t.of().id)
+    await t.verdict('code', 'blockers')
+    t.record()
+    const { from, to } = await update(t)
+    expect(await t.k.reviews.recordBaseUpdate(t.of().id, from, to)).toBe(true)
+    await t.k.reviews.onReady(t.of().id)
+    expect(t.sent).toEqual([])
+    expect(t.k.reviews.reviewState(t.of())).toMatchObject({ blocking: ['code'] })
+    expect(mergeBlock(t.of(), info(t.of()), { requireGreen: false, requireReviewer: false })).toContain('The code review found 1 blocker')
+  })
+
+  it('reviews the same head again when Kernel never recorded it, as after a teammate pushed it', async () => {
+    const t = await setup()
+    await t.k.reviews.onReady(t.of().id)
+    await t.verdict('code', 'approved')
+    t.record()
+    await update(t)
+    await t.k.reviews.onReady(t.of().id)
+    expect(t.sent).toEqual(['code'])
+    expect(t.k.reviews.reviewState(t.of())).toMatchObject({ approved: [], waiting: ['code'] })
+  })
+
+  it("doesn't record an update that brings in a change of its own, nor a commit that isn't a merge with the base", async () => {
+    const t = await setup()
+    await t.k.reviews.onReady(t.of().id)
+    await t.verdict('code', 'approved')
+    t.record()
+    const { from, to } = await update(t, { 'src/main/a.ts': 'slipped in\n' })
+    expect(await t.k.reviews.recordBaseUpdate(t.of().id, from, to)).toBe(false)
+    const pushed = await t.push({ 'src/main/b.ts': 'b\n' })
+    expect(await t.k.reviews.recordBaseUpdate(t.of().id, to, pushed)).toBe(false)
+    expect(t.of().baseUpdates).toBeUndefined()
+    await t.k.reviews.onReady(t.of().id)
+    expect(t.sent).toEqual(['code'])
+  })
+})
+
 describe('a PR waiting for its reviews to approve (KERNEL-717)', () => {
   const rules = { requireGreen: false, requireReviewer: true }
 
