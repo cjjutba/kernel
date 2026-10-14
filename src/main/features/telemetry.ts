@@ -23,7 +23,8 @@ export class Telemetry extends Feature {
   private recent: TelemetryRecord[] = []
   private queue: Queued[] = []
   private timer?: NodeJS.Timeout
-  private sending = false
+  /** The send in flight, so a second call waits for it instead of returning before anything went out. */
+  private sending?: Promise<void>
   private loaded = false
   private writing: Promise<void> = Promise.resolve()
   private saving = false
@@ -87,9 +88,14 @@ export class Telemetry extends Feature {
   }
 
   /** Sends what waits, in one batch. Events that go out are marked sent in the list Settings, Privacy shows. */
-  async send(): Promise<void> {
-    if (!this.on || this.sending || !this.queue.length || !this.o.telemetry) return
-    this.sending = true
+  send(): Promise<void> {
+    if (this.sending) return this.sending
+    if (!this.on || !this.queue.length || !this.o.telemetry) return Promise.resolve()
+    return (this.sending = this.sendBatch().finally(() => { this.sending = undefined }))
+  }
+
+  private async sendBatch(): Promise<void> {
+    if (!this.o.telemetry) return
     const batch = this.queue.slice()
     try {
       const body = batchBody({ key: this.o.telemetry.key, installId: await this.installId(), base: { app: this.o.version ?? '0.0.0', os: this.o.telemetry.os ?? 'unknown', arch: this.o.telemetry.arch ?? process.arch }, events: batch })
@@ -102,8 +108,6 @@ export class Telemetry extends Feature {
       this.save()
     } catch {
       // Offline or the service is down: the events wait for the next minute.
-    } finally {
-      this.sending = false
     }
   }
 
