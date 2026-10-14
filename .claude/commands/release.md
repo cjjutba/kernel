@@ -16,6 +16,7 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
    - Check the file: `pnpm --dir site test`.
 
 4. **Release PR.** Commit everything as `chore(release): <version>`, push, and open the PR with `gh pr create --title "chore(release): <version>"`. Put the release file's notes in the body. Then stop until I tell you it's merged.
+   - Before I merge, the PR must show a green "Test on macOS" check (the full suite on a Mac, which runs on release PRs). Check it once with `gh pr checks <pr> --repo cjjutba/kernel`. If it failed, stop and say which tests failed (`gh run view <run-id> --log-failed`). If it's still running, say so and stop; don't wait or poll. If it never started, run `gh workflow run test-mac.yml --ref release/<version>` and say so. Never merge without it green.
 
 5. **Tag and publish.** After I confirm the merge:
    - `git checkout main && git pull --ff-only`. Check that `package.json` says `<version>` and that `site/content/releases/<version>.md` exists.

@@ -55,7 +55,7 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm version <version> --no-git-tag-version --no-git-checks
    ```
 
-   `pnpm version` changes only `package.json`. It needs `--no-git-checks` because the new release file isn't committed yet. For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check.
+   `pnpm version` changes only `package.json`. It needs `--no-git-checks` because the new release file isn't committed yet. For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check. The release PR runs the full suite on macOS ("Test on macOS") and must be green before it merges, because Kernel ships for Mac only.
 3. After it merges, tag the merge commit and publish:
 
    ```sh
