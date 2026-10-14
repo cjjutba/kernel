@@ -391,6 +391,8 @@ app.whenReady().then(async () => {
     // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake, and the PRs
     // are read again, as when the window comes back from another app (KERNEL-388).
     powerMonitor.on('resume', () => void started.then(() => { kernel.prs.pollSoon(); return kernel.checkLimits() }, () => undefined))
+    // The update timer ran late too, so waking checks for an update, at most every half hour (KERNEL-711).
+    powerMonitor.on('resume', () => void started.then(() => updater?.wake(), () => undefined))
     app.on('browser-window-focus', (_e, w) => { if (w === mainWindow()) void started.then(() => kernel.prs.pollSoon(), () => undefined) })
     handlers = kernel.handlers() as typeof handlers
     hookPort = () => kernel.settings?.hookPort
