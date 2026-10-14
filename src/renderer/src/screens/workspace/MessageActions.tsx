@@ -31,12 +31,12 @@ export interface MoreActions { menu: MenuId; items: MessageAction[] }
  * `more` ends the row with a "..." menu, whose button spins for the entry that is running. `meta` leads the row with a
  * finished turn's time, which stays when the icons hide (KERNEL-346).
  */
-export function MessageActions({ copy, items = [], more, meta, align = 'start', label }: { copy: string; items?: MessageAction[]; more?: MoreActions; meta?: string; align?: 'start' | 'end'; label: string }) {
-  const [copied, onCopy] = useCopy(copy)
+export function MessageActions({ copy, items = [], more, meta, align = 'start', label }: { copy?: string; items?: MessageAction[]; more?: MoreActions; meta?: string; align?: 'start' | 'end'; label: string }) {
+  const [copied, onCopy] = useCopy(copy ?? '')
   const [busy, run] = useBusy()
   const acts = (
     <div className="msg-acts" data-align={align} data-busy={(more && more.items.some((a) => a.label === busy)) || undefined} role="group" aria-label={label}>
-      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />
+      {copy !== undefined && <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />}
       {items.map((a) => (
         <IconButton key={a.label} icon={a.icon} size={14} label={a.label} busy={busy === a.label} busyLabel={a.busyLabel} disabled={busy !== null}
           onClick={() => void run(a.label, async () => a.onClick())} />
@@ -46,6 +46,20 @@ export function MessageActions({ copy, items = [], more, meta, align = 'start', 
   )
   if (meta === undefined) return acts
   return <div className="msg-foot"><span className="meta">{meta}</span>{acts}</div>
+}
+
+/**
+ * Copy alone, for an agent line that isn't the end of its turn (KERNEL-828). It floats in the gap under the line, so it takes no
+ * height, and shows on hover and keyboard focus like the full row. There is no Retry or Fork on it: Retry resends the turn's whole
+ * message, and a fork copies the files as they are now, so neither belongs on a line with more work to come.
+ */
+export function CopyOverlay({ text }: { text: string }) {
+  const [copied, onCopy] = useCopy(text)
+  return (
+    <div className="msg-copy">
+      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : 'Copy'} onClick={onCopy} />
+    </div>
+  )
 }
 
 /** The "..." button and its menu, opening upward since the composer sits just below the last reply. */

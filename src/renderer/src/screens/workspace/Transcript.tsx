@@ -15,7 +15,7 @@ import { PLAN_APPROVE_EVENT } from './cards/plan'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
-import { attempt, MessageActions, useCopy, type MessageAction } from './MessageActions'
+import { attempt, CopyOverlay, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -207,26 +207,44 @@ function TurnFilesCard({ rowId, files, inWorkspace, onOpenDiff }: { rowId: strin
   )
 }
 
-interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; workspaceId: string; checkpointId?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; inWorkspace?: number; meta?: string; onOpenDiff: (path: string) => void }
+interface FootProps { id: string; chatId: string; workspaceId: string; copy?: string; checkpointId?: string; hasFiles: boolean; meta?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown> }
 
-/**
- * A reply, with Copy, Retry and a "..." menu that forks and, on the reply that ends a turn with changed files, reverts the files to that turn (KERNEL-766). The reply that ends a finished turn also carries the turn's files and
- * its time, which leads the actions' row (KERNEL-346). Fork into new workspace only shows where the workspace has its own worktree.
- */
-function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkWorkspace, files, inWorkspace, meta, onOpenDiff }: ReplyProps) {
-  const revertable = useRevertable(workspaceId, files?.length ? checkpointId : undefined)
-  const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(item.id) }]
-  if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(item.id) })
+/** Copy, Retry and the "..." menu that forks and, where a finished turn changed files, reverts them to that turn (KERNEL-766). `id` is the row Retry and the forks start from. Fork into new workspace only shows where the workspace has its own worktree. */
+function ReplyFoot({ id, chatId, workspaceId, copy, checkpointId, hasFiles, meta, onFork, onForkWorkspace }: FootProps) {
+  const revertable = useRevertable(workspaceId, hasFiles ? checkpointId : undefined)
+  const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(id) }]
+  if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(id) })
   if (revertable && checkpointId) forks.push(revertAction(workspaceId, checkpointId, 'Revert files to here'))
   return (
-    <div className="msg msg-reply">
+    <MessageActions label="Message actions" copy={copy} meta={meta}
+      items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: id })) }]}
+      more={{ menu: `reply:${id}`, items: forks }} />
+  )
+}
+
+interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; workspaceId: string; checkpointId?: string; onFork: (itemId: string) => Promise<unknown>; onForkWorkspace?: (itemId: string) => Promise<unknown>; files?: ChangedFile[]; inWorkspace?: number; meta?: string; full?: boolean; onOpenDiff: (path: string) => void }
+
+/**
+ * An agent line. Most only offer Copy, as an overlay that takes no height. The reply that ends a finished turn (`meta`) and the last line of a
+ * stopped or cut-off turn (`full`) carry Copy, Retry and the "..." menu (KERNEL-828). The reply that ends a finished turn also carries the turn's files and
+ * its time, which leads the actions' row (KERNEL-346).
+ */
+function ReplyMessage({ item, chatId, workspaceId, checkpointId, onFork, onForkWorkspace, files, inWorkspace, meta, full, onOpenDiff }: ReplyProps) {
+  return (
+    <div className="msg msg-reply" data-copy={!full && meta === undefined ? '' : undefined}>
       <Markdown text={item.text} />
       {files && <TurnFilesCard rowId={item.id} files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
-      <MessageActions label="Message actions" copy={item.text} meta={meta}
-        items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) }]}
-        more={{ menu: `reply:${item.id}`, items: forks }} />
+      {full || meta !== undefined
+        ? <ReplyFoot id={item.id} chatId={chatId} workspaceId={workspaceId} copy={item.text} checkpointId={checkpointId} hasFiles={!!files?.length} meta={meta} onFork={onFork} onForkWorkspace={onForkWorkspace} />
+        : <CopyOverlay text={item.text} />}
     </div>
   )
+}
+
+/** The end of a finished turn that doesn't end on a message: its time, then the actions the reply would have carried (KERNEL-828). */
+function TurnEnd({ block, chatId, workspaceId, onFork, onForkWorkspace }: { block: Extract<ThreadBlock, { kind: 'meta' }> } & Pick<BlockProps, 'chatId' | 'workspaceId' | 'onFork' | 'onForkWorkspace'>) {
+  const a = block.actions!
+  return <ReplyFoot id={block.id} chatId={chatId} workspaceId={workspaceId} copy={a.copy} checkpointId={a.checkpointId} hasFiles={a.files} meta={block.text} onFork={onFork} onForkWorkspace={onForkWorkspace} />
 }
 
 /**
@@ -690,12 +708,12 @@ const sameList = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((x, i)
 function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   if (a === b) return true
   switch (a.kind) {
-    case 'item': return b.kind === 'item' && a.item === b.item
+    case 'item': return b.kind === 'item' && a.item === b.item && a.actions === b.actions
     case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items)
     case 'run': return b.kind === 'run' && a.id === b.id && sameList(a.run.items, b.run.items)
     case 'live': return b.kind === 'live' && a.item === b.item
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
-    case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text
+    case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text && a.actions?.copy === b.actions?.copy && a.actions?.files === b.actions?.files && a.actions?.checkpointId === b.actions?.checkpointId && !a.actions === !b.actions
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
     case 'relaunch': return b.kind === 'relaunch' && a.note === b.note && a.message === b.message
     case 'error': return b.kind === 'error' && a.id === b.id && a.message === b.message && a.output === b.output
@@ -721,7 +739,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
   if (block.kind === 'run') return <RunRow run={block.run} changes={changes} />
   if (block.kind === 'live') return block.item.kind === 'tool' ? <ToolRow item={block.item} /> : <ThinkingRow item={block.item} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
-  if (block.kind === 'meta') return <span className="meta">{block.text}</span>
+  if (block.kind === 'meta') return block.actions ? <TurnEnd block={block} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} /> : <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
   if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} workspaceId={workspaceId} checkpointId={block.checkpointId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} onOpenDiff={onOpenDiff} />
   const item = block.item
@@ -732,7 +750,7 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
       const view = userView(item)
       return view === 'update' ? <div className="jump-anchor" data-jump={item.id}><TeamUpdateCard item={item} chatId={chatId} /></div> : view === 'note' ? <KernelNote item={item} /> : view === 'hidden' ? null : <UserMessage item={item} workspaceId={workspaceId} onEdit={onEdit} />
     }
-    case 'text': return <ReplyMessage item={item} chatId={chatId} workspaceId={workspaceId} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
+    case 'text': return <ReplyMessage item={item} chatId={chatId} workspaceId={workspaceId} full={block.actions} onFork={onFork} onForkWorkspace={onForkWorkspace} onOpenDiff={onOpenDiff} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
     case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text"><NoteText text={item.text} refs={item.refs} /></span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
