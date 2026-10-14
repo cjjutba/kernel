@@ -348,7 +348,15 @@ async function leaveSizeLimit(page: Page, text: string) {
   await page.waitForTimeout(300)
 }
 
+async function openOverrule(page: Page) {
+  await page.getByRole('button', { name: 'Overrule' }).click()
+  await page.getByRole('alertdialog').waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,

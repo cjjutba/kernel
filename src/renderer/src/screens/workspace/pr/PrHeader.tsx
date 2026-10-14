@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Workspace } from '@shared/types'
+import { mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { NO_RULES, actionIcon, actionKey, blockersHold, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { NO_RULES, actionIcon, actionKey, blockerFacts, blockersHold, busyLabel, failTitle, hasChanges, headerView, overruleOn, overruleText, type PrAction } from './model'
 import { useLocalMerge } from './useLocalMerge'
 import { ConfirmMergeAnyway } from '../ConfirmMergeAnyway'
+import { ConfirmOverrule } from '../ConfirmOverrule'
 import './pr.css'
 
 /** What each action calls on the main process. Shared with `MergeButton`. */
@@ -49,6 +51,9 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const agents = useStore((s) => s.agents[ws.roomId])
   const held = blockersHold(ws, pr, rules, (agentId) => agents?.find((a) => a.id === agentId)?.name ?? agentId)
   const [confirm, setConfirm] = useState<NonNullable<typeof held> | null>(null)
+  const [overruling, setOverruling] = useState(false)
+  const facts = held ? blockerFacts(ws, pr) : undefined
+  const overruled = !held && mergeableState(ws.prState) ? overruleOn(ws, pr) : undefined
   // An action started from another button or by a tool spins this band too, and turns its keys off (KERNEL-520).
   const pending = useStore((s) => s.prPending[ws.id])
   const view = headerView(ws.prState, changed, !!ws.prBlocked, local, !!held, pending)
@@ -99,6 +104,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     : view.pill ? <span className="pr-pill" role="img" aria-label={`Merges into ${view.pill}`}><Icon name="arrowRight" size={12} /><span className="mono">{view.pill}</span></span> : null
   // The state always shows, busy or not: only the busy button spins (KERNEL-274).
   const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
+  const undo = () => void act('Undoing', 'Could not undo the overrule', () => call('reviews.overrule', { workspaceId: id, clear: true }))
   const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
   // The band's tone: the right panel's head is the band, and in the chat header the capsule has the same tint and line.
@@ -109,9 +115,12 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   // In the right panel the head is one block in two rows: the state with the link at its right, in line with the chat header, then
   // the actions at full width, in line with the chat's tab row. The capsule keeps one row: the state, the link, then the actions
   // (KERNEL-528). `extra` renders outside the rows, as the Merge anyway confirmation does.
+  const line = overruled && (
+    <div className="pr-overruled"><span className="pr-overruled-text" data-tip={overruleText(overruled)}>{overruleText(overruled)}</span><button type="button" className="pr-undo" onClick={undo}>Undo</button></div>
+  )
   const out = (buttons: ReactNode, extra?: ReactNode) => spread
-    ? tone(<><div className="pr-r1">{state}{gap}{link}</div>{buttons && <div className="pr-r2">{buttons}</div>}{extra}</>)
-    : tone(<>{state}{link}{buttons}{extra}</>)
+    ? tone(<><div className="pr-r1">{state}{gap}{link}</div>{buttons && <div className="pr-r2">{buttons}</div>}{line}{extra}</>)
+    : tone(<>{state}{link}{buttons}{overruled && <button type="button" className="pr-undo" data-tip={overruleText(overruled)} onClick={undo}>Undo</button>}{extra}</>)
 
   if (busy) return out(spinner(busy))
 
@@ -131,6 +140,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     : b.kind === 'busy' ? spinner(b.label)
       : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
+  const overrule = facts && <Button className="pr-soft" onClick={() => setOverruling(true)}>Overrule</Button>
   const buttons = !main && !view.archive ? null : (
     <>
       {view.caret ? (
@@ -150,8 +160,12 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
           </span>
         </span>
       ) : main}
+      {overrule}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>}
     </>
   )
-  return out(buttons, confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body))
+  return out(buttons, <>
+    {confirm && createPortal(<ConfirmMergeAnyway ws={ws} {...confirm} onClose={() => setConfirm(null)} />, document.body)}
+    {overruling && facts && createPortal(<ConfirmOverrule ws={ws} facts={facts} onClose={() => setOverruling(false)} />, document.body)}
+  </>)
 }

@@ -3,3 +3,7 @@
 .wsc-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
 .wsc-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
 .wsc-error { margin: 0; color: var(--del); }
+
+.wsc-blockers { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); line-height: 1.5; }
+.wsc-blocker-at { color: var(--ink-3); font-size: 12px; }
+.wsc-note { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-2); }
