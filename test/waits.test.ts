@@ -11,7 +11,7 @@ import { exec, run } from '../src/main/services/exec'
 import { listCheckpoints } from '../src/main/services/checkpoints'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import { resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
+import { mergedReading, resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
 import { saveLinearToken } from '../src/main/services/integrations'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { tempRepo, trustRoom } from './helpers'
@@ -126,9 +126,13 @@ async function land(origin: string, file: string, branch = 'main') {
 
 const chatOf = (k: Kernel, ws: Workspace) => k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
 const text = (parts: { type: string; text?: string }[]) => parts.find((p) => p.type === 'text')?.text ?? ''
-const queue = (k: Kernel, chat: Chat) => k.sessions.queued(chat.id).map((q) => [text(q.parts), q.from])
-const users = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) => (i.kind === 'user' ? [[text(i.parts), i.from]] : []))
-const notes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+/** A release message without what merged and how to read it, which the KERNEL-695 tests check whole. */
+const plain = (t: string) => t.replace(/ (PR #\d+ is "|Read what changed with ).*$/s, '')
+const queue = (k: Kernel, chat: Chat) => k.sessions.queued(chat.id).map((q) => [plain(text(q.parts)), q.from])
+const fullUsers = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) => (i.kind === 'user' ? [[text(i.parts), i.from]] : []))
+const users = (k: Kernel, chat: Chat) => fullUsers(k, chat).map(([t, from]) => [plain(t as string), from])
+const fullNotes = (k: Kernel, chat: Chat) => k.store.items(chat.id).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+const notes = (k: Kernel, chat: Chat) => fullNotes(k, chat).map(plain)
 const callsIn = (ws: Workspace) => sdk.calls.filter((c) => c.options.cwd === ws.path)
 /** The text blocks of the first message Kernel sent the SDK, which is one user message however many rows it came from (KERNEL-393). */
 const firstInput = async (call: (typeof sdk.calls)[number]) => ((await call.prompt[Symbol.asyncIterator]().next()).value.message.content as { text: string }[]).map((b) => b.text)
@@ -251,6 +255,39 @@ describe('a hand-off that waits for a merge', () => {
     await released(k, w)
     expect(existsSync(join(w.path, 'pr-164.txt')) && existsSync(join(w.path, 'pr-170.txt'))).toBe(true)
     expect(notes(k, chatOf(k, w))).toContain('PR #164 by Noor and PR #170 by Noor merged. Your branch now starts from them.')
+    await k.stop()
+  })
+
+  it('says what merged and how to read it, in the note and in the held rebase message (KERNEL-695)', async () => {
+    const { k, room, lead, target, mergeOnGitHub, gh } = await setup()
+    const a = await target(k, 164)
+    const b = await target(k, 170)
+    // One PR with a title and one without: the one without leaves its title out.
+    gh.prs.set(a.branch, { ...gh.prs.get(a.branch)!, title: 'Fix the header' })
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
+    const before = await head(w.path)
+    await mergeOnGitHub(k, a)
+    // A refresh keeps the title it had when GitHub sends none.
+    k.store.saveWorkspace({ ...k.store.workspace(b.id)!, prTitle: undefined })
+    gh.prs.set(b.branch, { ...gh.prs.get(b.branch)!, title: '' })
+    await mergeOnGitHub(k, b)
+    await released(k, w)
+    expect(fullNotes(k, chatOf(k, w))).toContain(`PR #164 by Noor and PR #170 by Noor merged. Your branch now starts from them. PR #164 is "Fix the header". Read what changed with \`gh pr view 164\`, \`gh pr view 170\` and \`git log ${before}..origin/main\`.`)
+    await k.stop()
+  })
+
+  it('names what merged in the rebase message that goes with a held brief (KERNEL-695)', async () => {
+    const { k, room, lead, target, mergeOnGitHub, gh } = await setup()
+    const noor = await target(k, 164)
+    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, title: 'Fix the header' })
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    const base = await head(w.path)
+    await writeFile(join(w.path, 'README.md'), '# changed by hand\n')
+    await mergeOnGitHub(k, noor)
+    await released(k, w)
+    const read = `PR #164 is "Fix the header". Read what changed with \`gh pr view 164\` and \`git log ${base}..origin/main\`.`
+    expect(fullUsers(k, chatOf(k, w)).at(-1)).toEqual([`PR #164 by Noor merged after your branch started. Rebase onto origin/main before you build on it. ${read}`, 'kernel'])
+    expect(fullNotes(k, chatOf(k, w))).toContain(`PR #164 by Noor merged. Kernel couldn't move your branch onto it, so a message with the brief asks for a rebase. ${read}`)
     await k.stop()
   })
 
@@ -503,6 +540,20 @@ describe('a teammate that already started', () => {
     callsIn(w)[0].feed(result('r2'))
     await released(k, w)
     expect(pending(k).filter((e) => e.kind === 'wait.rebase_missing')).toEqual([])
+    await k.stop()
+  })
+
+  it('names what merged in the rebase message, with a log from where the branch is (KERNEL-695)', async () => {
+    const { k, room, lead, target, mergeOnGitHub, gh } = await setup()
+    const noor = await target(k, 164)
+    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, title: 'Fix the header' })
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
+    callsIn(w)[0].feed(result('r1'))
+    await idle(k, w)
+    await k.setWait(w.id, [noor.id])
+    await mergeOnGitHub(k, noor)
+    const chat = chatOf(k, w)
+    await vi.waitFor(() => expect(fullUsers(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task. PR #164 is "Fix the header". Read what changed with `gh pr view 164` and `git log HEAD..origin/main`.', 'kernel']), SLOW)
     await k.stop()
   })
 
@@ -915,6 +966,16 @@ describe('waits, the rules', () => {
     // A PR number or an issue still says more than the title does.
     expect(waitLabel(ws('a', { title: 'Thinking rows', prNumber: 164 }), 'Wren')).toBe('PR #164 by Wren')
     expect(waitLabel(ws('a', { prState: 'none', title: 'Thinking rows', source: { kind: 'issue', id: 'KERNEL-12', title: 'Rows' } }), 'Wren')).toBe('KERNEL-12 by Wren')
+  })
+
+  it('says what merged and how to read it, leaving out what a target lacks (KERNEL-695)', () => {
+    const log = 'abc..origin/main'
+    expect(mergedReading([ws('a', { prNumber: 164, prTitle: 'Fix the header' })], log)).toBe('PR #164 is "Fix the header". Read what changed with `gh pr view 164` and `git log abc..origin/main`.')
+    expect(mergedReading([ws('a', { prNumber: 164, prTitle: ' ' })], log)).toBe('Read what changed with `gh pr view 164` and `git log abc..origin/main`.')
+    expect(mergedReading([ws('a', { prNumber: 164, prTitle: 'Fix the header' }), ws('b', { prNumber: 170, prTitle: 'Add rows' }), ws('c', { prNumber: 171 })], log))
+      .toBe('PR #164 is "Fix the header" and PR #170 is "Add rows". Read what changed with `gh pr view 164`, `gh pr view 170`, `gh pr view 171` and `git log abc..origin/main`.')
+    expect(mergedReading([ws('a', { prState: 'none', title: 'Thinking rows' })], log)).toBe('Read what changed with `git log abc..origin/main`.')
+    expect(mergedReading([ws('a', { prState: 'none' })])).toBe('')
   })
 
   it('counts a target as merged only by its PR state, and as broken once it can never merge', () => {
