@@ -32,10 +32,11 @@ export class Chats extends Feature {
    */
   private async sendNow(chatId: string, id: string) {
     const ws = this.mustWs(this.mustChat(chatId).workspaceId)
-    // A brief held for a merge goes now, without waiting (KERNEL-259). One held because setup failed still waits for Run again.
+    // A brief held for a merge goes now, without waiting (KERNEL-259), and the teammate still hears when it merges (KERNEL-689).
+    // One held because setup failed still waits for Run again.
     // The pressed message doesn't jump the brief: the brief and everything queued with it go in the chat's first turn, in order (KERNEL-393).
     if (ws.status === 'ready' && ws.waitsFor?.held) {
-      await this.k.waits.releaseWait(ws.id, { now: true })
+      await this.k.waits.releaseWait(ws.id, { now: true, keep: true })
       return this.sessions.queued(chatId)
     }
     const room = this.store.room(ws.roomId)
