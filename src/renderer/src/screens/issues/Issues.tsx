@@ -31,7 +31,7 @@ export function Issues({ issueId, roomId }: { issueId?: string; roomId?: string 
   return (
     <div className="panel">
       <IssuesHeader head={head} />
-      {read.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} />Loading issues</div>}
+      {read.kind === 'loading' && <div className="is-center is-loading" role="status"><Spinner label={null} kind="load" />Loading issues</div>}
       {read.kind === 'error' && (
         <div className="is-center">
           <div className="is-fail">

@@ -17,7 +17,7 @@ vi.mock('../src/renderer/src/screens/workspace/pr/MergeButton', async (original)
   return {
     ...real,
     MergeButton: ({ ws }: { ws: Workspace }) => React.createElement('span', { className: 'stub-merge' },
-      React.createElement(real.MergeSlot, { ws, view: real.mergeView(ws, undefined, noRules, undefined, undefined, pending[ws.id]), onMerge: () => undefined }))
+      React.createElement(real.MergeSlot, { ws, view: real.mergeView(ws, undefined, noRules, undefined, pending[ws.id]), onMerge: () => undefined }))
   }
 })
 
@@ -238,9 +238,9 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     pending.w1 = 'merge'
     try {
       const html = draw()
-      // w1 spins in its Merge place, disabled and saying Merging, while w2 keeps its button.
+      // w1 says Merging with the spinner in its Merge place, with nothing to press, while w2 keeps its button.
       expect(html).not.toContain('aria-label="Merge PR #162"')
-      expect(html).toMatch(/<button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button>/)
+      expect(html).toMatch(/<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>/)
       expect(html).toContain('aria-label="Merge PR #161"')
     } finally { delete pending.w1 }
     // The merge was refused: the pending clears and the row reads Merge again.
@@ -267,15 +267,9 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })
     expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })
     expect(mergeView(ws('w1', { prState: 'none' }), pr(), rules)).toEqual({ kind: 'none' })
-    // In a Merge all run, a PR whose turn is still to come reads Next; the one merging now reads Merging.
-    const queue = { ids: ['w0', 'w1'], current: 'w0' }
-    expect(mergeView(ws('w1'), pr(), rules, undefined, queue)).toEqual({ kind: 'next' })
-    expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules, undefined, { ids: ['w1'], current: 'w1' })).toEqual({ kind: 'merging' })
-    expect(mergeView(ws('w1'), pr(), rules, undefined, { ids: ['w1', 'w2'], current: 'w2' })).toEqual({ kind: 'ready' })
-    // A merge pending on the PR reads merging before GitHub's state moves, whoever pressed it, including the PR Merge all is on (KERNEL-520).
-    expect(mergeView(ws('w1'), pr(), rules, undefined, undefined, 'merge')).toEqual({ kind: 'merging' })
-    expect(mergeView(ws('w1'), pr(), rules, undefined, { ids: ['w1', 'w2'], current: 'w1' }, 'merge')).toEqual({ kind: 'merging' })
-    expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules, undefined, undefined, 'merge')).toEqual({ kind: 'merged' })
+    // A merge pending on the PR reads merging before GitHub's state moves, whoever pressed it (KERNEL-520).
+    expect(mergeView(ws('w1'), pr(), rules, undefined, 'merge')).toEqual({ kind: 'merging' })
+    expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules, undefined, 'merge')).toEqual({ kind: 'merged' })
     expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
     const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
     expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("The code review hasn't approved") })
@@ -290,13 +284,14 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('aria-busy="true"')
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
-    // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another, the Lead or Merge
-    // all (KERNEL-417). The spinner sits in the ready band's green, as the Merge button did.
+    // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another or the Lead
+    // (KERNEL-417): the spinner and the word in the ready band's green, never a button (KERNEL-757).
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
-    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
-    expect(draw({ kind: 'next' })).toBe('<span class="tucard-why">Next</span>')
+    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true">.*Merging<\/span>$/)
     // An open PR's state, as the PR band says it: a spinner while checks run, and the word in red for what failed.
-    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/data-tone="idle"><button[^>]*aria-busy="true"[^>]*>.*Checks running/)
+    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/^<span class="pr-word pr-run" data-tone="idle" aria-busy="true">.*Checks running<\/span>$/)
+    // Merge anyway is a quiet outline, since the row's red state already says what is wrong (KERNEL-757).
+    expect(draw({ kind: 'override', reviewer: 'The code review', count: 2 })).toMatch(/^<span class="pr-tone" data-tone="idle"><button[^>]*class="[^"]*pr-outline[^"]*"[^>]*>Merge anyway<\/button><\/span>$/)
     expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })).toBe('<span class="pr-word" data-tone="fail">Checks failed</span>')
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')

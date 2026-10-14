@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, BuiltinCommand, ChangedFile, Chat, ChatItem, ChatRunMode,
   ChatPart, Checkpoint, ClaudeAccount, CompareTarget, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrPending, PrState,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, IssueTaken, JiraAccount, JiraFilter, JiraIssue, JiraTransition, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpAccount, McpConnect, McpNeeded, McpServer, McpSignInAll, McpSignInStep, ModeAvailability, NewRoomRequest, Notification, OpenApp, OpenItem, Overlap, PreflightCheck, PushCheck, PrBlocked, PrInfo, PrPending, PrState,
   PermissionMode, PrSummary, ProductionHint, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, ReviewPatch, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptSuggestion, ScriptTrust, ChatArchivePreview, SharedAnchor, SwitchReason, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -303,15 +303,13 @@ export interface KernelApi {
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
   'pr.create': { req: { workspaceId: string; draft?: boolean }; res: Workspace }
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
-  /** `override` is a person's Merge anyway past a reviewer's blockers. The Lead and Merge all never send it (KERNEL-497). */
+  /** `override` is a person's Merge anyway past a reviewer's blockers. The Lead never sends it (KERNEL-497). */
   'pr.merge': { req: { workspaceId: string; override?: boolean }; res: Workspace }
   /**
    * Overrules the reviews' blockers on the PR's head commit, so Merge goes ahead without Merge anyway until a new commit
    * (KERNEL-732). Refused when nothing blocks. `clear` takes the overrule back (Undo).
    */
   'reviews.overrule': { req: { workspaceId: string; note?: string; clear?: boolean }; res: Workspace }
-  /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
-  'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
   /** Update branch: asks the agent to rebase a local branch that fell behind its base onto it (KERNEL-478). */
@@ -696,8 +694,6 @@ export type PushEvent =
   | { type: 'pr.info'; info: PrInfo }
   /** A ready PR GitHub started blocking (`blocked` set) or stopped blocking, while its state stayed ready (KERNEL-401). */
   | { type: 'pr.blocked'; workspaceId: string; blocked?: PrBlocked }
-  /** A room's Merge all run moved on to its next PR, or ended (no `queue`) with its `result` (KERNEL-411). */
-  | { type: 'pr.queue'; roomId: string; queue?: MergeQueue; result?: MergeAllResult }
   /** A PR action started on the workspace, from any button or tool, or ended (no `action`) after its last `pr` push (KERNEL-519). */
   | { type: 'pr.pending'; workspaceId: string; action?: PrPending }
   | { type: 'github'; status: GitHubStatus }

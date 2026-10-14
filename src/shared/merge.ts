@@ -9,8 +9,8 @@ import { REVIEW_KINDS, type AppSettings, type AutoMerge, type PrBlocked, type Pr
 export const mergeableState = (state: PrState): state is 'ready' | 'open' => state === 'ready' || state === 'open'
 
 /**
- * Why a PR in this state can't merge, in a few lowercase words for a sentence: the Lead's merge_workspace and Merge all
- * (KERNEL-411) both say it. Nothing for the states a merge can start from, which `mergeBlock` checks.
+ * Why a PR in this state can't merge, in a few lowercase words for a sentence: the Lead's merge_workspace
+ * says it (KERNEL-411). Nothing for the states a merge can start from, which `mergeBlock` checks.
  */
 export const notMergeable: Partial<Record<PrState, string>> = {
   none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',

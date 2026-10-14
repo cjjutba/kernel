@@ -102,7 +102,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                   {s.state === 'ok' && <Icon name="check" size={16} />}
                   {s.state === 'warn' && <Icon name="warning" size={16} />}
                   {s.state === 'fail' && <Icon name="close" size={16} />}
-                  {s.state === 'run' && <Spinner label={`${s.title} is running`} />}
+                  {s.state === 'run' && <Spinner label={`${s.title} is running`} kind="process" />}
                   {s.state === 'wait' && <span aria-label="Waiting" className="rs-dash">–</span>}
                 </span>
                 <div className="ob-body">
@@ -126,7 +126,7 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
                 {s.meta && s.state !== 'warn' && <span className="ob-meta">{s.meta}</span>}
               </div>
             ))}
-            {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
+            {!steps && <div className="ob-check"><Spinner label="Starting" kind="load" /><span className="muted">Starting</span></div>}
           </div>
           {showTeam && (
             <section className="rs-team" aria-labelledby="rs-team">

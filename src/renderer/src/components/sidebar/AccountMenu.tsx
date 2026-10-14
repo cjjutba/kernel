@@ -41,7 +41,7 @@ export function AccountButton() {
         <span className="acct-row">
           <span className="acct-name ellipsis">{a.label}</span>
           <span className="acct-plan ellipsis">{a.auth === 'apiKey' ? undefined : a.plan}</span>
-          {switching ? <Spinner label={null} /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
+          {switching ? <Spinner label={null} kind="swap" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
         </span>
       ),
       onSelect: !a.signedIn ? () => go({ name: 'settings', page: 'accounts', tab: a.provider }) : a.active ? undefined : () => switchTo(a.provider, a.id)

@@ -92,7 +92,7 @@ export function Checks() {
                 {c.ok && c.meta && <span className="ob-meta">{c.meta}</span>}
               </div>
             ))}
-            {!checks && <div className="ob-check"><Spinner label="Checking" /><span className="muted">Checking</span></div>}
+            {!checks && <div className="ob-check"><Spinner label="Checking" kind="load" /><span className="muted">Checking</span></div>}
           </div>
           <div className="ob-bar">
             <span role="status">{error ?? (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything checks out.')}</span>

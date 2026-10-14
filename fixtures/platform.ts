@@ -479,6 +479,8 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-674: usage is in the footer all the time. Detailed gives the active account of each provider its name and both windows, and Compact gives it one number.
   UsageFooter: usageHome(),
   UsageFooterCompact: usageHome({}, { usageView: 'compact' }),
+  // KERNEL-759: a click on the other account holds main's answer, so its chip shows the swap loader.
+  AccountSwitching: usageHome({ hold: ['accounts.switch'] }),
   // The Help button stays at the footer's right with no update, and its menu opens upward from it.
   UsageFooterNoUpdate: usageHome({ update: undefined }),
   FooterHelpMenu: usageHome({ update: undefined }, { menu: 'help' }),
@@ -698,6 +700,13 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomTracker: trackerRoom(ids.roomB, ['kernel-lead', 'noor', 'theo'], { path: '/Users/you/Projects/client-b', repo: 'cjjutba/client-b' }, true),
   // KERNEL-472: Portfolio is a folder with no GitHub remote and no Linear, so there is nothing to detect and the tracker is None.
   SettingsRoomTrackerNone: trackerRoom(ids.roomPortfolio, ['kernel-lead', 'kai'], { path: '/Users/you/Projects/portfolio', repo: undefined, kind: 'folder' }),
+  // KERNEL-750: Client A's General page with no reference folders, then with two, one of them gone from this Mac.
+  SettingsReferenceFoldersEmpty: scene(settingsRoom),
+  SettingsReferenceFolders: scene((f) => {
+    const room = settingsRoom(f)
+    const rs = room.roomSettings![ids.roomA]
+    return { ...room, roomSettings: { [ids.roomA]: { ...rs, references: ['/Users/you/Projects/client-a-api', '/Users/you/Projects/design-system'], missingReferences: ['/Users/you/Projects/design-system'] } } }
+  }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),

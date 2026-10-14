@@ -70,7 +70,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
 
-  return {
+  const handlers: Handlers = {
     'preflight.run': async () => f.preflight,
     'preflight.fix': async () => f.preflight,
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
@@ -271,7 +271,6 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),
     'pr.merge': async ({ workspaceId }) => workspace(workspaceId),
-    'pr.mergeAll': async () => ({ merged: [] }),
     'reviews.overrule': async ({ workspaceId }) => workspace(workspaceId),
     'pr.resolve': async () => ({ ok: true }),
     'pr.update': async () => ({ ok: true }),
@@ -449,6 +448,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'telemetry.recent': async () => f.telemetry?.recent ?? [],
     'telemetry.track': async () => ok
   }
+  for (const channel of f.hold ?? []) (handlers as Record<string, unknown>)[channel] = () => new Promise<never>(() => undefined)
+  return handlers
 }
 
 /**
