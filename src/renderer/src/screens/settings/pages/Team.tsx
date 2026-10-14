@@ -164,7 +164,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
             : <Button busy={busy === 'customize'} busyLabel="Copying" disabled={busy !== null} onClick={() => void customize()}>Customize</Button>}
         </span>
         </Row>
-        <Row id="lead-mode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this room.">
+        <Row id="lead-mode" setting="agents.leadMode" label="New chats with Kernel" labelId="rm-lead-mode" desc="Overrides Settings, Agents for this room.">
           <Select label="New chats with Kernel" align="right" value={rs?.agents?.leadMode ?? 'app'} disabled={busy !== null} options={[
             { value: 'app', label: `App default (${leadModeName(newChatLeadMode({ team: { leadMode: s.team.leadMode } }, undefined))})` },
             { value: 'handoff', label: leadModeName('handoff') },
