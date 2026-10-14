@@ -589,25 +589,49 @@ export class Prs extends Feature {
     return next
   }
 
-  /** After a merge or close: a fresh branch from the base in the same worktree. The chat stays. */
+  /** Workspaces a Continue is under way in. Archive on merge leaves them alone, since they are about to stop being merged work. */
+  private continues = new Set<string>()
+  continuing(id: string) { return this.continues.has(id) }
+
+  /**
+   * After a merge or close: a fresh branch from the base in the same worktree. The chat stays. Continue and an archive
+   * exclude each other: one on a workspace that is archived, or whose archive has started, changes nothing, and Archive on
+   * merge doesn't start once Continue has (`continuing`).
+   */
   async continuePr(id: string) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'merged' && ws.prState !== 'closed') throw new Error('Continue is for a merged or closed pull request.')
     if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
-    const room = this.mustRoom(ws.roomId)
-    const remote = await this.k.config.remoteFor(room.path)
-    if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
-    // feat/x-2 continues as feat/x-3, not feat/x-2-2.
-    const stem = ws.branch.replace(/-\d+$/, '')
-    const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
-      const free = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch, remote)
-      await git(ws.path, 'checkout', '-b', free, ws.baseRef)
-      return free
-    })
-    const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined, mergeCommit: undefined })
-    bus.push({ type: 'pr', workspaceId: id, state: 'none' })
-    this.note(id, `Continuing on ${branch} from ${stripRemote(ws.baseRef, remote)}. The chat stays.`)
-    return next
+    this.notArchived(id)
+    if (this.continues.has(id)) throw new Error('Continue is already running in this workspace.')
+    this.continues.add(id)
+    try {
+      const room = this.mustRoom(ws.roomId)
+      const remote = await this.k.config.remoteFor(room.path)
+      if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
+      // feat/x-2 continues as feat/x-3, not feat/x-2-2.
+      const stem = ws.branch.replace(/-\d+$/, '')
+      const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
+        // An archive the user started meanwhile.
+        this.notArchived(id)
+        const free = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch, remote)
+        await git(ws.path, 'checkout', '-b', free, ws.baseRef)
+        return free
+      })
+      const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined, mergeCommit: undefined })
+      // No longer merged work, so Archive on merge no longer applies.
+      this.k.autoArchive.unmarkReviews(id)
+      bus.push({ type: 'pr', workspaceId: id, state: 'none' })
+      this.note(id, `Continuing on ${branch} from ${stripRemote(ws.baseRef, remote)}. The chat stays.`)
+      return next
+    } finally {
+      this.continues.delete(id)
+    }
+  }
+
+  private notArchived(id: string) {
+    if (this.mustWs(id).status === 'archived') throw new Error('This workspace was archived, so Continue changed nothing. Restore it to keep going.')
+    if (this.k.archive.archivingNow(id)) throw new Error('This workspace is being archived, so Continue changed nothing. Restore it once the archive finishes to keep going.')
   }
 
   /** Whether the workspace's PR chat is in a turn or has messages waiting for one (a create-pr.md sent mid-turn waits in the queue). */

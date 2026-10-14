@@ -98,8 +98,9 @@ export class AutoArchive extends Feature {
     }
     if (why) { keep(why); return }
     // Checked again after the git calls: a message may have started a turn meanwhile, the user may have restored it,
-    // or another archive got there first.
-    if (this.k.archive.working(r.id) || !this.reviewsToArchive.has(r.id)) return
+    // or another archive got there first. Work a Continue is moving to a fresh branch isn't archived either: its mark goes
+    // when the Continue ends, and one that fails leaves it for the next pass.
+    if (this.k.archive.working(r.id) || !this.reviewsToArchive.has(r.id) || this.k.prs.continuing(r.id)) return
     const now = this.store.workspace(r.id)
     if (now?.status === 'archived' || (!r.reviewOf && now?.prState !== 'merged')) { this.unmarkReviews(r.id); return }
     try { await this.k.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
