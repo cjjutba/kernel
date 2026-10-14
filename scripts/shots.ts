@@ -582,6 +582,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsClamped: (page) => leaveSizeLimit(page, '999999'),
   SettingsRoomPrsSaved: async (page) => { await page.getByRole('switch', { name: 'UX review' }).click(); await page.mouse.move(0, 0); await page.waitForTimeout(300) },
+  SettingsAccountsMoves: (page) => scrollToSection(page, 'Chats and accounts'),
   SettingsTeamOrigins: (page) => scrollToSection(page, 'In this repo'),
   SettingsTeamOwnAgents: (page) => scrollToSection(page, 'In this repo'),
   ChatRail: async (page) => { await readFromMessage(page, 'Change of method for the conflict'); await page.mouse.move(0, 0); await page.waitForTimeout(300) },

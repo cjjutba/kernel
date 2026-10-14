@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { PROVIDERS, type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus } from '@shared/types'
+import { PROVIDERS, type AccountProfile, type AppSettings, type CodexPersonality, type LongChatMove, type Provider, type ProviderStatus } from '@shared/types'
 import { resetPhrase } from '@shared/usage'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
@@ -9,6 +9,7 @@ import { noteCodexStatus } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 import { AddAccount } from './AddAccount'
+import { NumberField } from './fields'
 import { SignInLine, joinNames, useMcpAccounts, useSignInAll } from './mcpAccounts'
 import { AccountRow, blockedUntil, rowCells, type RowAction } from './providerRows'
 import './accounts.css'
@@ -18,6 +19,7 @@ import './accounts.css'
 
 const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'pragmatic', label: 'Pragmatic' }, { value: 'friendly', label: 'Friendly' }, { value: 'none', label: 'None' }]
 const EXECUTABLES = [{ value: 'bundled', label: 'Bundled with Kernel' }, { value: 'system', label: 'System, from your PATH' }]
+const MOVES: { value: LongChatMove; label: string }[] = [{ value: 'summarize', label: 'Summarize first' }, { value: 'continue', label: 'Continue' }, { value: 'ask', label: 'Ask me' }]
 const PAUSE_HELP = 'New work waits at 90% of the 5-hour limit or 95% of the weekly one. Your chats with Kernel are never held.'
 
 /** Both providers use account id `cli` for their own login, so every state is keyed by provider and id. */
@@ -87,7 +89,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       if (a.provider === 'claude') actions.account.set(await call('account.get', undefined))
     })
   }
-  const switchTo = (a: AccountProfile) => accountsCall(`use:${keyOf(a)}`, 'Could not switch accounts', a, () => call('accounts.switch', { provider: a.provider, accountId: a.id }), () => actions.ui.toast({ title: `Switched to ${a.label}`, sub: 'Agents use it from their next turn.' }))
+  const switchTo = (a: AccountProfile) => act(`use:${keyOf(a)}`, 'Could not switch accounts', () => actions.accounts.requestSwitch(a.provider, a.id, { onSwitched: () => { void read(a.provider).catch(() => undefined); actions.ui.toast({ title: `Switched to ${a.label}`, sub: 'Agents use it from their next turn.' }) } }))
   const signOut = (a: AccountProfile) => accountsCall(`out:${keyOf(a)}`, 'Could not sign out', a, () => call('accounts.signOut', { provider: a.provider, accountId: a.id }))
   const remove = (a: AccountProfile) => accountsCall(`remove:${keyOf(a)}`, 'Could not remove the account', a, () => call('accounts.remove', { provider: a.provider, accountId: a.id }), () => actions.ui.toast({ title: `Removed ${a.label}` })).finally(() => setRemoving(null))
   const stopRenaming = () => { if (renaming) renamed.current = accounts.find((a) => keyOf(a) === renaming.key)?.label ?? null; setRenaming(null) }
@@ -249,6 +251,19 @@ export function Accounts({ s }: { s: AppSettings }) {
         </Row>
         <Row id="weekly-limit-warning" label="Weekly limit warning" desc="Notify me at 80% of a weekly limit.">
           <Toggle label="Weekly limit warning" checked={s.usage.warnBeforeWeekly} onChange={(v) => void patchSettings({ usage: { warnBeforeWeekly: v } })} />
+        </Row>
+      </Section>
+      <Section title="Chats and accounts">
+        <Row id="keep-chats" setting="accounts.keepChatsOnAccount" label="Keep chats on their account" desc="A switch changes the account for new chats. Chats stay where their cache is, so they don't read their history again.">
+          <Toggle label="Keep chats on their account" checked={s.accounts.keepChatsOnAccount} onChange={(v) => void patchSettings({ accounts: { keepChatsOnAccount: v } })} />
+        </Row>
+        {PROVIDERS.map((p) => (
+          <Row key={p.id} id={`long-chat-move-${p.id}`} setting="accounts.longChatMove" label={`When a long chat moves to another account, ${NAME[p.id]}`} desc="Summarizing first keeps the chat short on the new account.">
+            <Select label={`${NAME[p.id]}, when a long chat moves`} align="right" value={s.accounts.longChatMove[p.id]} options={MOVES} onChange={(v) => void patchSettings({ accounts: { longChatMove: { [p.id]: v as LongChatMove } } })} />
+          </Row>
+        ))}
+        <Row id="long-chat" setting="accounts.longChatTokens" label="Long chat" desc="Chats this big are the ones a switch asks about.">
+          <NumberField label="Long chat" value={s.accounts.longChatTokens} unit="tokens" min={1000} onSave={(longChatTokens) => patchSettings({ accounts: { longChatTokens } }).then((saved) => saved?.accounts.longChatTokens)} />
         </Row>
       </Section>
       <Section title="Advanced" note="CLI and config files" collapsible>

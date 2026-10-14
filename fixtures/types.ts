@@ -1,4 +1,4 @@
-import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
+import type { AccountProfile, MovePreview, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, BranchCommit, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, GithubIssueDetail, HookStatus, Hunk, IssueSummary, IssueTaken, PrSummary, Notification, OpenItem, Overlap, PreflightCheck, PrInfo, ProductionHint, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomTracker, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpAccount, McpServer, ScriptSuggestion, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
@@ -110,6 +110,8 @@ export interface Fixture {
   account?: ClaudeAccount
   /** Both providers' accounts (Settings, Providers, the account menu, KERNEL-406). */
   accounts?: AccountProfile[]
+  /** What `accounts.previewSwitch` returns: the long chats a switch would move (KERNEL-845). Without it a switch moves none. */
+  movePreview?: MovePreview
   /** The status table of each provider's Providers tab. */
   providerStatus?: Partial<Record<Provider, ProviderStatus>>
   /** Each provider's models for the pickers. Claude's default to Kernel's list. */

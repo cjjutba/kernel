@@ -18,7 +18,7 @@ const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: c
 const approve = (a: Approval) => void call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }).then(actions.approvals.upsert).catch(fail('Could not send your answer'))
 
 /** Cmd+K, "Switch Claude Code to Personal": the account runs the provider's next turns, as Switch to does in Settings (KERNEL-561). */
-const switchAccount = (provider: Provider, accountId: string) => void call('accounts.switch', { provider, accountId }).then(actions.accounts.set).catch(fail('Could not switch accounts'))
+const switchAccount = (provider: Provider, accountId: string) => void actions.accounts.requestSwitch(provider, accountId).catch(fail('Could not switch accounts'))
 
 /** A tab opens in the workspace you are in, and takes focus. In the Lead's workspace a chat tab joins the chat on screen (KERNEL-339), as + does. */
 function newChat(workspaceId: string, kind?: 'terminal') {

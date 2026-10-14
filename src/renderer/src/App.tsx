@@ -4,6 +4,7 @@ import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
+import { ConfirmSwitchAccount } from './components/ConfirmSwitchAccount'
 import { ConfirmBypass } from './components/ConfirmBypass'
 import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { McpSetUp } from './screens/settings/pages/McpSetUp'
@@ -122,6 +123,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       // New chat opens this when the issue it starts from has findings (KERNEL-500): Start anyway sends the held chat, Cancel brings the box back.
       if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={() => startHeld(modal.held)} onCancel={() => backToNewChat(modal.held)} />
+      if (modal.kind === 'switchAccount') return <ConfirmSwitchAccount provider={modal.provider} accountId={modal.accountId} preview={modal.preview} reason={modal.reason} />
       if (modal.kind === 'bypass') return <ConfirmBypass roomId={modal.roomId} chatId={modal.chatId} draftKey={modal.draftKey} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }

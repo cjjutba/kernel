@@ -339,7 +339,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'accounts.code': async () => ok,
     'accounts.cancelAdd': async () => ok,
     'accounts.switch': async () => f.accounts ?? [],
-    'accounts.previewSwitch': async ({ provider, accountId }) => ({ provider, from: (f.accounts ?? []).find((a) => a.provider === provider && a.active)?.id ?? 'cli', to: accountId, chats: [] }),
+    'accounts.previewSwitch': async ({ provider, accountId }) => f.movePreview ?? { provider, from: (f.accounts ?? []).find((a) => a.provider === provider && a.active)?.id ?? 'cli', to: accountId, chats: [] },
     'accounts.signOut': async () => f.accounts ?? [],
     'accounts.remove': async () => f.accounts ?? [],
     'accounts.checkMcp': async () => f.accounts ?? [],

@@ -14,8 +14,7 @@ export function useUsageActions() {
   const fail = (title: string, e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
   const switchTo = (provider: Provider, accountId: string) => run(`switch:${provider}:${accountId}`, async () => {
     try {
-      actions.accounts.set(await call('accounts.switch', { provider, accountId }))
-      void call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
+      await actions.accounts.requestSwitch(provider, accountId)
     } catch (e) { fail('Could not switch accounts', e) }
   })
   // The CLI's own login signs in right here. An added account asks for a code and keeps its name, which its sheet in Settings does.
