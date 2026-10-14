@@ -1157,9 +1157,18 @@ const revertPreviews: Record<string, CheckpointPreview> = {
       { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 }
     ],
     stat: { files: 2, added: 41, removed: 114 }, commitsAhead: 2, pushed: true, conflicts: []
+  },
+  '1': {
+    files: [
+      { path: 'src/app/invoices/table.tsx', status: 'M', added: 32, removed: 96 },
+      { path: 'src/app/invoices/page.tsx', status: 'M', added: 9, removed: 18 },
+      { path: 'src/app/invoices/columns.ts', status: 'M', added: 4, removed: 11 }
+    ],
+    stat: { files: 3, added: 45, removed: 125 }, commitsAhead: 2, pushed: true, conflicts: ['src/app/invoices/page.tsx', 'src/app/invoices/columns.ts']
   }
 }
-const revertScene = (ui: Partial<Fixture['ui']>) => scene(() => ({
+const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
+  ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
   checkpoints: { [ids.table]: checkpoints },
   checkpointPreviews: { [ids.table]: revertPreviews },
@@ -1930,6 +1939,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
+  // KERNEL-798: the same confirm once the PR is merged says main keeps the commits, and when main changed files the checkpoint changed too it names them.
+  ConfirmRevertMerged: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }, 'merged'),
+  ConfirmRevertConflicts: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '1' } }),
   // KERNEL-586: the card under a finished reply lists the files the turn created, edited or deleted, and each row opens that file's diff. The fold shows 5 of 12, the same chat without a reply
   // puts the card under the tool calls fold, and the last shot has one row hovered and one focused from the keyboard (the shot script presses Down to reach it).
   TurnFiles: turnFilesScene([
