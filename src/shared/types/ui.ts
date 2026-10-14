@@ -18,8 +18,11 @@ export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
   | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
   | { name: 'workspace'; workspaceId: string }
-  /** New chat in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
-  | { name: 'leadNew'; roomId: string }
+  /**
+   * New chat, the page every entry point opens (KERNEL-788). No workspace exists until the first message (KERNEL-405). `source` is what the
+   * chat starts from, which the box shows as a chip, and `picks` is what the box had chosen when the issue warning sent it back (KERNEL-500).
+   */
+  | { name: 'leadNew'; roomId: string; source?: WorkspaceSource; picks?: NewChatPicks }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
   | { name: 'issues'; issueId?: string; roomId?: string }
@@ -194,6 +197,8 @@ export interface UiState {
   nav: { canBack: boolean; canForward: boolean }
   /** The screen's right panel is showing: a workspace's files and run panels. Cmd+Option+B; kept across launches. */
   rightPanel: boolean
+  /** Ids of the workspaces whose right panel stays closed whatever `rightPanel` says, until the toggle is pressed in that chat. A chat started from New chat is one (KERNEL-788). */
+  panelHeld: string[]
   /** The right panel's bottom pane (Setup, Run, Terminal) as a fraction of the panel below its header. One size for every chat; kept across launches (KERNEL-513). */
   bottomRatio: number
   /** The bottom pane is folded to its tab bar. One flag for the Lead's chats and one for teammate workspaces, each kept across launches (KERNEL-513). */
