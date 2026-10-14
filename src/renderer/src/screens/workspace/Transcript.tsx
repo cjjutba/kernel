@@ -1,8 +1,10 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
+import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Card, Icon, IconButton, Spinner, type IconName } from '../../ui'
+import { Avatar, Button, Card, Icon, IconButton, Spinner, type IconName } from '../../ui'
+import { ServiceMark } from '../../icons'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
@@ -11,7 +13,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
-import { attempt, MessageActions, type MessageAction } from './MessageActions'
+import { attempt, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
 import { buildThread, countsLabel, fmtDuration, groupLabel, turnFiles, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -204,8 +206,12 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * slot and no chevron, and a right-hand note.
  */
 /** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
-function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
+function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
   icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean
+  /** The sentence a screen reader reads for the row, in place of its label and preview. */
+  name?: string
+  /** Draws in the detail's place, and `keep` leaves it in place once the row is open. */
+  preview?: ReactNode; keep?: boolean
   /** Runs on click before the row opens, and resolves true when it handled the click, so the row stays closed. */
   onOpen?: () => Promise<boolean>
   /** Runs when the row is hovered or focused from the keyboard, so `peek` can load. `peek` is drawn as the hover preview once it is there. */
@@ -233,7 +239,7 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
   return (
     <div className="col" style={{ gap: 4 }}>
       <button
-        type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
+        type="button" className="trow trow-btn" aria-label={name} aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={click}
         {...(onPeek && {
           onMouseEnter: (e: MouseEvent<HTMLElement>) => show(e.currentTarget), onMouseLeave: () => setAt(null),
           // Focus shows it from the keyboard only, so a click doesn't bring it back.
@@ -247,8 +253,8 @@ function StepRow({ icon, glyph, failed, label, detail, chip, mono, meta, compact
             {can && <span className="chev step-chev" data-open={open} aria-hidden="true"><Icon name="right" size={12} /></span>}
           </span>
         )}
-        <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
-        {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>}
+        <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
+        {chip ? <span className="grow step-chip">{chip}</span> : <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || keep || !open ? preview ?? detail : null}</span>}
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
       </button>
       {at && peek && <HoverPreview at={at} className="img-preview">{peek}</HoverPreview>}
@@ -274,39 +280,63 @@ function EditDiff({ from, to }: { from: string; to: string }) {
   )
 }
 
-/** The tool's input as the text a person would have typed: the command, the path, the pattern, the prompt. Anything else is JSON. */
-function inputView(item: Tool): ReactNode {
-  const i = item.input
-  if (!i || !Object.keys(i).length) return null
-  const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
-  const known = ((): ReactNode => {
-    switch (item.name) {
-      case 'Bash': return text(i.command) && `$ ${i.command}`
-      case 'Edit': return typeof i.old_string === 'string' && typeof i.new_string === 'string' ? <EditDiff from={i.old_string} to={i.new_string} /> : undefined
-      case 'Write': return text(i.file_path) && typeof i.content === 'string' ? lines(text(i.file_path), '', i.content) : undefined
-      case 'Read': return text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined)
-      case 'Grep': case 'Glob': return text(i.pattern) && lines(`pattern: ${text(i.pattern)}`, text(i.path) && `path: ${text(i.path)}`)
-      case 'Agent': case 'Task': return text(i.prompt)
-      default: return undefined
-    }
-  })()
-  return known || JSON.stringify(i, null, 2)
-}
-
-/** What a tool shows when opened: its input, then its output. A tool with neither has nothing to open. */
-function toolBody(item: Tool): ReactNode {
-  const input = inputView(item)
-  if (!input && !item.output) return null
+/** One block of an opened row with a Copy button, shown on hover and on focus. `text` is what it copies. */
+function ToolBlock({ text, label, children }: { text: string; label: string; children: ReactNode }) {
+  const [copied, copy] = useCopy(text)
   return (
-    <>
-      {input && <div className="code tool-out">{input}</div>}
-      {item.output && <div className="code tool-out">{item.output}{item.outputCut && <span className="step-cut">Output cut at 20,000 characters</span>}</div>}
-    </>
+    <div className="tool-block">
+      <div className="code tool-out">{children}</div>
+      <IconButton icon={copied ? 'check' : 'copy'} size={14} label={copied ? 'Copied' : label} onClick={copy} />
+    </div>
   )
 }
 
-/** The tools whose detail is a file. Their rows show the file's icon in place of the terminal glyph (KERNEL-399). */
-const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit'])
+/** The tool's input as the text a person would have typed: the command, the path, the pattern, the prompt. Anything else is JSON. Secrets are masked. */
+function inputView(item: Tool): { node: ReactNode; text: string } | null {
+  const i = item.input
+  if (!i || !Object.keys(i).length) return null
+  const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
+  const plain = (t: string | undefined) => t && { text: maskSecrets(t), node: maskSecrets(t) }
+  const known = ((): { node: ReactNode; text: string } | undefined | '' => {
+    switch (item.name) {
+      case 'Bash': return plain(text(i.command) && `$ ${i.command}`)
+      case 'Edit': {
+        if (typeof i.old_string !== 'string' || typeof i.new_string !== 'string') return undefined
+        const from = maskSecrets(i.old_string)
+        const to = maskSecrets(i.new_string)
+        return { node: <EditDiff from={from} to={to} />, text: lines(...from.split('\n').map((l) => `-${l}`), ...to.split('\n').map((l) => `+${l}`)) }
+      }
+      case 'Write': return text(i.file_path) && typeof i.content === 'string' ? plain(lines(text(i.file_path), '', i.content)) : undefined
+      case 'Read': return plain(text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined))
+      case 'Grep': case 'Glob': return plain(text(i.pattern) && lines(`pattern: ${text(i.pattern)}`, text(i.path) && `path: ${text(i.path)}`))
+      case 'Agent': case 'Task': return plain(text(i.prompt))
+      default: return undefined
+    }
+  })()
+  return known || plain(JSON.stringify(i, null, 2)) || null
+}
+
+/** The call as it was made, for whoever wants to replay or report it. Masked like everything the row shows. */
+const rawCall = (item: Tool) => maskSecrets(JSON.stringify({ name: item.name, input: item.input, output: item.output }, null, 2))
+
+function CopyRaw({ item }: { item: Tool }) {
+  const [copied, copy] = useCopy(rawCall(item))
+  return <Button variant="ghost" icon={copied ? 'check' : 'copy'} className="tool-raw" onClick={copy}>{copied ? 'Copied' : 'Copy raw call'}</Button>
+}
+
+/** What a tool shows when opened: its input, then its output with the terminal's colour codes stripped. A tool with neither has nothing to open. */
+function toolBody(item: Tool): ReactNode {
+  const input = inputView(item)
+  if (!input && !item.output) return null
+  const output = item.output ? maskSecrets(stripAnsi(item.output)) : ''
+  return (
+    <>
+      {input && <ToolBlock text={input.text} label="Copy input">{input.node}</ToolBlock>}
+      {output && <ToolBlock text={output} label="Copy output">{output}{item.outputCut && <span className="step-cut">Output cut at 20,000 characters</span>}</ToolBlock>}
+      <CopyRaw item={item} />
+    </>
+  )
+}
 
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i
 
@@ -340,6 +370,7 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   const pending = useRef<Promise<ImagePart | null> | null>(null)
   const rel = workspaceRelative(image, root)
   const name = image.split(/[\\/]/).pop() ?? image
+  const view = toolView(item, { root })
   const load = (): Promise<ImagePart | null> => {
     if (loaded) return Promise.resolve(loaded)
     if (!workspaceId || rel === null) return Promise.resolve(null)
@@ -351,8 +382,8 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   }
   return (
     <StepRow
-      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
-      label="Read image" detail={item.detail} chip={<PartChip part={{ type: 'image', name }} />}
+      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={view.state === 'failed'}
+      label={`${view.verb} image`} name={`${view.verb} image: ${name}`} detail={item.detail} chip={<PartChip part={{ type: 'image', name }} />}
       mono meta={meta} compact={compact}
       onPeek={openImage ? () => void load() : undefined} peek={loaded && <img src={loaded.dataUrl} alt="" />}
       onOpen={openImage ? async () => { const part = await load(); if (!part) return false; openImage(part); return true } : undefined}
@@ -362,15 +393,32 @@ function ReadImageRow({ item, image, file, meta, compact }: { item: Tool; image:
   )
 }
 
+/** The agent a workspace belongs to, by name, for a message_agent row. */
+const agentNamed = (workspaceId: unknown) => (s: ReturnType<typeof getState>) => {
+  const ws = typeof workspaceId === 'string' ? s.workspaces.find((w) => w.id === workspaceId) : undefined
+  return ws && s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name
+}
+
 const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
-  const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
+  const workspaceId = useContext(TranscriptWorkspace)
+  const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
+  const target = useStore(agentNamed(item.name.endsWith('__message_agent') ? item.input?.workspace_id : undefined))
+  const view = useMemo(() => toolView(item, { root, agentOf: target ? () => target : undefined }), [item, root, target])
+  if (view.hidden) return null
   const image = readImage(item)
-  if (image) return <ReadImageRow item={item} image={image} file={file} meta={meta} compact={compact} />
+  if (image) return <ReadImageRow item={item} image={image} file={compact ? undefined : view.file ?? item.detail} meta={meta} compact={compact} />
+  const mark = view.file ? <FileIcon path={view.file} size={15} /> : view.agent ? <Avatar name={view.agent} size={15} /> : view.service ? <span className="step-mark"><ServiceMark name={view.service} size={15} /></span> : undefined
+  const preview = (view.object || view.dir || view.detail) && (
+    <>
+      {view.object && <span className={view.mono ? 'step-cmd mono' : 'step-obj'}>{view.object}</span>}
+      {view.dir && <span className="step-dir">{view.dir}</span>}
+      {view.detail && <span className="step-det">{view.detail}</span>}
+    </>
+  )
   return (
     <StepRow
-      icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'}
-      label={item.label} detail={item.detail}
-      mono meta={meta} compact={compact}
+      icon={compact || mark ? undefined : 'term'} glyph={compact ? undefined : mark} failed={view.state === 'failed'}
+      label={view.verb} preview={preview} keep name={view.sentence} meta={meta} compact={compact}
     >
       {toolBody(item)}
     </StepRow>
@@ -386,7 +434,7 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 
 /** A row in the folded list: every step the turn took before its reply, in order, each closed until opened. */
 const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta?: string }) {
-  if (item.kind === 'tool') return <div className="group-item"><ToolRow item={item} meta={meta} compact /></div>
+  if (item.kind === 'tool') return toolView(item).hidden ? null : <div className="group-item"><ToolRow item={item} meta={meta} compact /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} compact /></div>
   if (item.kind === 'text') return <div className="group-item"><StepRow label="Message" detail={item.text} compact>{item.text.trim() && <div className="step-text"><Markdown text={item.text} /></div>}</StepRow></div>
   return null

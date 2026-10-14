@@ -194,6 +194,19 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
 .group-item .tool-out { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); font-size: 11.5px; }
 .step-glyph { display: inline-flex; flex-shrink: 0; }
+/* The service's mark in the icon slot, in ink at the row's muted tone, so a row says where it went without a color. */
+.step-mark { display: inline-flex; color: var(--muted); }
+.step-slot .avatar { display: flex; }
+/* A row's preview is a sentence: what it touched, in the muted body face, then its folder fainter and, on a failure, the error's first line. Only a raw command is mono. */
+.step-dir, .step-det { margin-left: 8px; }
+.step-dir { color: var(--faint); }
+.step-cmd { font-size: 12px; }
+/* An opened row's blocks carry their own Copy, shown on hover and on focus, and Copy raw call under them. */
+.tool-block { position: relative; }
+.tool-block > .icon-btn { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; opacity: 0; transition: opacity 0.12s; background: var(--code-bg); }
+.tool-block:hover > .icon-btn, .tool-block > .icon-btn:focus-visible { opacity: 1; }
+.tool-block .tool-out { padding-right: 34px; }
+.tool-raw { align-self: flex-start; color: var(--muted); }
 /* The image a Read image row opened, the chip a message draws. The negative margin keeps the row as tall as its neighbours, and a long name is clipped rather than push the row's note off. */
 .step-chip { display: flex; min-width: 0; }
 .step-chip .msg-chip { margin: -2px 0; max-width: 100%; overflow: hidden; white-space: nowrap; }
