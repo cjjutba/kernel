@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react'
-import type { AccountAddStep, AccountProfile, Provider,
+import type { AccountAddStep, AccountProfile, MovePreview, Provider, SwitchMove,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
@@ -415,6 +415,15 @@ function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
 }
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
+let afterSwitch: (() => void) | undefined
+
+async function performSwitch(provider: Provider, accountId: string, reason?: 'banner', move?: SwitchMove) {
+  actions.accounts.set(await call('accounts.switch', { provider, accountId, ...(reason ? { reason } : {}), ...(move ? { move } : {}) }))
+  void call('usage.get', undefined).then(actions.usage.set).catch(() => undefined)
+  const done = afterSwitch
+  afterSwitch = undefined
+  done?.()
+}
 
 /** Typed writes, one group per slice. Screens call these instead of reshaping state themselves. */
 export const actions = {
@@ -695,6 +704,20 @@ export const actions = {
   accounts: {
     set: (accounts: AccountProfile[]) => setState({ accounts }),
     adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd }),
+    /**
+     * The one way every switch starts (KERNEL-845). It reads what the switch would move and opens the confirmation only when a long
+     * chat would read its history again. Otherwise it switches at once. `onSwitched` runs once the switch is done, from the modal's
+     * button when one opened. A failed switch throws, so each entry point keeps its own error toast.
+     */
+    requestSwitch: async (provider: Provider, accountId: string, opts: { reason?: 'banner'; onSwitched?: () => void } = {}) => {
+      afterSwitch = opts.onSwitched
+      let preview: MovePreview | undefined
+      try { preview = await call('accounts.previewSwitch', { provider, accountId }) } catch { preview = undefined }
+      if (preview?.chats.some((c) => c.coldReason)) return actions.ui.openModal({ name: 'confirm', kind: 'switchAccount', provider, accountId, preview, ...(opts.reason ? { reason: opts.reason } : {}) })
+      await performSwitch(provider, accountId, opts.reason)
+    },
+    /** The confirmation's buttons: `keep` leaves chats on the account that holds their cache, `all` moves them now. */
+    confirmSwitch: (provider: Provider, accountId: string, move: SwitchMove, reason?: 'banner') => performSwitch(provider, accountId, reason, move),
     mcpRun: (run: McpSignInAll) => setState((s) => ({ mcpRuns: { ...s.mcpRuns, [mcpRunKey(run.provider ?? 'claude', run.accountId)]: run } })),
     clearMcpRun: (provider: Provider, accountId: string) => setState(({ mcpRuns: { [mcpRunKey(provider, accountId)]: _gone, ...mcpRuns } }) => ({ mcpRuns }))
   },
