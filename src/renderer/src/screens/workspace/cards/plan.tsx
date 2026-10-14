@@ -202,12 +202,13 @@ export function PlanBar({ a, closing, hasText, onApprove, onSendChanges, onBack,
   const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
   const [copied, copy] = useCopy(planCopyText(a, agents))
   const [asked, setAsked] = useState(false)
-  const asking = asked && hasText && !closing
+  // The question stays in the strip while it closes, so pressing Approve in it does not swap back to Copy and Approve for the length of the close (KERNEL-839).
+  const asking = asked && hasText
   const group = useRef<HTMLDivElement>(null)
   const press = () => {
     if (closing) return
     if (hasText && !asking) setAsked(true)
-    else { setAsked(false); onApprove() }
+    else onApprove()
   }
   const latest = useRef(press)
   latest.current = press

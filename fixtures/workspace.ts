@@ -1803,6 +1803,16 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
   return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
 }
 
+/** The Bash permission card for pnpm drizzle-kit push in the PDF renderer chat (WorkspacePerm, KERNEL-834). */
+const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
+  })
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
@@ -2165,14 +2175,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...leadRunning(f, longSteps()),
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
-  WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
-  })),
+  WorkspacePerm: scene(permWaiting),
+  WorkspacePermAllowOnce: { ...scene(permWaiting), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
   // KERNEL-834: the same card once the approval was allowed. The buttons have folded away and the result line stands in their place.
   WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
@@ -2221,7 +2225,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
-  WorkspacePlanApproveDraft: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
+  WorkspacePlanApproveDraft: { ...scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),

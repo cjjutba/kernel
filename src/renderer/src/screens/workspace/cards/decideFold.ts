@@ -47,8 +47,9 @@ export const useFoldPhase = (id: string): Phase | undefined => useSyncExternalSt
 /**
  * `items` with the ones whose approval was just pressed kept in their place while they fold, after the store has stopped listing them.
  * `held` is true for those. Without motion the row is gone with the store's list.
+ * `max` caps the rows shown: the item that moved up into the list while a row folds waits until the fold is done (KERNEL-839).
  */
-export function useHeldRows<T>(items: T[], keyOf: (item: T) => string, idOf: (item: T) => string | undefined): { item: T; held: boolean }[] {
+export function useHeldRows<T>(items: T[], keyOf: (item: T) => string, idOf: (item: T) => string | undefined, max = Infinity): { item: T; held: boolean }[] {
   useSyncExternalStore(watch, () => version)
   const prev = useRef<T[]>([])
   const keys = new Set(items.map(keyOf))
@@ -57,6 +58,11 @@ export function useHeldRows<T>(items: T[], keyOf: (item: T) => string, idOf: (it
     const id = idOf(item)
     if (!keys.has(keyOf(item)) && id && phases.get(id) === 'folding') out.splice(Math.min(i, out.length), 0, { item, held: true })
   })
+  while (out.length > max) {
+    const last = out.map((o) => o.held).lastIndexOf(false)
+    if (last < 0) break
+    out.splice(last, 1)
+  }
   prev.current = out.map((o) => o.item)
   return out
 }
