@@ -90,7 +90,7 @@ function phaseOf(seed: string) {
 }
 
 /**
- * The loader: a 3x3 grid of dots whose opacity loops once a second, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is sized in em, so it follows the text beside it, and it always sits beside words.
+ * The loader: a 3x3 grid of dots whose opacity loops once a second, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 12px grid, and it always sits beside words.
  * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. `seed` starts the loop at a point taken from an id. Under reduced motion it holds a still frame that shows the pattern's shape (KERNEL-714, KERNEL-740, KERNEL-759).
  */
 export function Spinner({ label = 'Loading', pattern = 'wave', seed, className }: { label?: string | null; pattern?: SpinnerPattern; seed?: string; className?: string }) {
