@@ -1,0 +1,130 @@
+name: Test on macOS
+
+# The whole suite on macOS, because Kernel ships for Mac only. test.yml runs the suite on Ubuntu and only the
+# test/*.mac.test.ts files on macOS, so something that only breaks on a Mac can pass a PR. This workflow closes that gap
+# without bringing back the macOS queue (GitHub runs 5 macOS jobs at once per account):
+#   - nightly on main, at 19:00 UTC (03:00 in Manila), outside working hours
+#   - on PRs from release/** branches, so every release PR has a full macOS run. /release won't merge without it (.claude/commands/release.md)
+#   - by hand on any ref (workflow_dispatch)
+# It is not a required check and does not run on other PRs.
+#
+# A failing run opens or updates the ci-mac-red issue through scripts/ci-main-red.sh, the same script test.yml uses for
+# ci-main-red. Only a green run of this workflow on main (nightly, or by hand on main) closes it, so a Mac-only failure
+# isn't closed by the next green Ubuntu push. A by-hand run on another ref reports only when "report" is on, and never closes.
+#
+# Cache: same key pattern as the macOS job in test.yml (see its Cache section), with its own prefix.
+on:
+  schedule:
+    - cron: '0 19 * * *'
+  # `branches` filters the base, not the head, so the job's `if` checks for release/**.
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      report:
+        description: Open, update or close the ci-mac-red issue if the run fails
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-mac-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  vitest-mac-full:
+    name: Full suite (macOS)
+    # A PR runs it only from a release/** branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release/')
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      KERNEL_HEADLESS: '1'
+    outputs:
+      failed: ${{ steps.failed.outputs.files }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Read the Node and pnpm versions
+        id: ver
+        run: echo "key=$(node -v)-pnpm$(pnpm -v)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: vitest-mac-${{ runner.os }}-${{ runner.arch }}-node${{ steps.ver.outputs.key }}-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml', 'scripts/sqlite-node.ts') }}
+
+      - name: Install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Save node_modules
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ steps.modules.outputs.cache-primary-key }}
+
+      - name: Run the full suite
+        run: |
+          start=$(date +%s)
+          status=0
+          pnpm exec vitest run --reporter=default --reporter=json --outputFile.json=vitest-result.json || status=$?
+          echo "Wall time of the vitest run: $(( $(date +%s) - start )) s"
+          exit $status
+
+      - name: Summary
+        if: always()
+        run: |
+          [ -f vitest-result.json ] || exit 0
+          node -e "const r=require('./vitest-result.json');console.log('## Vitest on macOS\n\nFull suite: '+r.numTotalTestSuites+' suites, '+r.numTotalTests+' tests, '+r.numFailedTests+' failed.')" >> "$GITHUB_STEP_SUMMARY"
+
+      # The files with a failing test, for the ci-main-red issue.
+      - name: Name the failing tests
+        id: failed
+        if: failure()
+        run: |
+          [ -f vitest-result.json ] || exit 0
+          files=$(node -e "const r=require('./vitest-result.json');console.log(r.testResults.filter(t=>t.status==='failed').map(t=>t.name.replace(process.cwd()+'/','')).join(','))")
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+  report:
+    name: Report to ci-mac-red
+    needs: [vitest-mac-full]
+    if: always() && needs.vitest-mac-full.result != 'skipped' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.report || github.ref == 'refs/heads/main')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.vitest-mac-full.result }}
+      FAILED: ${{ needs.vitest-mac-full.outputs.failed }}
+      SHA: ${{ github.sha }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SERVER_URL: ${{ github.server_url }}
+      REPO: ${{ github.repository }}
+      LABEL: ci-mac-red
+      SOURCE: The full macOS run
+      # Only a green run on main closes the issue.
+      CLOSE: ${{ github.ref == 'refs/heads/main' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci-main-red.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Open, update or close the ci-mac-red issue
+        run: scripts/ci-main-red.sh

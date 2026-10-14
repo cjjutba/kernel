@@ -8,6 +8,11 @@ name: Test
 # they run in their own macOS job, on every PR and every push to main. They take seconds, so there is no affected-files gate:
 # one would only delay that job until the Ubuntu run had said which tests are affected.
 #
+# The Build job runs pnpm build (electron-vite, all three bundles) on every PR and every push to main, so a PR can't break
+# bundling and still show a green Test. Packaging (electron-builder, the signed DMG) stays in pnpm release. The build
+# doesn't load the native modules, so Build installs without scripts and shares Typecheck's key prefix and node_modules.
+# The full suite on macOS is a separate workflow, test-mac.yml (nightly, release PRs, by hand).
+#
 # Cache: the install is the slowest step of a small PR, so each job restores node_modules instead of installing. The key is
 # runner OS, architecture, Node and pnpm version, and a hash of pnpm-lock.yaml, package.json, pnpm-workspace.yaml and
 # scripts/sqlite-node.ts (the inputs of the postinstall script). Native builds are only ever restored into the OS,
@@ -71,6 +76,47 @@ jobs:
           key: ${{ steps.modules.outputs.cache-primary-key }}
 
       - run: pnpm typecheck
+
+  # Proves the app bundles. No native modules needed, so it shares Typecheck's node_modules (same key prefix).
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # The version of Node setup-node resolved, so a new patch release misses the cache instead of serving the old build.
+      - name: Read the Node and pnpm versions
+        id: ver
+        run: echo "key=$(node -v)-pnpm$(pnpm -v)" >> "$GITHUB_OUTPUT"
+
+      # Same key as Typecheck: node_modules installed without scripts. See the Cache section at the top of this file.
+      - name: Restore node_modules
+        id: modules
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: typecheck-${{ runner.os }}-${{ runner.arch }}-node${{ steps.ver.outputs.key }}-${{ hashFiles('pnpm-lock.yaml', 'package.json', 'pnpm-workspace.yaml', 'scripts/sqlite-node.ts') }}
+
+      - name: Install
+        if: steps.modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Save node_modules
+        if: steps.modules.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ steps.modules.outputs.cache-primary-key }}
+
+      - run: pnpm build
 
   # Runs the tests. Named apart from the Test job below, which is the one branch protection requires.
   vitest:
@@ -234,7 +280,7 @@ jobs:
   # script below, for that job only, e.g. `if (name === 'vitest-mac' && result === 'skipped') continue;`.
   test:
     name: Test
-    needs: [typecheck, vitest, vitest-mac]
+    needs: [typecheck, build, vitest, vitest-mac]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -266,28 +312,18 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RESULT: ${{ needs.test.result }}
-      FAILED_UBUNTU: ${{ needs.vitest.outputs.failed }}
-      FAILED_MAC: ${{ needs.vitest-mac.outputs.failed }}
       SHA: ${{ github.sha }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Open, update or close the ci-main-red issue
-        run: |
-          short=${SHA:0:7}
-          commit="[$short](${{ github.server_url }}/${{ github.repository }}/commit/$SHA)"
-          open=$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number // empty')
-          if [ "$RESULT" = "success" ]; then
-            [ -n "$open" ] && gh issue close "$open" --comment "Main is green again at $commit ([run]($RUN_URL))."
-            exit 0
-          fi
-          FAILED=$(printf '%s\n%s' "$FAILED_UBUNTU" "$FAILED_MAC" | grep . | paste -sd, -)
-          tests=${FAILED:-"none named: typecheck failed, or the tests did not finish"}
-          body="Main is red at $commit ([run]($RUN_URL)).
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/ci-main-red.sh
+          sparse-checkout-cone-mode: false
 
-          Failing test files: $tests"
-          if [ -n "$open" ]; then
-            gh issue comment "$open" --body "$body"
-          else
-            gh label create ci-main-red --color B60205 --description "The test run on main is failing" --force
-            gh issue create --label ci-main-red --title "Main is red: tests fail on $short" --body "$body"
-          fi
+      - name: Open, update or close the ci-main-red issue
+        env:
+          FAILED: ${{ needs.vitest.outputs.failed }},${{ needs.vitest-mac.outputs.failed }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          CLOSE: 'true'
+        run: scripts/ci-main-red.sh
