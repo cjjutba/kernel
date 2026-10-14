@@ -45,6 +45,15 @@
 .cmp-chip .chip-meta { color: var(--muted); }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
 .chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
+/* Attaching files (KERNEL-815): a placeholder while a file reads, the chip landing, and the drop overlay over the chat pane (draft.tsx) */
+.cmp-chip[data-kind='pending'] { color: var(--muted); }
+.cmp-chip[data-entering] { animation: chip-in 160ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes chip-in { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .cmp-chip[data-entering] { animation: none; } }
+.lead-new { position: relative; }
+.cmp[data-drop] { border-color: var(--line-4); }
+.drop-veil { position: absolute; inset: 0; z-index: 30; padding: 12px; background: color-mix(in srgb, var(--surface) 92%, transparent); pointer-events: none; }
+.drop-frame { display: flex; align-items: center; justify-content: center; height: 100%; border: 1px dashed var(--line-4); border-radius: var(--r-lg); color: var(--ink-2); font-size: 14px; font-weight: 500; }
 /* An image chip's hover preview and its modal (Chip.tsx) */
 .img-preview { position: fixed; z-index: 65; display: flex; padding: 4px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
 .img-preview img { display: block; max-width: 470px; max-height: 310px; border-radius: var(--r-sm); }
