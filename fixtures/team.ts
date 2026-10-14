@@ -104,6 +104,12 @@ const homeNotifications: Notification[] = [
   note({ id: 'n6', kind: 'standup', agentId: 'kernel-lead', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
   note({ id: 'n7', title: 'Hooks reconnected', sub: 'System', roomId: undefined, heading: 'Hooks reconnected', body: 'Kernel is listening on localhost:7420 again.', read: true, createdAt: ago(11 * HOUR) })
 ]
+/** More blocked things waiting on the user, for a Home with more than five rows. */
+const moreNeeds: Notification[] = [
+  note({ id: 'n8', kind: 'blocked', agentId: 'kai', title: 'T-16 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-16 was blocked by a hook', body: 'The lint hook stopped Kai.', needsYou: true, createdAt: ago(20 * MIN) }),
+  note({ id: 'n9', kind: 'blocked', agentId: 'theo', title: 'T-17 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-17 was blocked by a hook', body: 'The type check hook stopped Theo.', needsYou: true, createdAt: ago(25 * MIN) }),
+  note({ id: 'n10', kind: 'blocked', agentId: 'ivy', title: 'T-18 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-18 was blocked by a hook', body: 'The test hook stopped Ivy.', needsYou: true, createdAt: ago(30 * MIN) })
+]
 
 /** Home.png: four rooms (A needs you), five merged PRs, three things waiting. */
 const homeScene = (f: Fixture): Partial<Fixture> => {
@@ -577,6 +583,8 @@ const roomSetupTeam = (f: Fixture, team?: TeamConfig): Partial<Fixture> => {
 
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
+  // KERNEL-839: six things need you, so the top five fill and the sixth waits behind them while the first folds away.
+  HomeApprovalFold: { ...scene((f) => ({ ...homeScene(f), notifications: [...homeNotifications, ...moreNeeds], ui: { route: { name: 'home' } } })), motion: { action: { click: 'Approve: Run pnpm drizzle-kit push' }, ms: 700, area: '.hm-cols' } },
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
   HomeRoomIcon: scene((f) => {
     const home = homeScene(f)
@@ -624,6 +632,7 @@ export const teamFixtures: Record<string, Fixture> = {
   UpdateReadyNoSidebar: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: { ...home, sidebar: false } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  InboxApprovalFold: { ...scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })), motion: { action: { click: 'Approve' }, ms: 700, area: '.ib-body-wrap' } },
   // KERNEL-785: an MCP call's approval is titled as the chat's row says it, the newest row, so the detail pane opens on it.
   InboxMcp: scene((f) => {
     const home = homeScene(f)

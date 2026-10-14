@@ -8,8 +8,8 @@ import { Kernel } from '../src/main/kernel'
 import { Prs } from '../src/main/features/prs'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
-import { git } from '../src/main/services/exec'
-import { HEAD_MOVED } from '../src/main/services/github'
+import { exec, git } from '../src/main/services/exec'
+import { BranchConflict, HEAD_MOVED } from '../src/main/services/github'
 import { applySettingsPatch, autoMergeInRoom, DEFAULT_SETTINGS, loadAppSettings, sharedMergeOf } from '../src/main/services/settings'
 import { decide, LeadUpdates, type TeamEvent } from '../src/main/services/leadUpdates'
 import { tempRepo, freePort } from './helpers'
@@ -354,6 +354,167 @@ describe('weighing again', () => {
   })
 })
 
+// KERNEL-835: auto-merge never merges a PR whose checks ran against an older main. It brings the branch up to date first.
+describe('a PR behind its base', () => {
+  type Setup = Awaited<ReturnType<typeof setup>>
+
+  /**
+   * Kai's PRs from `files`, numbered from 101, on a fake GitHub that merges into the room's main and updates a branch the way
+   * GitHub does: a merge of the base into it, whose checks then run, or a BranchConflict. `pass` lets a PR's checks pass.
+   */
+  async function hub(s: Setup, ...files: Record<string, string>[]) {
+    const tip = async () => (await git(s.repo, 'rev-parse', 'main')).trim()
+    const prs = new Map<string, PrInfo>()
+    const wss: Workspace[] = []
+    for (const [i, f] of files.entries()) {
+      const made = await s.pr(f)
+      const ws = s.k.store.saveWorkspace({ ...made, prNumber: 101 + i, prUrl: `https://github.com/o/shop/pull/${101 + i}`, reviews: made.reviews?.map((v) => ({ ...v, prNumber: 101 + i })) })
+      wss.push(ws)
+      prs.set(ws.id, { ...s.gh.pr!, workspaceId: ws.id, number: ws.prNumber!, url: ws.prUrl!, head: ws.prHead, baseOid: await tip() })
+    }
+    const of = (n: number) => [...prs.values()].find((p) => p.number === n)!
+    const merged: number[] = []
+    const updates: number[] = []
+    s.k.github = {
+      info: async (_cwd, _ref, id) => { const p = prs.get(id); return p ? { ...p } : null },
+      merge: async (_cwd, ref) => {
+        const p = [...prs.values()].find((x) => s.k.store.workspace(x.workspaceId)?.branch === ref)!
+        await git(s.repo, 'merge', '-q', '--no-ff', '-m', `Merge #${p.number}`, ref)
+        merged.push(p.number)
+        prs.set(p.workspaceId, { ...p, state: 'merged' })
+      },
+      ready: async () => undefined,
+      reopen: async () => undefined,
+      updateBranch: async (_cwd, ref) => {
+        const p = of(Number(ref))
+        const base = await tip()
+        const tree = await exec('git', ['-C', s.repo, 'merge-tree', '--write-tree', p.head!, base])
+        if (tree.code !== 0) throw new BranchConflict('gh pr update-branch failed (1): GraphQL: merge conflict between base and head (updatePullRequestBranch)')
+        const to = (await git(s.repo, 'commit-tree', tree.stdout.trim().split('\n')[0], '-p', p.head!, '-p', base, '-m', 'Merge main')).trim()
+        updates.push(p.number)
+        prs.set(p.workspaceId, { ...p, head: to, baseOid: base, blocked: undefined, state: 'checks', checks: [{ name: 'Test', state: 'running' }] })
+      }
+    }
+    const pass = (id: string) => prs.set(id, { ...prs.get(id)!, state: 'ready', checks: GREEN })
+    const moveMain = async (file: string) => {
+      await writeFile(join(s.repo, file), `${file}\n`)
+      await git(s.repo, 'add', file)
+      await git(s.repo, 'commit', '-qm', `main gets ${file}`)
+    }
+    return { wss, prs, merged, updates, pass, moveMain, branchUpdated: vi.spyOn(s.k.leadUpdates, 'branchUpdated') }
+  }
+
+  it('merges the first PR of a wave, brings the second up to date, and merges it once its checks pass again, with no new review', async () => {
+    const s = await setup({ app: { pr: { autoMerge: { on: true }, autoReview: true } } })
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' }, { 'src/b.ts': 'export const b = 1\n' })
+    const [a] = h.wss
+    // The code review approved Kai's second PR in its first round.
+    const b = s.k.store.saveWorkspace({ ...h.wss[1], reviewRound: { n: 1, rounds: 3, head: h.wss[1].prHead!, prNumber: 102, kinds: ['code'] } })
+    const started = vi.spyOn(s.k.reviews as unknown as { startReview: () => Promise<unknown> }, 'startReview').mockResolvedValue(b)
+    const again = vi.spyOn(s.k.reviews as unknown as { reviewAgain: () => Promise<unknown> }, 'reviewAgain').mockResolvedValue(undefined)
+    // The new head's checks pass before Kernel has recorded the update, and a read of the PR comes in meanwhile. Its ready
+    // waits for the record, or `onReady` would start a round on the new head.
+    const record = s.k.reviews.recordBaseUpdate.bind(s.k.reviews)
+    vi.spyOn(s.k.reviews, 'recordBaseUpdate').mockImplementation(async (id, from, to) => {
+      h.pass(id)
+      await s.k.prs.refreshPr(id)
+      expect(s.k.store.workspace(id)?.prHead).toBe(from)
+      return record(id, from, to)
+    })
+    expect(await s.k.prs.autoMerge(a.id)).toEqual({ merged: expect.objectContaining({ prState: 'merged' }) })
+    const r = await s.k.prs.autoMerge(b.id)
+    expect(r).toEqual({ updated: expect.stringMatching(/^[0-9a-f]{40}$/) })
+    const to = (r as { updated: string }).updated
+    expect(h.updates).toEqual([102])
+    expect(s.k.store.workspace(b.id)?.baseUpdates).toEqual([{ from: b.prHead, to }])
+    // Kai's worktree was clean and idle, so it moved to the merge.
+    expect((await git(b.path, 'rev-parse', 'HEAD')).trim()).toBe(to)
+    expect(h.branchUpdated).toHaveBeenCalledWith(expect.objectContaining({ id: b.id }), 'main')
+    await vi.waitFor(() => expect(s.k.store.workspace(b.id)?.prState).toBe('merged'))
+    expect(h.merged).toEqual([101, 102])
+    expect(h.updates).toEqual([102])
+    expect(started).not.toHaveBeenCalled()
+    expect(again).not.toHaveBeenCalled()
+    expect(s.k.store.workspace(b.id)?.reviewRound).toMatchObject({ n: 1, head: b.prHead })
+  })
+
+  it('moves a PR whose update conflicts to conflict, which reaches the Lead', async () => {
+    const s = await setup()
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' }, { 'src/a.ts': 'export const a = 2\n' })
+    const [a, b] = h.wss
+    await s.k.prs.autoMerge(a.id)
+    const pushes: unknown[] = []
+    const onPush = (e: unknown) => { pushes.push(e) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    expect(await s.k.prs.autoMerge(b.id)).toEqual({ refused: 'It conflicts with main.' })
+    expect(s.k.store.workspace(b.id)?.prState).toBe('conflict')
+    expect(pushes).toContainEqual({ type: 'pr', workspaceId: b.id, state: 'conflict' })
+    expect(h.merged).toEqual([101])
+    expect(h.branchUpdated).not.toHaveBeenCalled()
+  })
+
+  it('stops after three updates, and the Lead tells the user once', async () => {
+    const s = await setup()
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' })
+    const [w] = h.wss
+    // Main moves each time the new head's checks are running, and the read after they pass weighs it.
+    for (const n of [1, 2, 3]) {
+      await h.moveMain(`moved-${n}.txt`)
+      if (n > 1) h.pass(w.id)
+      await s.k.prs.refreshPr(w.id)
+      await vi.waitFor(() => expect(h.updates).toHaveLength(n))
+      await vi.waitFor(() => expect(s.k.store.workspace(w.id)).toMatchObject({ prState: 'checks', prHead: h.prs.get(w.id)!.head }))
+    }
+    await h.moveMain('moved-4.txt')
+    h.pass(w.id)
+    await s.k.prs.refreshPr(w.id)
+    await vi.waitFor(() => expect(s.k.store.workspace(w.id)?.prState).toBe('ready'))
+    const said = 'main moved past it again after Kernel brought it up to date 3 times, so Kernel stopped updating it.'
+    expect(await s.k.prs.autoMerge(w.id)).toEqual({ refused: said })
+    expect(await s.k.prs.autoMerge(w.id)).toEqual({ refused: said })
+    expect(h.updates).toEqual([101, 101, 101])
+    expect(h.merged).toEqual([])
+    expect(h.branchUpdated.mock.calls.filter((c) => c[2]?.capped)).toEqual([[expect.objectContaining({ id: w.id }), 'main', { capped: 3 }]])
+  })
+
+  it('updates a PR GitHub reads as behind under the "up to date" rule and merges it, telling a busy teammate to pull', async () => {
+    const s = await setup()
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' })
+    const [w] = h.wss
+    await h.moveMain('moved.txt')
+    // GitHub says behind, and gives no base commit to compare.
+    h.prs.set(w.id, { ...h.prs.get(w.id)!, blocked: 'behind', baseOid: undefined })
+    // Kai has changes it hasn't committed, so its worktree stays where it is.
+    await writeFile(join(w.path, 'src/a.ts'), 'export const a = 3\n')
+    const sent = vi.spyOn(s.k.sessions, 'send')
+    expect(await s.k.prs.autoMerge(w.id)).toEqual({ updated: expect.any(String) })
+    expect((await git(w.path, 'rev-parse', 'HEAD')).trim()).toBe(w.prHead)
+    expect(sent).toHaveBeenCalledWith(expect.any(String), [{ type: 'text', text: expect.stringContaining('Run git pull --no-rebase before you push again.') }], { from: 'kernel' })
+    h.pass(w.id)
+    await s.k.prs.refreshPr(w.id)
+    await vi.waitFor(() => expect(s.k.store.workspace(w.id)?.prState).toBe('merged'))
+    expect(h.merged).toEqual([101])
+  })
+
+  it('updates the PR once when two weighs of the same head find it behind together', async () => {
+    const s = await setup()
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' })
+    await h.moveMain('moved.txt')
+    const both = await Promise.all([s.k.prs.autoMerge(h.wss[0].id), s.k.prs.autoMerge(h.wss[0].id)])
+    expect(both).toContainEqual({ updated: expect.any(String) })
+    expect(both).toContainEqual({ refused: 'Kernel is already bringing it up to date.' })
+    expect(h.updates).toEqual([101])
+  })
+
+  it('merges a PR its base has not moved past, without updating it', async () => {
+    const s = await setup()
+    const h = await hub(s, { 'src/a.ts': 'export const a = 1\n' })
+    expect(await s.k.prs.autoMerge(h.wss[0].id)).toEqual({ merged: expect.objectContaining({ prState: 'merged' }) })
+    expect(h.updates).toEqual([])
+  })
+})
+
 describe('Merge PR while a check the repo does not require runs (KERNEL-703)', () => {
   it('refuses, naming the check, and merges on Merge anyway', async () => {
     const { k, gh, pr } = await setup({ app: {} })
@@ -499,6 +660,14 @@ describe('what Kernel hears', () => {
     expect(out.todo).toEqual(['Tell the user Kernel merged PR #54 automatically and why, in a line or two, with its link https://github.com/o/shop/pull/54.'])
   })
 
+  it("carries Kernel's update of a PR without waking the Lead, and wakes it to tell the user once Kernel stops (KERNEL-835)", () => {
+    const c = { allMerged: () => false }
+    expect(decide({ ws: ws('checks'), name: 'Kai', events: [ev('pr.updated', { updated: { base: 'main' } })] }, c).todo).toEqual([])
+    expect(decide({ ws: ws('ready'), name: 'Kai', events: [ev('pr.updated', { updated: { base: 'main', capped: 3 } })] }, c).todo).toEqual([
+      "Tell the user main keeps moving past PR #54, so Kernel stopped bringing it up to date after 3 tries and won't merge it by itself. They can update and merge it by hand."
+    ])
+  })
+
   /** Kai's ready PR #54 in w1, and Theo's review workspace of it, handed off in the Lead chat lc. */
   async function lead() {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-am-')), 'k.db'))
@@ -525,6 +694,17 @@ describe('what Kernel hears', () => {
     expect(posts).toEqual([])
     u.readPr('w1')
     await vi.waitFor(() => expect(posts).toHaveLength(1))
+  })
+
+  it("says Kernel brought the PR up to date in the text Kernel reads and on the card (KERNEL-835)", async () => {
+    const { store, u, posts } = await lead()
+    u.branchUpdated(store.workspace('w1')!, 'main')
+    u.autoMerging('w1', auto)
+    store.saveWorkspace({ ...store.workspace('w1')!, prState: 'merged' })
+    bus.push({ type: 'pr', workspaceId: 'w1', state: 'merged' })
+    await vi.waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0].text).toContain('- Kernel brought PR #54 up to date with main, waiting for checks.')
+    expect(posts[0].update.rows[0].events[0]).toEqual({ kind: 'pr.updated', text: 'Brought #54 up to date with main, waiting for checks', actionable: false })
   })
 
   it('says "Merged automatically" and why on the card, and in the text Kernel reads', async () => {

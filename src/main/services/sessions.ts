@@ -3,11 +3,12 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
+import { answerItemId, answerParts, isSentItem } from '@shared/approvalAnswer'
 import { leadModeOf } from '@shared/leadMode'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -853,8 +854,8 @@ export class Sessions {
     const items = this.d.store.items(chatId)
     const at = items.findIndex((i) => i.id === itemId)
     if (at < 0) throw new Error('That message is no longer in this chat.')
-    const user = items.slice(0, at + 1).reverse().find((i) => i.kind === 'user')
-    if (!user || user.kind !== 'user') throw new Error('There is no message to send again.')
+    const user = items.slice(0, at + 1).reverse().find(isSentItem)
+    if (!user) throw new Error('There is no message to send again.')
     // An update from before KERNEL-116 carries no marker, only its header.
     const from = user.from ?? (isKernelUpdate(user) ? 'kernel' : undefined)
     const { queued } = await this.send(chatId, user.parts, { from, update: user.update })
@@ -956,7 +957,7 @@ export class Sessions {
     const items = this.d.store.items(chatId)
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i]
-      if (it.kind === 'user' && !(it.from === 'kernel' && isNudge(it.parts))) return it.from
+      if (isSentItem(it) && !(it.from === 'kernel' && isNudge(it.parts))) return it.from
     }
     return undefined
   }
@@ -1579,7 +1580,7 @@ export class Sessions {
 
   /** The text of the chat's first message that isn't one of Kernel's nudges: the brief a fresh session starts from. */
   private brief(chatId: string): string | undefined {
-    const first = this.d.store.items(chatId).find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))
+    const first = this.d.store.items(chatId).find((i): i is ChatItem & { kind: 'user' } => isSentItem(i) && !(i.from === 'kernel' && isNudge(i.parts)))
     const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'pr' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
     return text || undefined
   }
@@ -1812,6 +1813,18 @@ export class Sessions {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
     if (o.afterTurn) (this.turnsOf(chatId).plans ??= new Set()).add(approvalId)
     else this.live.get(chatId)?.cards.add(approvalId)
+  }
+
+  /**
+   * The user's answer to a plan, question or agent card, as their own message after the card (KERNEL-836). It is only a row:
+   * the agent gets the decision itself, never this. A tool permission, or a card with no answer, adds nothing. The id is
+   * the approval's, so a second settle replaces the row instead of adding one. A closed or deleted chat gets nothing.
+   */
+  placeAnswer(a: Approval) {
+    const parts = answerParts(a)
+    const chat = a.chatId ? this.d.store.chat(a.chatId) : undefined
+    if (!parts || !chat || chat.closed) return
+    this.item(chat, { kind: 'user', id: answerItemId(a.id), ts: Date.now(), parts, approvalId: a.id })
   }
 
   /** Where a shared file's card sits in the chat that shared it, one per version (KERNEL-302). */

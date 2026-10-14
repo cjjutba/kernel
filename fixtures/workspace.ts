@@ -395,6 +395,19 @@ const narrated = (id: string, end: ChatItem[]): ChatItem[] => [
   ...end
 ]
 const invoiceFiles: ChangedFile[] = [{ path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 }, { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 }]
+/** A finished turn with two in-between messages and real thinking between its calls (KERNEL-840): one fold, then the reply. */
+const foldedMessages: ChatItem[] = [
+  tableItems[0],
+  { kind: 'thinking', id: 'fm-th1', ts: at(10, 28), text: 'The table needs sorting by date and amount. The empty state can wait until the rows render.' },
+  tool('fm-t1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', ts: at(10, 28) }),
+  { kind: 'text', id: 'fm-x1', ts: at(10, 28), text: '**I will build the table first**, then the empty state and the tests.\n\nThe plan lists three states:\n\n- loading\n- empty\n- error' },
+  tool('fm-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', ts: at(10, 29) }),
+  { kind: 'thinking', id: 'fm-th2', ts: at(10, 29), text: 'Sorting works on the client. The empty state needs its own component.' },
+  { kind: 'text', id: 'fm-x2', ts: at(10, 29), text: 'The table sorts now. Moving on to the empty state.' },
+  tool('fm-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30), input: { command: 'pnpm vitest run invoices' } }),
+  { kind: 'text', id: 'fm-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' },
+  { kind: 'result', id: 'fm-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }
+]
 const runningNarrated = (): ChatItem[] => narrated('rn', [tool('rn-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: Date.now() - 20_000, status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run invoices' } })]).map((i) => (i.kind === 'user' ? { ...i, ts: Date.now() - 74_000 } : i))
 const endsOnText = narrated('et', [{ kind: 'text', id: 'et-x3', ts: at(10, 31), text: 'Done. The table sorts and each state has its own component.' }, { kind: 'result', id: 'et-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
 const endsOnTool = narrated('eo', [tool('eo-t3', 'Run unit tests', 'pnpm vitest run invoices', { ts: at(10, 30) }), { kind: 'result', id: 'eo-r', ts: at(10, 31), durationMs: 252_000, ok: true, files: invoiceFiles }])
@@ -1790,6 +1803,16 @@ function startedFromNewChat(f: Fixture, opened: boolean): Partial<Fixture> {
   return { ...g, workspaces: own, chats: g.chats!.filter((c) => kept.has(c.workspaceId)), ...(opened ? {} : { prs: {} }), ui: { ...g.ui!, rightPanel: true, panelHeld: opened ? [] : [ids.lead] } }
 }
 
+/** The Bash permission card for pnpm drizzle-kit push in the PDF renderer chat (WorkspacePerm, KERNEL-834). */
+const permWaiting = (f: Fixture) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
+  })
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
@@ -1853,6 +1876,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: runningNarrated() },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false } }
+  })),
+  /** A finished turn with in-between messages and thinking: one fold, then the reply (KERNEL-840). The second shot has the message and thinking rows opened. */
+  WorkspaceTurnFolded: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  WorkspaceTurnFoldedOpen: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
+  })),
+  /** The same fold read by keyboard: a message row opened with Enter and its Copy reached with Tab (KERNEL-840). */
+  WorkspaceTurnFoldedCopy: scene(() => ({
+    items: { [ids.tableChat]: foldedMessages },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: true } }
   })),
   WorkspaceTurnEndsOnText: scene(() => ({
     items: { [ids.tableChat]: endsOnText },
@@ -2144,14 +2181,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ...leadRunning(f, longSteps()),
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
-  WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
-    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
-    ...folded('p', 11, 2),
-    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
-    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
-  ], {
-    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
-  })),
+  WorkspacePerm: scene(permWaiting),
+  WorkspacePermAllowOnce: { ...scene(permWaiting), motion: { action: { click: 'Allow once' }, ms: 700, area: '.ws-main' } },
   // KERNEL-834: the same card once the approval was allowed. The buttons have folded away and the result line stands in their place.
   WorkspacePermAllowed: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
@@ -2200,7 +2231,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
   WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
-  WorkspacePlanApproveDraft: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
+  WorkspacePlanApproveDraft: { ...scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')), motion: { action: { click: 'Approve' }, ms: 900, area: '.cmp' } },
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),

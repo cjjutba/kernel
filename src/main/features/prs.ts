@@ -1,13 +1,13 @@
 import type { AutoMerge, MergeMethod, PrInfo, PrPending, PrState, Room, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
-import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
+import { branchExists, currentBranch, fastForward, fetchOrigin, folderGone, freeBranch, isAncestor, stripRemote } from '../services/worktrees'
 import { exec, git } from '../services/exec'
-import { type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, prNote, resolveFile } from '../services/github'
+import { BranchConflict, type CodeHost, fingerprintOf, GhReadError, HEAD_MOVED, prNote, resolveFile } from '../services/github'
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, gatingChecks, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -235,6 +235,9 @@ export class Prs extends Feature {
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
+    // Kernel is bringing the PR up to date (KERNEL-835). The new head waits until the update is recorded, or its ready
+    // reaches `onReady` first and starts a review round of its own. `bringUpToDate` reads it again after.
+    if (this.updating.has(id)) return ws
     this.noteRead(id, ws, info)
     if (info) {
       this.prints.set(id, fingerprintOf(info))
@@ -434,6 +437,15 @@ export class Prs extends Feature {
   private retries = new Map<string, { key: string; n: number }>()
   /** How many times one key is weighed again before its refusal stands. Each waits for the quick re-read, `recheckMs`. */
   static autoMergeRetries = 8
+  /**
+   * How many times Kernel brought each workspace's PR up to date before merging it by itself (KERNEL-835), by PR number, the
+   * heads the last update started from and made, and whether the Lead heard that Kernel stopped.
+   */
+  private updates = new Map<string, { pr: number; n: number; from?: string; head?: string; told?: boolean }>()
+  /** Workspaces whose PR Kernel is bringing up to date now, so two weighs of the same head update it once. */
+  private updating = new Set<string>()
+  /** The most times Kernel brings one PR up to date. Past that, the Lead tells the user and Kernel leaves it (KERNEL-835). */
+  static maxUpdates = 3
   /** Rooms already warned that their shared settings file sets a personal `[merge]` key, by room id and the keys. */
   private warnedMerge = new Set<string>()
 
@@ -466,9 +478,10 @@ export class Prs extends Feature {
   /**
    * Merges the workspace's PR by itself when the user's auto-merge allows it (KERNEL-556), or says why not. The merge goes
    * through `mergePr`, so `mergeBlock` and its fresh GitHub read apply as to any merge, held to the head commit Kernel weighed.
-   * The Lead hears either way: "Merged automatically" and why, or why not on the ready to merge line.
+   * The Lead hears either way: "Merged automatically" and why, or why not on the ready to merge line. A PR whose checks ran
+   * against an older base isn't merged: Kernel brings its branch up to date and waits for its checks (`bringUpToDate`, KERNEL-835).
    */
-  async autoMerge(id: string): Promise<{ merged: Workspace } | { refused: string }> {
+  async autoMerge(id: string): Promise<{ merged: Workspace } | { refused: string } | { updated: string }> {
     const ws = this.mustWs(id)
     const key = this.weighed.get(id)
     const room = this.mustRoom(ws.roomId)
@@ -476,21 +489,29 @@ export class Prs extends Feature {
     let { rules, personal } = autoMergeInRoom(room.path, app)
     // A personal file the repo committed isn't the user's, so it can't turn auto-merge on (KERNEL-209).
     if (personal && !(await localSettingsOwn(room.path))) rules = app
-    const facts = await this.mergeFacts(ws, room, rules)
+    const read = await this.mergeFacts(ws, room, rules)
+    const host = this.host(ws.roomId)
+    // A branch behind its base is Kernel's to update when the host can, so GitHub's block on it refuses nothing (KERNEL-835).
+    const behind = !!host.updateBranch && read.pr?.blocked === 'behind'
+    const facts = behind && read.pr ? { ...read, pr: { ...read.pr, blocked: undefined } } : read
     const why = autoMergeWhy(facts)
-    const head = facts.pr?.head
-    if (!why || !head) {
+    const pr = facts.pr
+    const head = pr?.head
+    if (!why || !pr || !head) {
       const said = autoMergeBlock(facts) ?? "Kernel couldn't read the pull request from GitHub."
+      // The head Kernel's update made may not have its checks yet, which isn't the PR having none (KERNEL-835).
+      const waiting = !!head && this.updates.get(id)?.head === head && !gatingChecks(pr?.checks ?? []).length
       // The Lead hears a refusal GitHub hadn't settled only once Kernel stops weighing it again (KERNEL-768).
-      if (autoMergeRetry(facts) && this.weighAgain(id, key)) return { refused: said }
+      if ((autoMergeRetry(facts) || waiting) && this.weighAgain(id, key)) return { refused: said }
       if (rules.on) this.leadUpdates.autoMergeRefused(id, said)
       return { refused: said }
     }
+    if (host.updateBranch && (behind || await this.baseMoved(room, ws, pr))) return this.bringUpToDate(ws, { ...pr, head })
     this.leadUpdates.autoMerging(id, why)
-    const pr = `PR #${facts.pr?.number}`
+    const object = `PR #${pr.number}`
     try {
       const merged = await this.mergePr(id, { head })
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: 'merged automatically', object: pr })
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: 'merged automatically', object })
       return { merged }
     } catch (e) {
       this.leadUpdates.autoMerging(id)
@@ -498,9 +519,110 @@ export class Prs extends Feature {
       // GitHub asks for another try when the base moved during the merge, as when another PR landed (KERNEL-829).
       if ((said.startsWith('GitHub is still checking ') || said.includes('Base branch was modified')) && this.weighAgain(id, key)) return { refused: said }
       this.leadUpdates.autoMergeRefused(id, `The merge Kernel started failed. ${said}`)
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object: pr, warn: true })
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "couldn't merge automatically", object, warn: true })
       return { refused: said }
     }
+  }
+
+  /**
+   * The PR's base moved after GitHub last compared it with the PR, so its checks ran against an older base (KERNEL-835): the
+   * base's tip, freshly fetched, has GitHub's base commit in its history and isn't it. False when git can't tell.
+   */
+  private async baseMoved(room: Room, ws: Workspace, pr: PrInfo): Promise<boolean> {
+    if (!pr.baseOid) return false
+    await fetchOrigin(room.path, await this.k.config.remoteFor(room.path), { fresh: true }).catch(() => undefined)
+    const { base } = await this.k.reviews.policyFor(ws)
+    if (!base) return false
+    const r = await exec('git', ['-C', room.path, 'rev-parse', '--verify', '-q', `${base}^{commit}`])
+    const tip = r.stdout.trim()
+    return r.code === 0 && !!tip && tip !== pr.baseOid && await isAncestor(room.path, pr.baseOid, tip) === true
+  }
+
+  /**
+   * Brings a PR auto-merge would merge up to date with its base instead, as its checks ran against an older one (KERNEL-835).
+   * GitHub merges the base into the branch, Kernel records the update so the reviews of the old head count on the new one
+   * (KERNEL-832), and the new head's checks run. Once they settle, `considerAutoMerge` weighs it again. The teammate's
+   * worktree follows (`pullUpdate`). A merge that conflicts moves the PR to conflict, which the Lead asks the teammate to
+   * resolve. After `maxUpdates` updates Kernel stops, and the Lead tells the user once.
+   */
+  private async bringUpToDate(ws: Workspace, pr: PrInfo & { head: string }): Promise<{ refused: string } | { updated: string }> {
+    const id = ws.id
+    // A weigh that read the PR before it merged, or before Kernel read a newer head, updates nothing. The next read weighs it.
+    const now = this.store.workspace(id)
+    if (!now || now.prState !== 'ready' || this.merging.has(id) || (now.prHead && now.prHead !== pr.head)) return { refused: 'The pull request changed while Kernel weighed it.' }
+    const remote = await this.k.config.remoteOfWs(ws)
+    const base = pr.baseRef || stripRemote(ws.baseRef, remote)
+    const was = this.updates.get(id)
+    const n = was?.pr === pr.number ? was.n : 0
+    if (n >= Prs.maxUpdates) {
+      const said = `${base} moved past it again after Kernel brought it up to date ${n} times, so Kernel stopped updating it.`
+      this.leadUpdates.autoMergeRefused(id, said)
+      if (was && !was.told) {
+        this.updates.set(id, { ...was, told: true })
+        this.leadUpdates.branchUpdated(ws, base, { capped: n })
+      }
+      return { refused: said }
+    }
+    if (this.updating.has(id)) return { refused: 'Kernel is already bringing it up to date.' }
+    // A weigh that read the head before Kernel's update, and got here after it.
+    if (was?.pr === pr.number && was.from === pr.head) return { updated: was.head ?? pr.head }
+    this.updating.add(id)
+    try {
+      return await this.updateNow(ws, pr, base, remote, n)
+    } finally {
+      this.updating.delete(id)
+      void this.k.refreshPr(id).catch(() => undefined)
+    }
+  }
+
+  /** `bringUpToDate`'s update itself, one at a time per workspace (`updating`). */
+  private async updateNow(ws: Workspace, pr: PrInfo & { head: string }, base: string, remote: string, n: number): Promise<{ refused: string } | { updated: string }> {
+    const id = ws.id
+    const object = `PR #${pr.number}`
+    try {
+      await this.host(ws.roomId).updateBranch?.(ws.path, String(pr.number))
+    } catch (e) {
+      const said = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+      const now = this.mustWs(id)
+      if (e instanceof BranchConflict && now.prState === 'ready' && !this.merging.has(id)) {
+        const next = this.updateWs(id, { prState: 'conflict', prBlocked: undefined })
+        this.moved(now, next, `${object} conflicts with ${base}, so Kernel couldn't bring it up to date.`)
+        return { refused: `It conflicts with ${base}.` }
+      }
+      this.leadUpdates.autoMergeRefused(id, `Kernel couldn't bring it up to date with ${base}. ${said}`)
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: `couldn't bring it up to date with ${base}`, object, warn: true })
+      return { refused: said }
+    }
+    this.updates.set(id, { pr: pr.number, n: n + 1, from: pr.head })
+    const after = await this.read(ws, ws.path, ws.branch, { remote }).catch(() => null)
+    const to = after?.head
+    if (to && to !== pr.head) {
+      this.updates.set(id, { pr: pr.number, n: n + 1, from: pr.head, head: to })
+      await this.k.reviews.recordBaseUpdate(id, pr.head, to).catch(() => false)
+      await this.pullUpdate(this.mustWs(id), to, base, pr.number).catch(() => undefined)
+    }
+    this.leadUpdates.branchUpdated(ws, base)
+    this.note(id, `Brought ${object} up to date with ${base}. Kernel merges it once its checks pass.`)
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: `brought it up to date with ${base}, waiting for checks`, object })
+    return { updated: to ?? pr.head }
+  }
+
+  /**
+   * After Kernel brought the PR up to date on GitHub (KERNEL-835): the teammate's worktree moves to `to` when nothing is
+   * running or waiting in its chat and its tracked files are clean, as `BaseWatch` catches a worktree up. Otherwise Kernel
+   * tells the teammate to pull before it pushes again, and the message waits for a running turn to end.
+   */
+  private async pullUpdate(ws: Workspace, to: string, base: string, pr: number) {
+    if (ws.mode !== 'worktree' || ws.status !== 'ready' || this.stopped || await folderGone(ws.path)) return
+    const agent = this.k.team.agentOf(ws.roomId, ws.agentId)?.name ?? 'the teammate'
+    if (!this.agentBusy(ws) && await fastForward(ws.path, to)) {
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, actor: 'kernel', text: `updated ${agent}'s worktree to the merge of ${base}`, object: `PR #${pr}` })
+      void this.k.workspaces.changes(ws.id).catch(() => undefined)
+      return
+    }
+    const chat = this.prChat(ws.id)
+    if (!chat) return
+    await this.sessions.send(chat.id, [{ type: 'text', text: `Kernel brought PR #${pr} up to date with ${base} on GitHub, so the branch there has a merge commit your worktree doesn't. Run git pull --no-rebase before you push again.` }], { from: 'kernel' })
   }
 
   /**
@@ -830,6 +952,7 @@ export class Prs extends Feature {
     this.cancelRecheck(id)
     this.weighed.delete(id)
     this.retries.delete(id)
+    this.updates.delete(id)
     this.polls.delete(id)
     this.prints.delete(id)
     this.infos.delete(id)

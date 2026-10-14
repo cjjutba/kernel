@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import type { Decision } from '@shared/types'
 import type { Handlers } from '../kernel'
-import type { Typed } from '../services/approvals'
+import { settledAs, type Typed } from '../services/approvals'
 import { bannerSound } from '../services/notifications'
 import { planChanges } from '../services/handoff'
 import { attachmentNote, planExists, saveAttachments, savePlan } from '../services/plans'
@@ -46,19 +46,22 @@ export class Inbox extends Feature {
    * A plan card with no turn left waiting on it, since Kernel restarted (plan-cards-survive-restart). The
    * answer goes to the chat as Kernel's message, which waits in the queue like any other while something holds the chat.
    * Approve leaves plan mode and arms a Lead's hand-off as a live approval does. Request changes names the plan's file,
-   * which the revision overwrites.
+   * which the revision overwrites. The user's answer goes in first, so it sits under the card and Kernel's message after it.
    */
   private async answerPlan(id: string, decision: Decision) {
     const a = this.approvals.waitingPlan(id)!
     const chat = a.chatId ? this.store.chat(a.chatId) : undefined
     if (!chat || chat.closed) throw new Error('This request already timed out or was answered.')
-    // Kernel's message names the approval, so the chat shows the user's answer in its place.
+    // Kernel's message names the approval and stays hidden. The user's answer is its own row (KERNEL-836).
     let typed: Typed | undefined
-    if (decision.behavior === 'allow') await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id })
-    else {
+    if (decision.behavior === 'allow') {
+      this.sessions.placeAnswer(settledAs(a, decision))
+      await this.sessions.planApproved(chat.id, { queue: true, restarted: true, approvalId: id })
+    } else {
       const saved = await this.withAttachments(id, decision)
       decision = saved.decision
       typed = saved.typed
+      this.sessions.placeAnswer(settledAs(a, decision, typed))
       const notes = (decision.behavior === 'deny' ? decision.message : decision.behavior === 'answer' ? decision.text : undefined)?.trim() || 'no details'
       await this.sessions.send(chat.id, [{ type: 'text', text: planChanges(notes, a.planFile) }], { from: 'kernel', approvalId: id })
     }
@@ -80,6 +83,8 @@ export class Inbox extends Feature {
         const saved = await this.withAttachments(id, decision)
         const a = this.approvals.decide(id, saved.decision, saved.typed)
         if (!a) throw new Error('This request already timed out or was answered.')
+        // The answer is the user's message under the card, placed before the agent's reply to it can land (KERNEL-836).
+        this.sessions.placeAnswer(a)
         return a
       },
       'approvals.planFile': async ({ id }) => this.planFile(id),

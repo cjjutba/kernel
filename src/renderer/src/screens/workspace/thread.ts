@@ -4,6 +4,9 @@ import { isQuitNote, userView } from './sender'
 
 type Tool = Extract<ChatItem, { kind: 'tool' }>
 
+/** What a fold lists besides calls: the agent's thinking, and its in-between messages (KERNEL-840). */
+type Step = Tool | Extract<ChatItem, { kind: 'thinking' }> | Extract<ChatItem, { kind: 'text' }>
+
 /** Two or more calls in a row with the same service and verb. `items` is the calls and the thinking between them, in order. */
 export interface Run { id: string; key: string; service?: ToolService; tools: Tool[]; items: ChatItem[]; done: number; failed: number; denied: number }
 
@@ -19,7 +22,7 @@ export type ThreadBlock =
   | { kind: 'item'; item: ChatItem; actions?: true }
   | { kind: 'group'; id: string; items: ChatItem[]; entries: Entry[]; summary: Summary }
   | { kind: 'run'; id: string; run: Run }
-  | { kind: 'live'; id: string; item: Tool | Extract<ChatItem, { kind: 'thinking' }> }
+  | { kind: 'live'; id: string; item: Step }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   /** A turn's time. `actions` is on a finished turn that doesn't end on text: the time line then carries Copy, Retry and the "..." menu, with `copy` the turn's last message when it has one (KERNEL-828). */
   | { kind: 'meta'; id: string; text: string; actions?: { copy?: string; files: boolean; checkpointId?: string } }
@@ -146,12 +149,22 @@ export function summarize(items: ChatItem[]): Summary {
   return { text, bad: trouble(all.reduce((n, t) => n + t.failed, 0), all.reduce((n, t) => n + t.denied, 0)) }
 }
 
-/** Thinking with no text has nothing to show, so it never takes a row. */
-const hasContent = (i: ChatItem) => i.kind !== 'thinking' || i.text.trim() !== ''
+/** Thinking or a message with no text has nothing to show, so it never takes a row. */
+const hasContent = (i: ChatItem) => (i.kind !== 'thinking' && i.kind !== 'text') || i.text.trim() !== ''
+
+/** A message's row label: its first line with the Markdown taken off. The row cuts it to one line. */
+export function messageLabel(text: string): string {
+  const line = text.split('\n').map((l) => l.trim()).find((l) => l && !/^(```|~~~|---+|\*\*\*+)$/.test(l)) ?? ''
+  return line
+    .replace(/^(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)+/, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|~~|[*_`])/g, '')
+    .trim()
+}
 
 /**
  * The rows of a fold: the steps in order, with calls that read as the same verb on the same service folded into one run.
- * Thinking between two such calls doesn't break the run and stays inside it. A message does. Hidden calls aren't listed.
+ * Thinking between two such calls doesn't break the run and stays inside it. A message does, and is its own row after the run. Hidden calls aren't listed.
  */
 export function entriesOf(all: ChatItem[]): Entry[] {
   const items = all.filter(hasContent)
@@ -208,17 +221,20 @@ function foldBlocks(all: ChatItem[], blocks: ThreadBlock[]) {
 /** The tools whose call is a question to the user: Claude's, and the Lead's through Claude or Codex. Their card shows the question, so a row of raw JSON would say it twice. */
 const QUESTION_TOOLS = new Set(['AskUserQuestion', 'mcp__kernel__ask_user'])
 
-const isStep = (i: ChatItem): i is Tool | Extract<ChatItem, { kind: 'thinking' }> => i.kind === 'tool' || i.kind === 'thinking'
+const isStep = (i: ChatItem): i is Step => i.kind === 'tool' || i.kind === 'thinking' || i.kind === 'text'
 
 /**
- * Each stretch of steps between messages, approvals and notes folds into one row, and with `open` the step in flight stays out of
- * the fold as the `live` line (KERNEL-784). Messages, notes, approvals and questions are never folded, in a running turn or a finished one (KERNEL-800).
+ * Each stretch of steps between notes, approvals and questions folds into one row, and with `open` the step in flight stays out of
+ * the fold as the `live` line (KERNEL-784). The agent's messages are steps too (KERNEL-840), so the fold shows what it said between its calls.
+ * Notes, approvals and questions are never folded, in a running turn or a finished one (KERNEL-800). A message is the live line only once the
+ * turn has a call, so a reply that is the first thing a turn says still streams in full.
  */
 function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
   let steps: ChatItem[] = []
+  const worked = turn.some((i) => i.kind === 'tool')
   const flush = (last: boolean) => {
     const tail = steps[steps.length - 1]
-    const live = open && last && tail && ((tail.kind === 'tool' && tail.status === 'running') || tail.kind === 'thinking') ? tail : undefined
+    const live = open && last && tail && ((tail.kind === 'tool' && tail.status === 'running') || tail.kind === 'thinking' || (tail.kind === 'text' && worked && hasContent(tail))) ? tail : undefined
     foldBlocks(live ? steps.slice(0, -1) : steps, blocks)
     if (live && isStep(live)) blocks.push({ kind: 'live', id: live.id, item: live })
     steps = []
@@ -233,9 +249,10 @@ function foldTurn(turn: ChatItem[], blocks: ThreadBlock[], open: boolean) {
 /**
  * Split items into turns at each user message. A turn that finished well (it has an ok `result`) shows
  * its reply, the files it changed and how long it took, and folds each stretch of steps before the reply into one group, with the
- * agent's messages, notes and approvals between them left as they are (KERNEL-800).
+ * notes and approvals between them left as they are (KERNEL-800).
  * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line. A turn that ends on a
  * step instead puts the actions on the time's line (KERNEL-828). Every other agent line offers Copy alone.
+ * Every agent message before the reply is a step in that fold (KERNEL-840), so the turn reads as the user's message, one fold and the reply.
  * A turn still running folds its finished steps (`running` says whether the chat's turn is). A stopped or failed one shows every item,
  * so nothing is hidden while it matters.
  */

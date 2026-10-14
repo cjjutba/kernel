@@ -224,11 +224,23 @@
 .cmp:has(> .cmp-planbar[data-closing]) { animation: cmp-pad-open var(--plan-dur) var(--ease-plan) both; }
 @keyframes cmp-pad-shut { from { padding-top: var(--cmp-pad-top); } to { padding-top: 0; } }
 @keyframes cmp-pad-open { from { padding-top: 0; } to { padding-top: var(--cmp-pad-top); } }
-/* Once the strip has closed the placeholder and the mode chip fade to the box's own mode (KERNEL-833). Two names, so each close runs it again. */
-.cmp[data-swap='a'] .cmp-input[data-empty]::before, .cmp[data-swap='a'] .cmp-mode { animation: cmp-swap-a 160ms ease-out; }
-.cmp[data-swap='b'] .cmp-input[data-empty]::before, .cmp[data-swap='b'] .cmp-mode { animation: cmp-swap-b 160ms ease-out; }
-@keyframes cmp-swap-a { from { opacity: 0; } to { opacity: 1; } }
-@keyframes cmp-swap-b { from { opacity: 0; } to { opacity: 1; } }
+/* Once the strip has closed the placeholder and the mode chip cross-fade to the box's own mode (KERNEL-833, KERNEL-839): the new text fades in while the old one, kept in
+   data-from and in the chip's ghost, fades out over it, so neither is ever empty. Two names, so each close runs it again. */
+.cmp-input[data-empty][data-from]::after { content: attr(data-from); position: absolute; color: var(--muted); pointer-events: none; opacity: 0; }
+.cmp-field[data-hint] .cmp-input[data-empty][data-from]::after { max-width: calc(100% - 96px); }
+.cmp-mode { position: relative; }
+.cmp-ghost { position: absolute; inset: 0; padding: 0 8px; display: flex; align-items: center; gap: 6px; pointer-events: none; opacity: 0; color: var(--ink-2); }
+.cmp-ghost > svg:first-child { color: var(--muted); }
+.cmp-ghost > svg:last-child { margin: 0 -3px 0 -1.5px; color: var(--muted); }
+.cmp-ghost[data-mode='plan'], .cmp-ghost[data-mode='plan'] > svg { color: var(--plan); }
+.cmp[data-swap='a'] .cmp-input[data-empty]::before, .cmp[data-swap='a'] .cmp-mode:not(.cmp-lead) > :not(.cmp-ghost) { animation: cmp-swap-in-a 160ms ease-out; }
+.cmp[data-swap='b'] .cmp-input[data-empty]::before, .cmp[data-swap='b'] .cmp-mode:not(.cmp-lead) > :not(.cmp-ghost) { animation: cmp-swap-in-b 160ms ease-out; }
+.cmp[data-swap='a'] .cmp-input[data-empty][data-from]::after, .cmp[data-swap='a'] .cmp-ghost { animation: cmp-swap-out-a 160ms ease-out; }
+.cmp[data-swap='b'] .cmp-input[data-empty][data-from]::after, .cmp[data-swap='b'] .cmp-ghost { animation: cmp-swap-out-b 160ms ease-out; }
+@keyframes cmp-swap-in-a { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cmp-swap-in-b { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cmp-swap-out-a { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cmp-swap-out-b { from { opacity: 1; } to { opacity: 0; } }
 /* It mounts when a plan arrives: it opens over --plan-dur, then one soft light crosses it over 1.6s, behind its buttons. Done by 2.1s. The sweep is an accent, so it keeps its own length like the breathing loop. */
 .cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in var(--plan-dur) var(--ease-plan) both; }
 .cmp-planbar > * { position: relative; }
@@ -250,7 +262,7 @@
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 /* States jump instead, and the glow holds at 90%. */
 @media (prefers-reduced-motion: reduce) {
-  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send, .cmp-input::before, .cmp-mode { animation: none !important; transition: none !important; }
+  .cmp, .cmp::before, .cmp::after, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send, .cmp-input::before, .cmp-input::after, .cmp-mode > * { animation: none !important; transition: none !important; }
   .cmp-planbar[data-closing] { display: none; }
 }
 

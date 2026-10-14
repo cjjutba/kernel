@@ -1,5 +1,6 @@
 import type { Chat, ChatItem, Effort, Provider, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
+import { isSentItem } from '@shared/approvalAnswer'
 import { effortFor } from '@shared/effort'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { chatProvider, providerOf } from '@shared/providers'
@@ -402,8 +403,8 @@ export class Chats extends Feature {
       'chats.retry': async ({ chatId, itemId, now }) => {
         // Sending their own message again is the user stepping in; a Kernel update sent again isn't.
         const items = this.store.items(chatId)
-        const sent = items.slice(0, items.findIndex((i) => i.id === itemId) + 1).reverse().find((i) => i.kind === 'user')
-        if (sent?.kind === 'user' && !sent.from && !isKernelUpdate(sent)) this.k.lead.userSpoke(chatId)
+        const sent = items.slice(0, items.findIndex((i) => i.id === itemId) + 1).reverse().find(isSentItem)
+        if (sent && !sent.from && !isKernelUpdate(sent)) this.k.lead.userSpoke(chatId)
         const copy = await this.sessions.retry(chatId, itemId)
         // Retry now: the copy goes first and the running turn stops, past a limit's pause as Send now does.
         if (now && copy) await this.sendNow(chatId, copy.id)

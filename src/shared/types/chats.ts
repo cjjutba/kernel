@@ -126,6 +126,8 @@ export type ChatItem =
   /**
    * `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111).
    * `approvalId` is the plan approval a Kernel message answers, so the chat can show the user's answer instead of Kernel's text.
+   * With `approvalId` and no `from`, the row is the user's answer to that plan, question or agent card (KERNEL-836), id
+   * `answer-<approvalId>`, right after the card: drawn as the user's bubble and never sent to the agent (`approvalAnswer.ts`).
    * `checkpointId` is on the chat's first message only: the start checkpoint, taken before it went out (KERNEL-764).
    */
   | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate; approvalId?: string; checkpointId?: string }
@@ -262,6 +264,8 @@ export type TeamEventKind =
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   // A ready PR GitHub starts or stops blocking: a required review, a branch behind its base, other rules (KERNEL-401).
   | 'pr.blocked' | 'pr.unblocked'
+  // Kernel brought a PR it was about to merge up to date with its base, or stopped doing so after too many tries (KERNEL-835).
+  | 'pr.updated'
   // Where a ready PR's review stands, a grey segment of its own after Ready to merge (KERNEL-411).
   | 'pr.review'
   | 'review'

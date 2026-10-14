@@ -111,6 +111,11 @@ export interface TeamEvent {
   proposal?: { agentId: string; agent: string; task: string; why: string }
   /** `limit`: the usage limit that cut the turn off and what Kernel does about it. `limit.lifted`: the account it carries on on (KERNEL-777). */
   limit?: LimitNews
+  /**
+   * `pr.updated`: the base Kernel brought the PR up to date with before merging it by itself (KERNEL-835). `capped`: the base
+   * moved past it again after that many updates, so Kernel stopped updating it.
+   */
+  updated?: { base: string; capped?: number }
 }
 
 /**
@@ -268,6 +273,11 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
     case 'pr.blocked': return `GitHub won't merge ${pr} yet: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}.`
     case 'pr.unblocked': return `GitHub no longer blocks ${pr}.`
+    case 'pr.updated': {
+      const base = e.updated?.base ?? 'its base'
+      if (e.updated?.capped) return `${upper(pr)} fell behind ${base} again after Kernel brought it up to date ${e.updated.capped} times, so Kernel stopped updating it and won't merge it by itself.`
+      return `Kernel brought ${pr} up to date with ${base}, waiting for checks.`
+    }
     // A card segment only, never an event the Lead reads.
     case 'pr.review': return ''
     case 'turn': return 'Finished a turn.'
@@ -334,6 +344,10 @@ function cardText(e: TeamEvent, held = false): string {
     case 'pr.closed': return `Closed ${prOf(e)} without merging`
     case 'pr.blocked': return `Blocked on GitHub: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}`
     case 'pr.unblocked': return 'GitHub no longer blocks it'
+    case 'pr.updated': {
+      const base = e.updated?.base ?? 'its base'
+      return e.updated?.capped ? `Behind ${base} again, Kernel stopped updating it` : `Brought ${e.pr ? `#${e.pr}` : 'it'} up to date with ${base}, waiting for checks`
+    }
     case 'turn': return 'Finished a turn'
     case 'error': return 'Stopped with an error'
     case 'crash': return relaunched(e) ? `Stopped when ${e.reason === QUIT_REASON ? 'Kernel quit' : 'Kernel closed'}` : 'Session ended unexpectedly'
@@ -385,6 +399,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   for (const e of sorted) if (e.kind === 'shared' && e.shared) shares.set(e.shared.sharedId, e)
   const limit = last((e) => e.kind === 'limit')
   const lifted = last((e) => e.kind === 'limit.lifted')
+  const updated = last((e) => e.kind === 'pr.updated')
   // Once per PR: after Continue moved the workspace on, its new PR's opening is news too.
   const seen = new Set<string>()
   return sorted.filter((e) => {
@@ -398,6 +413,8 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     // The last limit, and a carry-on only after it: one from before a new limit is over (KERNEL-777).
     if (e.kind === 'limit') return e === limit
     if (e.kind === 'limit.lifted') return e === lifted && (!limit || e.n > limit.n)
+    // Kernel's last update of the PR's branch, or its stop, is the news (KERNEL-835).
+    if (e.kind === 'pr.updated') return e === updated
     // GitHub's block on a ready PR: the last word only, and only while the PR still reads that way (KERNEL-401).
     if (e.kind === 'pr.blocked' || e.kind === 'pr.unblocked') {
       if (e !== block) return false
@@ -776,6 +793,16 @@ export class LeadUpdates {
    * Kernel's move of `provider` off a limit waits: no account has room, or the one that does needs a sign-in or Keychain
    * access, or the switch failed (KERNEL-777). Limits held back while it moved now wake the Lead with the paused line.
    */
+  /**
+   * Kernel brought a teammate's PR up to date with `base` before merging it by itself, and waits for its checks (KERNEL-835).
+   * It rides along with the next update that wakes the Lead. `capped`: the base moved past it again after that many updates,
+   * so Kernel stopped, and the Lead tells the user.
+   */
+  branchUpdated(ws: Workspace, base: string, o: { capped?: number } = {}) {
+    if (this.silent(ws)) return
+    this.add(ws, { kind: 'pr.updated', updated: { base, ...(o.capped ? { capped: o.capped } : {}) } })
+  }
+
   limitStuck(provider: Provider, o: { stuck: 'full' | 'signIn'; resetsAt?: number }) {
     for (const [key, p] of this.pending) {
       let changed = false
@@ -1316,6 +1343,10 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
       case 'pr.blocked': if (e.blocked) wake(blockedTodo(pr, name, at, e.blocked, ws.baseRef, self)); break
+      // Kernel's own update waits for checks and says nothing to do. Its stop is the user's to know (KERNEL-835).
+      case 'pr.updated':
+        if (e.updated?.capped && ws.prState !== 'merged' && ws.prState !== 'closed') wake(`Tell the user ${e.updated.base} keeps moving past ${pr}, so Kernel stopped bringing it up to date after ${e.updated.capped} tries and won't merge it by itself. They can update and merge it by hand.`)
+        break
       case 'pr.unblocked': {
         const review = c.review
         // A review still to come, or one that holds the PR back, says what's next itself (KERNEL-635).
@@ -1352,7 +1383,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'turn':
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
         // An unblock that rides along says nothing for the turn, so it doesn't count (KERNEL-401).
-        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && ((x.kind.startsWith('pr.') && x.kind !== 'pr.unblocked') || x.kind === 'review'))) break
+        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && ((x.kind.startsWith('pr.') && x.kind !== 'pr.unblocked' && x.kind !== 'pr.updated') || x.kind === 'review'))) break
         // The turn ended by waiting for another PR, or by asking the Lead. That line already wakes the Lead, once (KERNEL-262, KERNEL-747).
         if (b.events.some((x) => (x.kind === 'wait.started' && !x.wait?.told) || x.kind === 'question')) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
