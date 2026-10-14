@@ -7,6 +7,7 @@ import { actions, getState, go, loadWorkspace, useStore, type State } from '../.
 import { sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
+import { dropPlace } from './chatPlace'
 import { nextTab } from './nextTab'
 import { sharedTab } from './shared/shared'
 import { archiveChatFromSidebar } from './archiveChat'
@@ -69,6 +70,7 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
   for (const id of ids) {
     await call('chats.close', { chatId: id })
     dropDrafts([id])
+    dropPlace(id)
   }
   await loadWorkspace(workspaceId)
   if (closing) {

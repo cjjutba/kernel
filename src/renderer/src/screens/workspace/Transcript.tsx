@@ -26,6 +26,7 @@ import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
+import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 
 const EMPTY: ChatItem[] = []
@@ -120,8 +121,8 @@ function showChanges() {
  * The files a finished turn created, edited or deleted, each row a button that opens that file's diff (KERNEL-586). From 7 files the
  * card shows the first 5 and a row that opens the rest in place. The rows are one tab stop and the arrow keys move between them.
  */
-function TurnFilesCard({ files, inWorkspace, onOpenDiff }: { files: ChangedFile[]; inWorkspace?: number; onOpenDiff: (path: string) => void }) {
-  const [open, setOpen] = useState(false)
+function TurnFilesCard({ rowId, files, inWorkspace, onOpenDiff }: { rowId: string; files: ChangedFile[]; inWorkspace?: number; onOpenDiff: (path: string) => void }) {
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), `${rowId}:files`, false)
   const [stop, setStop] = useState<string>()
   const v = useMemo(() => turnFiles(files), [files])
   const rows = open ? [...v.shown, ...v.hidden] : v.shown
@@ -176,7 +177,7 @@ function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, inWorkspac
   return (
     <div className="msg msg-reply">
       <Markdown text={item.text} />
-      {files && <TurnFilesCard files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
+      {files && <TurnFilesCard rowId={item.id} files={files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />}
       <MessageActions label="Message actions" copy={item.text} meta={meta}
         items={[{ icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) }]}
         more={{ menu: `reply:${item.id}`, items: forks }} />
@@ -442,7 +443,7 @@ const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta
 
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
   // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
-  const [open, setOpen] = useState(() => getState().ui.workspace.toolsOpen)
+  const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolsOpen)
   const id = `${block.id}-list`
   return (
     <div className="col" style={{ gap: 2 }}>
@@ -505,7 +506,7 @@ const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentNa
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
-  if (block.kind === 'files') return <TurnFilesCard files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
+  if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
   if (block.kind === 'reply') return <ReplyMessage item={block.item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} files={block.files} inWorkspace={inWorkspace} meta={block.meta} onOpenDiff={onOpenDiff} />
   const item = block.item
   switch (item.kind) {
@@ -527,7 +528,16 @@ const Block = memo(function Block({ block, chatId, changes, inWorkspace, agentNa
   }
 }, sameProps)
 
-export const Transcript = memo(function Transcript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void }) {
+interface TranscriptProps { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onOpenDiff: (path: string) => void; onForked: (chatId: string) => void }
+
+/** Each chat is its own view, so its scroll and open rows never carry over from the one before, and leaving it saves where the reader was (KERNEL-765). */
+export const Transcript = memo(function Transcript(props: TranscriptProps) {
+  return <ChatTranscript key={props.chat.id} {...props} />
+})
+
+const blockKey = (b: ThreadBlock) => (b.kind === 'item' ? b.item.id : b.id)
+
+function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onForked }: TranscriptProps) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const approvals = useStore((s) => s.approvals)
@@ -538,6 +548,11 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items), [items])
+  // The blocks that put an element in the thread, in order, so the thread's children line up with them.
+  const drawn = useRef<string[]>([])
+  drawn.current = blocks.filter((b) => b.kind !== 'item' || !(b.item.kind === 'result' || (b.item.kind === 'user' && !instructionOf(b.item) && userView(b.item) === 'hidden') || (b.item.kind === 'approval' && !approvals.some((a: Approval) => a.id === (b.item as Extract<ChatItem, { kind: 'approval' }>).approvalId)))).map(blockKey)
+  const itemsNow = useRef(items)
+  itemsNow.current = items
   // What the chat rail lists. A streamed reply redraws the transcript but changes none of this, so the rail keeps its list.
   const listed = useMemo(() => railEntries(items, isLead), [items, isLead])
   const rail = useRef(listed)
@@ -604,8 +619,50 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   }
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
   const jumping = useCallback((on: boolean) => { gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
-  // A chat opens at its end.
-  useLayoutEffect(() => { gliding.current = false; byHand.current = false; pin(true); followNow(); if (scroller.current) remember(scroller.current); return () => cancelAnimationFrame(frame.current) }, [chat.id])
+  // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
+  const rowBoxes = (): RowBox[] => {
+    const el = scroller.current
+    const kids = thread.current?.children
+    if (!el || !kids) return []
+    const base = el.getBoundingClientRect().top - el.scrollTop
+    return drawn.current.flatMap((id, i) => {
+      const r = kids[i]?.getBoundingClientRect()
+      return r ? [{ id, top: r.top - base, height: r.height }] : []
+    })
+  }
+  // A chat opens where it was left, or at its end when it was left there or the reader has sent something since (KERNEL-765).
+  useLayoutEffect(() => {
+    gliding.current = false
+    byHand.current = false
+    const el = scroller.current
+    const place = takePlace(chat.id)
+    const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
+    let again = 0
+    if (!el || opensAtEnd(place, lastSent)) {
+      pin(true)
+      followNow()
+      if (el) remember(el)
+    } else {
+      pinned.current = false
+      const put = () => {
+        const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
+        el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
+        remember(el)
+        show(distFromEnd(el) > PIN_PX)
+      }
+      put()
+      // Rows far above are measured a frame after they first show, so their heights move the spot once.
+      again = requestAnimationFrame(() => { if (!byHand.current) put() })
+    }
+    return () => {
+      cancelAnimationFrame(frame.current)
+      cancelAnimationFrame(again)
+      const view = scroller.current
+      // A chat that was just closed or archived has no spot to keep.
+      if (!view || !getState().chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed)) return
+      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, pinned.current, [...itemsNow.current].reverse().find(followsSend)?.id))
+    }
+  }, [])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
   // so the end doesn't pull it away. Only a click on something that opens counts, and only when the thread grows from it: a menu, or a row that closes, leaves following alone.
   const opening = useRef(false)
@@ -633,8 +690,11 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   // Sending a message follows it even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
   const sent = followsSend(last)
+  const arrived = useRef(false)
   useEffect(() => {
-    if (sent) { release(); byHand.current = false; pin(true) }
+    // The first run is the chat opening, which the effect above has placed already.
+    if (sent && arrived.current) { release(); byHand.current = false; pin(true) }
+    arrived.current = true
     if (pinned.current) followNow()
   }, [items.length, loose.length, running])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
@@ -688,6 +748,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
             onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
         )}
         <TranscriptWorkspace.Provider value={workspaceId}>
+        <TranscriptChat.Provider value={chatId}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
           {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
@@ -696,9 +757,10 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
           {running && !planWaits && <Elapsed since={since} />}
           <div ref={end} />
         </div>
+        </TranscriptChat.Provider>
         </TranscriptWorkspace.Provider>
       </div>
       {away && !empty && <IconButton icon="arrowDown" label="Scroll to bottom" className="ws-jump" onClick={toEnd} />}
     </div>
   )
-})
+}

@@ -419,6 +419,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceScrolledUp: scrollUp,
+  ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSaved: (page) => leaveSizeLimit(page, '600'),
   SettingsPRsSavedLight: (page) => leaveSizeLimit(page, '600'),
