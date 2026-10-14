@@ -152,7 +152,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
   }
   return (
     <RoomPage room={room} rs={rs} title="Agents" shared>
-      <Section title="Roles" scope="repo">
+      <Section title="Roles">
         <Row lead={<span className="rm-avatar" aria-hidden="true"><KernelMark size={14} /></span>} label="Kernel" labelId="rm-lead" className="rm-kernel" desc="Plans with you and hands out tasks.">
         <span className="set-actions">
           <span className="set-desc" role="status">{elsewhere ? `Customized in ${leadFile}` : customized ? 'Customized' : 'Default'}</span>
@@ -187,7 +187,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       )}
       {repoAgents.length > 0 && (
         <Section
-          title="In this repo" count={repoAgents.length} scope="repo" note="Switches pick who takes tasks." action={repoActions}
+          title="In this repo" count={repoAgents.length} note="Switches pick who takes tasks." action={repoActions}
           footnote={outside > 0 ? <>Your own and plugin agents are on <SettingsLink to={{ page: 'agents' }}>Settings, Agents</SettingsLink>.</> : undefined}
         >
           {repoAgents.map(agentRow)}
