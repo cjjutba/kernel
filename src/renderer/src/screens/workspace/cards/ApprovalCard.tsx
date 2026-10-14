@@ -222,6 +222,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
         </div>
       )}
       <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
+      {!many && a.detail && <div className="code">{a.detail}</div>}
       <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
         {q.options.map((o, i) => {
           const on = p.sel.includes(o.label)

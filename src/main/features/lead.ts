@@ -596,7 +596,9 @@ export class Lead extends Feature {
         return agent.file
       },
       // For the new agent card and create_agent's result (KERNEL-476).
-      reach: (agent, o) => this.k.mcp.reach(roomId, agent, o)
+      reach: (agent, o) => this.k.mcp.reach(roomId, agent, o),
+      // The same save as Settings, trust steps included, once the user presses Save on the card (KERNEL-683).
+      saveRoomScripts: (patch) => this.k.config.setRoom(roomId, patch)
     }
   }
 

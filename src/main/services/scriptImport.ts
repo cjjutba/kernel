@@ -42,14 +42,15 @@ function inArithmetic(script: string, fn: (span: string) => string): string {
 
 /**
  * A script with Conductor's and Superset's variables renamed to Kernel's (`SCRIPT_VARIABLES`), by whole name, where the
- * shell reads one: `$X`, `${X}` and inside `$(( ))`. `unknown` lists the `CONDUCTOR_*` and `SUPERSET_*` names it read
- * that Kernel has no variable for, which stay as written.
+ * shell reads one: `$X`, `${X}` and inside `$(( ))`. `renamed` lists the names it renamed, and `unknown` the
+ * `CONDUCTOR_*` and `SUPERSET_*` names it read that Kernel has no variable for, which stay as written.
  */
-export function convertScriptVariables(script: string): { script: string; unknown: string[] } {
+export function convertScriptVariables(script: string): { script: string; unknown: string[]; renamed: string[] } {
   const unknown = new Set<string>()
-  const rename = (name: string) => SCRIPT_VARIABLES[name] ?? (unknown.add(name), name)
+  const renamed = new Set<string>()
+  const rename = (name: string) => (SCRIPT_VARIABLES[name] ? (renamed.add(name), SCRIPT_VARIABLES[name]) : (unknown.add(name), name))
   const referenced = script.replace(REFERENCE, (_, lead: string, name: string) => lead + rename(name))
-  return { script: inArithmetic(referenced, (span) => span.replace(BARE, (_, name: string) => rename(name))), unknown: [...unknown].sort() }
+  return { script: inArithmetic(referenced, (span) => span.replace(BARE, (_, name: string) => rename(name))), unknown: [...unknown].sort(), renamed: [...renamed].sort() }
 }
 
 /** The most Kernel reads of another tool's file. A real one is a few kilobytes. */

@@ -1,5 +1,5 @@
 import { basename, dirname, join } from 'node:path'
-import type { ClaudePlan, DeepPartial, ProductionHint, Room, Workspace } from '@shared/types'
+import type { ClaudePlan, DeepPartial, ProductionHint, Room, RoomSettingsPatch, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
 import { bus } from '../bus'
@@ -108,6 +108,21 @@ export class Config extends Feature {
     return [...out.values()]
   }
 
+  /**
+   * Saves a patch to the room's `.kernel/settings.local.toml`, or to `settings.toml` with `shared`, then settles trust for
+   * what changed. Settings and the Lead's set_room_scripts both save here (KERNEL-683).
+   */
+  async setRoom(roomId: string, patch: RoomSettingsPatch, shared?: boolean): Promise<RepoSettings> {
+    const room = this.mustRoom(roomId)
+    const before = await this.k.trust.trustState(room)
+    const next = await saveRepoSettings(room.path, patch, shared)
+    this.roomRemotes.set(room.path, next.workspace.remote)
+    await this.k.trust.trustSaved(room, before, patch, !!shared, next)
+    // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
+    await this.k.trust.untrusted(room, next)
+    return next
+  }
+
   handlers() {
     return {
       'git.branches': async ({ roomId }) => {
@@ -129,16 +144,7 @@ export class Config extends Feature {
         this.roomRemotes.set(path, rs.workspace.remote)
         return rs
       },
-      'settings.setRoom': async ({ roomId, patch, shared }) => {
-        const room = this.mustRoom(roomId)
-        const before = await this.k.trust.trustState(room)
-        const next = await saveRepoSettings(room.path, patch, shared)
-        this.roomRemotes.set(room.path, next.workspace.remote)
-        await this.k.trust.trustSaved(room, before, patch, !!shared, next)
-        // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-        await this.k.trust.untrusted(room, next)
-        return next
-      },
+      'settings.setRoom': async ({ roomId, patch, shared }) => this.setRoom(roomId, patch, shared),
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
       'files.preview': async ({ roomId, patterns }) => {
         const { path } = this.mustRoom(roomId)

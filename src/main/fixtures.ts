@@ -279,6 +279,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.resize': async () => ok,
     'scripts.skipSetup': async () => ok,
     'scripts.suggest': async ({ roomId }) => f.scriptSuggestions?.[roomId] ?? [],
+    'scripts.askLead': async () => { throw new Error('Fixture mode does not start chats.') },
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
