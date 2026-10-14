@@ -19,6 +19,7 @@ const LEAVE_MS = 140
 const GAP = 10
 const EDGE = 8
 let warmUntil = 0
+let current: { close: () => void } | null = null
 
 /**
  * Shows a row's card after a deliberate hover, or at once on keyboard focus, like Conductor's workspace cards. Escape, scrolling
@@ -33,21 +34,34 @@ export function useHoverCard<T extends HTMLElement = HTMLDivElement>() {
   const pressed = useRef(false)
   const id = useId()
   const [at, setAt] = useState<DOMRect | null>(null)
-  const open = () => { timer.current = 0; const r = anchor.current?.getBoundingClientRect(); if (r) setAt(r) }
+  const shown = useRef(false)
+  const self = useRef({ close: () => {} })
+  const open = () => {
+    timer.current = 0
+    const r = anchor.current?.getBoundingClientRect()
+    if (!r) return
+    if (current && current !== self.current) current.close()
+    current = self.current
+    shown.current = true
+    setAt(r)
+  }
   const close = () => {
     window.clearTimeout(timer.current)
     window.clearTimeout(leaving.current)
     timer.current = 0
-    if (at) warmUntil = Date.now() + WARM_MS
+    if (shown.current) warmUntil = Date.now() + WARM_MS
+    shown.current = false
+    if (current === self.current) current = null
     setAt(null)
   }
+  self.current.close = close
   const off = (t: EventTarget) => t instanceof Element && !!t.closest('[data-card-off]')
   const soon = () => {
     window.clearTimeout(timer.current)
-    if (Date.now() < warmUntil) open()
+    if (current || Date.now() < warmUntil) open()
     else timer.current = window.setTimeout(open, OPEN_MS)
   }
-  useEffect(() => () => { window.clearTimeout(timer.current); window.clearTimeout(leaving.current) }, [])
+  useEffect(() => { const me = self.current; return () => { window.clearTimeout(timer.current); window.clearTimeout(leaving.current); if (current === me) current = null } }, [])
   useEffect(() => {
     if (!at) return
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
