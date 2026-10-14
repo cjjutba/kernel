@@ -73,6 +73,8 @@ export interface Fixture {
   /** By room id, the open issues of a GitHub room, each with the description and comments the Issues pane reads (KERNEL-471). */
   githubIssues?: Record<string, GithubIssueDetail[]>
   settings?: AppSettings
+  /** Channels whose calls never answer, so a screenshot can show the wait (IssuesLoading, AccountSwitching, KERNEL-759). */
+  hold?: string[]
   /**
    * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
    * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,

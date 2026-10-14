@@ -358,6 +358,7 @@ async function openOverrule(page: Page) {
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
+  AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },
   GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
