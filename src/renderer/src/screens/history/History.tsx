@@ -3,7 +3,7 @@ import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
-import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
+import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prGlyph, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import { restoredFromHistory } from '../workspace/byHand'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './history.css'
@@ -73,7 +73,7 @@ export function History() {
                     <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={14} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-room">{roomName(w)}</span>
-                    <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{prLabel(w)}</span>
+                    <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{w.prNumber ? <Icon name={prGlyph(w)} size={12} /> : null}{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
                     <span className="hs-actions">
                       <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>

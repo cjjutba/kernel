@@ -1,3 +1,4 @@
+import type { IconName } from '../../icons'
 import type { Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 
@@ -36,6 +37,20 @@ export function whenLabel(ts: number, now = Date.now()): string {
 }
 
 /** "#41 merged", "#7 closed", "No PR". An open PR on an archived workspace reads "#9 open". */
+/** The icon in front of a row's PR word: the same glyph the sidebar and the PR header draw for that state (KERNEL-753). */
+export const prGlyph = (w: Workspace): IconName => {
+  switch (w.prState) {
+    case 'merged': return 'merged'
+    case 'closed': return 'prClosed'
+    case 'draft': return 'prDraft'
+    case 'ready': return 'prReady'
+    case 'cifail': return 'prCifail'
+    case 'changes': return 'prChanges'
+    case 'conflict': return 'prConflict'
+    default: return 'pr'
+  }
+}
+
 export const prLabel = (w: Workspace) => (w.prNumber ? `#${w.prNumber} ${w.prState === 'none' ? 'open' : w.prState}` : 'No PR')
 
 /** Matches the name, branch, room or agent, every word, any case. */
