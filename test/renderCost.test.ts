@@ -102,7 +102,7 @@ const queue = (chatId: string) => (): PushEvent => ({ type: 'chat.queue', chatId
 const workspace = (id: string) => (i: number): PushEvent => ({ type: 'workspace', workspace: { ...workspaceOf(id), branch: `${workspaceOf(id).branch}-${i}` } })
 
 /** Parts of the screen in view. */
-const SCREEN_PARTS = ['Workspace', 'Transcript2', 'Composer', 'ChatTabs', 'RightPanel', 'BottomPanel']
+const SCREEN_PARTS = ['Workspace', 'ChatTranscript', 'Composer', 'ChatTabs', 'RightPanel', 'BottomPanel']
 const named = (list: string[], names: string[]) => list.filter((r) => names.some((n) => r === n || r.startsWith(`${n}[`)))
 const ofOtherWorkspace = (list: string[], mine: string) => list.filter((r) => /\[ws-[^\]]+\]$/.test(r) && !r.endsWith(`[${mine}]`))
 
@@ -113,7 +113,7 @@ describe('what a store event redraws', () => {
 
   it('draws the transcript, and nothing in the sidebar or another workspace, for a message in the chat on screen', async () => {
     const list = await renders(item(ON))
-    expect(list).toContain('Transcript2')
+    expect(list).toContain('ChatTranscript')
     expect(named(list, ['AppSidebar', 'RoomItem', 'ChatItemRow', 'WorkspaceItemRow', 'Toasts'])).toEqual([])
     expect(ofOtherWorkspace(list, SCREEN)).toEqual([])
     expect(named(list, ['Workspace', 'Composer', 'RightPanel', 'BottomPanel', 'ChatTabs'])).toEqual([])
