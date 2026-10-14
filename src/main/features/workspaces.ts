@@ -67,6 +67,19 @@ export class Workspaces extends Feature {
     return this.setUpWorkspace(ws, room, repo, chat, { brief: messageOf(o.prompt, o.parts), prompt: o.prompt, from: o.leadChatId ? 'lead' : undefined, leadChatId: o.leadChatId })
   }
 
+  /** The base Settings or the repo set for teammates' workspaces, or nothing for the repo's default branch. */
+  private configuredBase(repo: RepoSettings) {
+    return repo.workspace.baseRef ?? (this.settings.workspace.baseRef === DEFAULT_BASE_REF ? undefined : this.settings.workspace.baseRef)
+  }
+
+  /** The base a teammate's workspace from a hand-off starts from, as `cutWorkspace` picks it, and the room's remote (KERNEL-693). */
+  async handoffBase(roomId: string, baseRef?: string): Promise<{ remote: string; base: string }> {
+    const room = this.mustRoom(roomId)
+    const repo = await loadRepoSettings(room.path)
+    const remote = await this.k.config.remoteFor(room.path, repo)
+    return { remote, base: baseRef ?? this.configuredBase(repo) ?? `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}` }
+  }
+
   /**
    * Makes a workspace and its first chat, in `setup`: the ports, the fetch, the worktree on a new branch, and the record. A Lead
    * chat (`lead`) gets one too (KERNEL-405), always a worktree whatever "Default workspace type" says, on a branch named by
@@ -98,7 +111,7 @@ export class Workspaces extends Feature {
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     // A base nobody set is the repo's default branch, the one PRs go into (KERNEL-400). The Lead starts from it or the branch picked
     // in New chat, never the workspace base from Settings (KERNEL-405).
-    const set = o.baseRef ?? (o.lead ? undefined : repo.workspace.baseRef ?? (s.workspace.baseRef === DEFAULT_BASE_REF ? undefined : s.workspace.baseRef))
+    const set = o.baseRef ?? (o.lead ? undefined : this.configuredBase(repo))
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
     // The Lead's base already named the default branch.
     const wanted = set ?? `${remote}/${main ? stripRemote(main, remote) : await defaultBranch(room.path, remote).catch(() => 'main')}`

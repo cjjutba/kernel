@@ -125,6 +125,17 @@ describe("a teammate's wait_for_merge", () => {
     await k.stop()
   })
 
+  it('refuses work that merges into another base, which the branch would never get (KERNEL-693)', async () => {
+    const { k, noor, kai, call } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/release/1.2' })
+    expect(await call(kai, { on: '#164' })).toEqual({ isError: true, text: 'Not set: PR #164 merges into release/1.2, and your workspace starts from main, so its merge never reaches that branch.' })
+    expect(k.store.workspace(kai.id)!.waitsFor).toBeUndefined()
+    // The remote's copy of the same branch is the same base.
+    k.store.saveWorkspace({ ...k.store.workspace(noor.id)!, baseRef: 'origin/main' })
+    expect((await call(kai, { on: '#164' })).isError).toBe(false)
+    await k.stop()
+  })
+
   it('records nothing for work that already merged', async () => {
     const { k, noor, kai, call, mergeOnGitHub } = await setup()
     await mergeOnGitHub(noor)

@@ -1,6 +1,7 @@
 import type { TrackerKind, WaitsFor, Workspace, WorkspaceMode } from '@shared/types'
 import { isMerged } from '@shared/waits'
 import { issueTracker } from './trackers'
+import { stripRemote } from './worktrees'
 
 // Moved to shared so the window names waits as the engine does. Imported from here as before.
 export { isMerged, joinLabels, waitLabel } from '@shared/waits'
@@ -62,6 +63,10 @@ export interface WaitCheck {
   isLead: (w: Workspace) => boolean
   /** The waiter asks for itself (KERNEL-262), so the refusal speaks to a teammate, not the Lead. */
   teammate?: boolean
+  /** The room's remote, stripped from both bases before they are compared. */
+  remote?: string
+  /** A hand-off's base, the one create_workspace will use. A waiter's own is used when it is given. */
+  base?: string
 }
 
 /** Why the wait can't be set, as the end of a tool's refusal, or nothing when it can. */
@@ -82,6 +87,12 @@ export function waitRefusal(c: WaitCheck): string | undefined {
     if (t.prState === 'closed') return `${t.prNumber ? `PR #${t.prNumber}` : `${t.name}'s PR`} was closed without merging, so it will never merge.`
     if (t.status === 'archived' && t.prState !== 'merged') return `${t.name} was archived without merging, so it will never merge.`
     if (c.waiter && reaches(c.workspaces, t.id, c.waiter.id)) return `${t.name} already waits for ${c.waiter.name}, so both would wait forever.`
+    // A merge into another branch never reaches the waiter's, and "now starts from it" would be false (KERNEL-693).
+    const base = c.waiter?.baseRef ?? c.base
+    if (base && stripRemote(t.baseRef, c.remote) !== stripRemote(base, c.remote)) {
+      const who = c.teammate ? 'your workspace starts' : c.waiter ? `${c.waiter.name} starts` : 'the new workspace would start'
+      return `${t.prNumber ? `PR #${t.prNumber}` : `${t.name}'s work`} merges into ${stripRemote(t.baseRef, c.remote)}, and ${who} from ${stripRemote(base, c.remote)}, so its merge never reaches that branch.`
+    }
   }
   return undefined
 }
