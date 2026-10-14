@@ -521,6 +521,12 @@ export const platformFixtures: Record<string, Fixture> = {
     preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
     sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   })),
+  // KERNEL-684: Setup is empty, and Kernel found a script in the repo's Conductor file. Archive has a value, so it offers nothing.
+  SettingsRoomScriptsSuggestion: scene((f) => ({
+    ...clientA({ scripts: { ...kernelFiles.scripts, setup: '' }, sources: Object.fromEntries(Object.entries(kernelFiles.sources ?? {}).filter(([k]) => k !== 'scripts.setup')) }),
+    scriptSuggestions: { [ids.roomA]: [{ source: 'conductor', file: '.conductor/settings.toml', patch: { scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local' } }, notes: ['The archive script was left out because this room already has one.'] }] },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'setup' } }
+  })),
   // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
   SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
   SettingsRoomEnvironment: roomPage('environment', envRoomA),

@@ -1,6 +1,6 @@
 import './rooms.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FileToCopy, ProductionHint, Room, RoomSettings } from '@shared/types'
+import type { FileToCopy, ProductionHint, Room, RoomSettings, ScriptSuggestion } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { actions, useStore } from '../../../store'
@@ -113,14 +113,47 @@ function ScriptSheet({ roomId, kind, value, onClose }: { roomId: string; kind: S
   )
 }
 
-/** Setup and Archive: the first line of each script, and a sheet to edit the whole of it. */
+/** What Kernel found for the room (`scripts.suggest`, KERNEL-682). Empty until the first answer, and on a failed read. */
+function useSuggestions(roomId: string) {
+  const [found, setFound] = useState<ScriptSuggestion[]>([])
+  useEffect(() => {
+    let live = true
+    setFound([])
+    call('scripts.suggest', { roomId }).then((next) => { if (live) setFound(next) }, () => {})
+    return () => { live = false }
+  }, [roomId])
+  return found
+}
+
+const fromLine = (s: ScriptSuggestion) => (s.source === 'detected' ? `Detected from ${s.file}` : `From ${s.file}`)
+
+/** One offered script under an empty field: where it came from, the script in full, and Use, which saves only that script. */
+function SuggestionLine({ roomId, kind, suggestion, script }: { roomId: string; kind: ScriptKey; suggestion: ScriptSuggestion; script: string }) {
+  const [busy, run] = useBusy<'use'>()
+  return (
+    <div className="rm-suggest">
+      <div className="rm-suggest-head">
+        <span className="set-desc">{fromLine(suggestion)}</span>
+        <Button aria-label={`Use the suggested ${kind} script`} busy={busy === 'use'} busyLabel="Saving" onClick={() => void run('use', () => patchRoomSettings(roomId, { scripts: { [kind]: script } }))}>Use</Button>
+      </div>
+      <pre className="rm-suggest-script">{script}</pre>
+      {suggestion.notes.map((n) => <span key={n} className="set-desc">{n}</span>)}
+    </div>
+  )
+}
+
+/** Setup and Archive: the first line of each script, and a sheet to edit the whole of it. An empty one offers what `scripts.suggest` found. */
 function WorkspaceScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | null }) {
   const [editing, setEditing] = useState<ScriptKey | null>(null)
+  const found = useSuggestions(roomId)
   const row = (kind: ScriptKey, label: string) => {
     const value = rs?.scripts[kind] ?? ''
     const first = value.split('\n').find((l) => l.trim())
+    const offer = first || !rs ? undefined : found.find((s) => s.patch.scripts?.[kind]?.trim())
+    const source = rs?.sources?.[`scripts.${kind}`] === 'local' ? 'From settings.local.toml' : sourceLine(rs, `scripts.${kind}`)
     return (
-      <Row label={label} source={sourceLine(rs, `scripts.${kind}`)} desc={SCRIPT_HELP[kind].desc} onReset={isOverride(rs, `scripts.${kind}`) ? () => void patchRoomSettings(roomId, { scripts: { [kind]: null } }) : undefined}>
+      <Row label={label} source={source} desc={SCRIPT_HELP[kind].desc} onReset={isOverride(rs, `scripts.${kind}`) ? () => void patchRoomSettings(roomId, { scripts: { [kind]: null } }) : undefined}
+        full={offer && <SuggestionLine roomId={roomId} kind={kind} suggestion={offer} script={offer.patch.scripts![kind]!.trim()} />}>
         <span className={['set-value', 'rm-script-line', !first && 'rm-unset'].filter(Boolean).join(' ')}>{first ?? 'Not set'}</span>
         <Button aria-label={`${first ? 'Edit' : 'Add'} the ${label.toLowerCase()} script`} onClick={() => setEditing(kind)}>{first ? 'Edit' : 'Add'}</Button>
       </Row>
