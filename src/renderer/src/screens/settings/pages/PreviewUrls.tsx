@@ -53,7 +53,7 @@ export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings |
 }
 
 /** Add or edit one preview URL. A save writes the whole list. */
-function PreviewUrlForm({ urls, index, onSave, onClose }: { urls: Urls; index: number; onSave: (next: Urls) => Promise<void>; onClose: () => void }) {
+function PreviewUrlForm({ urls, index, onSave, onClose }: { urls: Urls; index: number; onSave: (next: Urls) => Promise<unknown>; onClose: () => void }) {
   const current = urls[index]
   const [name, setName] = useState(current?.name ?? '')
   const [url, setUrl] = useState(current?.url ?? '')

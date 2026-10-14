@@ -6,7 +6,7 @@
 
 **A mode the agent's provider can't run keeps its place and says why.** Auto is dimmed with an info line, "Auto isn't available for Codex agents yet", in Settings, in the onboarding step and in the mode menu. Settings and onboarding add what happens instead: the chat uses Accept edits. Shift+Tab skips such a mode. Onboarding preselects Accept edits with the Recommended tag when the Lead runs on Codex. KERNEL-435.
 
-**Permission mode replaces the Plan item in the + menu.** Plan is now one stop in the Shift+Tab cycle and a row in the mode menu, so the + menu's "Enter plan mode" item becomes "Permission mode ⇧Tab", which opens the mode menu. The plan toggles on New workspace and New chat with Rowan stay. Amends D-093. KERNEL-435.
+**Permission mode replaces the Plan item in the + menu.** Plan is now one stop in the Shift+Tab cycle and a row in the mode menu, so the + menu's "Enter plan mode" item becomes "Permission mode ⇧Tab", which opens the mode menu. The plan toggles on New workspace and New chat with Kernel stay. Amends D-093. KERNEL-435.
 
 **An approval says why it asked, on one line under the command.** The line sits above the buttons with an info icon and no color: "The classifier wants you to decide: writes outside the workspace" on Claude in Auto, "Codex runs it outside its sandbox" on Codex. A card with no reason looks as it did. KERNEL-435.
 

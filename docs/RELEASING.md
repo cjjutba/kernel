@@ -64,7 +64,7 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm release
    ```
 
-   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
+   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). It also writes `stagingPercentage`, 100 unless you pass `--rollout` (see Staged rollout). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`. Last, it checks the live feed against the zip (see Checking the live feed).
 
 `pnpm release --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 
@@ -74,9 +74,41 @@ When the release PR merges, Vercel redeploys the site, because the release file 
 
 Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `pnpm release` again on the same tag.
 
+## Staged rollout
+
+A release can reach a share of installs instead of all of them (KERNEL-712). `latest-mac.yml` carries a `stagingPercentage`, and electron-updater offers the update only to installs whose random id falls under it. An install keeps its id, so one that got 10% still gets 50%.
+
+```sh
+pnpm release --rollout 10          # publish to 10% of installs
+pnpm release:rollout 0.6.0 50      # raise a published release to 50%
+pnpm release:rollout 0.6.0 0       # pause it
+```
+
+`release:rollout` downloads the release's `latest-mac.yml`, sets the one line, and re-uploads only that file with `gh release upload --clobber`. The tag, the release and the other assets don't change. It refuses a version that isn't the latest release, because installs read only the latest one's feed.
+
+Until 1.0 every release goes out at 100, the default. After 1.0 the plan is 10, then 50, then 100.
+
+Two things to know before going below 100:
+
+- The feed shows only the latest release. Publish 0.6.0 at 10% and an install on 0.4.0 outside that 10% gets nothing at all, not 0.5.0. So a partial rollout also holds back the previous release from everyone it leaves out. Don't leave one partial for long.
+- Pausing at 0 stops new downloads. It can't undo an update already installed, so a broken release still needs a patch.
+
+Your own copy is one of the installs, and a partial rollout may leave it out. So step 7 of `/release`, updating your installed copy, happens at 100, or through the end-to-end update test (KERNEL-715) instead.
+
+## Checking the live feed
+
+After `pnpm release` publishes, and after every `release:rollout` change, the script reads `https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`. It checks the version and the rollout percentage, downloads the zip the feed names and compares its sha512 and size with the feed. A wrong version or percentage gets about a minute for GitHub to catch up before it fails. A zip that doesn't match fails at once, because installs would download it and reject it.
+
+Run the same check on its own at any time. It changes nothing:
+
+```sh
+pnpm release:rollout --check                 # whatever the feed says now
+pnpm release:rollout --check 0.6.0 100       # and expect this version and percentage
+```
+
 ## When a release is broken
 
-Never move or delete a published tag or release. Installed copies, the update feed and the download link already point at it. Fix forward: merge the fix with its own fragment, then release the next patch version with the same routine.
+Never move or delete a published tag or release. Installed copies, the update feed and the download link already point at it. Re-uploading `latest-mac.yml` to change the rollout is the one exception. Pause a bad release with `pnpm release:rollout <version> 0` so no more installs download it, then fix forward: merge the fix with its own fragment and release the next patch version with the same routine.
 
 ## How updates reach users
 

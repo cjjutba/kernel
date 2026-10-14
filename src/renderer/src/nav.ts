@@ -178,9 +178,11 @@ export function restorePlace(raw: string | null, s: State): { route: Route; tabs
     if (w.status === 'archived' || !t || typeof t !== 'object') continue
     const shared = paths(t.shared).filter(isText)
     const picks = Object.entries(t.sharedVersion && typeof t.sharedVersion === 'object' ? t.sharedVersion : {}).filter(([id, n]) => shared.includes(id) && Number.isInteger(n))
+    const recent = paths(t.recent).filter(isText).slice(0, 20)
     tabs[w.id] = {
       ...(isText(t.tab) ? { tab: t.tab } : {}), ...(isText(t.lastChat) ? { lastChat: t.lastChat } : {}), files: paths(t.files), diffs: paths(t.diffs),
-      ...(shared.length ? { shared } : {}), ...(picks.length ? { sharedVersion: Object.fromEntries(picks) as Record<string, number> } : {})
+      ...(shared.length ? { shared } : {}), ...(picks.length ? { sharedVersion: Object.fromEntries(picks) as Record<string, number> } : {}),
+      ...(recent.length ? { recent } : {})
     }
   }
   return { route: nearest(route, s), tabs }

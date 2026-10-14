@@ -309,8 +309,10 @@ export interface From { title: string; tab?: boolean }
 export interface ReviewState {
   /** Kinds that approved the PR's latest commit, where no verdict of the same kind found blockers on it. */
   approved: ReviewKind[]
-  /** Kinds whose verdict on the latest commit found blockers. */
+  /** Kinds whose verdict on the latest commit found blockers that the user didn't overrule. */
   blocking: ReviewKind[]
+  /** Kinds whose blockers on the latest commit the user overruled (KERNEL-732). */
+  overruled?: ReviewKind[]
   /** A verdict on the latest commit found blockers. */
   blockers: boolean
   /** Kinds whose review is setting up or working and hasn't sent a verdict on the latest commit. */
@@ -353,8 +355,11 @@ const reviewHolds = (review: ReviewState | undefined): boolean => !!review && (r
 /** A review is setting up or working, or Kernel is starting one, not only kinds waiting for usage to drop (KERNEL-633). */
 const reviewRuns = (review: ReviewState): boolean => review.reviewing.length > 0 || !!review.starting || (review.inProgress && !review.held?.length)
 
-/** Every review that looked at the PR approved its latest commit, and none is still to report. */
-const allApproved = (review: ReviewState | undefined): boolean => !!review?.approved.length && !review.waiting.length && !review.blockers && !review.inProgress
+/**
+ * Every review that looked at the PR approved its latest commit or had its blockers on it overruled (KERNEL-732), and none is
+ * still to report.
+ */
+const allApproved = (review: ReviewState | undefined): boolean => !!(review?.approved.length || review?.overruled?.length) && !review.waiting.length && !review.blockers && !review.inProgress
 
 /** "the UX review", "the code and UX reviews", for the middle of a sentence. */
 const reviewsOf = (kinds: readonly ReviewKind[]) => reviewsText(kinds).replace(/^The/, 'the')
@@ -382,7 +387,7 @@ function reviewStanding(review: ReviewState): string {
     const parts = [...(review.reviewing.length ? [`${reviewsText(review.reviewing)} ${review.reviewing.length === 1 ? 'is' : 'are'} running.`] : []), ...(review.held?.length ? [`${heldText(review.held)}.`] : [])]
     return parts.length ? parts.join(' ') : 'Kernel is starting its review.'
   }
-  if (allApproved(review)) return `${reviewsText(review.approved)} approved it.`
+  if (allApproved(review)) return [...(review.approved.length ? [`${reviewsText(review.approved)} approved it.`] : []), ...(review.overruled?.length ? [`The user overruled ${reviewsOf(review.overruled)}${review.overruled.length > 1 ? "'" : "'s"} blockers.`] : [])].join(' ')
   if (review.stale || review.waiting.length) return `${review.open ? `${review.open.name}'s review` : 'Its last review'} was of a different commit.`
   return 'Nobody has reviewed it yet.'
 }
@@ -401,7 +406,7 @@ function reviewCard(review: ReviewState | undefined): string[] {
     const held = review.held?.length ? [`${kindsText(review.held)} ${review.held.length === 1 ? 'review waits' : 'reviews wait'} for usage to drop`] : []
     return [...(review.reviewing.length || !held.length ? [reviewPhrase({ reviewing: review.reviewing }).text] : []), ...held, ...skipped]
   }
-  if (allApproved(review)) return [reviewPhrase({ approved: review.approved }).text, ...skipped]
+  if (allApproved(review)) return [...(review.approved.length ? [reviewPhrase({ approved: review.approved }).text] : []), ...(review.overruled?.length ? ['Blockers overruled'] : []), ...skipped]
   if (review.stale || review.waiting.length) return [reviewPhrase({ stale: true }).text, ...skipped]
   return [reviewPhrase({}).text, ...skipped]
 }
@@ -934,11 +939,13 @@ export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoRe
  * A kind the review round skipped to save usage is the user's to know (KERNEL-552). The Lead gives the user a short merge summary
  * with it, and says why Kernel didn't merge it by itself when the user's auto-merge is on (`refused`, KERNEL-556).
  */
-function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [], refused?: string): string {
+function readyToMerge(pr: string, kinds: ReviewKind[], skipped: ReviewKind[] = [], refused?: string, overruled: ReviewKind[] = []): string {
+  const passed = kinds.length ? `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.` : `${upper(pr)} passed checks and has no conflicts.`
+  const over = overruled.length ? ` The user overruled ${reviewsOf(overruled)}${overruled.length > 1 ? "'" : "'s"} blockers on its latest commit.` : ''
   const left = skipped.length ? ` Kernel skipped ${reviewsOf(skipped)} to save usage.` : ''
   const auto = refused ? ` Auto-merge is on, and Kernel didn't merge it. ${refused}` : ''
   const summary = ['what it changes', `which reviews ran${skipped.length ? ` and that ${reviewsOf(skipped)} didn't` : ''}`, ...(refused ? ["why Kernel didn't merge it"] : []), 'anything they should know']
-  return `${upper(pr)} passed checks, has no conflicts and ${reviewsOf(kinds)} approved it.${left}${auto} Tell the user it is ready to merge, with a short merge summary: ${summary.slice(0, -1).join(', ')}, and ${summary.at(-1)}.`
+  return `${passed}${over}${left}${auto} Tell the user it is ready to merge, with a short merge summary: ${summary.slice(0, -1).join(', ')}, and ${summary.at(-1)}.`
 }
 
 /**
@@ -1028,7 +1035,10 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         // archived its workspace, which can't review again.
         const state = c.stateOf?.(r.of)
         const ofAt = `(workspace ${r.of})`
-        if (r.verdict === 'blockers' && r.lens && r.current && state) {
+        // The user overruled this kind's blockers on the head since, so nobody fixes them, and the PR reads as the rest of its
+        // reviews have it (KERNEL-732).
+        const overruled = r.verdict === 'blockers' && !!r.lens && r.current && !!state?.overruled?.includes(r.lens)
+        if (r.verdict === 'blockers' && !overruled && r.lens && r.current && state) {
           // A kind's blockers on the head wait for the rest of its review round, so the author gets them all at once and the
           // Lead reads them side by side. After the last round Kernel runs, they go to the user instead (KERNEL-552). A kind
           // that waits for usage, maybe for hours, holds nothing back: the line names it instead (KERNEL-633).
@@ -1039,7 +1049,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
           wake(blockersTodo(state.blocking.length ? state.blocking : [r.lens], r.ofName, ofAt) + held, true)
           break
         }
-        if (r.verdict === 'blockers') {
+        if (r.verdict === 'blockers' && !overruled) {
           if (r.lens) { wake(blockersTodo([r.lens], r.ofName, ofAt), true); break }
           wake(`Send ${name}'s blockers to ${r.ofName} with message_agent ${ofAt}.${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true)
           break
@@ -1049,9 +1059,11 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (!r.current && of?.prNumber) { if (!r.lens || c.autoReview === false) wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
         // Another review of the PR is still running or found blockers. Its own news says what's next.
         if (r.lens && (state?.inProgress || state?.blockers)) break
-        const kinds = state?.approved.length ? state.approved : [r.lens ?? 'code']
+        const kinds = state?.approved.length ? state.approved : overruled ? [] : [r.lens ?? 'code']
         // A PR GitHub still blocks is its author's to update, or the user's to know (KERNEL-401).
-        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped, c.refused?.(of.id)), true); break }
+        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, ofAt, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, kinds, state?.skipped, c.refused?.(of.id), state?.overruled), true); break }
+        // Overruled blockers on a PR that isn't ready yet: its own news says when it is.
+        if (overruled) break
         const approver = r.lens ? reviewsText(kinds) : name
         if (!of?.prNumber) { wake(`${approver} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
         wake(`${approver} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
@@ -1087,7 +1099,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         const review = c.review
         // A review still to come, or one that holds the PR back, says what's next itself (KERNEL-635).
         if (reviewHolds(review) || review?.inProgress) break
-        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id))); break }
+        if (allApproved(review)) { wake(readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id), review?.overruled)); break }
         if (review?.open || review?.stale) break
         wake(`GitHub no longer blocks ${pr}, so it is ready to merge. Tell the user.`)
         break
@@ -1102,7 +1114,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (review?.stillBlocked) { wake(stillBlockedTodo(pr, review.stillBlocked, name, true)); break }
         // A branch behind its base is updated first: the update makes a new head, which any review would have to see again (KERNEL-401).
         if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
-        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id))); break }
+        if (allApproved(review)) { wake(blocked || readyToMerge(pr, review?.approved ?? [], review?.skipped, c.refused?.(ws.id), review?.overruled)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in its review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // No review looked at this PR: auto review is off (KERNEL-115), or none of the room's reviews covers what it changes.
         if (!review?.open && !review?.stale) {

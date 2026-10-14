@@ -1,4 +1,4 @@
-import { Button, Skeleton, useBusy } from '../../ui'
+import { Button, Skeleton, Spinner, useBusy } from '../../ui'
 import { boot, useStore } from '../../store'
 import './onboarding.css'
 
@@ -20,8 +20,7 @@ export function Loading() {
       <div className="ob-load-main">
         {error === undefined ? (
           <div className="ob-load-panel" role="status" aria-live="polite">
-            <span className="spin ob-spin" aria-hidden="true" />
-            <span className="ink2">Starting Kernel</span>
+            <span className="ob-load-title"><Spinner label={null} /><span className="ink2">Starting Kernel</span></span>
             <span className="muted" style={{ fontSize: 12.5 }}>{`Reconnecting ${sessions ? `${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : 'sessions'} and the hook server`}</span>
           </div>
         ) : (

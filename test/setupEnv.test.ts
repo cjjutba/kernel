@@ -128,6 +128,11 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
 
 describe('One database per workspace (KERNEL-449)', () => {
   it("gives setup the workspace's database and Compose names, and fills them into what setup hands on", async () => {
+    // As when Kernel runs inside a Kernel workspace: the parent's names are in the Mac's environment, and lose (KERNEL-710).
+    vi.stubEnv('KERNEL_WORKSPACE_SLUG', 'kernel_9d0ef99c6011')
+    vi.stubEnv('COMPOSE_PROJECT_NAME', 'kernel_9d0ef99c6011')
+    vi.stubEnv('DB', 'app_kernel_9d0ef99c6011')
+    onTestFinished(() => { vi.unstubAllEnvs() })
     const { k, room, dataDir } = await roomWith('echo "$KERNEL_WORKSPACE_SLUG|$COMPOSE_PROJECT_NAME" > names.txt && echo DB=app_\\${KERNEL_WORKSPACE_SLUG} >> "$KERNEL_ENV"')
     k.sessions.send = async () => ({ queued: false })
     const ws = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })

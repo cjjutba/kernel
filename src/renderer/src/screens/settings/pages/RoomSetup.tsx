@@ -57,7 +57,7 @@ const WHY: Record<ProductionHint['why'], string> = {
  * SettingsFilesProduction.png: each file that looks like production and the variable that gave it away, never its value
  * (KERNEL-449). Don't copy these files adds them to the room's exclusions. Keep copying remembers them for the room.
  */
-function ProductionBanner({ hints, onSkip, onKeep }: { hints: ProductionHint[]; onSkip: () => Promise<void>; onKeep: () => Promise<void> }) {
+function ProductionBanner({ hints, onSkip, onKeep }: { hints: ProductionHint[]; onSkip: () => Promise<unknown>; onKeep: () => Promise<unknown> }) {
   const [busy, run] = useBusy<'skip' | 'keep'>()
   const title = `${hints.length} ${hints.length === 1 ? 'file looks' : 'files look'} like production`
   return (
@@ -191,7 +191,7 @@ function SetupPage({ roomId, room, rs }: { roomId: string; room: Room; rs: RoomS
   const copy = rs?.files.copy ?? []
   const exclude = rs?.files.exclude ?? []
   /** Saves go to the personal file. The preview reads the saved list, so it reloads once the save has landed. */
-  const save = async (patch: { copy?: string[] | null; exclude?: string[] }) => { await patchRoomSettings(roomId, { files: patch }); void reload() }
+  const save = async (patch: { copy?: string[] | null; exclude?: string[] }) => { const saved = await patchRoomSettings(roomId, { files: patch }); void reload(); return saved }
   const reset = (key: 'copy' | 'symlinkNodeModules') => (isOverride(rs, `files.${key}`) ? () => void (key === 'copy' ? save({ copy: null }) : patchRoomSettings(roomId, { files: { [key]: null } })) : undefined)
   const skip = () => save({ exclude: [...new Set([...exclude, ...production.hints.map((h) => h.path)])] })
   const keep = async () => {
@@ -205,12 +205,12 @@ function SetupPage({ roomId, room, rs }: { roomId: string; room: Room; rs: RoomS
         <Row label="Gitignored files" source={sourceLine(rs, 'files.copy')} desc={previewDesc(room, copy, files, failed)} onReset={reset('copy')}
           full={
             <>
-              <TagList label="Files to copy" value={copy} addLabel="Add pattern" placeholder="certs/*.pem" onChange={(next) => void save({ copy: next })} />
+              <TagList label="Files to copy" value={copy} addLabel="Add pattern" placeholder="certs/*.pem" onChange={(next) => save({ copy: next })} />
               {!!files?.length && <ul className="set-preview rm-files" tabIndex={0} aria-label="Files that will be copied">{files.map((f) => <li key={f.path}><FileLabel path={f.path} /></li>)}</ul>}
             </>
           } />
         {exclude.length > 0 && (
-          <Row label="Never copied" desc="Skipped even when a pattern above matches." full={<TagList label="Files never copied" value={exclude} addLabel="Add file" onChange={(next) => void save({ exclude: next })} />} />
+          <Row label="Never copied" desc="Skipped even when a pattern above matches." full={<TagList label="Files never copied" value={exclude} addLabel="Add file" onChange={(next) => save({ exclude: next })} />} />
         )}
         <Row label="Symlink node_modules" source={sourceLine(rs, 'files.symlinkNodeModules')} desc="Faster setup. Workspaces share dependencies." onReset={reset('symlinkNodeModules')}>
           <Toggle label="Symlink node_modules" checked={!!rs?.files.symlinkNodeModules} onChange={(v) => void patchRoomSettings(roomId, { files: { symlinkNodeModules: v } })} />

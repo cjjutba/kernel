@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactElement, type Rea
 import type { Chat, Room, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon, type IconName } from '../../icons'
-import { IconButton, useBusy } from '../../ui'
+import { IconButton, Spinner, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route, type State } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { chatWorkspaces, isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
@@ -73,7 +73,7 @@ const restIcon = (g: WorkspaceGlyph, rest: WorkspaceGlyph, fallback: IconName): 
 }
 
 /** The spinner at a row's right end, 10px from the counts. It leaves with them when Archive takes the end on hover (`archivable`). */
-const RunningMark = ({ archivable }: { archivable?: boolean }) => <span className={`spin${archivable ? ' ws-right' : ''}`} aria-hidden="true" />
+const RunningMark = ({ archivable }: { archivable?: boolean }) => <Spinner label={null} className={archivable ? 'ws-right' : undefined} />
 
 function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen, leaving }: { route: Route; icon: IconName | ReactElement; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** The row's name when it has something new: its title goes bold and its label ends in Unread (KERNEL-508). */ unread?: string; /** In place of going to `route`. */ onOpen?: () => void; /** The row's workspace was archived. It folds away, keeping the fill it had on the screen the archive left (`from`), or `held` waits for its chat to fold. */ leaving?: Gone }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
@@ -92,7 +92,7 @@ function NavItem({ route, icon, label, right, sub, nested, slot, unread, onOpen,
 function Glyph({ g }: { g: WorkspaceGlyph }) {
   return (
     <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label}>
-      {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
+      {g.icon === 'spin' ? <Spinner label={null} /> : <Icon name={g.icon} />}
     </span>
   )
 }

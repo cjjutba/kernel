@@ -3,7 +3,7 @@ import { mkdtemp, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { MergeMethod, PrInfo, PrState, Workspace } from '@shared/types'
-import { blockedText, gatingChecks, headBlockers, kindStates, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
+import { autoMergeBlock, blockedText, gatingChecks, headBlockers, kindStates, mergeBlock, mergeNeedsPr, reviewVerdicts, verdictPhrase } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
 import { allowedMethod } from '../src/main/features/codeHost'
 import { run } from '../src/main/services/exec'
@@ -291,6 +291,59 @@ describe('blockers on the head commit (KERNEL-497)', () => {
     expect(mergeBlock(blockers, info({ blocked: 'rules' }), both, name, override)).toBe("GitHub's branch rules block this merge.")
     expect(mergeBlock({ ...blockers, prState: 'cifail' }, info(), both, name, override)).toBe(notReady)
     expect(mergeBlock(blockers, null, both, name, override)).toBe('Could not read the pull request from GitHub.')
+  })
+})
+
+describe('an overrule of the blockers on the head commit (KERNEL-732)', () => {
+  const code = (verdict: 'approved' | 'blockers', sha = B, o = {}) => v(verdict, sha, 1, { lens: 'code', blockers: [{ text: 'a' }, { text: 'b' }], ...o })
+  const security = (verdict: 'approved' | 'blockers', sha = B, o = {}) => v(verdict, sha, 2, { lens: 'security', agentId: 'kernel-reviewer', ...o })
+  const over = (kinds: ('code' | 'security')[], head = B) => ({ head, kinds, by: 'user' as const, ts: 3 })
+
+  it('clears the head\'s blockers in kindStates, headBlockers and mergeBlock, and lets the merge through without Merge anyway', () => {
+    const w = ws({ reviews: [code('blockers')], overruled: over(['code']) })
+    expect(kindStates(w)).toMatchObject({ ran: ['code'], blocking: [], count: 0, approved: [], waiting: [], overruled: ['code'] })
+    expect(kindStates(w).agentId).toBeUndefined()
+    expect(headBlockers(w)).toBeUndefined()
+    // "Require Reviewer approval" on: an overruled kind waits for no approval either.
+    expect(mergeBlock(w, info(), both, name)).toBeUndefined()
+    expect(mergeBlock(w, info(), { requireGreen: false, requireReviewer: false }, name)).toBeUndefined()
+    expect(verdictPhrase(w)).toEqual({ text: 'Blockers overruled', tone: 'faint' })
+  })
+
+  it("doesn't hide another kind's blockers, which still hold the merge", () => {
+    const w = ws({ reviews: [code('blockers'), security('blockers')], overruled: over(['code']) })
+    expect(kindStates(w)).toMatchObject({ blocking: ['security'], count: 1, overruled: ['code'], agentId: 'kernel-reviewer' })
+    expect(headBlockers(w)).toEqual({ agentId: 'kernel-reviewer', count: 1, lenses: ['security'] })
+    expect(mergeBlock(w, info(), both, name)).toBe('The security review found 1 blocker on the latest commit. Merge anyway to go ahead.')
+    // Another kind that hasn't approved still holds a merge that waits for every required review.
+    expect(mergeBlock(ws({ reviews: [code('blockers'), security('approved', A)], overruled: over(['code']) }), info(), both, name)).toContain("The security review hasn't approved")
+  })
+
+  it('stops counting once the PR has a new head commit, so its review counts again', () => {
+    // The overrule was of A. The review of B found blockers again.
+    const w = ws({ reviews: [code('blockers', A), code('blockers', B, { workspaceId: 'r2' })], overruled: over(['code'], A) })
+    expect(kindStates(w)).toMatchObject({ blocking: ['code'], overruled: [] })
+    expect(mergeBlock(w, info(), both, name)).toBe('The code review found 2 blockers on the latest commit. Merge anyway to go ahead.')
+    // GitHub's head wins over the saved one, both ways.
+    const old = ws({ prHead: A, reviews: [code('blockers', B)], overruled: over(['code'], A) })
+    expect(mergeBlock(old, info({ head: B }), both, name)).toContain('The code review found 2 blockers')
+    expect(mergeBlock({ ...old, overruled: over(['code']) }, info({ head: B }), both, name)).toBeUndefined()
+    // A head Kernel doesn't know matches no overrule.
+    expect(kindStates(ws({ prHead: undefined, reviews: [code('blockers')], overruled: over(['code']) }))).toMatchObject({ blocking: ['code'], overruled: [] })
+  })
+
+  it('takes the blockers back once the overrule is gone', () => {
+    const w = ws({ reviews: [code('blockers')], overruled: over(['code']) })
+    const { overruled: _gone, ...undone } = w
+    expect(mergeBlock(undone as Workspace, info(), both, name)).toBe('The code review found 2 blockers on the latest commit. Merge anyway to go ahead.')
+  })
+
+  it('never counts as an approval for auto-merge', () => {
+    const facts = { rules: { on: true, maxLines: 400, alwaysReview: [] }, local: false, requireGreen: true, pr: info({ checks: [{ name: 'Test', state: 'pass' as const }] }), diff: { lines: 1, touched: [] } }
+    const s = kindStates(ws({ reviews: [code('approved'), security('blockers', B, { optional: true })], overruled: over(['security']) }))
+    expect(s).toMatchObject({ approved: ['code'], blocking: [], overruled: ['security'] })
+    expect(autoMergeBlock({ ...facts, reviews: { required: ['code'], approved: s.approved, blocking: s.blocking, overruled: s.overruled, running: false } }))
+      .toBe("The security review found blockers on the latest commit, and auto-merge doesn't merge past an overrule.")
   })
 })
 

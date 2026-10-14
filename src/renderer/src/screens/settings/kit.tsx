@@ -1,14 +1,14 @@
 import './settings.css'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { Room, RoomSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, EmptyState, Icon, Kbd, Menu, useBusy, type IconName } from '../../ui'
+import { Button, EmptyState, Icon, Kbd, Menu, Spinner, useBusy, type IconName } from '../../ui'
 import { openNewRoom } from '../rooms/draft'
 import { useRoomSettings } from './useSettings'
 
 /**
- * One settings page: the title and its sections. Nothing goes under the title (KERNEL-680). `action` sits at the right of the title, and
+ * One settings page: the title, one muted line saying changes save as you make them (KERNEL-721), and its sections. `action` sits at the right of the title, and
  * `back` is the link above it to the page it opened from. `crumb` puts a link before the title, the room on a room's page.
  */
 export function Page({ title, crumb, action, back, children }: { title: string; crumb?: ReactNode; action?: ReactNode; back?: ReactNode; children: ReactNode }) {
@@ -21,11 +21,89 @@ export function Page({ title, crumb, action, back, children }: { title: string; 
             <h1>{crumb && <>{crumb}<span className="set-crumb-sep" aria-hidden="true"><Icon name="right" size={16} /></span></>}<span>{title}</span></h1>
             {action}
           </div>
+          <p className="set-saves">Changes save as you make them.</p>
         </div>
         {children}
       </div>
     </div>
   )
+}
+
+export type SaveState = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved' } | { kind: 'fading' } | { kind: 'clamped'; text: string }
+
+/** What a field's save gives back: the saved value, or undefined when the save failed. */
+export type SaveResult<T = unknown> = Promise<T | undefined> | void
+
+const SAVED_MS = 1500
+
+/**
+ * The note beside a field that saves when you click away (KERNEL-721). `track` follows the promise of a save: Saving while it runs, then
+ * Saved for a moment, or the clamp text, which stays until the next edit. A failed save (undefined) shows nothing, since the toast
+ * already said so. Only the newest save of a field counts.
+ */
+export function useSaveNote() {
+  const [state, setState] = useState<SaveState>({ kind: 'idle' })
+  const latest = useRef(0)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const mounted = useRef(true)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; clearTimeout(timer.current) } }, [])
+  const reset = () => { latest.current++; clearTimeout(timer.current); setState({ kind: 'idle' }) }
+  const track = async <T,>(saving: SaveResult<T>, clamp?: (saved: T) => string | undefined) => {
+    if (!saving) return
+    const id = ++latest.current
+    clearTimeout(timer.current)
+    setState({ kind: 'saving' })
+    const saved = await saving
+    if (id !== latest.current || !mounted.current) return
+    if (saved === undefined) { setState({ kind: 'idle' }); return }
+    const text = clamp?.(saved)
+    if (text) { setState({ kind: 'clamped', text }); return }
+    setState({ kind: 'saved' })
+    timer.current = setTimeout(() => setState({ kind: 'fading' }), SAVED_MS)
+  }
+  return { state, track, reset }
+}
+
+/** The words of a clamped number: main kept `saved` where the field asked for `asked`. */
+export function clampText(asked: number, saved: number): string | undefined {
+  if (saved === asked) return undefined
+  return `Set to ${saved}, the ${saved < asked ? 'most' : 'least'} allowed`
+}
+
+export function SaveNote({ state }: { state: SaveState }) {
+  if (state.kind === 'idle') return null
+  const text = state.kind === 'saving' ? 'Saving' : state.kind === 'clamped' ? state.text : 'Saved'
+  return (
+    <span className="set-save" data-state={state.kind} role="status" aria-hidden={state.kind === 'fading' || undefined}>
+      {state.kind === 'saving' ? <Spinner label={null} /> : state.kind !== 'clamped' && <Icon name="check" size={12} />}
+      {text}
+    </span>
+  )
+}
+
+/**
+ * Blur, unmount and Escape for a text field that saves when it loses focus (KERNEL-721). Text still unsaved when the field unmounts
+ * (Escape to leave, a shortcut, Cmd+W) saves then. Escape in the field puts the saved text back instead, so nothing saves.
+ */
+export function useBlurSave({ text, setText, saved, commit }: { text: string; setText: (t: string) => void; saved: string; commit: (text: string) => void }) {
+  const live = useRef({ text, saved, commit })
+  live.current = { text, saved, commit }
+  const done = useRef(saved)
+  const flush = () => {
+    const { text: t, saved: s, commit: c } = live.current
+    if (done.current === t) return
+    done.current = t
+    if (t !== s) c(t)
+  }
+  useEffect(() => () => flush(), [])
+  useEffect(() => { done.current = saved }, [saved])
+  const cancel = () => {
+    if (live.current.text === live.current.saved) return
+    done.current = live.current.saved
+    live.current.text = live.current.saved
+    setText(live.current.saved)
+  }
+  return { onBlur: flush, onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() } }
 }
 
 /** Where a section's values are saved: `repo` is `.kernel/settings.toml`, shared with everyone on the repo; `mac` stays on this Mac. */
@@ -134,23 +212,32 @@ export function DataTable({ label, columns, grid, rows, empty }: { label: string
  * branches, Files to copy). A `locked` value is built in: it shows a lock and can't be removed. Enter adds, Escape cancels.
  */
 export function TagList({ label, value, onChange, locked = [], addLabel = 'Add', placeholder, mono = true, disabled }: {
-  label: string; value: string[]; onChange: (next: string[]) => void; locked?: string[]; addLabel?: string; placeholder?: string; mono?: boolean; disabled?: boolean
+  label: string; value: string[]; onChange: (next: string[]) => SaveResult; locked?: string[]; addLabel?: string; placeholder?: string; mono?: boolean; disabled?: boolean
 }) {
   const [adding, setAdding] = useState(false)
   const [text, setText] = useState('')
   const addRef = useRef<HTMLButtonElement>(null)
+  const note = useSaveNote()
+  const live = useRef({ text, value, onChange })
+  live.current = { text, value, onChange }
+  const take = () => {
+    const { text: t, value: v, onChange: change } = live.current
+    live.current.text = ''
+    const next = t.split(/[\n,]/).map((x) => x.trim()).filter((x) => x && !v.includes(x) && !locked.includes(x))
+    if (next.length) void note.track(change([...v, ...next]))
+  }
+  useEffect(() => () => take(), [])
   const commit = (keepOpen: boolean) => {
-    const next = text.split(/[\n,]/).map((t) => t.trim()).filter((t) => t && !value.includes(t) && !locked.includes(t))
-    if (next.length) onChange([...value, ...next])
+    take()
     setText('')
     if (!keepOpen) { setAdding(false); addRef.current?.focus() }
   }
   return (
     <div className="set-tags" role="list" aria-label={label}>
-      {locked.map((t) => <span key={`l-${t}`} role="listitem" className="set-tag" data-locked=""><Icon name="lock" size={12} /><span className={mono ? 'mono' : undefined}>{t}</span></span>)}
+      {locked.map((t) => <span key={`l-${t}`} role="listitem" className="set-tag" data-locked=""><Icon name="lock" size={12} /><span className={['set-tag-text', mono && 'mono'].filter(Boolean).join(' ')} title={t}>{t}</span></span>)}
       {value.filter((t) => !locked.includes(t)).map((t) => (
         <span key={t} role="listitem" className="set-tag">
-          <span className={mono ? 'mono' : undefined}>{t}</span>
+          <span className={['set-tag-text', mono && 'mono'].filter(Boolean).join(' ')} title={t}>{t}</span>
           <button type="button" className="set-tag-x" aria-label={`Remove ${t}`} disabled={disabled} onClick={() => onChange(value.filter((v) => v !== t))}><Icon name="x" size={12} /></button>
         </span>
       ))}
@@ -158,9 +245,10 @@ export function TagList({ label, value, onChange, locked = [], addLabel = 'Add',
         ? <input
             autoFocus className={['set-tag-input', mono && 'mono'].filter(Boolean).join(' ')} aria-label={`${addLabel} to ${label}`} placeholder={placeholder} spellCheck={false} value={text}
             onChange={(e) => setText(e.target.value)} onBlur={() => commit(false)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(true) } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setText(''); setAdding(false); addRef.current?.focus() } }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(true) } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); live.current.text = ''; setText(''); setAdding(false); addRef.current?.focus() } }}
           />
-        : <button ref={addRef} type="button" className="set-tag-add" disabled={disabled} aria-label={`${addLabel} to ${label}`} onClick={() => setAdding(true)}><Icon name="plus" size={12} />{addLabel}</button>}
+        : <button ref={addRef} type="button" className="set-tag-add" disabled={disabled} aria-label={`${addLabel} to ${label}`} onClick={() => { note.reset(); setAdding(true) }}><Icon name="plus" size={12} />{addLabel}</button>}
+      <SaveNote state={note.state} />
     </div>
   )
 }
@@ -178,36 +266,56 @@ export function Keys({ keys }: { keys: string[] }) {
 }
 
 /** A list with one entry per line (Always ask before, Never allow). Saved when the field loses focus. */
-export function LinesField({ label, value, onSave }: { label: string; value: string[]; onSave: (lines: string[]) => void }) {
+export function LinesField({ label, value, onSave }: { label: string; value: string[]; onSave: (lines: string[]) => SaveResult }) {
   const [text, setText] = useState(value.join('\n'))
   const ref = useRef<HTMLTextAreaElement>(null)
+  const note = useSaveNote()
   useEffect(() => { setText(value.join('\n')) }, [value.join('\n')])
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  const commit = () => {
-    const next = text.split('\n').map((l) => l.trim()).filter(Boolean)
-    if (next.join('\n') !== value.join('\n')) onSave(next)
-  }
-  return <textarea ref={ref} className="set-lines" aria-label={label} rows={Math.max(2, value.length)} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />
+  const save = useBlurSave({
+    text, setText, saved: value.join('\n'),
+    commit: (t) => { const next = t.split('\n').map((l) => l.trim()).filter(Boolean); if (next.join('\n') !== value.join('\n')) void note.track(onSave(next)) }
+  })
+  return (
+    <div className="set-field">
+      <textarea ref={ref} className="set-lines" aria-label={label} rows={Math.max(2, value.length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
+      <SaveNote state={note.state} />
+    </div>
+  )
 }
 
 /** A short list on one line, comma separated (Protected branches). */
-export function ListField({ label, value, onSave }: { label: string; value: string[]; onSave: (items: string[]) => void }) {
+export function ListField({ label, value, onSave }: { label: string; value: string[]; onSave: (items: string[]) => SaveResult }) {
   const [text, setText] = useState(value.join(', '))
+  const note = useSaveNote()
   useEffect(() => { setText(value.join(', ')) }, [value.join(',')])
-  const commit = () => {
-    const next = text.split(',').map((l) => l.trim()).filter(Boolean)
-    if (next.join(',') !== value.join(',')) onSave(next)
-  }
-  return <input className="set-inline" aria-label={label} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  const save = useBlurSave({
+    text, setText, saved: value.join(', '),
+    commit: (t) => { const next = t.split(',').map((l) => l.trim()).filter(Boolean); if (next.join(',') !== value.join(',')) void note.track(onSave(next)) }
+  })
+  return (
+    <span className="set-field-inline">
+      <SaveNote state={note.state} />
+      <input className="set-inline" aria-label={label} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save}
+        onKeyDown={(e) => { save.onKeyDown(e); if (e.key === 'Enter') e.currentTarget.blur() }} />
+    </span>
+  )
 }
 
 /** Free text, kept as typed (blank lines and all): instructions and scripts. Saved when the field loses focus. */
-export function TextField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (text: string) => void; placeholder?: string }) {
+export function TextField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (text: string) => SaveResult; placeholder?: string }) {
   const [text, setText] = useState(value)
   const ref = useRef<HTMLTextAreaElement>(null)
+  const note = useSaveNote()
   useEffect(() => { setText(value) }, [value])
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
-  return <textarea ref={ref} className="set-lines" aria-label={label} placeholder={placeholder} rows={Math.max(1, text.split('\n').length)} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== value && onSave(text)} />
+  const save = useBlurSave({ text, setText, saved: value, commit: (t) => void note.track(onSave(t)) })
+  return (
+    <div className="set-field">
+      <textarea ref={ref} className="set-lines" aria-label={label} placeholder={placeholder} rows={Math.max(1, text.split('\n').length)} spellCheck={false} value={text} onChange={(e) => { note.reset(); setText(e.target.value) }} {...save} />
+      <SaveNote state={note.state} />
+    </div>
+  )
 }
 
 /** A page for a repo's settings when there is no repo to read them from yet. */

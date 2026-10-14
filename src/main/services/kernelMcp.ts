@@ -75,6 +75,8 @@ export interface KernelToolDeps {
   archiveWorkspace: (workspaceId: string) => Promise<void>
   /** Merges the workspace's PR as the Merge button does, refusing with the reason when it can't merge (KERNEL-349). */
   mergeWorkspace?: (workspaceId: string) => Promise<Workspace>
+  /** Overrules the reviews' blockers on the PR's head commit for the user, refusing with the reason when nothing blocks it (KERNEL-732). Left out, overrule_blockers refuses. */
+  overrule?: (workspaceId: string, note?: string) => Workspace | Promise<Workspace>
   /** Whether Settings, Pull requests lets the Lead merge. Read on each call, since the Lead's tools are built once. Left out, it can't (KERNEL-352). */
   leadMerge?: () => boolean
   /** Whether the user started the Lead's current turn, rather than Kernel. Left out, Kernel did. */
@@ -213,6 +215,9 @@ export const LABEL_MAX = 60
 export const MERGE_OFF = 'Merging is off in Settings, Pull requests. Tell the user they can merge from the PRs tab.'
 export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them which PRs are ready.'
 
+/** overrule_blockers' refusal when the user's latest message doesn't hold go_ahead, or Kernel started the turn (KERNEL-732). */
+export const NO_OVERRULE = "Not overruled: only the user can overrule a review's blockers. Quote their words from their latest message in go_ahead, or tell them what the reviews found and ask."
+
 /** Why merge_workspace skips a PR in this state, shared with Merge all (KERNEL-411). */
 const NOT_MERGEABLE = notMergeable
 
@@ -342,7 +347,7 @@ export const SAVE_SCRIPTS_QUESTION = 'Save these scripts to .kernel/settings.loc
 const SAVE = 'Save'
 
 /** What the Lead's server tells the model, next to the tools. */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, propose who gets what in one yes-or-no question, and call create_workspace only on a go-ahead that raises nothing new, quoted in go_ahead. Answer a reply that also asks questions, changes scope or only agrees with the idea, then ask once. Filing tracker issues needs the same go-ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off. When the user says to go past a review\'s blockers, call overrule_blockers with their words in go_ahead.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -624,7 +629,7 @@ export function kernelTools(d: KernelToolDeps) {
       }
       return text(lines.join('\n'))
     }),
-    tool('merge_workspace', "Merge workspaces' pull requests, only when the user's own message asks. A review's id merges the PR it reviewed. Each merge needs what Settings, Pull requests asks for, such as passing checks and the reviewer's approval, and no blockers from a reviewer on its latest commit. A PR that can't merge is skipped with the reason.", {
+    tool('merge_workspace', "Merge workspaces' pull requests, only when the user's own message asks. A review's id merges the PR it reviewed. Each merge needs what Settings, Pull requests asks for, such as passing checks and the reviewer's approval, and no blockers from a reviewer on its latest commit that the user didn't overrule. A PR that can't merge is skipped with the reason.", {
       workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
     }, async ({ workspace_ids }) => {
       // Both gates hold here: mcp__kernel__* tools are auto-allowed, and the Lead's tools are built once per session (D-008).
@@ -662,6 +667,29 @@ export function kernelTools(d: KernelToolDeps) {
         }
       }
       return text(lines.join('\n'))
+    }),
+    tool('overrule_blockers', "Overrule the blockers the reviews found on a pull request's latest commit, only when the user's own latest message says to go past them. A review's id overrules on the PR it reviewed. Until a new commit, a merge goes ahead without Merge anyway, and the new commit's reviews count again. Auto-merge never merges past an overrule.", {
+      workspace_id: z.string().describe('Workspace id from list_workspaces'),
+      go_ahead: z.string().describe("The user's words that overruled the blockers, quoted from their latest message, for example \"those blockers are fine, ignore them\". Kernel refuses when they aren't in it"),
+      note: z.string().optional().describe("Why, in a line, as the user put it")
+    }, async ({ workspace_id, go_ahead, note }) => {
+      const refuse = (why: string) => ({ ...text(why), isError: true })
+      if (!d.overrule) return refuse('Not overruled: overruling is not available here.')
+      // The same check as create_workspace's go_ahead (KERNEL-678), and only in a turn the user started, as merge_workspace.
+      if (!d.userTurn?.() || !quotesUser(go_ahead, d.userSaid?.()?.text)) return refuse(NO_OVERRULE)
+      const asked = d.workspaces().find((w) => w.id === workspace_id && w.status !== 'archived')
+      if (!asked) return refuse(`Not overruled: ${workspace_id} is not an open workspace in this room.`)
+      // A review has no PR of its own: its blockers are on the work it reviewed, as merge_workspace reads it.
+      const target = asked.reviewOf ? d.workspaces().find((w) => w.id === asked.reviewOf) : asked
+      if (!target || target.status === 'archived') return refuse(`Not overruled: the work ${asked.name} reviewed is no longer open.`)
+      const ws = await latestPr(target)
+      try {
+        const after = await d.overrule(ws.id, note)
+        const o = after.overruled!
+        return text(`Overruled ${reviewsText(o.kinds).replace(/^The/, 'the')}${o.kinds.length > 1 ? "'" : "'s"} blockers on PR #${after.prNumber} at ${o.head.slice(0, 7)}. A merge goes ahead without Merge anyway until a new commit. Merge it with merge_workspace only if the user asked.`)
+      } catch (e) {
+        return refuse(`Not overruled: ${firstLine(e instanceof Error ? e.message : String(e))}`)
+      }
     }),
     tool('read_plans', 'Read the plans approved in every tab of this chat, newest first: the tab, when it was approved and the plan.', {}, async () => {
       const plans = d.plans?.() ?? []

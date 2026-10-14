@@ -165,7 +165,7 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect((await h['agents.addStarter']({ roomId: room.id, id: 'ivy' })).id).toBe('ivy')
     expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['api.md', 'architect.md', 'ivy.md', 'web.md'])
     await expect(h['agents.addStarter']({ roomId: room.id, id: 'ivy' })).rejects.toThrow('Ivy is already on the team.')
-    await expect(h['agents.addStarter']({ roomId: room.id, id: 'rowan' })).rejects.toThrow("isn't one of Kernel's starter agents")
+    await expect(h['agents.addStarter']({ roomId: room.id, id: 'ghost' })).rejects.toThrow("isn't one of Kernel's starter agents")
     expect((await k.agents(room.id)).find((a) => a.id === 'ivy')).toMatchObject({ member: true })
     // Theo's tools line can't edit, so Theo reviews and takes no tasks.
     const theo = await h['agents.addStarter']({ roomId: room.id, id: 'theo' })
@@ -187,40 +187,39 @@ describe("a repo's own agents (KERNEL-397)", () => {
     await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/leads this room/)
   })
 
-  // The rowan.md cases here are on purpose: an old repo file named rowan.md still customizes Kernel.
-  it('lets a rowan.md marked Lead customize Kernel, and moves its Lead chats to Kernel (KERNEL-692)', async () => {
-    const rowan = '---\nname: rowan\ndescription: Lead. Plans.\nlead: true\ntools: Read, Bash\n---\nYou are Rowan.'
-    const { k, h, repo, room } = await boot({ '.claude/agents/rowan.md': rowan, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
-    const file = join(repo, '.claude', 'agents', 'rowan.md')
+  it('lets a planner.md marked Lead customize Kernel, and moves its Lead chats to Kernel (KERNEL-692)', async () => {
+    const planner = '---\nname: planner\ndescription: Lead. Plans.\nlead: true\ntools: Read, Bash\n---\nYou are Planner.'
+    const { k, h, repo, room } = await boot({ '.claude/agents/planner.md': planner, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
+    const file = join(repo, '.claude', 'agents', 'planner.md')
     const team = await k.agents(room.id)
     expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Kernel', true], ['web', 'Web', false]])
-    expect(team[0]).toMatchObject({ builtIn: 'lead', prompt: 'You are Rowan.', tools: ['Read', 'Bash'], file })
+    expect(team[0]).toMatchObject({ builtIn: 'lead', prompt: 'You are Planner.', tools: ['Read', 'Bash'], file })
     // A Lead chat from before the upgrade ran on the file's own id. It moves to Kernel, and is still the room's Lead chat.
     const { chat } = await leadTools(k, room.id)
-    k.store.saveWorkspace({ ...k.store.workspace(chat.workspaceId)!, agentId: 'rowan' })
+    k.store.saveWorkspace({ ...k.store.workspace(chat.workspaceId)!, agentId: 'planner' })
     await k.agents(room.id)
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
-    expect(k.sessions['d'].agentFor(k.store.workspace(chat.workspaceId)!)).toMatchObject({ id: 'kernel-lead', name: 'Kernel', prompt: 'You are Rowan.' })
-    // Reset only deletes kernel.md, so it leaves a committed rowan.md alone.
-    await expect(h['agents.resetLead']({ roomId: room.id })).rejects.toThrow('Kernel is customized in rowan.md.')
-    expect(await readFile(file, 'utf8')).toBe(rowan)
+    expect(k.sessions['d'].agentFor(k.store.workspace(chat.workspaceId)!)).toMatchObject({ id: 'kernel-lead', name: 'Kernel', prompt: 'You are Planner.' })
+    // Reset only deletes kernel.md, so it leaves a committed planner.md alone.
+    await expect(h['agents.resetLead']({ roomId: room.id })).rejects.toThrow('Kernel is customized in planner.md.')
+    expect(await readFile(file, 'utf8')).toBe(planner)
   })
 
   it('keeps the Lead chats of a room whose Lead file no longer marks it Lead', async () => {
-    const rowan = '---\nname: rowan\ndescription: Lead. Plans.\nlead: true\n---\nYou are Rowan.'
-    const { k, repo, room } = await boot({ '.claude/agents/rowan.md': rowan, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
+    const planner = '---\nname: planner\ndescription: Lead. Plans.\nlead: true\n---\nYou are Planner.'
+    const { k, repo, room } = await boot({ '.claude/agents/planner.md': planner, '.claude/agents/web.md': AGENTS['.claude/agents/web.md'] })
     const { chat } = await leadTools(k, room.id)
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     // Before KERNEL-397 a description that said Lead was enough. Now Kernel runs as it ships, with the same chats.
-    await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), rowan.replace('lead: true\n', ''))
+    await writeFile(join(repo, '.claude', 'agents', 'planner.md'), planner.replace('lead: true\n', ''))
     const team = await k.agents(room.id)
-    expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Kernel', true], ['rowan', 'Rowan', false], ['web', 'Web', false]])
+    expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Kernel', true], ['planner', 'Planner', false], ['web', 'Web', false]])
     // Its prompt has no pull request workflow either, so it starts as a helper (KERNEL-465).
-    expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-subagent' }, { kind: 'looks-like-lead' }])
+    expect(team.find((a) => a.id === 'planner')?.warnings).toEqual([{ kind: 'looks-like-subagent' }, { kind: 'looks-like-lead' }])
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
-    await rm(join(repo, '.claude', 'agents', 'rowan.md'))
+    await rm(join(repo, '.claude', 'agents', 'planner.md'))
   })
 })
 

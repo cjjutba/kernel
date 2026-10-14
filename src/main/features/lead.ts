@@ -577,6 +577,7 @@ export class Lead extends Feature {
       // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
       mergeWorkspace: (id) => this.k.prs.mergePr(id),
       leadMerge: () => this.settings.pr.leadMerge,
+      overrule: (id, note) => this.k.reviews.overrule(id, { by: 'lead', note }),
       userTurn: () => !this.sessions.kernelTurn(chat.id),
       // The user's own latest message in this tab, not Kernel's, which a go_ahead quote has to come from (KERNEL-678).
       userSaid: () => {

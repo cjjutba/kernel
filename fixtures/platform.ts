@@ -217,7 +217,10 @@ const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTING
 const roomRules = [
   'pnpm test', 'pnpm typecheck',
   'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName',
-  'git log --oneline origin/main..HEAD'
+  'git log --oneline origin/main..HEAD',
+  'mkdir .k109-scratch && git init -q -b main .k109-scratch/r && git -C .k109-scratch/r -c user.email=t@t -c user.name=t commit -q --allow-empty -m i && git -C .k109-scratch/r worktree add ../w feat-a && ls .k109-scratch',
+  'rm -rf node_modules site/node_modules && pnpm install --frozen-lockfile 2>&1 | grep -E "Done|completed installing"; pnpm -C site install --frozen-lockfile 2>&1 | grep -E "Done|completed" | tail -3',
+  'gh pr create --title "build: move the Kernel repo from npm to pnpm (KERNEL-110)" --body-file - <<\'EOF\'\n## Summary\nThe app at the root and the website in site/ now use pnpm 12.3.4.\nEOF'
 ]
 /** The tools saved the same way (KERNEL-455), as Claude Code writes a rule. */
 const roomToolRules = ['mcp__linear__get_issue', 'mcp__github__create_pull_request', 'WebFetch(domain:docs.stripe.com)']
@@ -562,6 +565,11 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-455: the room's mode menu is open, over Use app default.
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
+  SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsClamped: settingsPage('prs', { settings: prSettings }),
+  SettingsPRsSavedLight: settingsPage('prs', { settings: { ...prSettings, appearance: { ...prSettings.appearance, theme: 'light' } } }),
   // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
   SettingsRoomSetupFiles: scene((f) => ({
     ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),

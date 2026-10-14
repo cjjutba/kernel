@@ -296,6 +296,11 @@ export interface KernelApi {
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
   /** `override` is a person's Merge anyway past a reviewer's blockers. The Lead and Merge all never send it (KERNEL-497). */
   'pr.merge': { req: { workspaceId: string; override?: boolean }; res: Workspace }
+  /**
+   * Overrules the reviews' blockers on the PR's head commit, so Merge goes ahead without Merge anyway until a new commit
+   * (KERNEL-732). Refused when nothing blocks. `clear` takes the overrule back (Undo).
+   */
+  'reviews.overrule': { req: { workspaceId: string; note?: string; clear?: boolean }; res: Workspace }
   /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
   'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
@@ -641,6 +646,11 @@ export type PushEvent =
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
   /** The room's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
   | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
+  /**
+   * A room's .kernel/settings.toml or settings.local.toml changed on disk outside Kernel: by hand, from Open settings.toml or a
+   * git pull. `settings` is what `settings.room` reads now. Kernel's own saves and a file that stops parsing send none (KERNEL-723).
+   */
+  | { type: 'settings.roomChanged'; roomId: string; settings: RoomSettings }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
   /** The agents that join every room, as `agents.listGlobal` returns them, after ~/.claude/agents or the plugin list changed (KERNEL-640). */

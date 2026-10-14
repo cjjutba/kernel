@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AppUpdate } from '@shared/types'
 import { bus } from './bus'
@@ -9,15 +9,20 @@ type Note = { title: string; body: string }
 /** What electron-updater's `update-available` and `update-downloaded` carry that Kernel reads. */
 export interface UpdateInfo { version: string; releaseNotes?: string | { version: string; note: string | null }[] | null }
 
+/** electron-updater's logger shape. */
+export interface UpdateLogger { info(m?: unknown): void; warn(m?: unknown): void; error(m?: unknown): void; debug?(m: string): void }
+
 /** The part of electron-updater's autoUpdater Kernel uses. Tests pass a fake. */
 export interface UpdateEngine {
   autoDownload: boolean
   autoInstallOnAppQuit: boolean
+  logger?: UpdateLogger | null
   on(event: 'checking-for-update' | 'update-not-available', fn: () => void): unknown
   on(event: 'update-available' | 'update-downloaded', fn: (info: UpdateInfo) => void): unknown
   on(event: 'download-progress', fn: (p: { percent: number }) => void): unknown
   on(event: 'error', fn: (err: Error) => void): unknown
-  checkForUpdates(): Promise<unknown>
+  /** The result's token cancels the download the check started, so a stalled one can be retried. */
+  checkForUpdates(): Promise<{ cancellationToken?: { cancel(): void } } | null | void>
   quitAndInstall(): void
 }
 
@@ -27,6 +32,15 @@ interface Saved { version: string; notes: Note[]; shown: boolean }
 /** How often a running Kernel checks for a new release. */
 export const CHECK_EVERY_MS = 4 * 3600_000
 
+/** How long a failed check or download waits before the next try: the first failure, the second, then every one after (KERNEL-711). */
+export const RETRY_MS = [5 * 60_000, 15 * 60_000, 3600_000]
+
+/** A download with no progress for this long has stalled, so Kernel drops it and retries (KERNEL-711). */
+export const STALL_MS = 10 * 60_000
+
+/** Waking the Mac checks only when the last check is at least this old (KERNEL-711). */
+export const WAKE_MS = 30 * 60_000
+
 /** How long a Kernel that could not start waits for an update to download before it says so (KERNEL-408). */
 export const BOOT_UPDATE_MS = 90_000
 
@@ -35,20 +49,44 @@ export const BOOT_UPDATE_MS = 90_000
  * background; the footer pill appears once it's ready, and Restart to update installs it. After it installs,
  * the first `get()` says `installed` so What's new shows once with the release notes.
  *
+ * Checks carry on after an update is ready. A newer version downloads behind the ready one, which stays in the pill until
+ * the newer one replaces it. A failed check or download retries on `RETRY_MS`, a download with no progress for `STALL_MS`
+ * is dropped and retried, and waking the Mac checks (KERNEL-711).
+ *
  * Failures stay quiet: a check that can't reach GitHub (offline, or the repo still private) reports idle again.
  * A copy outside Applications never checks, since it can't replace itself, and says why in `blocked` (KERNEL-443).
  */
 export class Updater {
   private state: AppUpdate
   private saved: Saved | null
-  private timer?: NodeJS.Timeout
   private readonly file: string
   /** Called after every status change, for `readyWithin`. */
   private readonly watchers = new Set<() => void>()
+  /** The next check: `CHECK_EVERY_MS` after a check, or the backoff after a failure. Only set after `start()`. */
+  private timer?: NodeJS.Timeout
+  private started = false
+  /** Failures in a row, for the backoff. A check with no update, or a finished download, puts it back to 0. */
+  private failures = 0
+  /** This check already failed, so its error event and its rejected promise count once. */
+  private failed = false
+  private lastCheck = 0
+  /** The version downloading now. With an update ready, the download runs behind it and the pill doesn't change. */
+  private fetching?: string
+  private cancel?: { cancel(): void }
+  private watchdog?: NodeJS.Timeout
+  /** Restart to update was pressed while a newer version downloaded, so it installs once that one is ready. */
+  private installWanted = false
+  private tmp = 0
+  /** Saves run one after another, so an older write never lands over a newer one. */
+  private saving: Promise<void> = Promise.resolve()
 
   /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (KERNEL-154). */
   /** `outside` is where a copy outside Applications runs from (`runsFrom` in loginItem.ts). */
-  constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string; outside?: string }) {
+  constructor(private o: {
+    current: string; dataDir: string; engine: UpdateEngine; notesFile?: string; outside?: string
+    /** Timings, for tests. They default to the constants above. */
+    every?: number; retry?: number[]; stall?: number; wake?: number
+  }) {
     this.file = join(o.dataDir, 'update.json')
     this.saved = readSaved(this.file)
     this.state = { status: 'idle', current: o.current, currentNotes: this.currentNotes(), blocked: o.outside && blockedReason(o.outside) }
@@ -56,30 +94,63 @@ export class Updater {
     e.autoDownload = true
     // A downloaded update installs on the next quit even without Restart to update.
     e.autoInstallOnAppQuit = true
-    e.on('checking-for-update', () => { if (this.state.status !== 'ready') this.set({ status: 'checking', error: undefined }) })
-    e.on('update-not-available', () => { if (this.state.status !== 'ready') this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: undefined }) })
-    e.on('update-available', (info) => this.set({ status: 'downloading', version: info.version, notes: parseNotes(info.releaseNotes), progress: 0 }))
-    e.on('download-progress', (p) => { if (this.state.status === 'downloading') this.set({ progress: Math.round(p.percent) }) })
+    // electron-updater's own lines, staging percentage and user ID included. Kernel's log keeps warnings and errors.
+    e.logger = {
+      info: (m) => console.warn('[updater]', m),
+      warn: (m) => console.warn('[updater]', m),
+      error: (m) => console.error('[updater]', m)
+    }
+    e.on('checking-for-update', () => { if (!this.ready()) this.set({ status: 'checking', error: undefined }) })
+    e.on('update-not-available', () => {
+      this.succeeded()
+      if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: undefined })
+    })
+    e.on('update-available', (info) => {
+      this.fetching = info.version
+      this.armWatchdog()
+      if (this.ready()) return this.log(`downloading ${info.version} behind ready ${this.state.version}`)
+      this.set({ status: 'downloading', version: info.version, notes: parseNotes(info.releaseNotes), progress: 0 })
+    })
+    e.on('download-progress', (p) => {
+      if (!this.fetching) return
+      this.armWatchdog()
+      if (this.state.status === 'downloading') this.set({ progress: Math.round(p.percent) })
+    })
     e.on('update-downloaded', (info) => {
+      this.endDownload()
+      this.succeeded()
       const notes = parseNotes(info.releaseNotes)
       this.set({ status: 'ready', version: info.version, notes, progress: undefined, error: undefined })
       this.save({ version: info.version, notes, shown: false })
+      if (this.installWanted) this.o.engine.quitAndInstall()
     })
     e.on('error', (err) => {
-      console.warn('[kernel] update check failed', err.message)
-      if (this.state.status !== 'ready') this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: err.message })
+      this.log(`check or download failed: ${err.message}`)
+      this.endDownload()
+      if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined, error: err.message })
+      this.fail()
     })
   }
 
-  /** Checks now and then every few hours. */
+  /** Checks now, then every few hours, sooner after a failure. */
   start() {
     if (this.state.blocked) return console.warn(`[kernel] updates are off: ${this.state.blocked}`)
+    this.started = true
     void this.check()
-    this.timer = setInterval(() => void this.check(), this.o.every ?? CHECK_EVERY_MS)
-    this.timer.unref?.()
   }
 
-  stop() { clearInterval(this.timer) }
+  stop() {
+    this.started = false
+    clearTimeout(this.timer)
+    clearTimeout(this.watchdog)
+  }
+
+  /** The Mac woke. Timers ran late while it slept, so check, unless a check ran in the last `WAKE_MS`. */
+  wake() {
+    if (!this.started || Date.now() - this.lastCheck < (this.o.wake ?? WAKE_MS)) return
+    this.log('checking after wake')
+    void this.check()
+  }
 
   get(): AppUpdate {
     const s = this.saved
@@ -90,10 +161,21 @@ export class Updater {
     return this.state
   }
 
-  /** Settings > About and the timer. Resolves once the check is answered; the download carries on after. */
+  /**
+   * Settings > About and the timer. Resolves once the check is answered; the download carries on after. A check during a
+   * download leaves it alone. With an update ready it still checks, so a newer release replaces the ready one.
+   */
   async check(): Promise<AppUpdate> {
-    if (this.state.blocked || this.state.status === 'ready' || this.state.status === 'downloading') return this.state
-    await this.o.engine.checkForUpdates().catch(() => undefined)
+    if (this.state.blocked || this.fetching) return this.state
+    this.lastCheck = Date.now()
+    this.failed = false
+    this.next(this.o.every ?? CHECK_EVERY_MS)
+    const result = await this.o.engine.checkForUpdates().catch((err: unknown) => {
+      this.log(`check failed: ${err instanceof Error ? err.message : String(err)}`)
+      this.fail()
+      return undefined
+    })
+    if (this.fetching && result?.cancellationToken) this.cancel = result.cancellationToken
     return this.state
   }
 
@@ -121,8 +203,16 @@ export class Updater {
     })
   }
 
+  /**
+   * Restart to update. While a newer version downloads behind the ready one, it waits for that one, since the feed has
+   * moved past the ready version. If the newer download fails, the ready one installs: Kernel has already stopped (KERNEL-711).
+   */
   install() {
     if (this.state.status !== 'ready') throw new Error('No update is ready')
+    if (this.fetching && this.fetching !== this.state.version) {
+      this.installWanted = true
+      return this.log(`install waits for ${this.fetching} to download`)
+    }
     this.o.engine.quitAndInstall()
   }
 
@@ -136,15 +226,76 @@ export class Updater {
     return this.saved?.version === this.o.current && this.saved.notes.length ? this.saved.notes : undefined
   }
 
+  private ready() { return this.state.status === 'ready' }
+
+  /** Schedules the next check `ms` from now, replacing the one scheduled. */
+  private next(ms: number) {
+    clearTimeout(this.timer)
+    if (!this.started) return
+    this.timer = setTimeout(() => void this.check(), ms)
+    this.timer.unref?.()
+  }
+
+  private succeeded() {
+    this.failures = 0
+    this.next(this.o.every ?? CHECK_EVERY_MS)
+  }
+
+  /** Retries on the backoff. A check fails once, however many ways electron-updater reports it. */
+  private fail() {
+    if (this.failed) return
+    this.failed = true
+    const retry = this.o.retry ?? RETRY_MS
+    const ms = retry[Math.min(this.failures, retry.length - 1)]
+    this.failures++
+    if (this.started) this.log(`retrying in ${Math.round(ms / 60_000)} min`)
+    this.next(ms)
+    // The newer version failed, and Kernel stopped for the restart, so the ready one installs.
+    if (this.installWanted && this.ready()) this.o.engine.quitAndInstall()
+  }
+
+  private armWatchdog() {
+    clearTimeout(this.watchdog)
+    this.watchdog = setTimeout(() => this.stalled(), this.o.stall ?? STALL_MS)
+    this.watchdog.unref?.()
+  }
+
+  private endDownload() {
+    clearTimeout(this.watchdog)
+    this.fetching = undefined
+    this.cancel = undefined
+  }
+
+  /** No progress for `STALL_MS`: drop the download, so the retry can start a new one. electron-updater waits on the old one otherwise. */
+  private stalled() {
+    this.log(`download of ${this.fetching} stalled`)
+    const cancel = this.cancel
+    this.endDownload()
+    cancel?.cancel()
+    if (!this.ready()) this.set({ status: 'idle', version: undefined, notes: undefined, progress: undefined })
+    this.fail()
+  }
+
+  private log(what: string) {
+    console.warn(`[kernel] update: ${what} (running ${this.o.current})`)
+  }
+
   private set(patch: Partial<AppUpdate>) {
+    const before = this.state
     this.state = { ...this.state, ...patch }
+    if (before.status !== this.state.status || before.version !== this.state.version) this.log(`${this.state.status}${this.state.version ? ` ${this.state.version}` : ''}`)
     bus.push({ type: 'update', update: this.state })
     for (const w of [...this.watchers]) w()
   }
 
+  /** Writes a temporary file and renames it over update.json, so a crash mid-write never leaves half a file. */
   private save(s: Saved) {
     this.saved = s
-    void writeFile(this.file, JSON.stringify(s)).catch((err) => console.warn('[kernel] could not save update.json', err))
+    const tmp = `${this.file}.${process.pid}.${++this.tmp}.tmp`
+    this.saving = this.saving
+      .then(() => writeFile(tmp, JSON.stringify(s)))
+      .then(() => rename(tmp, this.file))
+      .catch((err) => console.warn('[kernel] could not save update.json', err))
   }
 }
 
@@ -200,4 +351,61 @@ export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
     }
   }
   return notes.filter((n) => n.title)
+}
+
+/** The flag for the end-to-end update test (KERNEL-713). */
+export const UPDATE_TEST_FLAG = '--kernel-update-test'
+
+/**
+ * `--kernel-update-test [<feed-url> <dir>]` from the command line, or undefined without the flag. The values are the
+ * arguments after the flag up to the next one starting with `-`, so a `-psn_` argument macOS adds is never read as one.
+ */
+export function updateTestArgs(argv: string[]): { feed?: string; dir?: string } | undefined {
+  const at = argv.indexOf(UPDATE_TEST_FLAG)
+  if (at < 0) return undefined
+  const rest = argv.slice(at + 1)
+  const end = rest.findIndex((a) => a.startsWith('-'))
+  const values = end < 0 ? rest : rest.slice(0, end)
+  return { feed: values[0], dir: values[1] }
+}
+
+/** The part of electron-updater's autoUpdater the update test sets as well. */
+export interface UpdateTestEngine extends UpdateEngine {
+  allowDowngrade: boolean
+  autoRunAppAfterInstall: boolean
+  setFeedURL(feed: { provider: 'generic'; url: string }): void
+}
+
+/**
+ * The update test (KERNEL-713): points the updater at a generic feed, waits for the update, prints `ready <version>` and
+ * quits so it installs, or prints `none` and exits 1. It never relaunches, so the new build never opens a full Kernel.
+ *
+ * Squirrel.Mac checks the new build's code signature against the running app's, and `allowDowngrade` stays false, so the
+ * test can only install a newer build signed by the same team. Nothing here turns either check off.
+ *
+ * On macOS, electron-updater reports the download before Squirrel has fetched it, so the test quits through
+ * `quitAndInstall`, which waits for Squirrel. With `autoRunAppAfterInstall` off that is a plain quit, and Squirrel
+ * installs the update as the app exits. A quit that hasn't happened `within` later exits 1.
+ */
+export async function runUpdateTest(o: {
+  feed: string; dir: string; current: string; engine: UpdateTestEngine
+  print(line: string): void; exit(code: number): void; within?: number
+}) {
+  const within = o.within ?? BOOT_UPDATE_MS
+  o.engine.setFeedURL({ provider: 'generic', url: o.feed })
+  o.engine.allowDowngrade = false
+  o.engine.autoRunAppAfterInstall = false
+  // No `outside`: Squirrel replaces the app wherever it runs, and the test runs a copy outside Applications.
+  const updater = new Updater({ current: o.current, dataDir: o.dir, engine: o.engine })
+  const version = await updater.readyWithin(within)
+  if (!version) {
+    o.print('none')
+    return o.exit(1)
+  }
+  o.print(`ready ${version}`)
+  setTimeout(() => {
+    console.error(`[kernel] update test: ${version} did not install within ${within / 1000} s`)
+    o.exit(1)
+  }, within)
+  updater.install()
 }

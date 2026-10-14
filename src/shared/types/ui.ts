@@ -162,6 +162,8 @@ export interface WorkspaceTabs {
   shared?: string[]
   /** By shared id, the version a tab shows when it isn't the newest. */
   sharedVersion?: Record<string, number>
+  /** Tab ids, the one selected last first, at most 20. Closing the open tab goes back to the first of these that is still open. */
+  recent?: string[]
 }
 
 /** Whose bottom pane a flag is for: a Lead chat, or a teammate's workspace. */

@@ -36,7 +36,7 @@
 .pr-tone .btn.pr-solid:hover { background: color-mix(in srgb, var(--b-solid) 88%, var(--b-on)); }
 /* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
 .pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
-.pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
+.pr-tone .btn[aria-busy='true'] { --spin-ink: var(--b-text); }
 /* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). */
 .pr-word { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
@@ -130,3 +130,9 @@
 .pr-tone .split-caret:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
 /* The capsule's state word sits on the buttons' centre line. */
 .pr-cap .pr-state { line-height: 16px; }
+
+.pr-overruled { display: flex; align-items: baseline; gap: 6px; padding: 0 12px 8px 14px; font-size: 12px; color: var(--ink-3); }
+.pr-overruled .pr-overruled-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pr-undo { flex-shrink: 0; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-2); text-decoration: underline; cursor: pointer; }
+.pr-undo:hover { color: var(--ink); }
+.pr-undo:disabled { cursor: default; opacity: 0.6; }

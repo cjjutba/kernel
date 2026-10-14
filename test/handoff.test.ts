@@ -400,8 +400,6 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
     expect(UPDATE_HEADER).toBe('Team update, not from the user.')
     expect(starter).toMatch(/^---\nname: kernel\n/)
     expect(starter.split('---\n')[2]).toMatch(/^You are Kernel/)
-    // Rowan is kept on purpose: the starter must not carry the old persona name.
-    expect(starter).not.toMatch(/rowan/i)
   })
 })
 

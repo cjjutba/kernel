@@ -41,8 +41,8 @@
 .ob-load-group { display: flex; flex-direction: column; gap: 12px; }
 .ob-load-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); }
 .ob-load-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 48px 0; box-sizing: border-box; }
+.ob-load-title { display: inline-flex; align-items: center; gap: 8px; }
 .ob-load-error { max-width: 420px; padding: 0 16px; text-align: center; font-size: 12.5px; text-wrap: balance; user-select: text; }
-.spin.ob-spin { width: 18px; height: 18px; border-width: 2px; }
 
 .hk-lede { margin: 0; padding: 0 18px 12px; color: var(--muted); line-height: 1.5; }
 .hk-status { display: flex; align-items: center; gap: 10px; margin: 0 18px; height: 40px; padding: 0 14px; border: 1px solid var(--card-line); border-radius: var(--r); background: var(--surface); font-weight: 500; }

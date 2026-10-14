@@ -260,10 +260,12 @@ function rememberRoom(route: Route) {
 export function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
+/** How many selected tabs a workspace remembers for closing the open one. */
+const RECENT_TABS = 20
 const emptyTabs: WorkspaceTabs = { files: [], diffs: [], shared: [] }
 /** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file, diff or shared tab joins the open ones. */
 function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
-  const t = { ...emptyTabs, ...tabs, tab }
+  const t = { ...emptyTabs, ...tabs, tab, recent: [tab, ...(tabs?.recent ?? []).filter((id) => id !== tab)].slice(0, RECENT_TABS) }
   if (tab.startsWith('file:')) { const path = tab.slice(5); return t.files.includes(path) ? t : { ...t, files: [...t.files, path] } }
   if (tab.startsWith('diff:')) { const path = tab.slice(5); return t.diffs.includes(path) ? t : { ...t, diffs: [...t.diffs, path] } }
   if (tab.startsWith('shared:')) { const id = tab.slice(7); return (t.shared ?? []).includes(id) ? t : { ...t, shared: [...(t.shared ?? []), id] } }
@@ -796,6 +798,7 @@ export function apply(e: PushEvent) {
     case 'account.mcpSignInAll': return actions.accounts.mcpRun(e.run)
     case 'account.mcpNeeded': return mcpNeededToast(e.needed)
     case 'online': return actions.system.setOnline(e.online)
+    case 'settings.roomChanged': return actions.settings.setRoom(e.roomId, e.settings)
     case 'toast': return void actions.ui.toast(e.toast)
   }
 }

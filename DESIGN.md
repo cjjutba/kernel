@@ -117,7 +117,7 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Hover actions: message actions (copy, retry, edit, and a reply's `...` menu with its forks) and sidebar `...` menus appear on hover and on keyboard focus. A finished turn's reply ends in one line: the turn's time (`4m 12s · 10:31`), always shown, then those actions (KERNEL-346).
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
 - Unread is a bold title, never a dot. A chat row, workspace row, collapsed room and chat tab take 600 weight in `--ink`, and the icon keeps its state, so a row that needs you shows its plan or question icon in ink and the bold title together. The chat on screen is read (KERNEL-508).
-- Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner, trust/shield: the room's scripts wait for you to trust them). Never red backgrounds.
+- Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/dot loader, trust/shield: the room's scripts wait for you to trust them). Never red backgrounds.
 - Check rows (KERNEL-437): a readiness check, a room setup step and a room's Push access row say their result with an icon and a word. A green check passes, a red x-circle fails, and a triangle in ink, with no color, warns. A failing row gives its one fix under it, a command in a code box with Copy or a single button. A warning never blocks. Continue stays on and the row's own button is bordered, so the one ink button is the way forward. A line that passes with more to say, like the gh login's source or Bedrock, adds a muted note under its detail. A warning about files names the file and the variable, never the value. A failed hooks install in Check hooks follows the same shape in its own card. `docs/decisions/KERNEL-437.md` lists the copy.
 - Toasts: bottom right of the main panel, 12px in from its right and bottom edges, 360px wide, with no close button. The title is row 1 and the sub row 2, with the action on the right. The surface, hairline and radius are the Usage popover's. A toast leaves by itself after 2.6s, or sooner when you swipe it right or down (toast-motion-and-swipe). A toast is for something you can't see on screen: (1) a call that failed ("Could not ..."), (2) something Kernel or an agent did without your click, like a PR created or merged, an archive after a merge, a config mistake or the window reloading after a crash, (3) an action that changes nothing on screen, like Path copied, Branch copied, Logs exported or the Check for updates result. A click whose result you can see gets no toast: the archived row is gone, the restored workspace opens (KERNEL-495).
 - Icon buttons: hover brightens the icon to `--ink` with no fill behind it, because a fill around a small glyph reads louder than the glyph. A fill means the button is on or its menu is open (`aria-pressed`, `aria-expanded`), never hover. Buttons with a label, menu items, rows, and the filled send and stop circles keep their hover fills.
@@ -126,13 +126,22 @@ Five roles in both themes (KERNEL-575). A screen picks a role, not a grey, so th
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - Resize edges (KERNEL-419): hovering, keyboard focus or dragging the sidebar, Settings nav or right panel edge lights the content panel's border with a glow, `--ink` at 45% fading to transparent, about 2px at the middle of the edge and thinning toward the top and bottom. It stays at the middle and does not follow the cursor. The handle between the right panel's top and bottom panes (KERNEL-512) lights the hairline between them the same way, turned horizontal.
 
+## Saving in Settings
+
+- Every Settings page has one muted line under its title: "Changes save as you make them." (KERNEL-721).
+- Toggles, segments and dropdowns save on click and get no note and no toast. The control is the confirmation.
+- Text and number fields save when they lose focus. A note in muted text sits beside the field: "Saving" with a spinner while the call runs, then "Saved" with a check. It fades about 1.5s after main answers. The state comes from the save promise, never a timer.
+- When main corrects a number, the note says "Set to N, the most allowed" or "Set to N, the least allowed" and stays until the next edit.
+- A field with unsaved text saves when it unmounts. Escape inside a field cancels the edit and puts the saved value back.
+- A failed save rolls back, shows the "Could not save" toast and no Saved note.
+
 ## Busy buttons
 
 A button that waits on the main process shows it is working until the call returns. That means git, GitHub, the network, files, agent sessions, scripts and opening Terminal.
 
-- A spinner takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
+- The dot loader (one size, `faint` dots at 0.3 to 0.8 opacity) takes the icon's place and the label says what is happening: "Archiving", "Merging", "Creating". One or two plain words, no trailing dots, the way the PR header writes "Creating PR".
 - The button is disabled while the call runs, so a second click, Enter or a shortcut can't start the work twice. Buttons next to it that act on the same thing (Deny beside Approve, Cancel beside Send) are disabled too.
-- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a spinner in the band's text color, so it never reads as a hole in the band (KERNEL-274).
+- Every variant takes the Creating PR look at full opacity: surface-3 fill, line-3 border, ink-3 text. A busy primary or danger button turns grey. The PR header band is the exception: there a busy button keeps the band's tone, with its soft fill and edge, dimmer text and a dot loader in the band's text color at the same dim range, so it never reads as a hole in the band (KERNEL-274).
 - In code, `useBusy()` tracks which button started the work, and `Button` and `IconButton` take `busy` and `busyLabel`. `ConfirmDialog` passes the same two to its confirm button and takes `disabled` for "can't confirm yet". The sidebar's archive button is the one exception. It stays a plain icon with no spinner or word, and still ignores a second click.
 - No spinner for navigation, menus, opening a dialog, toggles and selects that save in place, links that open the browser or the editor, copying, or sending a chat message, which shows up in the thread.
 
@@ -153,8 +162,9 @@ A button that waits on the main process shows it is working until the call retur
   - Overlap. Archiving again while a fold runs starts that row's fold at once. The destination row's fill fade that starts over another one jumps the earlier one to its end.
   - Reduced motion. No fold and no fade. In one frame the row leaves, the Lead row appears and the selected fill changes. The screen swaps at once either way.
 - Only opacity and transform loop, and nothing on a button loops.
+- Dot loader (KERNEL-714, KERNEL-740): one 3x3 grid sized in `em` (dots 0.23em, gap 0.08em, rounded to whole pixels), about 11px next to 12 to 13px text, so it follows the text beside it. Each dot's opacity goes 0.3 to 0.8 to 0.3 over 1.6s `ease-in-out`, delayed 0.12s per row plus column, so a slow shimmer crosses it diagonally. Dots take `--spin-ink`, default `faint`. Reduced motion stops it and leaves the dots graded from 0.8 to 0.4.
 - Modals (KERNEL-648): every modal opens with the scrim fading in over 160ms `ease-out` while the dialog fades in, rises from 8px below and scales from 0.98 over 200ms, `cubic-bezier(0.22, 1, 0.36, 1)`. Escape, the scrim, Close and Cancel play an exit: the dialog fades and drops 4px over 120ms, `cubic-bezier(0.4, 0, 1, 1)`, and the scrim fades over the same 120ms. Neither takes input during the exit, and the modal leaves when it ends. A close after an action that changes the screen leaves at once. Reduced motion turns it on and off in place.
-- Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
+- Respect reduced motion: jump instead of walk, the dot loader holds still as a graded grid, no breathing glow, toasts that appear and vanish in place, archived rows that change in place.
 
 ## Accessibility
 

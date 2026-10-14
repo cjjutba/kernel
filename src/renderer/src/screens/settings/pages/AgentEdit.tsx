@@ -33,7 +33,7 @@ export function AgentEdit({ roomId, agentId }: { roomId?: string; agentId: strin
   const skillNames = useSkillNames(roomId)
   const listRoute = roomId ? { name: 'settings' as const, page: 'room' as const, roomId, section: 'agents' as const } : { name: 'settings' as const, page: 'agents' as const }
   const back = (
-    <button type="button" className="set-crumb" onClick={() => go(listRoute)}>
+    <button type="button" className="set-agent-back" onClick={() => go(listRoute)}>
       <Icon name="left" size={14} />{room ? `${room.name} / Agents` : 'Agents'}
     </button>
   )

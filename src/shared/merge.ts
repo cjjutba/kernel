@@ -74,7 +74,7 @@ export function reviewsText(kinds: readonly ReviewKind[]): string {
 export interface KindStates {
   /** Kinds with a verdict on this PR, on any commit. */
   ran: ReviewKind[]
-  /** Kinds whose verdict on the head commit found blockers. */
+  /** Kinds whose verdict on the head commit found blockers that nobody overruled. */
   blocking: ReviewKind[]
   /** How many blockers they found: the latest blocking verdict of each kind, added up. */
   count: number
@@ -82,28 +82,41 @@ export interface KindStates {
   agentId?: string
   /** Kinds that approved the head commit, where no verdict of the same kind found blockers on it. */
   approved: ReviewKind[]
-  /** Required kinds that ran and haven't approved the head commit. A kind is required unless its latest verdict says optional. */
+  /**
+   * Required kinds that ran and haven't approved the head commit, nor had their blockers on it overruled. A kind is required
+   * unless its latest verdict says optional.
+   */
   waiting: ReviewKind[]
+  /** Kinds whose blockers on the head commit the user overruled (KERNEL-732). They neither block nor count as approved. */
+  overruled: ReviewKind[]
 }
+
+/** What a kind-by-kind read of the reviews needs from the workspace. */
+type ReviewFacts = Pick<Workspace, 'reviews' | 'prNumber' | 'prHead' | 'overruled'>
 
 /**
  * The PR's verdicts read kind by kind (KERNEL-549). Verdicts of two kinds both count. Within a kind, blockers on the head
- * commit from any review hold it, and an approval of the head commit stands only without them.
+ * commit from any review hold it, and an approval of the head commit stands only without them. Blockers of a kind the user
+ * overruled on this very head hold nothing and wait for nothing, and they don't approve it either (KERNEL-732). The
+ * overrule names a head, so a head Kernel doesn't know matches none.
  */
-export function kindStates(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): KindStates {
+export function kindStates(ws: ReviewFacts): KindStates {
   const { verdicts, current } = reviewVerdicts(ws)
   const latest = <T extends { ts: number }>(vs: T[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
   const kinds = REVIEW_KINDS.map((k) => k.id)
   const ran = kinds.filter((k) => verdicts.some((v) => lensOf(v) === k))
   const blockingOf = (k: ReviewKind) => current.filter((v) => lensOf(v) === k && v.verdict === 'blockers')
-  const blocking = ran.filter((k) => blockingOf(k).length)
-  const all = current.filter((v) => v.verdict === 'blockers')
-  const approved = ran.filter((k) => !blocking.includes(k) && current.some((v) => lensOf(v) === k && v.verdict === 'approved'))
+  const found = ran.filter((k) => blockingOf(k).length)
+  const o = ws.overruled
+  const overruled = o && ws.prHead && o.head === ws.prHead ? found.filter((k) => o.kinds.includes(k)) : []
+  const blocking = found.filter((k) => !overruled.includes(k))
+  const all = current.filter((v) => v.verdict === 'blockers' && blocking.includes(lensOf(v)))
+  const approved = ran.filter((k) => !found.includes(k) && current.some((v) => lensOf(v) === k && v.verdict === 'approved'))
   const required = (k: ReviewKind) => !latest(verdicts.filter((v) => lensOf(v) === k)).optional
   return {
     ran, blocking, count: blocking.reduce((n, k) => n + (latest(blockingOf(k)).blockers?.length || 1), 0),
     ...(all.length ? { agentId: latest(all).agentId } : {}),
-    approved, waiting: ran.filter((k) => required(k) && !approved.includes(k))
+    approved, waiting: ran.filter((k) => required(k) && !approved.includes(k) && !overruled.includes(k)), overruled
   }
 }
 
@@ -111,7 +124,7 @@ export function kindStates(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'
  * The reviews that found blockers on the PR's head commit, how many they found, and the agent behind the latest of them, or
  * nothing (KERNEL-497, read per kind since KERNEL-549). Pass GitHub's head as `prHead` when there is a fresh read.
  */
-export function headBlockers(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { agentId: string; count: number; lenses: ReviewKind[] } | undefined {
+export function headBlockers(ws: ReviewFacts): { agentId: string; count: number; lenses: ReviewKind[] } | undefined {
   const s = kindStates(ws)
   return s.blocking.length && s.agentId ? { agentId: s.agentId, count: s.count, lenses: s.blocking } : undefined
 }
@@ -198,11 +211,12 @@ export function reviewPhrase(r: { reviewing?: ReviewKind[]; blockers?: { lenses:
 }
 
 /** The PR's review in those words from its verdicts alone, for the PRs tab, which doesn't know what is running. */
-export function verdictPhrase(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): ReviewPhrase {
+export function verdictPhrase(ws: ReviewFacts): ReviewPhrase {
   const s = kindStates(ws)
   if (!s.ran.length) return reviewPhrase({})
   if (s.blocking.length) return reviewPhrase({ blockers: { lenses: s.blocking, count: s.count } })
   if (s.approved.length) return reviewPhrase({ approved: s.approved })
+  if (s.overruled.length) return { text: 'Blockers overruled', tone: 'faint' }
   return reviewPhrase({ stale: true })
 }
 
@@ -228,7 +242,7 @@ export interface AutoMergeFacts {
   /** Settings, Pull requests' "Require green checks to merge". */
   requireGreen: boolean
   pr?: PrInfo | null
-  reviews?: { required: ReviewKind[]; approved: ReviewKind[]; blocking: ReviewKind[]; running: boolean }
+  reviews?: { required: ReviewKind[]; approved: ReviewKind[]; blocking: ReviewKind[]; running: boolean; overruled?: ReviewKind[] }
   diff?: { lines: number; touched: string[] }
 }
 
@@ -236,7 +250,7 @@ export interface AutoMergeFacts {
  * Why Kernel won't merge a PR by itself, or undefined when it may (KERNEL-556). Every condition has to hold: auto-merge on, a
  * PR on GitHub rather than a local merge, green checks required and at least one check that decides the PR, all of them
  * green, no check still running, optional ones included (KERNEL-703), nothing GitHub blocks, every required kind of review
- * approved the head commit and none found blockers on it, no review still running, under the line limit, and no
+ * approved the head commit and none found blockers on it, overruled or not (KERNEL-732), no review still running, under the line limit, and no
  * always-review path changed. A fact Kernel couldn't read refuses too.
  * A PR with no checks fails here though `allGreen([])` is true: nothing tested it.
  */
@@ -256,6 +270,7 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
   const r = f.reviews
   if (!r) return "Kernel couldn't tell which reviews it needs."
   if (r.blocking.length) return `${reviewsText(r.blocking)} found blockers on the latest commit.`
+  if (r.overruled?.length) return `${reviewsText(r.overruled)} found blockers on the latest commit, and auto-merge doesn't merge past an overrule.`
   if (!r.required.length) return 'None of its reviews is required, and auto-merge needs a required review to approve it.'
   const missing = r.required.filter((k) => !r.approved.includes(k))
   if (missing.length) return `${reviewsText(missing)} ${missing.length === 1 ? "hasn't" : "haven't"} approved the latest commit.`

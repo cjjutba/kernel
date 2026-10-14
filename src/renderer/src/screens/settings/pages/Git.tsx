@@ -88,5 +88,5 @@ export function BranchPattern({ value, field = 'branchPattern', label = 'Branch 
     if (!next.includes('{slug}')) { setText(value); return }
     save(next)
   }
-  return <input className="set-inline" aria-label={label} spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input className="set-inline set-boxed" aria-label={label} spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }

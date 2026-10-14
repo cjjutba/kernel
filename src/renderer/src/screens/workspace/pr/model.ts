@@ -1,5 +1,5 @@
-import type { AppSettings, ChatItem, ChatPart, PrInfo, PrPending, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
-import { headBlockers, kindsText, mergeBlock, mergeableState } from '@shared/merge'
+import type { AppSettings, ChatItem, ChatPart, Overrule, PrInfo, PrPending, PrState, ReviewComment, ReviewKind, Toast, Workspace } from '@shared/types'
+import { headBlockers, kindStates, kindsText, lensOf, mergeBlock, mergeableState, reviewVerdicts } from '@shared/merge'
 import { stripRemote } from '../../settings/remote'
 
 /** The rules a PR's merge reads (Settings, Pull requests). */
@@ -66,6 +66,24 @@ export function blockersHold(ws: Workspace, pr: PrInfo | null | undefined, rules
   // Named by kind of review: "Security found 2 blockers" (KERNEL-549).
   return { reviewer: kindsText(found.lenses), count: found.count }
 }
+
+export interface BlockerFacts { kinds: ReviewKind[]; count: number; items: { text: string; file?: string; line?: number }[] }
+
+export function blockerFacts(ws: Workspace, pr: PrInfo | null | undefined): BlockerFacts | undefined {
+  const at = { ...ws, prHead: pr?.head ?? ws.prHead }
+  const found = headBlockers(at)
+  if (!found) return undefined
+  const { current } = reviewVerdicts(at)
+  const items = current.filter((v) => v.verdict === 'blockers' && found.lenses.includes(lensOf(v))).flatMap((v) => v.blockers ?? [])
+  return { kinds: found.lenses, count: found.count, items }
+}
+
+export function overruleOn(ws: Workspace, pr: PrInfo | null | undefined): Overrule | undefined {
+  const at = { ...ws, prHead: pr?.head ?? ws.prHead }
+  return ws.overruled && kindStates(at).overruled.length ? ws.overruled : undefined
+}
+
+export const overruleText = (o: Overrule) => `Blockers overruled by ${o.by === 'lead' ? 'the Lead' : 'you'}${o.note ? `: ${o.note}` : ''}`
 
 /**
  * How a branch that merges on the Mac stands (KERNEL-478), read from the workspace's state and what git says in `PrInfo.local`.

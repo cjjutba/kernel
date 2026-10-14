@@ -12,6 +12,7 @@ import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { NewLeadChat } from './NewLeadChat'
+import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
@@ -190,22 +191,25 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const banner = setupWait && found?.id === 'setup' ? undefined : found
   const blocked = gate.shut || !!banner?.blocks
 
+  // The tabs as ChatTabs lists them, left to right. Closing the open one goes back to the tab used before it (nextTab.ts).
+  const order = [...chats.map((c) => c.id), ...files.map(fileTab), ...diffs.map(diffTab), ...shared.map((id) => `shared:${id}`), ...images.map((i) => i.id), ...texts.map((t) => t.id)]
+  const afterClosing = (id: string) => { const to = nextTab(order, tabs?.recent, [id], tab) ?? chat?.id; if (tab === id && to) select(to) }
   const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
     actions.ui.setTabs(workspaceId, { files: files.filter((x) => x !== path) })
-    if (tab === fileTab(path)) select(chat?.id ?? '')
+    afterClosing(fileTab(path))
   }
   /** The same diff again selects its tab. An empty path is All changes. */
   const openDiff = (path: string) => select(diffTab(path))
   const closeDiff = (path: string) => {
     actions.ui.setTabs(workspaceId, { diffs: diffs.filter((x) => x !== path) })
-    if (tab === diffTab(path)) select(chat?.id ?? '')
+    afterClosing(diffTab(path))
   }
   /** Closing drops the version picked in the tab too, so opening the file again follows the latest. */
   const closeShared = (id: string) => {
     const { [id]: _picked, ...picks } = tabs?.sharedVersion ?? {}
     actions.ui.setTabs(workspaceId, { shared: shared.filter((x) => x !== id), sharedVersion: picks })
-    if (tab === `shared:${id}`) select(chat?.id ?? '')
+    afterClosing(`shared:${id}`)
   }
   /** The same image again selects its tab instead of opening a second one. */
   const openImage = (part: ImagePart) => {
@@ -216,7 +220,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   }
   const closeImage = (id: string) => {
     setImages((list) => list.filter((i) => i.id !== id))
-    if (tab === id) select(chat?.id ?? '')
+    afterClosing(id)
   }
   /** The same paste again selects its tab. Two pastes with the same name and text are the same paste. */
   const openText = (part: TextPart) => {
@@ -227,7 +231,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   }
   const closeText = (id: string) => {
     setTexts((list) => list.filter((t) => t.id !== id))
-    if (tab === id) select(chat?.id ?? '')
+    afterClosing(id)
   }
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
