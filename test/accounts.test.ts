@@ -50,6 +50,16 @@ const cipher = { encrypt: (t: string) => `enc:${[...t].reverse().join('')}`, dec
 /** The starter agents the app ships, for Kernel's own use. */
 const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
+/**
+ * Adding an account starts a usage read of it that nothing awaits. It reads the fake CLI's login and readies the account's
+ * folder, so a test that changes the fake's env or the folder's files right after the add races it, which only a slow
+ * machine shows. Wait for the reads that are running.
+ */
+async function settleReads(k: Kernel) {
+  const reading = (k.providers as unknown as { reading: Map<string, Set<Promise<void>>> }).reading
+  await Promise.allSettled([...reading.values()].flatMap((set) => [...set]))
+}
+
 async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {
   const end = Date.now() + ms
   for (;;) {
@@ -800,6 +810,25 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop()
   })
 
+  it('tells the Lead about a limit it waits on once, however many readings find the same limit (KERNEL-777)', async () => {
+    const { k, ids, folder } = await setUp(['Personal'])
+    const stuck = vi.spyOn(k.leadUpdates, 'limitStuck')
+    sdk.usage = { '': 100, [folder('Personal')]: 100 }
+    reject(k)
+    reject(k, { accountId: ids.Personal })
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+    await until(() => moving(k).includes('waiting'))
+    await until(() => stuck.mock.calls.length > 0)
+    // The usage read that follows a limit, and the recheck while it stands, apply the same limits again.
+    for (let i = 0; i < 3; i++) {
+      k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(stuck).toHaveBeenCalledTimes(1)
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('moves Codex off a limit too, and the chat the limit cut off carries on on the new account with a note', async () => {
     const { k, h, repo } = await setUp()
     const added = await h['accounts.add']({ provider: 'codex' })
@@ -1503,6 +1532,7 @@ describe('Every server on every account, Codex sign-in, failure reasons and igno
     await mkdir(join(root, 'plugins'), { recursive: true })
     await writeFile(join(root, 'plugins', 'installed_plugins.json'), JSON.stringify({ version: 2, plugins: {} }))
     const side = await h['accounts.add']({ provider: 'claude' })
+    await settleReads(k)
     const folder = k.providers.claudeHome(side.id)
     k.providers.claudeEnv(side.id)
     const own = join(folder, 'plugins', 'installed_plugins.json')

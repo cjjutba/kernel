@@ -3,6 +3,8 @@ import { cp, mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { run } from '../src/main/services/exec'
+import { bus } from '../src/main/bus'
+import type { PushEvent } from '../src/shared/ipc'
 import type { Kernel } from '../src/main/kernel'
 
 const templates = new Map<string, Promise<string>>()
@@ -73,8 +75,16 @@ export async function trustRoom(k: Kernel, roomId: string) {
  */
 export async function setUp(k: Kernel, id: string, status: 'ready' | 'failed' | 'trust' | 'settled' = 'ready') {
   const wsId = k.store.chat(id)?.workspaceId ?? id
-  // `settled` is whatever setup ended in: ready, failed, or waiting for trust.
-  if (status === 'settled') await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).not.toBe('setup'), { timeout: 10_000, interval: 10 })
-  else await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).toBe(status), { timeout: 10_000, interval: 10 })
+  // What the setup script printed, for a failure to show.
+  const log: string[] = []
+  const on = (e: PushEvent) => { if (e.type === 'script.output' && e.workspaceId === wsId) log.push(...e.lines.map((l) => l.line)) }
+  bus.on('push', on)
+  try {
+    // `settled` is whatever setup ended in: ready, failed, or waiting for trust.
+    if (status === 'settled') await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).not.toBe('setup'), { timeout: 10_000, interval: 10 })
+    else await vi.waitFor(() => expect(k.store.workspace(wsId)?.status).toBe(status), { timeout: 10_000, interval: 10 })
+  } catch (e) {
+    throw new Error(`${(e as Error).message}\nSetup log:\n${log.join('\n') || '(none)'}\nWorkspace: ${JSON.stringify(k.store.workspace(wsId))}`, { cause: e })
+  } finally { bus.off('push', on) }
   return k.store.workspace(wsId)!
 }

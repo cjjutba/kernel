@@ -7,7 +7,7 @@ import { bus } from '../src/main/bus'
 import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { exec, MAX_OUTPUT, run } from '../src/main/services/exec'
-import { runScript, timeoutText } from '../src/main/services/scripts'
+import { runScript, scriptEndOf, timeoutText } from '../src/main/services/scripts'
 import { Ptys } from '../src/main/services/pty'
 
 // KERNEL-216: commands and scripts can't run forever, and their output reaches the window in batches.
@@ -147,5 +147,25 @@ describe('batched output', () => {
       const numbers = out().split(/\r?\n/).map((l) => l.trim()).filter((l) => /^\d+$/.test(l))
       expect(numbers).toEqual(Array.from({ length: 40000 }, (_, i) => String(i + 1)))
     } finally { ptys.kill('t-batch') }
+  })
+})
+
+describe('how a script ended', () => {
+  const SIGHUP = 1, SIGTERM = 15, SIGKILL = 9
+  it('counts a hangup on a script nobody stopped as a normal end (Linux reports one for a script that finished)', () => {
+    expect(scriptEndOf({ exitCode: 0, signal: SIGHUP, stopped: false, timedOut: false })).toBe(0)
+  })
+  it('counts SIGTERM or SIGKILL after a stop as a stop, and a hangup after a stop too', () => {
+    for (const signal of [SIGTERM, SIGKILL, SIGHUP]) expect(scriptEndOf({ exitCode: 0, signal, stopped: true, timedOut: false })).toBeNull()
+  })
+  it('counts a signal nobody asked for as a stop, not a finish', () => {
+    for (const signal of [SIGTERM, SIGKILL]) expect(scriptEndOf({ exitCode: 0, signal, stopped: false, timedOut: false })).toBeNull()
+  })
+  it('keeps a timeout a timeout, whatever the terminal reported', () => {
+    for (const signal of [undefined, SIGHUP, SIGTERM, SIGKILL]) expect(scriptEndOf({ exitCode: 0, signal, stopped: false, timedOut: true })).toBe('timeout')
+  })
+  it('keeps a non-zero exit a failure', () => {
+    expect(scriptEndOf({ exitCode: 2, signal: undefined, stopped: false, timedOut: false })).toBe(2)
+    expect(scriptEndOf({ exitCode: 1, signal: SIGHUP, stopped: false, timedOut: false })).toBeNull()
   })
 })
