@@ -26,19 +26,19 @@ export function Notifications({ s }: { s: AppSettings }) {
   const q = n.quietHours ? `${n.quietHours.from}-${n.quietHours.to}` : 'off'
   const options = [{ value: 'off', label: 'Off' }, ...QUIET.map(([f, t]) => ({ value: `${f}-${t}`, label: window12(f, t) }))]
   if (!options.some((o) => o.value === q) && n.quietHours) options.push({ value: q, label: window12(n.quietHours.from, n.quietHours.to) })
-  const toggles = (list: [Events, string][]) => list.map(([key, label]) => <Row key={key} label={label}><Toggle label={label} checked={n[key]} onChange={(v) => void patchSettings({ notifications: { [key]: v } })} /></Row>)
+  const toggles = (list: [Events, string][]) => list.map(([key, label]) => <Row key={key} id={`notify-${key}`} label={label}><Toggle label={label} checked={n[key]} onChange={(v) => void patchSettings({ notifications: { [key]: v } })} /></Row>)
   return (
     <Page title="Notifications">
       <Section title="Needs you">{toggles(NEEDS)}</Section>
       <Section title="Updates">{toggles(UPDATES)}</Section>
       <Section title="Delivery">
-        <Row label="Sound">
+        <Row id="sound" label="Sound">
           <span className="pe-sound">
             {n.sound !== 'none' && <IconButton icon="play" size={12} label={`Play the ${n.sound} sound`} busy={busy === 'play'} onClick={() => void run('play', () => call('notifications.playSound', { sound: n.sound }).catch(() => undefined))} />}
             <SegmentedControl label="Sound" value={n.sound} onChange={(v) => void patchSettings({ notifications: { sound: v as Sound } })} options={[{ value: 'none', label: 'None' }, { value: 'subtle', label: 'Subtle' }, { value: 'chime', label: 'Chime' }]} />
           </span>
         </Row>
-        <Row label="Quiet hours">
+        <Row id="quiet-hours" label="Quiet hours">
           <Select label="Quiet hours" value={q} options={options} onChange={(v) => {
             const [from, to] = v.split('-')
             void patchSettings({ notifications: { quietHours: v === 'off' ? null : { from, to } } })

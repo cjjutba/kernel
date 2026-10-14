@@ -38,37 +38,37 @@ export function PRs({ s }: { s: AppSettings }) {
   const roomSettings = useStore((x) => x.roomSettings)
   const rooms = useStore((x) => x.rooms)
   useEffect(() => { for (const r of rooms) void call('settings.room', { roomId: r.id }).then((rs) => actions.settings.setRoom(r.id, rs)).catch(() => undefined) }, [rooms.map((r) => r.id).join()])
-  const changedIn = (path: string) => rooms.filter((r) => ['local', 'override', 'shared'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs' } as const }))
+  const changedIn = (path: string, row: string) => rooms.filter((r) => ['local', 'override', 'shared'].includes(roomSettings[r.id]?.sources?.[path] ?? '')).map((r) => ({ id: r.id, name: r.name, to: { page: 'room', roomId: r.id, section: 'prs', row } as const }))
   const [editing, setEditing] = useState<(typeof INSTRUCTIONS)[number] | null>(null)
   return (
     <>
       <Page title="Pull requests">
         <Section title="Automatic merging" scope="mac">
-          <Row label="Merge without asking me" desc="When reviews pass, checks are green and it’s under the size limit.">
+          <Row id="merge-without-asking" label="Merge without asking me" desc="When reviews pass, checks are green and it’s under the size limit.">
             <Toggle label="Merge without asking me" checked={auto.on} onChange={(on) => setAuto({ on })} />
           </Row>
-          <Row label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines }).then((saved) => saved?.pr.autoMerge.maxLines)} /></Row>
-          <Row label="Paths you always review" desc="Changes here always come to you. Locked ones are built in." full={
+          <Row id="size-limit" label="Size limit" desc="Bigger changes come to you."><NumberField label="Size limit" value={auto.maxLines} unit="lines" onSave={(maxLines) => setAuto({ maxLines }).then((saved) => saved?.pr.autoMerge.maxLines)} /></Row>
+          <Row id="always-review" label="Paths you always review" desc="Changes here always come to you. Locked ones are built in." full={
             <div className="sys-paths"><TagList label="Paths you always review" value={auto.alwaysReview} locked={ALWAYS_REVIEW.map((path) => BUILT_IN[path] ?? path)} mono={false} addLabel="Add path" placeholder="db/migrations/**" onChange={(alwaysReview) => setAuto({ alwaysReview })} /></div>
           } />
         </Section>
         <Section title="Merging">
-          <Row label="Merge method" changedIn={changedIn('pr.mergeMethod')}>
+          <Row id="merge-method" label="Merge method" changedIn={changedIn('pr.mergeMethod', 'merge-method')}>
             <SegmentedControl label="Merge method" value={p.mergeMethod} onChange={(v) => set({ mergeMethod: v as Pr['mergeMethod'] })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
           </Row>
-          <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
-          <Row label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
-          <Row label="Let Kernel merge when you ask" desc="Only when your own message asks."><Toggle label="Let Kernel merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
+          <Row id="draft" label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
+          <Row id="require-green" label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
+          <Row id="lead-merge" label="Let Kernel merge when you ask" desc="Only when your own message asks."><Toggle label="Let Kernel merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} /></Row>
         </Section>
         <Section title="Reviews" note="Each room picks which reviews run.">
-          <Row label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>
-          <Row label="Wait for the reviewer’s approval to merge"><Toggle label="Wait for the reviewer’s approval to merge" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
+          <Row id="auto-review" label="Review every pull request automatically" desc="Off saves usage. You can still ask for a review."><Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} /></Row>
+          <Row id="require-reviewer" label="Wait for the reviewer’s approval to merge"><Toggle label="Wait for the reviewer’s approval to merge" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
         </Section>
         <Section title="Instructions" note="A room can replace any of them.">
           {INSTRUCTIONS.map((i) => {
             const custom = !!p[i.key].trim() && p[i.key] !== DEFAULTS[i.key]
             return (
-              <Row key={i.key} label={i.label} desc={`${i.desc}.`}>
+              <Row key={i.key} id={`instructions-${i.key.replace(/Instructions$/, '')}`} label={i.label} desc={`${i.desc}.`}>
                 <span className={custom ? 'set-badge' : 'sys-state'}>{custom ? 'Customized' : 'Default'}</span>
                 <Button aria-label={`Edit the ${i.label} instructions`} onClick={() => setEditing(i)}>Edit</Button>
               </Row>

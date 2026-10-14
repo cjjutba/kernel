@@ -41,7 +41,7 @@ export function RoomIconRow({ room }: { room: Room }) {
     ...(kind === 'image' ? [{ value: 'image', label: LABEL.image }] : [])
   ]
   return (
-    <Row label="Icon" desc="Shown in the sidebar and on the room’s chats." lead={<RoomIcon room={room} className="set-icon-tile" />}>
+    <Row id="icon" label="Icon" desc="Shown in the sidebar and on the room’s chats." lead={<RoomIcon room={room} className="set-icon-tile" />}>
       <Select label="Room icon" value={kind} options={options} disabled={busy !== null} align="right" onChange={(v) => pick(v as Kind)} actions={[{ label: 'Choose image…', icon: 'image', onSelect: () => void chooseImage() }]} {...menu} />
     </Row>
   )

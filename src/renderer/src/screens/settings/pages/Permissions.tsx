@@ -73,23 +73,23 @@ export function Permissions({ s }: { s: AppSettings }) {
   const firstRoom = useStore((st) => st.rooms.find((r) => !r.hidden && !r.archived))
   const save = (permissions: Partial<AppSettings['permissions']>) => patchSettings({ permissions })
   const timeouts = TIMEOUTS.some((t) => t.value === String(p.approvalTimeoutSec)) ? TIMEOUTS : [...TIMEOUTS, { value: String(p.approvalTimeoutSec), label: `${p.approvalTimeoutSec} sec` }]
-  const rule = (label: string, desc: string, value: string[], key: 'alwaysAsk' | 'neverAllow' | 'protectedBranches', addLabel: string) => (
-    <Row className="ag-rule" label={label} desc={desc} full={<TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />} />
+  const rule = (label: string, value: string[], key: 'alwaysAsk' | 'neverAllow' | 'protectedBranches', addLabel: string) => (
+    <TagList label={label} value={value} addLabel={addLabel} onChange={(next) => save({ [key]: next })} />
   )
   return (
     <Page title="Permissions">
-      <Section title="Mode" plain>
+      <Section id="mode" title="Mode" plain>
         <ModeCards value={p.mode} availability={availability} />
-        {p.mode === 'bypassPermissions' && <div className="set-card ag-wt"><Row label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row></div>}
+        {p.mode === 'bypassPermissions' && <div className="set-card ag-wt"><Row id="only-in-worktrees" label="Only in worktrees" desc="Never skip prompts on your current branch."><Toggle label="Only in worktrees" checked={p.bypassOnlyInWorktrees} onChange={(v) => save({ bypassOnlyInWorktrees: v })} /></Row></div>}
       </Section>
       <Section title="Rules">
-        {rule('Always ask before', 'Every mode except Bypass.', p.alwaysAsk, 'alwaysAsk', 'Add command')}
-        {rule('Never allow', 'Blocked in every mode, Bypass included.', p.neverAllow, 'neverAllow', 'Add command')}
-        {rule('Protected branches', 'Pushes are blocked in Bypass. Other modes ask first.', p.protectedBranches, 'protectedBranches', 'Add branch')}
+        <Row id="always-ask" className="ag-rule" label="Always ask before" desc="Every mode except Bypass." full={rule('Always ask before', p.alwaysAsk, 'alwaysAsk', 'Add command')} />
+        <Row id="never-allow" className="ag-rule" label="Never allow" desc="Blocked in every mode, Bypass included." full={rule('Never allow', p.neverAllow, 'neverAllow', 'Add command')} />
+        <Row id="protected-branches" className="ag-rule" label="Protected branches" desc="Pushes are blocked in Bypass. Other modes ask first." full={rule('Protected branches', p.protectedBranches, 'protectedBranches', 'Add branch')} />
       </Section>
       <Section title="Safety" footnote={<>Commands and tools you allow from an approval are saved per room, on {firstRoom ? <>each room’s <SettingsLink to={{ page: 'room', roomId: firstRoom.id, section: 'permissions' }}>Permissions page</SettingsLink></> : 'each room’s Permissions page'}.</>}>
-        <Row label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
-        <Row label="Approval timeout" desc="Then the request falls back to Claude Code’s own prompt.">
+        <Row id="network" label="Allow network access" desc="Off blocks the network in every mode."><Toggle label="Allow network access" checked={p.network} onChange={(v) => save({ network: v })} /></Row>
+        <Row id="approval-timeout" label="Approval timeout" desc="Then the request falls back to Claude Code’s own prompt.">
           <Select label="Approval timeout" value={String(p.approvalTimeoutSec)} options={timeouts} onChange={(v) => save({ approvalTimeoutSec: Number(v) })} />
         </Row>
       </Section>

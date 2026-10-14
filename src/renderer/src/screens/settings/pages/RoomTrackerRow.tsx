@@ -26,6 +26,7 @@ export function RoomTrackerRow({ roomId, rs, detected }: { roomId: string; rs: R
   const current = chosen ?? detected
   return (
     <Row
+      id="tracker"
       label="Issue tracker"
       desc={chosen ? undefined : DETECTED[detected]}
       {...roomValue(rs, 'tracker.kind', () => void patchRoomSettings(roomId, { tracker: { kind: null } }))}

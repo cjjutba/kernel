@@ -64,15 +64,15 @@ export function Integrations() {
   return (
     <Page title="Integrations">
       <Section label="Services" footnote={<>claude.ai connectors are on <SettingsLink to={{ page: 'mcp' }}>MCP servers</SettingsLink>.</>}>
-        <Row lead={<Mark name="github" />} label="GitHub" desc={github?.detail}>
+        <Row id="github" lead={<Mark name="github" />} label="GitHub" desc={github?.detail}>
           <Button busy={busy === 'github'} busyLabel="Opening" disabled={busy !== null} onClick={() => void manageGithub()}>Manage</Button>
         </Row>
-        <Row lead={<Mark name="linear" />} label="Linear" desc={linear?.detail} full={form('linear')}>
+        <Row id="linear" lead={<Mark name="linear" />} label="Linear" desc={linear?.detail} full={form('linear')}>
           {linear?.connected
             ? <Button variant="ghost" busy={busy === 'linear'} busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectLinear()}>Disconnect</Button>
             : asking !== 'linear' && <Button disabled={!linear || busy !== null} onClick={() => { close(); setAsking('linear') }}>Connect</Button>}
         </Row>
-        <Row lead={<Mark name="jira" />} label="Jira" desc={jira ? `Connected to ${jira.site} as ${jira.name}. Issues open as workspaces.` : jiraError ?? 'Not connected. Issues open as workspaces once it is.'} full={form('jira')}>
+        <Row id="jira" lead={<Mark name="jira" />} label="Jira" desc={jira ? `Connected to ${jira.site} as ${jira.name}. Issues open as workspaces.` : jiraError ?? 'Not connected. Issues open as workspaces once it is.'} full={form('jira')}>
           {jira
             ? <Button variant="ghost" busy={busy === 'jira'} busyLabel="Disconnecting" disabled={busy !== null} onClick={() => void disconnectJira()}>Disconnect</Button>
             : asking !== 'jira' && <Button disabled={jira === undefined || busy !== null} onClick={() => { close(); setAsking('jira') }}>Connect</Button>}

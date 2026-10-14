@@ -105,16 +105,16 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
     <RoomPage room={room} rs={rs} title="Git">
       <PushAccess roomId={roomId} remote={rs?.workspace.remote ?? app.remote} />
       <Section title="New workspaces">
-        <Row setting="workspace.mode" label="Workspace type" {...state('mode')}>
+        <Row id="workspace-type" setting="workspace.mode" label="Workspace type" {...state('mode')}>
           <SegmentedControl label="Workspace type" value={rs?.workspace.mode ?? app.mode} onChange={(v) => set({ mode: v })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
         </Row>
-        <Row setting="workspace.baseRef" label="Branch from" {...state('baseRef')}>
+        <Row id="branch-from" setting="workspace.baseRef" label="Branch from" {...state('baseRef')}>
           <Select label="Branch from" align="right" value={own('baseRef')} onChange={(v) => set({ baseRef: v })} options={named(branches, own('baseRef'))} />
         </Row>
-        <Row label="Remote" {...state('remote')}>
+        <Row id="remote" label="Remote" {...state('remote')}>
           <Select label="Remote" align="right" value={own('remote')} onChange={(v) => set({ remote: v })} options={named(remotes.length ? remotes : ['origin'], own('remote'))} />
         </Row>
-        <Row setting="workspace.leadBranchPattern" label="Branch names for chats with Kernel" {...state('leadBranchPattern')}>
+        <Row id="lead-branch-names" setting="workspace.leadBranchPattern" label="Branch names for chats with Kernel" {...state('leadBranchPattern')}>
           <LeadPattern value={rs?.workspace.leadBranchPattern ?? app.leadBranchPattern} placeholder={app.leadBranchPattern} save={(v) => set({ leadBranchPattern: v })} />
         </Row>
       </Section>

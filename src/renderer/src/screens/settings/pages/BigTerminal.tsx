@@ -38,8 +38,8 @@ export function BigTerminal({ s }: { s: AppSettings }) {
     <>
       <Page title="Big terminal">
         <Section label="Tab">
-          <Row label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
-          <Row setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
+          <Row id="big-terminal-tab" label="Big terminal tab" desc="Opens in the workspace folder."><Toggle label="Big terminal tab" checked={t.enabled} onChange={(v) => set({ enabled: v })} /></Row>
+          <Row id="terminal-only-worktrees" setting="terminal.onlyInWorktrees" label="Terminal tabs only in worktrees" desc="Never on your current branch."><Toggle label="Terminal tabs only in worktrees" checked={t.onlyInWorktrees} onChange={(v) => set({ onlyInWorktrees: v })} /></Row>
         </Section>
         <Section
           title="New tab opens"

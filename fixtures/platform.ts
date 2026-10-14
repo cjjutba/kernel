@@ -566,6 +566,8 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsRoomPermissionsMode: scene((f) => ({ ...roomPermissions(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' }, menu: 'roomMode' } })),
   // KERNEL-726: Client A changes the merge method, so the app page says so under the row and links to the room.
   SettingsPRs: settingsPage('prs', { settings: prSettings, ...clientA({ pr: { ...kernelFiles.pr, mergeMethod: 'rebase' }, sources: { ...kernelFiles.sources, 'pr.mergeMethod': 'local' } }) }),
+  // KERNEL-727: a search for "size limit" landed here: the row is highlighted and its field has focus.
+  SettingsPRsLanded: scene(() => ({ settings: prSettings, ui: { route: { name: 'settings', page: 'prs', row: 'size-limit' } } })),
   // KERNEL-721: Size limit typed and left, shown while main is still saving, just after it answered and after main clamped it. The typing is in scripts/shots.ts.
   SettingsPRsSaving: settingsPage('prs', { settings: prSettings }),
   SettingsPRsSaved: settingsPage('prs', { settings: prSettings }),

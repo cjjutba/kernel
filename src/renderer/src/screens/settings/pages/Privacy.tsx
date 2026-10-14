@@ -21,7 +21,7 @@ export function Privacy({ s }: { s: AppSettings }) {
   return (
     <Page title="Privacy">
       <Section label="Diagnostics" footnote={canSend === false ? 'This build of Kernel can’t send diagnostics, so nothing leaves this Mac.' : undefined}>
-        <Row label="Share diagnostics" desc="Errors and counts of what goes wrong. Never your code, prompts or names.">
+        <Row id="diagnostics" label="Share diagnostics" desc="Errors and counts of what goes wrong. Never your code, prompts or names.">
           <Toggle label="Share diagnostics" checked={on} disabled={canSend === false} onChange={(v) => void patchSettings({ privacy: { telemetry: v ? 'on' : 'off' } })} />
         </Row>
       </Section>

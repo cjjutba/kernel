@@ -84,7 +84,7 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
           ]
           const by = id === 'code' && reviewer ? ` Run by ${reviewer.name}.` : ''
           return (
-            <Row key={id} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`${DESC[id]}${by}`}
+            <Row key={id} id={`review-${id}`} className={c.enabled ? undefined : 'rv-off'} label={`${label} review`} labelId={`rp-${id}`} desc={`${DESC[id]}${by}`}
               full={details === id && (
                 <div className="rv-line">
                   <span className="rv-line-label" aria-hidden="true">Runs on</span>
@@ -102,12 +102,12 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
         })}
       </Section>
       <Section title="Rules">
-        <Row label="Stop after" desc="Then the pull request comes to you.">
+        <Row id="stop-after" label="Stop after" desc="Then the pull request comes to you.">
           <Select label="Stop after" align="right" value={String(review.rounds)} onChange={(v) => void shared.track(patchReview(roomId, { rounds: Number(v) }))} options={rounds.map((n) => ({ value: String(n), label: `${n} ${n === 1 ? 'round' : 'rounds'}` }))} />
         </Row>
-        <Row shared label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(roomId, paths)} />} />
-        <Row label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." {...roomValue(rs, 'pr.optionalChecks', () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }))} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
-        <Row label="Merge method" {...roomValue(rs, 'pr.mergeMethod', () => void patchRoomSettings(roomId, { pr: { mergeMethod: null } }), { to: { page: 'prs' }, label: 'Settings, Pull requests' })}>
+        <Row id="always-review" shared label="Paths you always review" desc="Never merge automatically, on anyone’s Mac. Built-in paths apply too." full={<TagList label="Paths you always review" value={always} addLabel="Add path" onChange={(paths) => patchAlwaysReview(roomId, paths)} />} />
+        <Row id="optional-checks" label="Optional checks" desc="A failing one doesn’t block, unless GitHub requires it." {...roomValue(rs, 'pr.optionalChecks', () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }))} full={<TagList label="Optional checks" value={optional} addLabel="Add check" mono={false} onChange={saveOptional} />} />
+        <Row id="merge-method" label="Merge method" {...roomValue(rs, 'pr.mergeMethod', () => void patchRoomSettings(roomId, { pr: { mergeMethod: null } }), { to: { page: 'prs' }, label: 'Settings, Pull requests' })}>
           <SegmentedControl label="Merge method" value={method ?? s.pr.mergeMethod} onChange={(v) => void patchRoomSettings(roomId, { pr: { mergeMethod: v as MergeMethod } })} options={[{ value: 'squash', label: 'Squash' }, { value: 'merge', label: 'Merge' }, { value: 'rebase', label: 'Rebase' }]} />
         </Row>
       </Section>
@@ -115,7 +115,7 @@ export function RoomPrs({ roomId, s }: { roomId?: string; s: AppSettings }) {
         {INSTRUCTIONS.map(({ key, label }) => {
           const custom = isOverride(rs, `pr.${key}`)
           return (
-            <Row key={key} label={label}>
+            <Row key={key} id={`instructions-${key.replace(/Instructions$/, '')}`} label={label}>
               {custom ? <span className="rm-custom">Custom for this room</span> : <span className="set-desc">App default</span>}
               <Button aria-label={`${custom ? 'Edit' : 'Customize'} the ${label} instructions`} onClick={() => setEditing(key)}>{custom ? 'Edit' : 'Customize'}</Button>
             </Row>

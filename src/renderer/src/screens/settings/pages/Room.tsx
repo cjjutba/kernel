@@ -49,11 +49,11 @@ export function Room({ roomId }: { roomId?: string }) {
     <RoomPage room={room} rs={rs} title="General">
       <Section title="Room">
         <RoomIconRow room={room} />
-        <Row label="Repository">
+        <Row id="repository" label="Repository">
           <span className="set-value">{room.repo ?? sourceOf(room)}</span>
           {room.repo && <Button onClick={() => open(() => call('system.openExternal', { url: `https://github.com/${room.repo}` }), 'Could not open GitHub')}>Open on GitHub</Button>}
         </Row>
-        <Row label="Local path">
+        <Row id="path" label="Local path">
           <span className="set-value">{home(room.path)}</span>
           <Button onClick={() => open(() => call('app.openIn', { path: room.path }), 'Could not open the folder')}>Open</Button>
         </Row>
@@ -62,14 +62,14 @@ export function Room({ roomId }: { roomId?: string }) {
         <Section title="Issues">
           <RoomTrackerRow roomId={roomId} rs={rs} detected={detected} />
           {tracker === 'linear' && (teams
-            ? <Row label="Linear team" desc="Issues from this team open here.">
+            ? <Row id="linear-team" label="Linear team" desc="Issues from this team open here.">
                 <Select label="Linear team" value={team ?? USE_DEFAULT} options={teamOptions} align="right" onChange={(v) => void patchRoomSettings(roomId, { linear: { team: v || null } })} />
               </Row>
-            : <Row label="Linear team" desc={<>Connect Linear in <SettingsLink to={{ page: 'integrations' }}>Settings, Integrations</SettingsLink>.</>} />)}
+            : <Row id="linear-team" label="Linear team" desc={<>Connect Linear in <SettingsLink to={{ page: 'integrations' }}>Settings, Integrations</SettingsLink>.</>} />)}
         </Section>
       )}
       <Section title="Danger zone">
-        <Row label="Archive room" desc="Stops every agent and archives its workspaces. You can restore it.">
+        <Row id="archive-room" label="Archive room" desc="Stops every agent and archives its workspaces. You can restore it.">
           <Button disabled={!!room.archived} onClick={() => setConfirming(true)}>Archive room</Button>
         </Row>
       </Section>
