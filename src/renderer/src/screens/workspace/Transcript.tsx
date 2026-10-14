@@ -29,7 +29,7 @@ import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { opensAtEnd, placeTop, readPlace, savePlace, takeJustSent, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 
 const EMPTY: ChatItem[] = []
@@ -63,7 +63,9 @@ export const anchorGoal = (scrollTop: number, markTop: number, viewTop: number) 
 export const anchorPad = (clientHeight: number, anchorTop: number, endBottom: number) => Math.max(0, Math.round(clientHeight - ANCHOR_GAP - (endBottom - anchorTop)))
 
 /** What the thread does about a sent message's anchor when it changes: anchor a message it hasn't anchored yet, keep the padding while the turn it started runs, and clear it once nothing is running (KERNEL-807). */
-export const sendAnchor = (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean): 'anchor' | 'keep' | 'clear' => {
+/** `open` is false only for the run that is the chat opening. A chat just created by a send counts as open, so its first message anchors; a reopened chat's last message does not. */
+export const sendAnchor = (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean, open = true): 'anchor' | 'keep' | 'clear' => {
+  if (!open) return 'keep'
   if (last && followsSend(last) && last.id !== anchoredId) return 'anchor'
   return padded && !running ? 'clear' : 'keep'
 }
@@ -871,12 +873,15 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       return r ? [{ id, top: r.top - base, height: r.height }] : []
     })
   }
+  // Set when this chat was created by the send that mounted it, so its first message anchors like any send instead of counting as the chat opening.
+  const fresh = useRef(false)
   // A chat opens where it was left, or at its end when it was left there or the reader has sent something since (KERNEL-765).
   useLayoutEffect(() => {
     gliding.current = false
     byHand.current = false
     const el = scroller.current
     const place = takePlace(chat.id)
+    fresh.current = takeJustSent(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
     let again = 0
     if (!el || opensAtEnd(place, lastSent)) {
@@ -984,11 +989,12 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const queued = useStore((s) => s.queue[chat.id]?.length ?? 0)
   useEffect(() => {
     // The first run is the chat opening, which the effect above has placed already.
-    const step = arrived.current ? sendAnchor(last, sentId.current, anchored.current !== null, running) : 'keep'
+    const step = sendAnchor(last, sentId.current, anchored.current !== null, running, arrived.current || fresh.current)
     if (step === 'anchor' && last) { sentId.current = last.id; anchorSend(last.id) }
     else if (step === 'clear') { anchored.current = null; padReply() }
     else if (!arrived.current && followsSend(last)) sentId.current = last?.id ?? null
     arrived.current = true
+    fresh.current = false
     if (pinned.current) followNow()
   }, [items.length, loose.length, running, queued])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])

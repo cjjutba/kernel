@@ -1897,6 +1897,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** The first message sent from New chat (KERNEL-825): the chat opens with it 16px from the top and the Working line under it. The fixture starts on New chat, and scripts/shots.ts types the message and sends it. */
+  WorkspaceNewChatJustSent: scene((f) => {
+    const base = noPlan(leadNoChats(f))
+    return {
+      ...base,
+      leadStart: ids.leadChat,
+      items: { [ids.leadChat]: [{ kind: 'user' as const, id: 'nc-u1', ts: Date.now() - 2000, parts: [{ type: 'text' as const, text: 'Add a CSV export for the filtered invoice rows.' }] }] },
+      push: [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }]
+    }
+  }),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
   ChatRestoredSpot: scene(() => ({
     items: { [ids.tableChat]: [

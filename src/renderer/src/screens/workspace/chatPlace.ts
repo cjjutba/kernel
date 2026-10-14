@@ -18,6 +18,13 @@ export const savePlace = (chatId: string, place: Place) => { places.set(chatId, 
 
 export const takePlace = (chatId: string): Place | undefined => places.get(chatId)
 
+const justSent = new Set<string>()
+
+/** The chat was just created by a send, so the transcript that mounts for it anchors that message like any send (KERNEL-825). A chat reopened later is not marked. */
+export const markJustSent = (chatId: string) => { justSent.add(chatId) }
+
+export const takeJustSent = (chatId: string) => justSent.delete(chatId)
+
 /** Forgets the chat's spot and the rows it had open, for a chat that is closed or archived. */
 export function dropPlace(chatId: string) {
   places.delete(chatId)

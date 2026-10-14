@@ -256,7 +256,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Kernel.')
       return leadWs(roomId) ?? null
     },
-    'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
+    'lead.start': async () => {
+      const started = f.chats.find((c) => c.id === f.leadStart)
+      if (!started) throw new Error('Fixture mode does not start chats.')
+      return started
+    },
     'lead.prefetch': async () => ({ ok: true }),
     'lead.setMode': async ({ workspaceId, mode }) => {
       const ws = f.workspaces.find((w) => w.id === workspaceId)

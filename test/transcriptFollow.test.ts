@@ -240,3 +240,32 @@ describe('a send anchors once and its padding does not linger (KERNEL-807)', () 
     expect(sendAnchor(undefined, null, false, false)).toBe('keep')
   })
 })
+
+describe('the first message of a new chat anchors, a reopened chat does not (KERNEL-825)', () => {
+  const load = async () => {
+    const t = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as { sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean, open?: boolean) => 'anchor' | 'keep' | 'clear' }
+    const p = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/chatPlace' as string) as { markJustSent: (id: string) => void; takeJustSent: (id: string) => boolean }
+    return { ...t, ...p }
+  }
+  const mine = { kind: 'user', id: 'u1', ts: 1, parts: [{ type: 'text', text: 'Build it' }] } as ChatItem
+
+  it('anchors the message a chat was created with, through the same step a later send takes', async () => {
+    const { sendAnchor, markJustSent, takeJustSent } = await load()
+    markJustSent('new-chat')
+    expect(takeJustSent('new-chat')).toBe(true)
+    expect(sendAnchor(mine, null, false, true, true)).toBe('anchor')
+  })
+
+  it('is marked once: a chat opened again later is not just sent', async () => {
+    const { markJustSent, takeJustSent } = await load()
+    markJustSent('c1')
+    expect(takeJustSent('c1')).toBe(true)
+    expect(takeJustSent('c1')).toBe(false)
+    expect(takeJustSent('never-sent')).toBe(false)
+  })
+
+  it('leaves a reopened chat whose last item is the reader\'s message alone', async () => {
+    const { sendAnchor } = await load()
+    expect(sendAnchor(mine, null, false, true, false)).toBe('keep')
+  })
+})

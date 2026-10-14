@@ -68,6 +68,14 @@ async function sendMessage(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(1200)
 }
 
+// WorkspaceNewChatJustSent: the first message is typed on New chat and sent, and the chat that opens anchors it like any send (KERNEL-825).
+async function sendFromNewChat(page: Page) {
+  await page.waitForTimeout(300)
+  await page.getByRole('textbox').first().fill('Add a CSV export for the filtered invoice rows.')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(1500)
+}
+
 async function scrollToSection(page: Page, title: string) {
   await page.locator('.set-scroll').evaluate((el, t) => {
     const h = [...el.querySelectorAll('h2, h3')].find((x) => x.textContent?.trim() === t)
@@ -535,6 +543,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
   WorkspaceJustSent: sendMessage,
   WorkspaceJustSentLong: sendMessage,
+  WorkspaceNewChatJustSent: sendFromNewChat,
   WorkspaceScrolledUp: scrollUp,
   ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
