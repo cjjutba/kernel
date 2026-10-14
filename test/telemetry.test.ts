@@ -24,7 +24,7 @@ async function boot(o: { key?: boolean; privacy?: 'ask' | 'on' | 'off'; ok?: boo
   onTestFinished(() => k.stop())
   await k.start()
   const h = k.handlers()
-  const settle = async () => { await k.telemetry.send(); await new Promise((r) => setTimeout(r, 20)) }
+  const settle = () => k.telemetry.send()
   return { k, h, dataDir, sent, state, settle }
 }
 
