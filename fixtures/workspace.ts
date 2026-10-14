@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AccountProfile, MovePreview, MovePreviewChat, AgentReach, AgentScope, Approval, AskedQuestion, BranchCommit, QueuedMessage, ChangedFile, Chat, ChatItem, Checkpoint, CheckpointPreview, Effort, FileEntry, Hunk, IssueSummary, Overrule, PrCheck, PrInfo, ReviewKind, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { describeTool } from '../src/main/services/approvals'
@@ -1216,6 +1216,28 @@ const revertPreviews: Record<string, CheckpointPreview> = {
     stat: { files: 3, added: 45, removed: 125 }, commitsAhead: 2, pushed: true, conflicts: ['src/app/invoices/page.tsx', 'src/app/invoices/columns.ts']
   }
 }
+const moveAccounts = (): AccountProfile[] => [
+  { id: 'cli', provider: 'claude', label: 'Main account', email: 'main@example.com', plan: 'Claude Max', cli: true, auth: 'subscription', active: true, signedIn: true },
+  { id: 'third', provider: 'claude', label: '3rd account', email: 'third@example.com', plan: 'Claude Pro', cli: false, auth: 'subscription', active: false, signedIn: true },
+  { id: 'key', provider: 'claude', label: 'API key', cli: false, auth: 'apiKey', active: false, signedIn: true },
+  { id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, auth: 'subscription', active: true, signedIn: true }
+]
+const moveChat = (chatId: string, title: string, workspace: string, tokens: number, to: string, extra: Partial<MovePreviewChat> = {}): MovePreviewChat => ({
+  chatId, title, workspaceId: ids.table, workspace, provider: 'claude', from: 'cli', to, tokens, running: false, coldReason: 'account', fits: true, ...extra
+})
+const switchConfirm = ({ key }: { key?: boolean } = {}) => scene(() => {
+  const to = key ? 'key' : 'third'
+  const price = (tokens: number) => (key ? { price: Math.round(tokens * 0.0000045 * 100) / 100 } : {})
+  const chats = [
+    moveChat('c1', 'Invoice table filters', 'Invoice table', 310_000, to, { running: true, ...price(310_000) }),
+    moveChat('c2', 'Migrate the invoice schema', 'Invoice schema', 280_000, to, price(280_000)),
+    moveChat('c3', 'Org invites', 'Org invites', 160_000, to, { estimated: true, ...price(160_000) }),
+    moveChat('c4', 'Fix the CSV export', 'Invoice table', 70_000, to, price(70_000))
+  ]
+  const preview: MovePreview = { provider: 'claude', from: 'cli', to, chats }
+  return { accounts: moveAccounts(), movePreview: preview, ui: { ...open, modal: { name: 'confirm', kind: 'switchAccount', provider: 'claude', accountId: to, preview } } }
+})
+
 const revertScene = (ui: Partial<Fixture['ui']>, prState?: Workspace['prState']) => scene((f) => ({
   ...(prState && { workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }) }),
   items: { [ids.tableChat]: revertItems },
@@ -2076,6 +2098,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-766: revert from the turn. Kai's summary has Revert files to here in its "..." menu, since a later turn is the current checkpoint. Choosing it opens the confirm with the files that change,
   // and the same confirm for an earlier checkpoint adds the line about the commits made since.
   WorkspaceRevertMenu: revertScene({ menu: 'reply:x1' }),
+  // KERNEL-845: a switch that would make long chats read their history again. Keeping them is the primary button. The key variant adds what reading them once costs.
+  SwitchAccountConfirm: switchConfirm(),
+  SwitchAccountConfirmApiKey: switchConfirm({ key: true }),
+  SettingsAccountsMoves: scene(() => ({ accounts: moveAccounts(), ui: { route: { name: 'settings', page: 'accounts' } } })),
   ConfirmRevert: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '3' } }),
   ConfirmRevertCommits: revertScene({ modal: { name: 'confirm', kind: 'revert', workspaceId: ids.table, checkpointId: '2' } }),
   // KERNEL-798: the same confirm once the PR is merged says main keeps the commits, and when main changed files the checkpoint changed too it names them.

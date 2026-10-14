@@ -1,0 +1,9 @@
+/* ConfirmSwitchAccount (KERNEL-845): the chats a switch would move, largest first */
+.ssa-price { font-size: 12.5px; color: var(--ink-2); }
+.ssa-list { display: flex; flex-direction: column; max-height: 260px; margin: 4px 0 0; padding: 0; overflow-y: auto; list-style: none; border: 1px solid var(--line); border-radius: var(--r); }
+.ssa-chat { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 2px; padding: 8px 12px; }
+.ssa-chat + .ssa-chat { border-top: 1px solid var(--line); }
+.ssa-title { font-weight: 500; color: var(--ink); }
+.ssa-size { font-size: 12px; color: var(--ink-2); text-align: right; white-space: nowrap; }
+.ssa-where { font-size: 12px; color: var(--muted); }
+.ssa-note { grid-column: 1 / -1; font-size: 12px; color: var(--muted); }

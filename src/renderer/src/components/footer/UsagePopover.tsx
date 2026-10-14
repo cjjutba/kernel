@@ -3,6 +3,7 @@ import type { Provider } from '@shared/types'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Meter, Popover, ProviderMark, SegmentedControl, Spinner } from '../../ui'
 import { useFreshUsage } from '../../accountRows'
+import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { planSections, type PlanSection } from './planModel'
 import { tightestWindow, tone } from './usageModel'
 import type { UsageBusy } from './useUsageActions'
@@ -34,6 +35,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
   const usage = useStore((s) => s.usage)
   const view = useStore((s) => s.ui.usageView)
   const expanded = useStore((s) => s.ui.usageOpen)
+  const chats = useStore((s) => s.chats)
   // A running session answers with fresh numbers. Without one, main returns the last ones it saw.
   useFreshUsage(open)
   const sections = open ? planSections(accounts, usage, Date.now()) : []
@@ -43,7 +45,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
         <span className="pm-title">Usage</span>
         <SegmentedControl label="Usage view" value={view} onChange={(v) => actions.ui.setUsageView(v as typeof view)} options={[{ value: 'detailed', label: 'Detailed' }, { value: 'compact', label: 'Compact' }]} />
       </div>
-      {sections.map((s) => <Row key={s.provider} s={s} compact={view === 'compact'} open={expanded.includes(s.provider)} busy={busy} onSwitch={onSwitch} onSignIn={onSignIn} />)}
+      {sections.map((s) => <Row key={s.provider} s={s} compact={view === 'compact'} open={expanded.includes(s.provider)} counts={chatsPerAccount(chats, s.provider)} busy={busy} onSwitch={onSwitch} onSignIn={onSignIn} />)}
       <div className="plan-foot">
         <button type="button" className="menu-item" onClick={() => go({ name: 'settings', page: 'accounts' })}>
           <span className="grow">Account and usage</span><Icon name="right" size={14} />
@@ -53,7 +55,7 @@ export function UsagePopover({ open, onClose, anchorRef, busy, onSwitch, onSignI
   )
 }
 
-function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; compact: boolean; open: boolean; busy: UsageBusy | null; onSwitch: (provider: Provider, accountId: string) => void; onSignIn: (provider: Provider, cli: boolean) => void }) {
+function Row({ s, compact, open, counts, busy, onSwitch, onSignIn }: { s: PlanSection; compact: boolean; open: boolean; counts: Record<string, number>; busy: UsageBusy | null; onSwitch: (provider: Provider, accountId: string) => void; onSignIn: (provider: Provider, cli: boolean) => void }) {
   const body = useId()
   const { account } = s
   if (!account) {
@@ -91,7 +93,7 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
       )}
       {open && (
         <div id={body} className="pm-body">
-          {s.email && <span className="plan-email">{s.email}</span>}
+          {(s.email || counts[account.id]) && <span className="plan-email">{[s.email, chatsLabel(counts[account.id])].filter(Boolean).join(' · ')}</span>}
           {s.billed
             ? <span className="plan-billed">Billed per token</span>
             : (
@@ -114,7 +116,7 @@ function Row({ s, compact, open, busy, onSwitch, onSignIn }: { s: PlanSection; c
                 return (
                   <button key={o.id} type="button" className="menu-item plan-other" aria-label={`Switch ${s.name} to ${o.label}`} aria-busy={switching || undefined} disabled={busy !== null} onClick={() => onSwitch(s.provider, o.id)}>
                     <span className="plan-other-name">{o.label}</span>
-                    <span className="plan-other-plan ellipsis">{o.plan}</span>
+                    <span className="plan-other-plan ellipsis">{[o.plan, chatsLabel(counts[o.id])].filter(Boolean).join(' · ')}</span>
                     {switching
                       ? <span className="plan-other-use"><Spinner label={null} pattern="wave-back" />Switching</span>
                       : !compact && o.nums.length > 0

@@ -1,5 +1,6 @@
 import './account.css'
 import { useRef } from 'react'
+import { chatsLabel, chatsPerAccount } from '../../accountChats'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Icon, Menu, MENU_SEPARATOR, Spinner, useBusy, type MenuEntry } from '../../ui'
@@ -22,11 +23,13 @@ export function AccountButton() {
   const open = useStore((s) => s.ui.menu === 'account')
   const anchor = useRef<HTMLDivElement>(null)
   const accounts = useStore((s) => s.accounts)
+  const chats = useStore((s) => s.chats)
   const [busy, run] = useBusy<string>()
   const name = account?.name ?? account?.login ?? 'Kernel'
   const who = [account?.login ?? account?.email, account?.plan].filter(Boolean).join(' · ')
+  const counts = Object.fromEntries(PROVIDERS.map((p) => [p.id, chatsPerAccount(chats, p.id)]))
   const multi = accounts.length > 2 || accounts.some((a) => a.provider === 'codex' && a.signedIn)
-  const switchTo = (provider: Provider, accountId: string) => void run(`${provider}:${accountId}`, () => call('accounts.switch', { provider, accountId }).then(actions.accounts.set, (e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) })))
+  const switchTo = (provider: Provider, accountId: string) => void run(`${provider}:${accountId}`, () => actions.accounts.requestSwitch(provider, accountId).catch((e) => actions.ui.toast({ title: 'Could not switch accounts', sub: cleanError(e) })))
   // One row per account, the whole row the switch button. Usage lives in the footer (KERNEL-674).
   const accountEntry = (a: AccountProfile): MenuEntry => {
     const provider = PROVIDERS.find((p) => p.id === a.provider)?.label
@@ -40,7 +43,7 @@ export function AccountButton() {
       content: (
         <span className="acct-row">
           <span className="acct-name ellipsis">{a.label}</span>
-          <span className="acct-plan ellipsis">{a.auth === 'apiKey' ? undefined : a.plan}</span>
+          <span className="acct-plan ellipsis">{[a.auth === 'apiKey' ? undefined : a.plan, chatsLabel(counts[a.provider]?.[a.id])].filter(Boolean).join(' · ')}</span>
           {switching ? <Spinner label={null} pattern="wave-back" /> : note ? <span className="acct-state">{note}</span> : a.active ? <Icon name="check" size={14} /> : null}
         </span>
       ),
