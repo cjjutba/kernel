@@ -7,7 +7,7 @@ import { tempRepo, trustRoom, freePort } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { BLOCK_STARTS, blocksOverlap, plainLine, portBlock, resizeScript, runningRuns, runScript, stopScript } from '../src/main/services/scripts'
+import { BLOCK_STARTS, BROWSER_BLOCKED_PORTS, blocksOverlap, plainLine, portBlock, resizeScript, runningRuns, runScript, stopScript } from '../src/main/services/scripts'
 import { configuredRemote, loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { listBranches } from '../src/main/services/worktrees'
 import { fixtureHandlers } from '../src/main/fixtures'
@@ -268,6 +268,14 @@ describe('port blocks (KERNEL-244)', () => {
     expect(blocksOverlap(4312, 4330)).toBe(false)
   })
 
+  it('ends below 6000, which browsers refuse, and leaves out every block holding a port browsers refuse (KERNEL-830)', () => {
+    expect(BLOCK_STARTS.at(-1)! + PORT_BLOCK - 1).toBeLessThan(6000)
+    expect(BROWSER_BLOCKED_PORTS).toEqual(expect.arrayContaining([5060, 5061]))
+    for (const start of BLOCK_STARTS) for (const p of BROWSER_BLOCKED_PORTS) expect(p >= start && p < start + PORT_BLOCK).toBe(false)
+    expect(BLOCK_STARTS).toContain(5050)
+    expect(BLOCK_STARTS).toContain(5070)
+  })
+
   it('skips a block when any of its 10 ports is in use', async () => {
     const first = await portBlock(() => [], new Set())
     const srv = createServer()
@@ -298,14 +306,19 @@ describe('port blocks (KERNEL-244)', () => {
     }
   })
 
-  it('running out of ports leaves no worktree or branch behind', async () => {
+  it('running out of ports says how many workspaces are open and leaves no worktree or branch behind (KERNEL-830)', async () => {
     const { k, room, repo } = await kernelOn({})
+    const open = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const branches = await git(repo, 'branch', '--format=%(refname:short)')
+    const worktrees = await git(repo, 'worktree', 'list')
+    // The other open workspaces' blocks, held as a hand-off in flight holds them.
     const reserved = k.workspaces['reservedPorts']
-    for (const p of BLOCK_STARTS) reserved.add(p)
-    await expect(k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })).rejects.toThrow('No free block of ports')
-    expect((await git(repo, 'branch', '--format=%(refname:short)')).trim()).toBe('main')
-    expect((await git(repo, 'worktree', 'list')).trim().split('\n')).toHaveLength(1)
-    expect(k.store.workspaces(room.id)).toEqual([])
+    for (const p of BLOCK_STARTS) if (!blocksOverlap(p, open.port)) reserved.add(p)
+    await expect(k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })).rejects.toThrow(
+      `Kernel is out of ports for new workspaces. 1 workspace is open across your rooms, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
+    expect(await git(repo, 'branch', '--format=%(refname:short)')).toBe(branches)
+    expect(await git(repo, 'worktree', 'list')).toBe(worktrees)
+    expect(k.store.workspaces(room.id).map((w) => w.id)).toEqual([open.id])
   })
 
   it('restore keeps the port unless another workspace took its block', async () => {

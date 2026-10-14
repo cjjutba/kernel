@@ -1,13 +1,13 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { AgentDef, Chat, ChatPart, CompareTarget, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import { PORT_BLOCK, type AgentDef, type Chat, type ChatPart, type CompareTarget, type Effort, type Provider, type Room, type ScriptTrust, type Workspace, type WorkspaceMode, type WorkspaceSource } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, referencesInRoom, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchCommits, branchName, branchType, capBranch, changedFiles, compareRange, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, freeWorktreePath, hasCommit, isWorktreeOf, leadBase, listBranches, mergeBase, onRemote, rangeDiff, rangeFiles, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, stripRemote, taskBranch, validBranchName } from '../services/worktrees'
-import { linkNodeModules, portBlock } from '../services/scripts'
+import { linkNodeModules, NoFreePortBlock, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
@@ -478,10 +478,15 @@ export class Workspaces extends Feature {
   /**
    * The one way a workspace gets ports: a free block (`portBlock`), held in memory while `use` runs, through its awaits,
    * until it has stored the workspace that uses it, so a second hand-off in the same turn can't pick it too (KERNEL-244).
-   * The block goes back if `use` throws.
+   * The block goes back if `use` throws. With none free, the error says how many workspaces hold one and how to free them, and
+   * the Lead's create_workspace passes it on as it is (KERNEL-830).
    */
   async withPort<T>(use: (port: number) => T | Promise<T>): Promise<T> {
-    const port = await portBlock(() => this.openPorts(), this.reservedPorts)
+    const port = await portBlock(() => this.openPorts(), this.reservedPorts).catch((e) => {
+      if (!(e instanceof NoFreePortBlock)) throw e
+      const open = this.openPorts().length
+      throw new Error(`Kernel is out of ports for new workspaces. ${open} ${open === 1 ? 'workspace is' : 'workspaces are'} open across your rooms, and each holds ${PORT_BLOCK} ports. Archive the workspaces you've finished to free their ports.`)
+    })
     try { return await use(port) } finally { this.reservedPorts.delete(port) }
   }
 

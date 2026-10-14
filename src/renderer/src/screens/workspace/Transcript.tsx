@@ -103,6 +103,23 @@ export function followsAfterScroll(pinned: boolean, view: ScrollView, before: Sc
  */
 export const movesToEnd = (view: ScrollView, byHand: boolean) => !byHand && distFromEnd(view) >= 1
 
+/** A glide to the end first jumps to one screen above it when the end is more than this many screens away (KERNEL-833). */
+export const GLIDE_FAR = 1.5
+
+/** The glide takes this share of the way left each frame, at least a pixel, and gives up after this many frames. It lands once the end has held still for GLIDE_CALM. */
+const GLIDE_EASE = 0.16
+const GLIDE_CALM = 12
+const GLIDE_FRAMES = 300
+
+/** Where one frame of a glide puts the view: a share of what is left to the end, never less than a pixel, and the end itself once it is within one. */
+export const glideStep = (scrollTop: number, goal: number) => {
+  const left = goal - scrollTop
+  return Math.abs(left) <= 1 ? goal : scrollTop + Math.sign(left) * Math.max(1, Math.abs(left) * GLIDE_EASE)
+}
+
+/** Where a glide to the end starts: the view itself, or one screen above the end when it is further off than GLIDE_FAR screens. */
+export const glideStart = (scrollTop: number, goal: number, clientHeight: number) => (goal - scrollTop > GLIDE_FAR * clientHeight ? goal - clientHeight : scrollTop)
+
 /** How long the reader's input counts as scrolling with no scroll event after it. A pull past the end moves nothing and never fires scrollend. */
 const HAND_MS = 200
 
@@ -825,10 +842,15 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     remember(el)
     show(!pinned.current && distFromEnd(view) > PIN_PX)
   }
-  // A smooth scroll the page runs itself (the button's, or a jump from the chat rail) must not be cut short by following. It ends when the scroll
-  // lands, or when the reader takes over. The button's scroll passes through "away" on its way down, which never unpins since it only moves toward the end.
+  // A glide to the end (the button's, Approve's) must not be cut short by following. It ends when it lands, or when the reader takes over.
+  // The button's glide passes through "away" on its way down, which never unpins since it only moves toward the end.
   const gliding = useRef(false)
-  const release = () => { gliding.current = false }
+  // The glide to the end is ours, one scroll position a frame, so it keeps aiming at an end that moves under it: the composer shrinking, the reply, the Lead's first message (KERNEL-833).
+  // The browser's smooth scroll fixes its target when it starts and, with following held off until it lands, stopped short of an end that had moved.
+  const glideId = useRef(0)
+  const gliderOn = useRef(0)
+  const glideFrame = useRef(0)
+  const release = () => { gliding.current = false; gliderOn.current = 0; glideId.current++; cancelAnimationFrame(glideFrame.current) }
   const take = () => { release(); byHand.current = true; letGo.current?.() }
   const press = (e: KeyboardEvent) => {
     if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
@@ -844,18 +866,45 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }
   const followNow = () => { cancelAnimationFrame(frame.current); frame.current = follow() }
   const landed = () => {
+    // The glide's own scrolls end in between its frames, which doesn't mean it landed.
+    if (gliderOn.current) return
     release()
     byHand.current = false
     if (pinned.current) followNow()
   }
   const toEnd = () => {
     cancelAnimationFrame(aiming.current)
-    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches
-    // Already at the end, no scroll runs and none lands, so nothing would end the glide.
-    gliding.current = smooth && !!scroller.current && distFromEnd(flat(scroller.current)) > 0
+    release()
     byHand.current = false
     pin(true)
-    end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
+    const el = scroller.current
+    if (!el) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { end.current?.scrollIntoView({ block: 'end', behavior: 'auto' }); return }
+    const goalOf = () => Math.max(0, rangeOf(flat(el)))
+    // Already at the end, nothing would run.
+    if (goalOf() - el.scrollTop <= 0) return
+    const mine = ++glideId.current
+    gliding.current = true
+    gliderOn.current = mine
+    el.scrollTop = glideStart(el.scrollTop, goalOf(), el.clientHeight)
+    let calm = 0
+    let frames = 0
+    const step = () => {
+      if (glideId.current !== mine) return
+      const goal = goalOf()
+      const next = glideStep(el.scrollTop, goal)
+      if (next !== el.scrollTop) el.scrollTop = next
+      calm = Math.abs(goal - el.scrollTop) < 1 ? calm + 1 : 0
+      if (calm >= GLIDE_CALM || ++frames >= GLIDE_FRAMES) {
+        el.scrollTop = goalOf()
+        release()
+        pin(true)
+        followNow()
+        return
+      }
+      glideFrame.current = requestAnimationFrame(step)
+    }
+    glideFrame.current = requestAnimationFrame(step)
   }
   // Approving this chat's plan from its composer pins following again and glides to the end, which a plan taller than the chat left far above (KERNEL-789).
   // An approval from Inbox or Home sends no event, so a reader here stays where they are.
@@ -865,7 +914,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     return () => window.removeEventListener(PLAN_APPROVE_EVENT, onApprove)
   }, [chat.id])
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const jumping = useCallback((on: boolean) => { if (on) cancelAnimationFrame(aiming.current); gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
+  const jumping = useCallback((on: boolean) => { if (on) { cancelAnimationFrame(aiming.current); cancelAnimationFrame(glideFrame.current); gliderOn.current = 0; glideId.current++ } gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
   const rowBoxes = (): RowBox[] => {
     const el = scroller.current
@@ -955,7 +1004,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     }
     step()
   }
-  useEffect(() => () => cancelAnimationFrame(aiming.current), [])
+  useEffect(() => () => { cancelAnimationFrame(aiming.current); cancelAnimationFrame(glideFrame.current) }, [])
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
   const anchorSend = (id: string) => {
     release()

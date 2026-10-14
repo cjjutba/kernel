@@ -29,6 +29,8 @@ const names = args.filter((a, i) => !a.startsWith('--') && (themeAt < 0 || i !==
 // Plain Node cannot import fixtures/index.ts (extensionless imports), so read the keys: one `  Name:` line per fixture.
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
 const allFixtures = () => [...fixtureNames()].sort()
+// A fixture with motion declares it on its own line (`Name: { ...scene(..), motion: { ... } },`), so `--motion --all` can pick them without launching every screen.
+const motionFixtures = () => readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):.*\bmotion: \{/gm)].map((m) => m[1])).sort()
 
 // Screens that need a click to reach the state in the shot, such as a chat row opened in place. That state is local to the
 // component, so a fixture can't set it.
@@ -124,6 +126,13 @@ async function pickFirstOption(page: Page) {
   await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
+}
+
+// WorkspacePlanApproveDraft has text in the box, so pressing Approve asks "Approve without your changes?" in the strip (KERNEL-833). The question is local to the strip.
+async function askApprove(page: Page) {
+  await page.getByRole('button', { name: /^Approve/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(700)
 }
 
 // WorkspaceQuestionStates is option 1 picked, option 3 focused from the keyboard and option 2 hovered (KERNEL-676).
@@ -526,6 +535,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceKernelNoteOpen: openKernelNote,
   WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionStates: questionStates,
+  WorkspacePlanApproveDraft: askApprove,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   LeadOpenItemsOpen: async (page) => { await page.getByRole('button', { name: /3 open/ }).click(); await page.waitForTimeout(200) },
@@ -734,7 +744,7 @@ async function capture(name: string): Promise<boolean> {
 }
 
 async function shots() {
-  const list = flags.has('--all') ? allFixtures() : names
+  const list = flags.has('--all') ? (flags.has('--motion') ? motionFixtures() : allFixtures()) : names
   if (!list.length) throw new Error('Name at least one screen, for example: pnpm shots Workspace Main')
   if (!flags.has('--no-build')) {
     const build = spawnSync('pnpm', ['exec', 'electron-vite', 'build'], { cwd: root, stdio: 'inherit' })
