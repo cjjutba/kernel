@@ -6,6 +6,7 @@ import { openLeadChat } from '../../lead'
 import { KernelMark } from '../../icons'
 import { Button, Modal, Pill, SegmentedControl, Spinner, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
+import { markJustSent } from '../workspace/chatPlace'
 import './agent.css'
 
 type Step = 'describe' | 'draft' | 'done'
@@ -65,6 +66,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId?: string; step: Ste
     try {
       // A new Lead chat, which opens before its worktree exists (KERNEL-542). The brief is a plain one, not a plan.
       const chat = await call('lead.start', { roomId, prompt: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with create_agent.\n\n${text}`, plan: false })
+      markJustSent(chat.id)
       actions.chats.upsert(chat)
       await openLeadChat(roomId, chat.id)
     } catch (e) { setError(cleanError(e)) }

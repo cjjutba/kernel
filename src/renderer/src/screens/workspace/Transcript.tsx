@@ -29,7 +29,7 @@ import { ReviewCard } from './pr/ReviewCard'
 import { LEAD_MODE_ICON } from './composer/modes'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
-import { opensAtEnd, placeTop, readPlace, savePlace, takeJustSent, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
+import { opensAtEnd, placeTop, readPlace, savePlace, peekJustSent, takeJustSent, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
 import { RAIL_MIN, railEntries, sameEntries } from './railEntries'
 
 const EMPTY: ChatItem[] = []
@@ -65,13 +65,25 @@ export const anchorGoal = (scrollTop: number, markTop: number, viewTop: number) 
  */
 export const anchorPad = (clientHeight: number, anchorTop: number, endBottom: number) => Math.max(0, Math.round(clientHeight - ANCHOR_GAP - (endBottom - anchorTop)))
 
-/** What the thread does about a sent message's anchor when it changes: anchor a message it hasn't anchored yet, keep the padding while the turn it started runs, and clear it once nothing is running (KERNEL-807). */
-/** `open` is false only for the run that is the chat opening. A chat just created by a send counts as open, so its first message anchors; a reopened chat's last message does not. */
-export const sendAnchor = (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean, open = true): 'anchor' | 'keep' | 'clear' => {
-  if (!open) return 'keep'
-  if (last && followsSend(last) && last.id !== anchoredId) return 'anchor'
-  return padded && !running ? 'clear' : 'keep'
+/** Milliseconds a message counts as posted from the queue after the queue last held one. */
+export const QUEUE_POST_MS = 2000
+
+/**
+ * What the thread does about a sent message's anchor when it changes: anchor a message it hasn't anchored yet, else leave the view alone (KERNEL-837).
+ * The padding is not this step's: it stays after the turn ends and is dropped only by the next anchor, the reader's scrolling or leaving the chat.
+ * `open` is false only for the run that is the chat opening. A chat just created by a send counts as open, so its first message anchors; a reopened chat's last message does not.
+ * A queued message posts while the reader may be reading: it anchors, unless they scrolled by hand since the last anchor (`readerAway`).
+ */
+export const sendAnchor = (last: ChatItem | undefined, anchoredId: string | null, open = true, readerAway = false): 'anchor' | 'keep' => {
+  if (!open || !last || !followsSend(last) || last.id === anchoredId) return 'keep'
+  return readerAway ? 'keep' : 'anchor'
 }
+
+/** Whether a message that just posted came from the queue: the queue held one a moment ago. */
+export const postedFromQueue = (queuedAt: number, now: number) => now - queuedAt < QUEUE_POST_MS
+
+/** The padding drops once the view sits clear of it, so removing it moves nothing. `scrollHeight` includes the padding. */
+export const padDroppable = (v: ScrollView, pad: number) => v.scrollTop + v.clientHeight <= v.scrollHeight - pad
 
 const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
 
@@ -783,6 +795,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const drawn = useRef<string[]>([])
   drawn.current = blocks.filter((b) => b.kind !== 'item' || !(b.item.kind === 'result' || (b.item.kind === 'user' && !instructionOf(b.item) && userView(b.item) === 'hidden') || (b.item.kind === 'approval' && !approvals.some((a: Approval) => a.id === (b.item as Extract<ChatItem, { kind: 'approval' }>).approvalId)))).map(blockKey)
   const itemsNow = useRef(items)
+  const runningNow = useRef(running)
+  runningNow.current = running
   itemsNow.current = items
   // What the chat rail lists. A streamed reply redraws the transcript but changes none of this, so the rail keeps its list.
   const listed = useMemo(() => railEntries(items, isLead), [items, isLead])
@@ -809,6 +823,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // The padding under a sent message isn't part of the thread: the end is where the rows end, so the Scroll to bottom button and following measure to that.
   const padNow = useRef(0)
   const anchored = useRef<string | null>(null)
+  // Whether the reader has scrolled by hand since the last anchor, which a queued message posting respects.
+  const handSince = useRef(false)
   const flat = (el: ScrollView): ScrollView => ({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight - padNow.current, clientHeight: el.clientHeight })
   const remember = (el: ScrollView) => { seen.current = flat(el) }
   const letGo = useRef<ReturnType<typeof lapse> | undefined>(undefined)
@@ -824,12 +840,24 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     pinned.current = anchored.current && !byHand.current ? pinned.current : next
     remember(el)
     show(!pinned.current && distFromEnd(view) > PIN_PX)
+    unpadNow()
   }
   // A smooth scroll the page runs itself (the button's, or a jump from the chat rail) must not be cut short by following. It ends when the scroll
   // lands, or when the reader takes over. The button's scroll passes through "away" on its way down, which never unpins since it only moves toward the end.
   const gliding = useRef(false)
   const release = () => { gliding.current = false }
-  const take = () => { release(); byHand.current = true; letGo.current?.() }
+  // The reader's own scrolling ends the anchor. Its padding goes once the view sits clear of it, so dropping it never moves the view (KERNEL-837).
+  const unpad = useRef(false)
+  const unpadNow = () => {
+    const el = scroller.current
+    if (!unpad.current || !el) return
+    if (padNow.current && !padDroppable(el, padNow.current)) return
+    unpad.current = false
+    anchored.current = null
+    padReply()
+  }
+  const dropAnchor = () => { unpad.current = true; handSince.current = true; unpadNow() }
+  const take = () => { release(); byHand.current = true; letGo.current?.(); dropAnchor(); takeJustSent(chat.id) }
   const press = (e: KeyboardEvent) => {
     if (SCROLL_KEYS.has(e.key) && !(e.target as Element).closest('input, textarea, select, [contenteditable="true"]')) take()
     else release()
@@ -854,6 +882,8 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     // Already at the end, no scroll runs and none lands, so nothing would end the glide.
     gliding.current = smooth && !!scroller.current && distFromEnd(flat(scroller.current)) > 0
     byHand.current = false
+    unpad.current = true
+    unpadNow()
     pin(true)
     end.current?.scrollIntoView({ block: 'end', behavior: smooth ? 'smooth' : 'auto' })
   }
@@ -865,7 +895,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     return () => window.removeEventListener(PLAN_APPROVE_EVENT, onApprove)
   }, [chat.id])
   // The chat rail glides to a message the reader picked, which is the reader scrolling. It unpins, and following stays out of the way until it lands.
-  const jumping = useCallback((on: boolean) => { if (on) cancelAnimationFrame(aiming.current); gliding.current = on; if (on) { byHand.current = true; letGo.current?.() } }, [])
+  const jumping = useCallback((on: boolean) => { if (on) cancelAnimationFrame(aiming.current); gliding.current = on; if (on) { byHand.current = true; letGo.current?.(); dropAnchor() } }, [])
   // The rows on screen with where they sit in the scroller, which is how a spot is saved and found again.
   const rowBoxes = (): RowBox[] => {
     const el = scroller.current
@@ -885,16 +915,19 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
     byHand.current = false
     const el = scroller.current
     const place = takePlace(chat.id)
-    fresh.current = takeJustSent(chat.id)
+    fresh.current = peekJustSent(chat.id)
     const lastSent = [...itemsNow.current].reverse().find(followsSend)?.id
     let again = 0
-    if (!el || opensAtEnd(place, lastSent)) {
+    if (!el || fresh.current || opensAtEnd(place, lastSent)) {
       pin(true)
       followNow()
       if (el) remember(el)
     } else {
       pinned.current = false
+      // A turn is still running under the message the view had at its top, so that message keeps its place (KERNEL-837).
+      if (place!.anchoredId && runningNow.current && lastSent === place!.anchoredId) { anchored.current = place!.anchoredId; sentId.current = place!.anchoredId }
       const put = () => {
+        padReply()
         const boxes = new Map(rowBoxes().map((r) => [r.id, r.top]))
         el.scrollTop = placeTop(place!, (id) => boxes.get(id), rangeOf(el))
         remember(el)
@@ -910,7 +943,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       const view = scroller.current
       // A chat that was just closed or archived has no spot to keep.
       if (!view || !getState().chats[workspaceId]?.some((c) => c.id === chat.id && !c.closed)) return
-      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, pinned.current, [...itemsNow.current].reverse().find(followsSend)?.id))
+      savePlace(chat.id, readPlace(rowBoxes(), view.scrollTop, pinned.current, [...itemsNow.current].reverse().find(followsSend)?.id, runningNow.current ? anchored.current ?? undefined : undefined))
     }
   }, [])
   // Opening a row at the end grows the thread under the reader's click, and following would scroll the row they opened out from under them. They are reading it now,
@@ -934,15 +967,17 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   // Rows far above the message are measured a frame after the glide passes them, so the message moves while the scroll runs and a target taken once lands short.
   // Aim again whenever the target moves, until the message has sat at the gap for a few frames. The reader's own scrolling ends it.
   const aiming = useRef(0)
+  const aimLive = useRef(false)
   const aim = (id: string, smooth: boolean) => {
     cancelAnimationFrame(aiming.current)
+    aimLive.current = true
     let aimed = NaN
     let calm = 0
     let frames = 0
     const step = () => {
       const el = scroller.current
       const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
-      if (!el || !mark || aimOver(anchored.current, id, byHand.current, pinned.current)) { release(); return }
+      if (!el || !mark || aimOver(anchored.current, id, byHand.current, pinned.current)) { aimLive.current = false; release(); return }
       padReply()
       const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
       if (goal !== aimed) {
@@ -950,16 +985,28 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTo({ top: goal, behavior: smooth ? 'smooth' : 'auto' })
       }
       calm = Math.abs(goal - el.scrollTop) < 1 ? calm + 1 : 0
-      if (calm >= AIM_CALM || ++frames >= AIM_FRAMES) { if (calm < AIM_CALM) el.scrollTo({ top: goal, behavior: 'auto' }); release(); return }
+      if (calm >= AIM_CALM || ++frames >= AIM_FRAMES) { if (calm < AIM_CALM) el.scrollTo({ top: goal, behavior: 'auto' }); aimLive.current = false; release(); takeJustSent(chat.id); return }
       aiming.current = requestAnimationFrame(step)
     }
     step()
   }
   useEffect(() => () => cancelAnimationFrame(aiming.current), [])
+  // Content under the message changing size (the Working line leaving when the turn ends) can clamp the view before the padding is recomputed. Until the reader scrolls, the message stays at its gap.
+  const hold = () => {
+    const el = scroller.current
+    const id = anchored.current
+    if (!el || !id || aimLive.current || handSince.current || byHand.current) return
+    const mark = thread.current?.querySelector(`[data-jump="${CSS.escape(id)}"]`)
+    if (!mark) return
+    const goal = anchorGoal(el.scrollTop, mark.getBoundingClientRect().top, el.getBoundingClientRect().top)
+    if (Math.abs(goal - el.scrollTop) >= 1) el.scrollTop = goal
+  }
   // A send puts the message at the top of the view and lets the reply fill in under it (KERNEL-803). Nothing follows the reply from here; the Scroll to bottom button shows once it passes the bottom edge.
   const anchorSend = (id: string) => {
     release()
     byHand.current = false
+    handSince.current = false
+    unpad.current = false
     anchored.current = id
     pinned.current = false
     padReply()
@@ -980,9 +1027,19 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
       opening.current = false
       height.current = h
       padReply()
+      unpadNow()
+      hold()
       if (pinned.current) followNow()
       else if (scroller.current) show(distFromEnd(flat(scroller.current)) > PIN_PX)
     })
+    watch.observe(el)
+    return () => watch.disconnect()
+  }, [])
+  // The window resizing or the composer growing changes the view's height, which the padding under an anchored message is made from.
+  useEffect(() => {
+    const el = scroller.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(() => { padReply(); unpadNow(); hold() })
     watch.observe(el)
     return () => watch.disconnect()
   }, [])
@@ -991,12 +1048,16 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const arrived = useRef(false)
   const sentId = useRef<string | null>(null)
   const queued = useStore((s) => s.queue[chat.id]?.length ?? 0)
+  const queuedAt = useRef(0)
+  const prevQueued = useRef(queued)
+  useEffect(() => { if (queued > 0 || prevQueued.current > 0) queuedAt.current = Date.now(); prevQueued.current = queued }, [queued])
   useEffect(() => {
     // The first run is the chat opening, which the effect above has placed already.
-    const step = sendAnchor(last, sentId.current, anchored.current !== null, running, arrived.current || fresh.current)
-    if (step === 'anchor' && last) { sentId.current = last.id; anchorSend(last.id) }
-    else if (step === 'clear') { anchored.current = null; padReply() }
-    else if (!arrived.current && followsSend(last)) sentId.current = last?.id ?? null
+    const away = postedFromQueue(queuedAt.current, Date.now()) && handSince.current
+    const step = sendAnchor(last, sentId.current, arrived.current || fresh.current, away)
+    if (step === 'anchor' && last) anchorSend(last.id)
+    else if (followsSend(last) && last!.id !== sentId.current && scroller.current) show(distFromEnd(flat(scroller.current)) > PIN_PX)
+    if (followsSend(last)) sentId.current = last!.id
     arrived.current = true
     fresh.current = false
     if (pinned.current) followNow()
