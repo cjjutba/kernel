@@ -49,6 +49,22 @@ mac:
   notarize: true
 dmg:
   artifactName: ${productName}-${arch}.${ext}
+  # build/background.png and build/background@2x.png come from build/dmg-background.svg (KERNEL-796). dmg-builder sizes the
+  # window to that image and ignores window while a background is set, and Finder counts its 32pt title bar in that height,
+  # so the art keeps its content above y 408. The icon centers sit on the arrow's line in that art.
+  title: Kernel ${version}
+  window:
+    width: 660
+    height: 440
+  iconSize: 128
+  contents:
+    - x: 165
+      y: 214
+      type: file
+    - x: 495
+      y: 214
+      type: link
+      path: /Applications
 # Where installed copies look for updates (written into the app as app-update.yml). scripts/release.sh uploads the
 # release with gh after the build passes its checks, so electron-builder itself never publishes. It also passes
 # releaseInfo.releaseNotesFile, rendered from site/content/releases/<version>.md, which is copied into latest-mac.yml
