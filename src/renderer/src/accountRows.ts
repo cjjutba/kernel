@@ -5,6 +5,9 @@ import { clock, resetPhrase } from '@shared/usage'
 import { call } from './api'
 import { actions } from './store'
 
+/** A path under the home folder as Terminal shows it: `~/.codex/config.toml`. */
+export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
+
 export const PROVIDER_NAME: Record<Provider, string> = { claude: 'Claude Code', codex: 'Codex' }
 
 /** "at 3:40 PM" today, else "on Oct 9". */

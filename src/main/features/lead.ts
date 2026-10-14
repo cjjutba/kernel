@@ -70,7 +70,7 @@ export class Lead extends Feature {
   /** The room's Lead agent, or a throw that says how to get one. */
   private async leadOf(roomId: string): Promise<AgentDef> {
     const lead = (await this.k.team.agents(roomId)).find((a) => a.lead)
-    if (!lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one in Settings, Agents.')
+    if (!lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one on this room\'s Agents page in Settings.')
     return lead
   }
 

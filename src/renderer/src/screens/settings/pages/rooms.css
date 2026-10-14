@@ -1,0 +1,18 @@
+/* A room's pages: Agents, Git, Setup and scripts, Pull requests (KERNEL-680). Tokens only. */
+
+/* An agent's picture in a row: its first letter in a tile. */
+.rm-avatar { width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-sm); border: 1px solid var(--line-3); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.rm-role { margin-left: 8px; font-size: 12.5px; font-weight: 400; color: var(--muted); }
+
+/* What a failed push check adds under its status */
+.rm-fail { display: flex; flex-direction: column; gap: 8px; }
+.rm-fail .set-note { padding-left: 0; }
+
+/* A workspace script's first line beside its button */
+.rm-script-line { min-width: 0; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rm-unset { font-family: var(--font); color: var(--muted); }
+.rm-script { font-family: var(--mono); }
+.rm-files { margin-top: 10px; }
+
+/* "Custom for this room" beside Edit */
+.rm-custom { height: 20px; box-sizing: border-box; display: inline-flex; align-items: center; padding: 0 7px; border-radius: var(--r-xs); border: 1px solid var(--line-3); font-size: 12px; color: var(--muted); }

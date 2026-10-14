@@ -26,6 +26,7 @@ import {
   CodeIcon,
   CommandLineIcon,
   CommentAdd01Icon,
+  ComputerIcon,
   ComputerTerminal01Icon,
   ContrastIcon,
   Copy01Icon,
@@ -96,6 +97,8 @@ const H = {
   history: HistoryIcon,
   layers: Layers01Icon,
   team: UserGroupIcon,
+  /** This Mac only: a setting that stays on this computer (KERNEL-680). */
+  computer: ComputerIcon,
   branch: GitBranchIcon,
   plus: Add01Icon,
   close: Cancel01Icon,

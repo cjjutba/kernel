@@ -35,10 +35,8 @@
 .nw-row { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: var(--r-sm); font-size: 13px; }
 .nw-row:hover, .nw-row:focus-within { background: var(--hover); }
 .nw-row > span:first-child { flex: 1; color: var(--ink-3); }
-.nw-select { position: relative; display: inline-flex; align-items: center; color: var(--ink-2); }
-.nw-select select { appearance: none; border: 0; outline: none; background: transparent; color: inherit; font: inherit; text-align: right; padding: 0 20px 0 0; cursor: pointer; }
-.nw-select select option { background: var(--surface-3); color: var(--ink-2); }
-.nw-select svg { position: absolute; right: 0; pointer-events: none; color: var(--muted); }
+.nw-select { color: var(--ink-2); min-width: 0; }
+.nw-select.mono .select-trigger { font-size: 12.5px; }
 .nw-select:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-2xs); }
 .nw-hint { margin: 4px 10px 6px; font-size: 12px; line-height: 1.45; color: var(--muted); }
 

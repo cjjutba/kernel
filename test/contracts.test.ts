@@ -109,7 +109,7 @@ describe('IPC contract', () => {
     const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
     await k.start()
     const h = k.handlers()
-    expect((await h['settings.get']()).experimental.floor3d).toBe(false)
+    expect((await h['settings.get']()).experimental.sharing).toBe(true)
     const room = await k.addRoom(repo)
     expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
     expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })

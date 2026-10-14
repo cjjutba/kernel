@@ -72,7 +72,7 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
-  experimental: { walking: true, floor3d: false, sharing: true },
+  experimental: { sharing: true },
   privacy: { telemetry: 'ask' }
 })
 
@@ -245,6 +245,9 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
     delete exp.bigTerminalWorktreeOnly
     // Nothing read Voice briefs, so it went with the Experimental page (KERNEL-540). A file that still has it loads without it.
     delete exp.voice
+    // Walking and the 3D floor went with the floor (KERNEL-606) and nothing read them (KERNEL-680).
+    delete exp.walking
+    delete exp.floor3d
   }
   // Nothing reads these since KERNEL-606 removed the screen, so they went (KERNEL-620). A file that still has them loads without them.
   delete s.floor

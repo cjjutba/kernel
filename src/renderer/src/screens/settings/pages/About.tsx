@@ -1,7 +1,8 @@
+import './system.css'
 import { useEffect, useState } from 'react'
 import type { AppUpdate } from '@shared/types'
 import { call, cleanError } from '../../../api'
-import { actions, go, useStore } from '../../../store'
+import { actions, go } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 
@@ -13,27 +14,44 @@ const checkResult = (u: AppUpdate): { title: string; sub?: string } =>
   u.blocked ? { title: "Kernel can't update itself", sub: u.blocked }
     : { title: u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? 'Could not check for updates' : 'Kernel is up to date' }
 
-const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
+/** The words after the version on the header card, from the last update state. */
+const state = (u: AppUpdate | null): string =>
+  !u ? '' : u.blocked ? 'Can’t update itself' : u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.status === 'checking' ? 'Checking' : u.status === 'error' ? 'Could not check for updates' : 'Up to date'
 
-/** Settings > About (SettingsAbout.png). */
+const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
+const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
+
+/** Settings > About (MorePage about, KERNEL-680): the app card with its version, then the data folder, logs and onboarding. */
 export function About() {
   const [info, setInfo] = useState<{ version: string; dataDir: string } | null>(null)
-  const claude = useStore((s) => s.system.preflight?.find((c) => c.id === 'claude'))
-  const [busy, run] = useBusy<'check' | 'logs'>()
-  useEffect(() => { void call('app.info', undefined).then(setInfo).catch(() => undefined) }, [])
+  const [update, setUpdate] = useState<AppUpdate | null>(null)
+  const [busy, run] = useBusy<'check' | 'logs' | 'reveal'>()
+  useEffect(() => {
+    void call('app.info', undefined).then(setInfo).catch(() => undefined)
+    void call('update.get', undefined).then(setUpdate).catch(() => undefined)
+  }, [])
+  const sub = state(update)
   return (
     <Page title="About">
-      <Section title="Kernel">
-        <Row label="Version"><span className="set-value">{info?.version ?? ''}</span></Row>
-        {claude?.ok && claude.meta && <Row label="Claude Code"><span className="set-value">{claude.meta}</span></Row>}
-        <Row label="Updates">
-          <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => actions.ui.toast(checkResult(u))).catch(fail('Could not check for updates')))}>Check for updates</Button>
+      <section className="sys-about" aria-label="Version">
+        <span className="sys-about-mark" aria-hidden="true">K</span>
+        <span className="sys-about-text">
+          <span className="sys-about-name">Kernel</span>
+          <span className="sys-about-sub">Version <span className="mono">{info?.version ?? ''}</span>{sub && ` · ${sub}`}</span>
+        </span>
+        <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => { setUpdate(u); actions.ui.toast(checkResult(u)) }).catch(fail('Could not check for updates')))}>Check for updates</Button>
+      </section>
+      <Section label="Data and support">
+        <Row label="Data folder">
+          <span className="set-actions">
+            <span className="set-value selectable">{home(info?.dataDir ?? '')}</span>
+            <Button busy={busy === 'reveal'} busyLabel="Opening" disabled={!info || busy !== null} onClick={() => info && void run('reveal', () => call('system.openInEditor', { path: info.dataDir }).then(() => undefined).catch(fail('Could not open the folder')))}>Reveal</Button>
+          </span>
         </Row>
-        <Row label="Data"><span className="set-value selectable">{info?.dataDir ?? ''}</span></Row>
-        <Row label="Logs">
+        <Row label="Logs" desc="For a bug report.">
           <Button busy={busy === 'logs'} busyLabel="Exporting" disabled={busy !== null} onClick={() => void run('logs', () => call('app.exportLogs', undefined).then((r) => actions.ui.toast({ title: 'Logs exported', sub: r.path })).catch(fail('Could not export logs')))}>Export logs</Button>
         </Row>
-        <Row label="Onboarding"><Button onClick={() => go({ name: 'onboarding', step: 'welcome' })}>Show again</Button></Row>
+        <Row label="Onboarding" desc="Walk through setup again."><Button onClick={() => go({ name: 'onboarding', step: 'welcome' })}>Show again</Button></Row>
       </Section>
     </Page>
   )

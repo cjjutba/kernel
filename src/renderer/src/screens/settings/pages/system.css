@@ -1,0 +1,29 @@
+/* Settings, Workspaces and System pages (KERNEL-680). Tokens only. */
+
+/* Integrations: a service's logo in a square tile before its name */
+.sys-logo { width: 36px; height: 36px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); color: var(--ink-2); }
+.sys-jira { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sys-jira .set-token { flex: 1 1 160px; width: auto; }
+.sys-line { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Pull requests: the user's own paths in mono, the locked built-in ones as written */
+.sys-paths .set-tag:not([data-locked]) > span:first-child { font-family: var(--mono); }
+.sys-state { font-size: 12.5px; color: var(--muted); }
+
+/* Big terminal: a preset row is one radio target, its Edit and Remove show on hover */
+.sys-preset { cursor: pointer; }
+.sys-preset .set-text { flex: 1 1 200px; }
+.sys-preset .set-label.mono { font: 12.5px var(--mono); }
+
+/* About: the header card */
+.sys-about { display: flex; align-items: center; gap: 16px; padding: 18px 16px; border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--card-bg); }
+.sys-about-mark { width: 48px; height: 48px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--input-bg); font-size: 20px; font-weight: 600; letter-spacing: -0.5px; color: var(--ink); }
+.sys-about-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sys-about-name { font-size: 16px; font-weight: 600; color: var(--ink); }
+.sys-about-sub { font-size: 12.5px; color: var(--muted); }
+.sys-about-sub .mono { font-family: var(--mono); color: var(--ink-3); }
+.sys-about + .set-section { margin-top: -12px; }
+
+/* Privacy: a muted Not sent */
+.sys-muted { color: var(--muted); }
+.sys-port { width: 84px; text-align: right; }

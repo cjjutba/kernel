@@ -5,14 +5,16 @@ import type { WorkspaceMode } from './workspaces'
 
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
-  | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'providers' | 'permissions' | 'env'
+  /** `accounts` holds every Claude Code and Codex account with its usage, the old Account and usage and Providers pages (KERNEL-680). */
+  | 'general' | 'appearance' | 'notifications' | 'accounts' | 'shortcuts'
+  | 'models' | 'permissions' | 'env'
   /** Every account's MCP servers, one account at a time (KERNEL-661). */
   | 'mcp'
   /** The personal and plugin agents that join every room, and the editor for one (KERNEL-641). */
   | 'agents'
-  | 'git' | 'scripts' | 'prs'
-  | 'hooks' | 'integrations' | 'privacy' | 'bigterm' | 'about'
+  /** `git` also holds the setup and archive switches the Scripts page had (KERNEL-680). */
+  | 'git' | 'prs' | 'bigterm'
+  | 'hooks' | 'integrations' | 'privacy' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
@@ -78,9 +80,9 @@ export interface AppSettings {
      * Claude's ids start with `claude-` and Codex's never do, so one map holds both (KERNEL-406).
      */
     effortByModel: Partial<Record<string, Effort>> }
-  /** Settings, Providers (KERNEL-406). Accounts and their credentials live apart from this file. */
+  /** Settings, Accounts, Advanced (KERNEL-406, KERNEL-680). Accounts and their credentials live apart from this file. */
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
-  /** `defaultTemplate` seeds an empty room (Settings > Agents). */
+  /** `defaultTemplate` seeds an empty room (Settings, Agents, New rooms start with). */
   team: { defaultTemplate: 'starter' | 'pair' }
   /**
    * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
@@ -100,7 +102,7 @@ export interface AppSettings {
   /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
   terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
   /** `sharing` gives agents share_file (KERNEL-302). On by default since KERNEL-308. No page shows it; `false` in settings.json turns it off. */
-  experimental: { walking: boolean; floor3d: boolean; sharing?: boolean }
+  experimental: { sharing?: boolean }
   /**
    * Usage data (KERNEL-397). `ask` until the user answers the one-time question, and nothing is sent until it is `on`.
    * Settings, Privacy changes it.
@@ -305,8 +307,11 @@ export interface PrInstructions { createInstructions: string; resolveInstruction
 /** `shared`: only `.kernel/settings.toml` sets the value. `local`: only `.kernel/settings.local.toml`. `override`: both, and the personal one wins. */
 export type RoomSettingSource = 'shared' | 'local' | 'override'
 
-/** The sections of a room's settings page. A route without one opens General. */
-export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'reviews' | 'skills'
+/**
+ * The sections of a room's settings page. A route without one opens General. `setup` holds the files to copy, the workspace scripts,
+ * run scripts and preview URLs; `prs` holds reviews, merge rules and PR instructions (KERNEL-680).
+ */
+export type RoomSettingsSection = 'general' | 'git' | 'setup' | 'environment' | 'agents' | 'prs' | 'permissions' | 'skills'
 
 /** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
 export interface FileToCopy {

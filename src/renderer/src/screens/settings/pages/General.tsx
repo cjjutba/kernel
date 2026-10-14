@@ -3,23 +3,22 @@ import { SegmentedControl, Select, Toggle } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
-/** Settings > General (Settings.png). */
+type General = AppSettings['general']
+
+/** Settings > General (SettingsPage.png, page general): Startup and Composer (KERNEL-680). */
 export function General({ s }: { s: AppSettings }) {
   const g = s.general
   return (
     <Page title="General">
-      <Section title="General">
-        <Row label="Default home view" desc="What opens when you launch Kernel">
-          <Select label="Default home view" value={g.openTo} onChange={(e) => void patchSettings({ general: { openTo: e.target.value as AppSettings['general']['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'home', label: 'Home' }, { value: 'inbox', label: 'Inbox' }]} />
-        </Row>
+      <Section title="Startup">
         <Row label="Open at login"><Toggle label="Open at login" checked={g.openAtLogin} onChange={(v) => void patchSettings({ general: { openAtLogin: v } })} /></Row>
-        <Row label="Send messages with">
-          <Select label="Send messages with" value={g.sendWith} onChange={(e) => void patchSettings({ general: { sendWith: e.target.value as AppSettings['general']['sendWith'] } })} options={[{ value: 'enter', label: 'Enter' }, { value: 'cmdEnter', label: '⌘ Enter' }]} />
+        <Row label="Open to">
+          <Select label="Open to" value={g.openTo} onChange={(v) => void patchSettings({ general: { openTo: v as General['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'home', label: 'Home' }, { value: 'inbox', label: 'Inbox' }]} />
         </Row>
       </Section>
-      <Section title="Team">
-        <Row label="Default team for new rooms" desc="What an empty room starts with">
-          <SegmentedControl label="Default team for new rooms" value={s.team.defaultTemplate} onChange={(v) => void patchSettings({ team: { defaultTemplate: v as AppSettings['team']['defaultTemplate'] } })} options={[{ value: 'starter', label: 'Starter team' }, { value: 'pair', label: 'Pair' }]} />
+      <Section title="Composer">
+        <Row label="Send with" desc="The other one adds a new line.">
+          <SegmentedControl label="Send with" value={g.sendWith} onChange={(v) => void patchSettings({ general: { sendWith: v as General['sendWith'] } })} options={[{ value: 'enter', label: '↵  Enter' }, { value: 'cmdEnter', label: '⌘  ↵' }]} />
         </Row>
       </Section>
     </Page>

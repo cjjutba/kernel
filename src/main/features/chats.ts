@@ -248,7 +248,7 @@ export class Chats extends Feature {
     if (pick.provider === provider) return { provider, model: pick.model }
     const models = await this.k.providers.models(provider).catch(() => [])
     const fallback = models.find((m) => m.isDefault) ?? models[0]
-    if (!fallback) throw new Error(`Kernel couldn't read ${provider === 'codex' ? "Codex's" : "Claude's"} models. Check Settings, Providers.`)
+    if (!fallback) throw new Error(`Kernel couldn't read ${provider === 'codex' ? "Codex's" : "Claude's"} models. Check Settings, Accounts.`)
     return { provider, model: fallback.id }
   }
 
