@@ -7,14 +7,14 @@ import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { PAUSE_KEEPS } from '../services/sessions'
 import { KERNEL_HOOK_EVENTS } from '../services/hooksInstaller'
-import { DEFAULT_BASE_REF, loadRepoSettings, localSettingsOwn } from '../services/settings'
+import { DEFAULT_BASE_REF, loadRepoSettings } from '../services/settings'
 import { defaultBranch, onRemote, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
 import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
 import { checkPush, pushStepOf } from '../services/preflight'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installRunsRepoCode, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
 
 /** Where Room setup says a room's agents came from, when it asks for a roster (RoomSetupRoster.png). */
@@ -141,11 +141,10 @@ export class Rooms extends Feature {
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
-      // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
-      // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      // The install command runs the repo's own install scripts, though, and those still wait for the user (KERNEL-260, D-078).
-      // So does an install that runs the repo's own code, as `bundle install` runs the Gemfile (KERNEL-444).
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length && !(await installRunsRepoCode(room.path))) await this.k.trust.trustCurrent(room)
+      // The file Kernel writes sets no script, so there is nothing of Kernel's to trust (KERNEL-682). The check still runs,
+      // so the room knows where it stands on what the repo brought (KERNEL-209).
+      await ensureRepoSettings(room.path)
+      await this.k.trust.untrusted(this.mustRoom(room.id))
     })
     await step('install', async () => {
       const { command, reason, runsRepoCode } = await installCommand(room.path)

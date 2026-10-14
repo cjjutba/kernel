@@ -169,14 +169,11 @@ export async function copyAgentFiles(fromRepo: string, toRepo: string): Promise<
 }
 
 /**
- * The file Kernel writes when a repo has none. With an install command, setup is a real line, so every new worktree
- * installs what the room's own checkout installed, and the run example is the stack's. Without one, the scripts stay
- * commented examples. Either way it ends with the example of one database per workspace (KERNEL-449).
+ * The file Kernel writes when a repo has none. It sets no script: the scripts are commented examples, `install` and `run`
+ * the stack's own when Kernel knows it, and Settings, Scripts offers the real ones (`scripts.suggest`, KERNEL-682). It ends
+ * with the example of one database per workspace (KERNEL-449).
  */
-export function defaultRepoSettings(setup?: string, run = 'pnpm dev --port $KERNEL_PORT'): string {
-  const scripts = setup
-    ? `[scripts]\n# Runs in every new workspace before the agent starts.\nsetup = ${JSON.stringify(setup)}\n# run = ${JSON.stringify(run)}\n# archive = ""\n`
-    : '# [scripts]\n# setup = "pnpm install"\n# run = "pnpm dev --port $KERNEL_PORT"\n# archive = ""\n'
+export function defaultRepoSettings(install?: string, run = 'pnpm dev --port $KERNEL_PORT'): string {
   return `# Kernel settings for this repo. Commit it so the whole team shares it.
 # Personal overrides go in .kernel/settings.local.toml, which stays out of git.
 
@@ -184,9 +181,14 @@ export function defaultRepoSettings(setup?: string, run = 'pnpm dev --port $KERN
 # Copied from this checkout into every new worktree.
 copy = [".env", ".env.local"]
 
-${scripts}
+# [scripts]
+# Runs in every new workspace before the agent starts.
+# setup = ${JSON.stringify(install ?? 'pnpm install')}
+# run = ${JSON.stringify(run)}
+# archive = ""
+
 # One database per workspace: setup creates it and archive drops it.
-#   setup = ${JSON.stringify(setup ? `${setup} && createdb $KERNEL_WORKSPACE_SLUG` : 'createdb $KERNEL_WORKSPACE_SLUG')}
+#   setup = ${JSON.stringify(install ? `${install} && createdb $KERNEL_WORKSPACE_SLUG` : 'createdb $KERNEL_WORKSPACE_SLUG')}
 #   archive = "dropdb --if-exists $KERNEL_WORKSPACE_SLUG"
 # Agents, scripts and terminals read .env.kernel from this checkout when git
 # doesn't track it, with \${KERNEL_*} names filled in for each workspace:
@@ -198,7 +200,7 @@ ${scripts}
 `
 }
 
-/** Writes .kernel/settings.toml when it is missing, with the checkout's install command as the setup script. Returns true when it wrote one. */
+/** Writes .kernel/settings.toml when it is missing, with the checkout's install and run commands as commented examples. Returns true when it wrote one. */
 export async function ensureRepoSettings(repoPath: string): Promise<boolean> {
   const file = join(repoPath, '.kernel', 'settings.toml')
   if (await exists(file)) return false
@@ -215,7 +217,7 @@ export async function ensureRepoSettings(repoPath: string): Promise<boolean> {
  * reads rust-toolchain.toml, which can name a toolchain inside the repo. `go mod download` runs nothing from the repo, and
  * a JS install runs only package.json's install scripts, which `installScripts` reads (KERNEL-260).
  */
-type Stack = { file: string; install: string; run: string; leaves?: string; runsRepoCode?: true }
+export type Stack = { file: string; install: string; run: string; leaves?: string; runsRepoCode?: true }
 
 const js = (file: string, install: string, run: string): Stack => ({ file, install, run, leaves: 'node_modules' })
 
@@ -246,7 +248,7 @@ const STACKS: Stack[][] = [
 ]
 
 /** The stacks a checkout uses, from the files in its root. */
-async function stacksOf(repoPath: string): Promise<Stack[]> {
+export async function stacksOf(repoPath: string): Promise<Stack[]> {
   const found: Stack[] = []
   for (const language of STACKS) {
     for (const stack of language) if (await exists(join(repoPath, stack.file))) { found.push(stack); break }
@@ -254,7 +256,7 @@ async function stacksOf(repoPath: string): Promise<Stack[]> {
   return found
 }
 
-const installOf = (stacks: Stack[]) => (stacks.length ? stacks.map((s) => s.install).join(' && ') : undefined)
+export const installOf = (stacks: Stack[]) => (stacks.length ? stacks.map((s) => s.install).join(' && ') : undefined)
 
 /** The install command a checkout's files ask for, whether or not it has run, one per stack. Undefined when it has no package manager Kernel knows. */
 export async function lockfileInstall(repoPath: string): Promise<string | undefined> {

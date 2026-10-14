@@ -72,17 +72,20 @@ describe('rooms service', () => {
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[files]\ncopy = []\n')
   })
 
-  it('makes the lockfile\'s install the setup script, so new workspaces run it', async () => {
+  it('writes no script for a new room, only commented examples, and leaves a file the repo has alone (KERNEL-682)', async () => {
     const pnpm = await tempRepo({ 'package.json': '{}', 'pnpm-lock.yaml': '' })
     expect(await ensureRepoSettings(pnpm)).toBe(true)
-    expect((await loadRepoSettings(pnpm)).scripts.setup).toBe('pnpm install')
-    // No package manager: nothing to install, so setup stays a commented example.
-    const plain = await tempRepo()
-    await ensureRepoSettings(plain)
-    expect((await loadRepoSettings(plain)).scripts.setup).toBeUndefined()
+    const settings = await loadRepoSettings(pnpm)
+    expect(settings.scripts).toEqual({})
+    expect(settings.runScripts).toEqual([])
+    expect(await readFile(join(pnpm, '.kernel', 'settings.toml'), 'utf8')).toContain('# setup = "pnpm install"')
+    const own = '[scripts]\nsetup = "make deps"\n'
+    const has = await tempRepo({ 'package.json': '{}', 'pnpm-lock.yaml': '', '.kernel/settings.toml': own })
+    expect(await ensureRepoSettings(has)).toBe(false)
+    expect(await readFile(join(has, '.kernel', 'settings.toml'), 'utf8')).toBe(own)
   })
 
-  it('picks the install and the run example from the stack, one install per language (KERNEL-444)', async () => {
+  it('picks the install and the commented examples from the stack, one install per language (KERNEL-444)', async () => {
     const stacks: [Record<string, string>, string, string][] = [
       [{ 'uv.lock': '', 'requirements.txt': '' }, 'uv sync', 'uv run uvicorn main:app --port $KERNEL_PORT'],
       [{ 'poetry.lock': '' }, 'poetry install', 'poetry run uvicorn main:app --port $KERNEL_PORT'],
@@ -100,8 +103,10 @@ describe('rooms service', () => {
       const repo = await tempRepo(files)
       expect(await lockfileInstall(repo), setup).toBe(setup)
       await ensureRepoSettings(repo)
-      expect((await loadRepoSettings(repo)).scripts.setup, setup).toBe(setup)
-      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain(`# run = ${JSON.stringify(run)}`)
+      expect((await loadRepoSettings(repo)).scripts.setup, setup).toBeUndefined()
+      const text = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
+      expect(text).toContain(`# setup = ${JSON.stringify(setup)}`)
+      expect(text).toContain(`# run = ${JSON.stringify(run)}`)
     }
   })
 
@@ -355,22 +360,23 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
     await withFakeNpm(async () => {
       const { k, repo, room, steps, h } = await start({ 'package.json': pkg('touch ran.txt') })
       expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's install scripts" })
-      // The settings.toml Kernel wrote is not trusted on its own any more, since its setup script runs those install scripts.
-      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "npm install"')
+      // The settings.toml Kernel wrote sets no script (KERNEL-682). The Install step still has those install scripts to run, so the room asks.
+      expect((await loadRepoSettings(repo)).scripts.setup).toBeUndefined()
       const trust = await h['rooms.scriptTrust']({ roomId: room.id })
-      expect(trust).toMatchObject({ scripts: { setup: 'npm install' }, installScripts: [{ name: 'postinstall', command: 'touch ran.txt' }] })
+      expect(trust).toMatchObject({ scripts: {}, installScripts: [{ name: 'postinstall', command: 'touch ran.txt' }] })
       expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
 
-      // The first workspace waits in `trust`, and its setup runs nothing.
+      // The first workspace waits in `trust`.
       const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
       expect(ws.status).toBe('trust')
-      expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
       expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
 
-      // Trusting releases the workspace and runs the install room setup skipped, in the background.
+      // Trusting releases the workspace and runs the install room setup skipped, in the background. The room has no setup
+      // script, so the workspace itself installs nothing.
       await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
       await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
-      await vi.waitFor(() => expect(existsSync(join(ws.path, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+      expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
       expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
       // It runs once: a second release of the same room installs nothing more.
       await rm(join(repo, 'ran.txt'))
@@ -419,9 +425,9 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
 
   it("holds an install that runs the repo's own code until the user trusts it, then runs it (KERNEL-444)", async () => {
     await withFakeNpm(async () => {
-      const { k, repo, room, steps, h } = await start({ Gemfile: 'source "https://rubygems.org"\n' })
+      const { k, repo, room, steps, h } = await start({ Gemfile: 'source "https://rubygems.org"\n', '.kernel/settings.toml': '[scripts]\nsetup = "bundle install"\n' })
       expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's scripts" })
-      // Kernel wrote the setup script, but it runs the Gemfile, so it isn't trusted on its own.
+      // The repo brought the setup script, so the room asks, and the install waits with it.
       const trust = await h['rooms.scriptTrust']({ roomId: room.id })
       expect(trust).toMatchObject({ scripts: { setup: 'bundle install' } })
       expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
@@ -444,6 +450,13 @@ describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
       expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
       expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
       await k.stop()
+      // So does a new room: the file Kernel writes for it sets no script, so nothing asks there either (KERNEL-682).
+      const fresh = await start({ Gemfile: '' })
+      expect(fresh.steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped: bundle install runs this repo's code, so run it yourself if you trust it" })
+      expect((await loadRepoSettings(fresh.repo)).scripts.setup).toBeUndefined()
+      expect(await fresh.h['rooms.scriptTrust']({ roomId: fresh.room.id })).toBeNull()
+      expect(existsSync(join(fresh.repo, 'ran.txt'))).toBe(false)
+      await fresh.k.stop()
     }, bundle)
   }, 90000)
 
