@@ -17,18 +17,18 @@ import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued,
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
-import { ModeMenu } from './ModeMenu'
+import { ModeButton } from './ModeMenu'
 import { ModelPicker } from './ModelPicker'
 import { SWITCH_TOAST, SWITCH_TOAST_MS, lastRanOn, noteOpened, noteSent, warnsOnSwitch } from './modelSwitch'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
-import { MODE_ICON, buttonName, modeAria, cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { cyclePatch, cycleRun, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
+import { ComposerShell } from './ComposerShell'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { heldLine, waitersLine } from '../waitLines'
-import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
 const EMPTY_TEAM: AgentDef[] = []
@@ -47,7 +47,7 @@ type MenuName = 'model' | 'context' | 'mode' | PlusPanel
  * permission mode, which the dropdown after the model button shows and picks (KERNEL-456), Backspace takes a chip like a
  * character. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
+export function Composer({ chat, agent, blocked, running, prefill, banner, where }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode; /** The where row under the box (KERNEL-781). */ where?: ReactNode }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
@@ -73,7 +73,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const filePick = useRef<HTMLInputElement>(null)
   const run = useRef<CycleRun | null>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
-  const modeAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
   const name = agent?.name ?? 'the agent'
 
@@ -270,8 +269,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }))
 
   return (
-    <div className="composer-wrap">
-      <div className="composer-inner">
+    <ComposerShell
+      above={<>
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
         {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
         <QueueList
@@ -283,75 +282,69 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
         />
         {banner}
-        <div className="cmp-box">
-          {acOpen && rows.length > 0 && (
-            <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
-              {mention
-                ? mentionGroups.map((g) => (
-                  <Fragment key={g.label}>
-                    <p>{g.label}</p>
-                    {g.rows.map((r) => {
-                      const i = mentionRows.indexOf(r)
-                      return r.kind === 'agent' ? (
-                        <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <Icon name="user" size={14} /><span className="mono">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
-                        </button>
-                      ) : (
-                        <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{r.entry.reference ?? dirName(r.entry.path)}</span>
-                        </button>
-                      )
-                    })}
-                  </Fragment>
-                ))
-                : slashGroups.map((g) => (
-                  <Fragment key={g.label}>
-                    <p>{g.label}</p>
-                    {g.rows.map((s) => {
-                      const i = slashRows.indexOf(s)
-                      return (
-                        <button key={s.name} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                          <span className="mono">/{s.name}</span><span className="sub ellipsis">{s.description}</span>
-                        </button>
-                      )
-                    })}
-                  </Fragment>
-                ))}
-            </div>
-          )}
-          {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
-            <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
-          )}
-          <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} data-blocked={blocked || undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
-            {plan && <PlanBar a={plan} />}
-            <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
-              onInput={() => setDismissed('')} onKeyDown={onKey} />
-            <div className="row cmp-foot">
-              {!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
-              <span ref={modelAnchor} style={{ position: 'relative' }}>
-                <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={12} /></Button>
-                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
-              </span>
-              <span ref={modeAnchor} style={{ position: 'relative' }}>
-                <Button variant="ghost" className="cmp-model cmp-mode" data-mode={shown.runs} aria-label={modeAria(shown)} aria-haspopup="menu" aria-expanded={menu === 'mode'} onClick={() => setMenu(menu === 'mode' ? null : 'mode')}>
-                  <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
-                </Button>
-                {menu === 'mode' && <ModeMenu anchorRef={modeAnchor} provider={provider} availability={availability} shown={shown} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} onClose={() => setMenu(null)} />}
-              </span>
-              <span className="grow" />
-              {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
-              <span ref={plusAnchor} style={{ position: 'relative' }}>
-                <PlusMenu panel={menu === 'model' || menu === 'context' || menu === 'mode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
-                  onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
-              </span>
-              {running && !hasDraft
-                ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
-                : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} /></button>}
-            </div>
+      </>}
+      popup={<>
+        {acOpen && rows.length > 0 && (
+          <div role="listbox" aria-label={mention ? mentionGroups.map((g) => g.label).join(' and ') : slashGroups.map((g) => g.label).join(' and ')} className="cmp-ac">
+            {mention
+              ? mentionGroups.map((g) => (
+                <Fragment key={g.label}>
+                  <p>{g.label}</p>
+                  {g.rows.map((r) => {
+                    const i = mentionRows.indexOf(r)
+                    return r.kind === 'agent' ? (
+                      <button key={`agent:${r.agent.id}`} type="button" role="option" aria-selected={i === at} aria-label={`${r.agent.name}, ${r.agent.role}`} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                        <Icon name="user" size={14} /><span className="mono">{r.agent.name}</span><span className="sub ellipsis">{r.agent.role}</span>
+                      </button>
+                    ) : (
+                      <button key={r.entry.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                        <FileIcon path={r.entry.path} dir={r.entry.dir} /><span className="mono">{baseName(r.entry.path)}{r.entry.dir && '/'}</span><span className="sub ellipsis">{r.entry.reference ?? dirName(r.entry.path)}</span>
+                      </button>
+                    )
+                  })}
+                </Fragment>
+              ))
+              : slashGroups.map((g) => (
+                <Fragment key={g.label}>
+                  <p>{g.label}</p>
+                  {g.rows.map((s) => {
+                    const i = slashRows.indexOf(s)
+                    return (
+                      <button key={s.name} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                        <span className="mono">/{s.name}</span><span className="sub ellipsis">{s.description}</span>
+                      </button>
+                    )
+                  })}
+                </Fragment>
+              ))}
           </div>
-        </div>
-        <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
-      </div>
-    </div>
+        )}
+        {acOpen && mention && !files.length && !mentionAgents.length && query !== undefined && query.length > 0 && (
+          <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
+        )}
+      </>}
+      box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, style: { opacity: blocked ? 0.5 : 1 }, ...d.drop }}
+      top={plan && <PlanBar a={plan} />}
+      input={<DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
+      foot={<>
+        {!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
+        <span ref={modelAnchor} style={{ position: 'relative' }}>
+          <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={12} /></Button>
+          {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
+        </span>
+        <ModeButton provider={provider} availability={availability} shown={shown} open={menu === 'mode'} onOpen={(o) => setMenu(o ? 'mode' : null)} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} />
+        <span className="grow" />
+        {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
+        <span ref={plusAnchor} style={{ position: 'relative' }}>
+          <PlusMenu panel={menu === 'model' || menu === 'context' || menu === 'mode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
+            onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
+        </span>
+        {running && !hasDraft
+          ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
+          : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} /></button>}
+      </>}
+      hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
+      where={where}
+    />
   )
 }

@@ -532,6 +532,9 @@ function leadNoChats(f: Fixture): Partial<Fixture> {
   }
 }
 
+/** New chat with the Lead's plan mode off, as a fresh install has it, so the box shows its permission mode. */
+const noPlan = (p: Partial<Fixture>): Partial<Fixture> => ({ ...p, settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })
+
 function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
   const id = ws.id ?? ids.table
   const chatId = id === ids.lead ? ids.leadChat : ids.tableChat
@@ -2126,6 +2129,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   LeadNoChats: scene(leadNoChats),
   // New branch from main opened: the remote's branches with the default checked. The menu is the composer's own, so the shot opens it (scripts/shots.ts).
   LeadNoChatsBranch: scene(leadNoChats),
+  // KERNEL-781: New chat's box is a chat's box. NewChat is the page at rest and ChatWhereRow an open chat, to compare the box's top edge and toolbar. NewChatLongDraft is eight lines in the box, which grows up
+  // with Up next and the title moving ahead of it. NewChatPlan has plan mode on: the box is hatched and the permission slot reads Plan.
+  NewChat: scene((f) => noPlan(leadNoChats(f))),
+  NewChatLongDraft: scene((f) => {
+    const g = noPlan(leadNoChats(f))
+    const draft = ['Settings search should land on the setting, not only open its page. When I pick a result:', '1. Open the Settings page the setting belongs to.', '2. Scroll the matching row into view, centered when it fits.', '3. Outline the row for about a second, then let the outline fade.', '4. Put focus on the row\'s control so I can change it from the keyboard.', 'Enter in the search field opens the first match.', 'If I come back to search, my query is still in the field.'].join('\n')
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft } } } }
+  }),
+  NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
+  ChatWhereRow: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
