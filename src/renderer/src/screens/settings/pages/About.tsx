@@ -39,7 +39,7 @@ export function About() {
           <span className="sys-about-name">Kernel</span>
           <span className="sys-about-sub">Version <span className="mono">{info?.version ?? ''}</span>{sub && ` · ${sub}`}</span>
         </span>
-        <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => { setUpdate(u); actions.ui.toast(checkResult(u)) }).catch(fail('Could not check for updates')))}>Check for updates</Button>
+        <Button busy={busy === 'check'} busyPattern="rotate" busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => { setUpdate(u); actions.ui.toast(checkResult(u)) }).catch(fail('Could not check for updates')))}>Check for updates</Button>
       </section>
       <Section label="Data and support">
         <Row id="data-folder" label="Data folder">

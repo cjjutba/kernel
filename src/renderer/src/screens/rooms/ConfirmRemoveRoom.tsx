@@ -33,7 +33,7 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
 
   return (
     <ConfirmDialog
-      title={`Remove ${room.name}?`} danger busy={!!busy} busyLabel="Removing" confirmLabel="Remove room" onConfirm={() => void remove()} onCancel={cancel}
+      title={`Remove ${room.name}?`} danger busy={!!busy} busyPattern="scatter" busyLabel="Removing" confirmLabel="Remove room" onConfirm={() => void remove()} onCancel={cancel}
       body={`Kernel stops ${n(agents, 'agent')} and archives ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
     >
       <div className="rm-box mono"><span>{tilde(room.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>

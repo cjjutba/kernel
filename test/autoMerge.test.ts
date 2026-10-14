@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type { ActivityEvent, Chat, PrCheck, PrInfo, ReviewKind, TeamUpdate, Workspace } from '@shared/types'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, type AutoMergeFacts } from '@shared/merge'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeRetry, autoMergeWhy, type AutoMergeFacts } from '@shared/merge'
 import { Kernel } from '../src/main/kernel'
+import { Prs } from '../src/main/features/prs'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
@@ -193,6 +194,103 @@ describe('the trigger', () => {
   })
 })
 
+// KERNEL-768: a refusal GitHub hadn't settled is weighed again after the quick re-read, a few times at most.
+describe('weighing again', () => {
+  const conflictWait = Prs.conflictWait
+  afterEach(() => { Prs.conflictWait = conflictWait })
+
+  /** A PR ready to auto-merge whose GitHub reads `read` shapes, with the quick re-read every 20 ms and the weighs counted. */
+  async function weighing(files: Record<string, string>, read: (pr: PrInfo, n: number) => PrInfo) {
+    const s = await setup()
+    const ws = await s.pr(files)
+    s.k.prs.recheckMs = 20
+    const info = s.k.github.info
+    let n = 0
+    s.k.github = { ...s.k.github, info: async (...a) => { const got = await info(...a); return got && read(got, ++n) } }
+    const weighed = vi.spyOn(s.k.prs, 'autoMerge')
+    const told = vi.spyOn(s.k.leadUpdates, 'autoMergeRefused')
+    return { ...s, ws, weighed, told }
+  }
+  const unknown = (pr: PrInfo): PrInfo => ({ ...pr, conflictsUnknown: true })
+  const quiet = () => new Promise((r) => setTimeout(r, 150))
+
+  it('merges a PR GitHub read as unknown, once GitHub settles', async () => {
+    let settled = false
+    const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, (pr) => (settled ? pr : unknown(pr)))
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    expect(await weighed.mock.results[0].value).toEqual({ refused: "GitHub doesn't read it as ready to merge." })
+    settled = true
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(gh.merged).toEqual(['squash'])
+    expect(weighed).toHaveBeenCalledTimes(2)
+    expect(told).not.toHaveBeenCalled()
+  })
+
+  it('merges a PR whose read failed once', async () => {
+    const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, (pr, n) => { if (n === 1) throw new Error('network'); return pr })
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(await weighed.mock.results[0].value).toEqual({ refused: "Kernel couldn't read the pull request from GitHub." })
+    expect(gh.merged).toEqual(['squash'])
+    expect(told).not.toHaveBeenCalled()
+  })
+
+  it('merges once GitHub settles a PR its merge found still checking for conflicts', async () => {
+    Prs.conflictWait = { every: 5, cap: 10 }
+    let settled = false
+    // The weigh reads it ready; the merge's own reads find GitHub checking it again.
+    const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, (pr, n) => (n === 1 || settled ? pr : unknown(pr)))
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    expect(await weighed.mock.results[0].value).toEqual({ refused: 'GitHub is still checking #101 for conflicts. Try again in a moment.' })
+    settled = true
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merged'))
+    expect(gh.merged).toEqual(['squash'])
+    expect(told).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['over the line limit', { 'big.txt': lines(401) }, 'It changes 401 lines, more than the 400 auto-merge allows.'],
+    ['touching an always-review path', { 'CLAUDE.md': 'You are Kai.\n' }, "It changes CLAUDE.md, which always needs a person's review."]
+  ])('weighs a PR %s once, and the Lead hears why', async (_label, files, refused) => {
+    const { k, ws, gh, weighed, told } = await weighing(files, (pr) => pr)
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(told).toHaveBeenCalledWith(ws.id, refused))
+    const reads = gh.reads
+    await quiet()
+    expect(weighed).toHaveBeenCalledTimes(1)
+    expect(gh.reads).toBe(reads)
+  })
+
+  it('stops weighing a PR GitHub keeps reading as unknown, and the Lead then hears why', async () => {
+    const { k, ws, gh, weighed, told } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, unknown)
+    // The poll's read weighs it, so every weigh after has the same key.
+    await k.prs.refreshPr(ws.id)
+    await vi.waitFor(() => expect(told).toHaveBeenCalledWith(ws.id, "GitHub doesn't read it as ready to merge."), { timeout: 3000 })
+    expect(weighed).toHaveBeenCalledTimes(Prs.autoMergeRetries + 1)
+    expect(told).toHaveBeenCalledTimes(1)
+    await quiet()
+    expect(weighed).toHaveBeenCalledTimes(Prs.autoMergeRetries + 1)
+    expect(gh.merged).toEqual([])
+  })
+
+  it.each([
+    ['the PR is forgotten', (k: Kernel, id: string) => k.prs.forgetPr(id)],
+    ['the poll stops', (k: Kernel) => k.prs.stop()]
+  ])('weighs nothing again once %s', async (_label, end) => {
+    const { k, ws, gh, weighed } = await weighing({ 'src/a.ts': 'export const a = 1\n' }, unknown)
+    k.prs.considerAutoMerge(ws)
+    await vi.waitFor(() => expect(weighed).toHaveBeenCalledTimes(1))
+    await weighed.mock.results[0].value
+    end(k, ws.id)
+    const reads = gh.reads
+    await quiet()
+    expect(weighed).toHaveBeenCalledTimes(1)
+    expect(gh.reads).toBe(reads)
+  })
+})
+
 describe('Merge PR while a check the repo does not require runs (KERNEL-703)', () => {
   it('refuses, naming the check, and merges on Merge anyway', async () => {
     const { k, gh, pr } = await setup({ app: {} })
@@ -246,6 +344,41 @@ describe('the rule', () => {
     expect(autoMergeBlock({ ...clean, diff: { lines: 400, touched: [] } })).toBeUndefined()
     expect(autoMergeBlock({ ...clean, diff: { lines: 3, touched: ['CLAUDE.md', 'AGENTS.md'] } })).toBe("It changes CLAUDE.md and 1 other file that always need a person's review.")
     expect(autoMergeWhy({ ...clean, diff: undefined })).toBeUndefined()
+  })
+
+  // KERNEL-768: what GitHub or Kernel hadn't settled is weighed again; the user's own rules are final.
+  it('weighs again only what had not settled', () => {
+    const r = clean.reviews!
+    const temporary: AutoMergeFacts[] = [
+      { ...clean, pr: null },
+      { ...clean, pr: undefined },
+      { ...clean, pr: { ...pr, head: undefined } },
+      { ...clean, pr: { ...pr, conflictsUnknown: true } },
+      { ...clean, pr: { ...pr, state: 'checks' } },
+      { ...clean, pr: { ...pr, checks: [...GREEN, { name: 'e2e', state: 'running' }] } },
+      { ...clean, pr: { ...pr, checks: [...GREEN, { name: 'e2e', state: 'queued', optional: true }] } },
+      { ...clean, reviews: undefined },
+      { ...clean, reviews: { ...r, running: true } },
+      { ...clean, diff: undefined }
+    ]
+    for (const f of temporary) expect([autoMergeBlock(f) ?? 'merges', autoMergeRetry(f)]).toEqual([expect.any(String), true])
+    const final: AutoMergeFacts[] = [
+      { ...clean, rules: { ...clean.rules, on: false }, pr: null },
+      { ...clean, local: true, pr: null },
+      { ...clean, requireGreen: false },
+      { ...clean, pr: { ...pr, checks: [] } },
+      { ...clean, pr: { ...pr, checks: [{ name: 'Test', state: 'fail' }, { name: 'e2e', state: 'running' }] } },
+      { ...clean, pr: { ...pr, blocked: 'review' } },
+      { ...clean, pr: { ...pr, blocked: 'review', conflictsUnknown: true } },
+      { ...clean, reviews: { ...r, blocking: ['security'], running: true } },
+      { ...clean, reviews: { ...r, overruled: ['security'] } },
+      { ...clean, reviews: { ...r, required: [] } },
+      { ...clean, reviews: { ...r, required: ['code', 'security'], running: true } },
+      { ...clean, diff: { lines: 401, touched: [] } },
+      { ...clean, diff: { lines: 3, touched: ['CLAUDE.md'] } }
+    ]
+    for (const f of final) expect([autoMergeBlock(f) ?? 'merges', autoMergeRetry(f)]).toEqual([expect.any(String), false])
+    expect(autoMergeRetry(clean)).toBe(false)
   })
 
   it("keeps Kernel's own always-review paths", () => {

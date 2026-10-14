@@ -93,7 +93,7 @@ export function McpSetUp({ provider, accountId }: { provider: Provider; accountI
         {run && run.done.length > 0 && <p className="set-desc">Signed in to {joinNames(run.done.map(serverName))}</p>}
       </div>
     )
-    footer = <><span className="grow" /><Button variant="ghost" size="lg" aria-label={`Cancel setting up ${label}`} busy={runs.canceling} busyLabel="Canceling" onClick={() => void runs.cancel(provider)}>Cancel</Button></>
+    footer = <><span className="grow" /><Button variant="ghost" size="lg" aria-label={`Cancel setting up ${label}`} busy={runs.canceling} busyPattern="scatter" busyLabel="Canceling" onClick={() => void runs.cancel(provider)}>Cancel</Button></>
   } else {
     body = (
       <div className="mcp-su-progress">

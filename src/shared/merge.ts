@@ -286,6 +286,34 @@ export function autoMergeBlock(f: AutoMergeFacts): string | undefined {
 }
 
 /**
+ * Whether Kernel weighs the PR again soon after `autoMergeBlock` refused it, or merged nothing (KERNEL-768). True when the
+ * refusal is GitHub or Kernel not having settled yet: no read of the PR or its head, GitHub still working out whether it
+ * merges, a check or a review still running, its reviews or changes unread. A refusal from the user's own rules is false:
+ * auto-merge off, a local room, green checks off, a failed or missing check, GitHub's block, missing approvals, blockers,
+ * overrules, the line limit and the always-review paths. Their facts change the PR, which weighs it again anyway.
+ */
+export function autoMergeRetry(f: AutoMergeFacts): boolean {
+  if (!f.rules.on || f.local) return false
+  const pr = f.pr
+  if (!pr?.head) return true
+  if (!f.requireGreen) return false
+  const checks = gatingChecks(pr.checks)
+  if (!checks.length) return false
+  const running = runningChecks(pr.checks).length > 0
+  // A required check that failed is final. One still running isn't.
+  if (!allGreen(checks)) return checks.every((c) => allGreen([c]) || runningChecks([c]).length > 0)
+  if (running) return true
+  if (pr.blocked) return false
+  if (pr.state !== 'ready' || pr.conflictsUnknown) return true
+  const r = f.reviews
+  if (!r) return true
+  if (r.blocking.length || r.overruled?.length || !r.required.length) return false
+  if (r.required.some((k) => !r.approved.includes(k))) return false
+  if (r.running) return true
+  return !f.diff
+}
+
+/**
  * Why Kernel merged a PR by itself, for the Team update (KERNEL-556), or undefined when it may not. `why` follows "since" in the
  * Lead's text. `card` is the card's grey segment after "Merged automatically".
  */

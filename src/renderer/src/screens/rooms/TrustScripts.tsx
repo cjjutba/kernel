@@ -63,7 +63,7 @@ export function TrustScripts({ roomId }: { roomId: string }) {
 
   return (
     <ConfirmDialog
-      title="Run this repo's scripts?" busy={!!busy} busyLabel="Trusting" confirmLabel="Trust and run" cancelLabel="Not now" onConfirm={() => void confirm()} onCancel={close}
+      title="Run this repo's scripts?" busy={!!busy} busyPattern="pulse" busyLabel="Trusting" confirmLabel="Trust and run" cancelLabel="Not now" onConfirm={() => void confirm()} onCancel={close}
       body={body}
     >
       <div ref={list} className="ts-list">

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { run } from '../src/main/services/exec'
 import { searchFiles } from '../src/main/services/files'
-import { attachedImages, attachmentNote, imagePart, planName, saveAttachments, savePlan, withImageFiles } from '../src/main/services/plans'
+import { attachedImages, attachmentNote, imagePart, saveAttachments, savePlan, withImageFiles } from '../src/main/services/plans'
 import { Kernel } from '../src/main/kernel'
 import type { Approval, ChatPart } from '@shared/types'
 
@@ -18,37 +18,34 @@ const status = async (repo: string) => (await run('git', ['-C', repo, 'status', 
 const PLAN = '# Export invoices as PDF\n\n## Context\nThe table has row actions.\n\n## Steps\n1. Renderer\n2. Button\n'
 
 describe('saved plans', () => {
-  it('names the file after the opening heading, or the fallback without one', () => {
-    expect(planName(PLAN, 'Plan for lead')).toBe('export-invoices-as-pdf')
-    expect(planName('1. Do it\n2. Test it', 'Plan for invoice-table')).toBe('plan-for-invoice-table')
-    expect(planName('## KERNEL-83 Fix batch B1: sidebar glyphs, banners and toasts', 'x')).toBe('kernel-83-fix-batch-b1-sidebar-glyphs-banners-and-toasts')
-    expect(planName('# ¿¿??', '!!')).toBe('plan')
-  })
-
-  it('writes the plan under .kernel/plans and keeps it out of git', async () => {
+  it('saves the first plan as plan.md under .kernel/plans and keeps it out of git (KERNEL-767)', async () => {
     const repo = await tempRepo()
-    const file = await savePlan(repo, PLAN, { fallback: 'Plan for lead' })
-    expect(file).toBe('.kernel/plans/export-invoices-as-pdf.md')
+    const file = await savePlan(repo, PLAN)
+    expect(file).toBe('.kernel/plans/plan.md')
     expect(await readFile(join(repo, file), 'utf8')).toBe(PLAN)
     expect(await status(repo)).toBe('')
   })
 
-  it('overwrites a revision in place, and gives a new plan with the same title a file of its own', async () => {
+  it('overwrites a revision in place, and gives a new plan the next free name', async () => {
     const repo = await tempRepo()
-    const first = await savePlan(repo, PLAN, { fallback: 'x' })
-    const revised = await savePlan(repo, `${PLAN}3. Tests`, { fallback: 'x', reuse: first })
-    expect(revised).toBe(first)
+    const first = await savePlan(repo, PLAN)
+    const revised = await savePlan(repo, `${PLAN}3. Tests`, { reuse: first })
+    expect(revised).toBe('.kernel/plans/plan.md')
     expect(await readFile(join(repo, first), 'utf8')).toContain('3. Tests')
-    const another = await savePlan(repo, PLAN, { fallback: 'x' })
-    expect(another).toBe('.kernel/plans/export-invoices-as-pdf-2.md')
+    // A plan with another heading still starts from plan.md, not its title.
+    expect(await savePlan(repo, '## Context\nSomething else\n')).toBe('.kernel/plans/plan-2.md')
     // A reuse path that isn't a saved plan is ignored rather than written to.
-    expect(await savePlan(repo, PLAN, { fallback: 'x', reuse: '../outside.md' })).toBe('.kernel/plans/export-invoices-as-pdf-3.md')
+    expect(await savePlan(repo, PLAN, { reuse: '../outside.md' })).toBe('.kernel/plans/plan-3.md')
+    // A plan saved under an older, heading-based name is still overwritten by its revision.
+    await writeFile(join(repo, '.kernel/plans/context.md'), 'old')
+    expect(await savePlan(repo, PLAN, { reuse: '.kernel/plans/context.md' })).toBe('.kernel/plans/context.md')
+    expect(await readFile(join(repo, '.kernel/plans/context.md'), 'utf8')).toBe(PLAN)
   })
 
   it('lists saved plans in the @ menu even though git ignores them', async () => {
     const repo = await tempRepo()
-    await savePlan(repo, PLAN, { fallback: 'x' })
-    expect((await searchFiles(repo, 'exportpdf')).map((f) => f.path)).toContain('.kernel/plans/export-invoices-as-pdf.md')
+    await savePlan(repo, PLAN)
+    expect((await searchFiles(repo, 'plans/plan')).map((f) => f.path)).toContain('.kernel/plans/plan.md')
   })
 })
 

@@ -14,20 +14,27 @@ export interface RowAction { label: string; onClick: () => void; busy?: boolean;
 /** The name turned into a field. */
 export interface RowRename { value: string; saving: boolean; onChange: (value: string) => void; onSave: () => void; onCancel: () => void }
 
-/** One usage window under a column: how much is used (0 to 100) and when it resets, as "today at 4:10 PM". */
-export interface Cell { pct: number; reset?: string; title: string }
+/** One usage window under a column: how much is used (0 to 100) and when it resets, as "today at 4:10 PM". `absent` is a column the account's plan doesn't have: it says "Not in plan" and shows no meter. */
+export interface Cell { pct: number; reset?: string; title: string; absent?: boolean }
 
-/** The three column windows of an account: 5-hour, Weekly and the model with its own weekly window (Fable), each only when Kernel has a live number. */
-export function rowCells(a: AccountProfile, usage: RateLimit[], now: number): { cells: (Cell | undefined)[]; third?: string } {
+/**
+ * The three column windows of an account: 5-hour, Weekly and the model with its own weekly window (Fable). A window Kernel has a reading for shows it, or 0% once it has reset.
+ * `group` is the group's third column: an account with 5-hour or weekly readings and no window for it says "Not in plan".
+ */
+export function rowCells(a: AccountProfile, usage: RateLimit[], now: number, group?: string): { cells: (Cell | undefined)[]; third?: string } {
   if (a.auth === 'apiKey' || !a.signedIn) return { cells: [undefined, undefined, undefined] }
   const mine = windowsOf(usage, a)
   const one = (l: RateLimit | undefined, title: string): Cell | undefined => {
     const w = live(l, now)
-    return w ? { title, pct: Math.round((w.utilization ?? 0) * 100), ...(w.resetsAt ? { reset: resetPhrase(w.resetsAt, now) } : {}) } : undefined
+    if (w) return { title, pct: Math.round((w.utilization ?? 0) * 100), ...(w.resetsAt ? { reset: resetPhrase(w.resetsAt, now) } : {}) }
+    return l?.utilization !== undefined ? { title, pct: 0 } : undefined
   }
   const fable = mine.find((l) => isFable(l))
   const third = fable ? 'Fable 5.1' : undefined
-  return { cells: [one(mine.find((l) => l.type === 'five_hour' && !l.model), '5-hour'), one(mine.find((l) => l.type === 'seven_day' && !l.model), 'Weekly'), third ? one(fable, third) : undefined], ...(third ? { third } : {}) }
+  const five = mine.find((l) => l.type === 'five_hour' && !l.model)
+  const week = mine.find((l) => l.type === 'seven_day' && !l.model)
+  const absent: Cell | undefined = group && !fable && (five?.utilization !== undefined || week?.utilization !== undefined) ? { title: group, pct: 0, absent: true } : undefined
+  return { cells: [one(five, '5-hour'), one(week, 'Weekly'), third ? one(fable, third) : absent], ...(third ? { third } : {}) }
 }
 
 /**
@@ -106,13 +113,14 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
           ? <span className="ac-note">{note}</span>
           : cells.map((c, i) => (
             <span key={i} className="ac-cell" data-tip={c?.reset ? `${c.title} resets ${c.reset}` : ''}>
-              {c && <><Meter value={c.pct / 100} label={`${account.label}, ${c.title}${c.reset ? `, resets ${c.reset}` : ''}`} /><span className="ac-pc" data-hot={c.pct >= 90 || undefined}>{c.pct}%</span></>}
+              {c?.absent && <span className="ac-absent">Not in plan</span>}
+              {c && !c.absent && <><Meter value={c.pct / 100} label={`${account.label}, ${c.title}${c.reset ? `, resets ${c.reset}` : ''}`} /><span className="ac-pc" data-hot={c.pct >= 90 || undefined}>{c.pct}%</span></>}
             </span>
           ))}
         <div className="ac-acts" ref={anchor} data-keep={keep || undefined}>
           {pending
             ? <Button busy busyLabel={pending}>{pending}</Button>
-            : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
+            : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyPattern="wave-back" busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
           <IconButton
             icon="more" size={16} label={`More for ${account.label}`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked || !!pending}
             className={menuOpen ? 'ac-more on' : 'ac-more'} onClick={() => onMenu(!menuOpen)}

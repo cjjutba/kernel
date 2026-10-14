@@ -65,7 +65,7 @@ export function Hooks({ s }: { s: AppSettings }) {
           icon={status && !status.listening ? 'xCircle' : 'checkCircle'} tone={status && !status.listening ? 'warn' : undefined}
           title={status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}
           sub={status && `${seen ? `Last event ${seenAgo(seen).toLowerCase()}` : 'No event yet'} · ${count} hook${count === 1 ? '' : 's'} installed`}
-          action={<Button busy={busy === 'test'} busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
+          action={<Button busy={busy === 'test'} busyPattern="arrow-right" busyLabel="Sending" disabled={!status || busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button>}
         />
       </Section>
       <Section title="Maintenance">
@@ -73,7 +73,7 @@ export function Hooks({ s }: { s: AppSettings }) {
           ? <Row label="Hooks are off in a workspace run" desc={`This copy of Kernel never changes ${SETTINGS_FILE}.`} />
           : (
             <Row id="kernel-hooks" label="Kernel’s hooks" desc={`Its entries in ${SETTINGS_FILE}, nothing else.`}>
-              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
+              {status && installed && <Button variant="ghost" busy={busy === 'remove'} busyPattern="scatter" busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
               <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
             </Row>
           )}

@@ -218,7 +218,7 @@ export function NewWorkspace({ roomId, source: initial, picks }: { roomId?: stri
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
-          <Button variant="primary" className="nw-create" busy={busy} busyLabel={checking ? 'Checking' : 'Sending'} onClick={create}>Create<Icon name="reply" size={12} /></Button>
+          <Button variant="primary" className="nw-create" busy={busy} busyPattern="arrow-right" busyLabel={checking ? 'Checking' : 'Sending'} onClick={create}>Create<Icon name="reply" size={12} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>

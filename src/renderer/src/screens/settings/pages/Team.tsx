@@ -204,7 +204,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Section title="Retired" count={retired.length} collapsible>
           {retired.map((a) => (
             <Row key={a.id} lead={<span className="rm-avatar" aria-hidden="true">{a.name.charAt(0)}</span>} label={<>{a.name}{a.role.trim() && <span className="rm-role">{a.role}</span>}</>} desc={`Kept in ${shortFile(a.file)}.`}>
-              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
+              <Button aria-label={`Restore ${a.name}`} busy={busy === a.id} busyPattern="wave-back" busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
             </Row>
           ))}
         </Section>
@@ -212,7 +212,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
       {resetting && (
         <ConfirmDialog
           title="Reset Kernel to default?" body={<>This deletes <span className="mono">{lead?.file ? shortFile(lead.file) : '.claude/agents/kernel.md'}</span>. Kernel goes back to the instructions it ships with.</>}
-          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
+          confirmLabel="Reset to default" danger busy={busy === 'reset'} busyPattern="wave-back" busyLabel="Resetting" onConfirm={() => void reset()} onCancel={() => setResetting(false)}
         />
       )}
     </RoomPage>
