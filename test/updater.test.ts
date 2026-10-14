@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppUpdate } from '../src/shared/types'
 import { bus } from '../src/main/bus'
-import { blockedReason, CHECK_EVERY_MS, parseNotes, STALL_MS, Updater, WAKE_MS, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
+import { blockedReason, CHECK_EVERY_MS, parseNotes, runUpdateTest, STALL_MS, Updater, updateTestArgs, WAKE_MS, type UpdateEngine, type UpdateInfo, type UpdateTestEngine } from '../src/main/updater'
 import { packagedClaude } from '../src/main/services/sessions'
 
 /** Stands in for electron-updater's autoUpdater. `next` is what the following check emits. */
@@ -56,6 +56,57 @@ describe('parseNotes', () => {
     expect(parseNotes(null)).toEqual([])
     expect(parseNotes('No headings here.')).toEqual([])
     expect(parseNotes([{ version: '0.2.0', note: '## One\nA' }, { version: '0.1.1', note: null }])).toEqual([{ title: 'One', body: 'A' }])
+  })
+})
+
+describe('update test mode (KERNEL-713)', () => {
+  class TestEngine extends FakeEngine implements UpdateTestEngine {
+    allowDowngrade = true
+    autoRunAppAfterInstall = true
+    feeds: unknown[] = []
+    setFeedURL(feed: { provider: 'generic'; url: string }) { this.feeds.push(feed) }
+  }
+  const run = async (engine: TestEngine, within = 1000) => {
+    const lines: string[] = []
+    const exits: number[] = []
+    await runUpdateTest({ feed: 'http://127.0.0.1:4410/feed', dir: await dir(), current: '0.1.0', engine, within, print: (l) => lines.push(l), exit: (c) => exits.push(c) })
+    return { lines, exits }
+  }
+
+  it('reads the feed and the folder after the flag', () => {
+    expect(updateTestArgs(['/Kernel', '--kernel-update-test', 'http://127.0.0.1:4410/feed', '/tmp/k'])).toEqual({ feed: 'http://127.0.0.1:4410/feed', dir: '/tmp/k' })
+    expect(updateTestArgs(['/Kernel', '--kernel-update-test'])).toEqual({ feed: undefined, dir: undefined })
+    expect(updateTestArgs(['/Kernel', '--kernel-update-test', 'http://f', '-psn_0_123'])).toEqual({ feed: 'http://f', dir: undefined })
+    expect(updateTestArgs(['/Kernel', '--kernel-update-test', '--kernel-smoke-test'])).toEqual({ feed: undefined, dir: undefined })
+    expect(updateTestArgs(['/Kernel', '--kernel-smoke-test'])).toBeUndefined()
+  })
+
+  it('points the updater at the feed, prints the ready version and quits through the install, signature checks and downgrades as they were', async () => {
+    const engine = new TestEngine()
+    engine.next = download
+    const { lines, exits } = await run(engine)
+    expect(engine.feeds).toEqual([{ provider: 'generic', url: 'http://127.0.0.1:4410/feed' }])
+    expect(engine.allowDowngrade).toBe(false)
+    expect(engine.autoRunAppAfterInstall).toBe(false)
+    expect(engine.autoInstallOnAppQuit).toBe(true)
+    expect(lines).toEqual(['ready 0.2.0'])
+    expect(engine.installs).toBe(1)
+    expect(exits).toEqual([])
+  })
+
+  it('prints none and exits 1 with no update', async () => {
+    const engine = new TestEngine()
+    const { lines, exits } = await run(engine)
+    expect(lines).toEqual(['none'])
+    expect(exits).toEqual([1])
+    expect(engine.installs).toBe(0)
+  })
+
+  it('exits 1 when the ready update never quits the app', async () => {
+    const engine = new TestEngine()
+    engine.next = download
+    const { exits } = await run(engine, 50)
+    await vi.waitFor(() => expect(exits).toEqual([1]))
   })
 })
 
