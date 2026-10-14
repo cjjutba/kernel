@@ -57,7 +57,7 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(6)
+    expect(LATEST).toBe(7)
     for (const t of TABLES) {
       // Approvals gain two columns; the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
