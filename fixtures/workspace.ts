@@ -1867,6 +1867,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { [ids.tableChat]: longChat },
     ui: open
   })),
+  /** A message just sent in a short chat (KERNEL-803): it sits at the top of the view with the Working line under it and an empty reply area below. The send is a chat.item event after the chat opens, which scripts/shots.ts delivers, since only a send anchors. */
+  WorkspaceJustSent: scene((f) => ({
+    items: { [ids.tableChat]: tableItems.slice(0, 1) },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
   /** A long chat with shared image cards, read from higher up and shown again after leaving it, with the Scroll to bottom button over it (KERNEL-765). The scroll is the transcript's own, so scripts/shots.ts scrolls it up before the shot. */
   ChatRestoredSpot: scene(() => ({
     items: { [ids.tableChat]: [

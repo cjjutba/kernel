@@ -61,6 +61,13 @@ async function scrollUp(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceJustSent: a send arrives while the chat is open, which is what anchors the message at the top (KERNEL-803).
+async function sendMessage(page: Page, app: ElectronApplication) {
+  await page.waitForTimeout(300)
+  await app.evaluate(({ BrowserWindow }, item) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'chat.item', chatId: 'chat-invoice-table', item }), { kind: 'user', id: 'js-u', ts: Date.now() - 2000, parts: [{ type: 'text', text: 'Now add a CSV export for the filtered rows.' }] })
+  await page.waitForTimeout(1200)
+}
+
 async function scrollToSection(page: Page, title: string) {
   await page.locator('.set-scroll').evaluate((el, t) => {
     const h = [...el.querySelectorAll('h2, h3')].find((x) => x.textContent?.trim() === t)
@@ -492,6 +499,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   },
   WorkspaceReadImageTab: (page) => clickReadImage(page, 'image.png'),
   WorkspaceReadImageMissing: (page) => clickReadImage(page, 'image-2.png'),
+  WorkspaceJustSent: sendMessage,
   WorkspaceScrolledUp: scrollUp,
   ChatRestoredSpot: scrollUp,
   SettingsPRsSaving: (page) => leaveSizeLimit(page, '600'),
