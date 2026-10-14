@@ -1,8 +1,8 @@
-**Rowan passes the user's screenshots to teammates, three at most, scaled down.**
+**Kernel passes the user's screenshots to teammates, three at most, scaled down.**
 
 `create_workspace` and `message_agent` take an optional `images: [{ path }]`. Each path must be a PNG, JPEG, GIF or WebP in `.kernel/attachments/` of the Lead chat's own workspace, which is where Kernel saves images the user attaches there (KERNEL-545). A path outside that folder, a link pointing out of it, a missing file or a file whose bytes aren't one of those four types is refused with the reason. So is a call with more than three. Kernel checks every image before it creates the workspace or sends the message, so a refused call sends nothing.
 
-Images go through the Lead because teammates don't message each other. Passing them on is opt-in: the tool descriptions tell Rowan to send only what the teammate needs to act on. The cap of three keeps one hand-off from filling a teammate's context with pictures.
+Images go through the Lead because teammates don't message each other. Passing them on is opt-in: the tool descriptions tell Kernel to send only what the teammate needs to act on. The cap of three keeps one hand-off from filling a teammate's context with pictures.
 
 Kernel scales each image with Electron's nativeImage to the size Claude reads it at (1568px on the long side, about 1.15 megapixels) before it goes out, so the copy costs no more than the original would. A scaled JPEG stays a JPEG, and anything else scaled becomes a PNG. A GIF or WebP nativeImage can't decode goes as it is.
 

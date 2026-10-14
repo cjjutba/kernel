@@ -1,4 +1,4 @@
-**Only the user starts a chat with the Lead, and a Team update with no open Lead tab opens the chat that handed off the work.** KERNEL-336 says only ⌘N and the + on a room start a chat with Rowan. The engine still started one in two places. Closing the last tab in the Lead's workspace added a "New tab" in a new Lead chat, and `lead.open` called `leadChat`, which added a "Lead" chat to any room with no open tab. Home, the Inbox, the agent page's room crumb, room setup, ⌘⇧L and the sidebar all go through `lead.open`.
+**Only the user starts a chat with the Lead, and a Team update with no open Lead tab opens the chat that handed off the work.** KERNEL-336 says only ⌘N and the + on a room start a chat with Kernel. The engine still started one in two places. Closing the last tab in the Lead's workspace added a "New tab" in a new Lead chat, and `lead.open` called `leadChat`, which added a "Lead" chat to any room with no open tab. Home, the Inbox, the agent page's room crumb, room setup, ⌘⇧L and the sidebar all go through `lead.open`.
 
 This changes KERNEL-337's list of where a new Lead tab goes:
 

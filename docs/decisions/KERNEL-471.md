@@ -4,6 +4,6 @@
 
 **A GitHub list opens on All, and its filters aren't saved.** A repo that never assigns issues has nothing under Mine, so the default is All, as IssuesGitHub.png draws it. Labels and milestones belong to a room, so a saved one would hide issues in the next room with nothing saying why. The Label and Milestone chips offer what the loaded list holds. Search goes to GitHub, so it reaches past the first 100. KERNEL-471.
 
-**Plan with Rowan on a GitHub issue is built in the window.** Linear's first message is built in main from the issue it reads. For GitHub, `lead.start` takes the same parts (the issue chip, the description, how to hand it off) from the issue the pane already loaded, so no `github.plan` channel was added. KERNEL-471.
+**Plan with Kernel on a GitHub issue is built in the window.** Linear's first message is built in main from the issue it reads. For GitHub, `lead.start` takes the same parts (the issue chip, the description, how to hand it off) from the issue the pane already loaded, so no `github.plan` channel was added. KERNEL-471.
 
 **Start anyway on "Someone may already be on this issue" does nothing until KERNEL-479.** The confirm is built and drawn from a fixture. It takes the findings in the shape of KERNEL-479's `IssueTakenFinding` (a branch, a PR, an assignee) and draws them in the order given. Nothing opens it in the app, and its button closes it. KERNEL-479 opens it from `issues.taken` and gives the button the retry with confirm. KERNEL-471.
