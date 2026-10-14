@@ -15,7 +15,8 @@ import { takenFindings } from '../new-workspace/taken'
 import { issueTracker } from './issueKey'
 import { onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { BranchPicker, readBranches, useBaseBranch, useBranches } from './composer/BranchPicker'
-import { DraftInput, useDraft } from './composer/draft'
+import { useDraft } from './composer/draft'
+import { ComposerInput } from './composer/ComposerInput'
 import { ComposerShell } from './composer/ComposerShell'
 import { loadPicks, moveDraft, newChatDraftOf, onPicksChange, savePicks, type DraftPicks } from './composer/draftStore'
 import { ComposerToolbar } from './composer/ComposerToolbar'
@@ -232,7 +233,7 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
       <div className="lead-up">{usable && <UpNext roomId={roomId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
         box={{ 'data-plan': plan ? 'true' : undefined, ...d.drop }}
-        input={<DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
+        input={<ComposerInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         foot={<ComposerToolbar disabled={busy}
           lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: (m) => { setMenu(null); pickLeadMode(m); d.focus() } }}
           model={{ label: modelLabelOf(model, codexModels), effort: effortLabel(effort), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}

@@ -17,7 +17,8 @@ import { PlanStrip } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, filterAgents, mentionAt, mentionMenu, mentionPart, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand, onComposerFocusAsked, onEditQueued, takeComposerFocus } from './bus'
-import { DraftInput, useDraft } from './draft'
+import { useDraft } from './draft'
+import { ComposerInput } from './ComposerInput'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ComposerToolbar } from './ComposerToolbar'
@@ -362,7 +363,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       </>}
       box={{ 'data-plan': chat.plan || plan ? 'true' : undefined, 'data-blocked': blocked || undefined, style: { opacity: blocked ? 0.5 : 1 }, ...d.drop }}
       top={<PlanStrip plan={plan} />}
-      input={<DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
+      input={<ComposerInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder} onInput={() => setDismissed('')} onKeyDown={onKey} />}
       foot={<ComposerToolbar
         lead={withKernel ? { mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: pickLeadMode } : undefined}
         agent={!agent?.lead && <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>}
