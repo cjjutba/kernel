@@ -218,19 +218,24 @@ async function fromLockfiles(repo: string): Promise<ScriptSuggestion | undefined
   return suggestion('detected', found.map((s) => s.file).join(', '), { setup: installOf(found) })
 }
 
-/** Whether saving the patch would change no script the room runs. */
-function alreadyRuns(patch: RoomSettingsPatch, current: Pick<RoomSettings, 'scripts' | 'runScripts'>): boolean {
-  const same = (a: unknown, b: unknown) => (typeof a === 'string' ? a.trim() : a) === (typeof b === 'string' ? b.trim() : b)
-  return Object.entries(patch.scripts ?? {}).every(([k, v]) => same(v, current.scripts[k as keyof RoomSettings['scripts']]))
-    && Object.entries(patch.runScripts ?? {}).every(([name, command]) => same(command, current.runScripts.find((r) => r.name === name)?.command))
+/**
+ * The suggestion with only what the room doesn't have yet: setup, run, archive, run mode and each named run script the
+ * room has stay out, so saving it never replaces one (KERNEL-707). None when no script is left, as a run mode alone runs nothing.
+ */
+function missingOnly(s: ScriptSuggestion, current: Pick<RoomSettings, 'scripts' | 'runScripts'>): ScriptSuggestion | undefined {
+  const has = (v: unknown) => (typeof v === 'string' ? !!v.trim() : v !== undefined && v !== null)
+  const scripts = Object.fromEntries(Object.entries(s.patch.scripts ?? {}).filter(([k]) => !has(current.scripts[k as keyof RoomSettings['scripts']])))
+  const runScripts = Object.fromEntries(Object.entries(s.patch.runScripts ?? {}).filter(([name]) => !current.runScripts.some((r) => r.name === name)))
+  if (!Object.keys(scripts).some((k) => k !== 'runMode') && !Object.keys(runScripts).length) return undefined
+  return { ...s, patch: { ...(Object.keys(scripts).length ? { scripts } : {}), ...(Object.keys(runScripts).length ? { runScripts } : {}) } }
 }
 
 /**
  * The scripts a room could take: Conductor's, Superset's, then the lockfiles' install. A source whose file is missing,
- * unreadable or broken offers nothing and raises nothing, and so does one that asks for what the room already runs
- * (`current`). Nothing is written.
+ * unreadable or broken offers nothing and raises nothing. Each offers only the scripts the room (`current`) doesn't
+ * have, and one with none left is left out. Nothing is written.
  */
 export async function suggestScripts(repo: string, current: Pick<RoomSettings, 'scripts' | 'runScripts'>, home = homedir()): Promise<ScriptSuggestion[]> {
   const found = await Promise.all([fromConductor(repo), fromSuperset(repo, home), fromLockfiles(repo)].map((p) => p.catch(() => undefined)))
-  return found.filter((s): s is ScriptSuggestion => !!s && !alreadyRuns(s.patch, current))
+  return found.flatMap((s) => (s && missingOnly(s, current)) || [])
 }

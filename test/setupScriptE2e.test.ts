@@ -87,8 +87,12 @@ describe('setup script feature end to end', () => {
     const settings = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
     expect(settings).not.toMatch(/^\s*(setup|archive|run)\s*=/m)
     const c = await ask({ setup: 'pnpm install' }, 'Cancel')
+    expect(c.card.detail).toBe('Setup script\npnpm install')
+    expect(c.text).toBe('Not saved: the user canceled.')
     await expect(readFile(local, 'utf8')).rejects.toThrow()
     const s = await ask({ setup: 'pnpm install' }, 'Save')
+    expect(s.card.detail).toBe('Setup script\npnpm install')
+    expect(s.text).toContain('Saved setup script to .kernel/settings.local.toml.')
     expect(await readFile(local, 'utf8')).toContain('pnpm install')
   })
 
@@ -98,6 +102,9 @@ describe('setup script feature end to end', () => {
     const saved = await readFile(local, 'utf8')
     expect(card.detail).toContain('echo $KERNEL_PORT\necho ${KERNEL_ROOT_PATH}x\necho $CONDUCTOR_PORTAL $CONDUCTOR_FOO')
     expect(saved).toContain('echo $KERNEL_PORT')
+    expect(card.detail).toContain('Run script\ndev -p $((KERNEL_PORT+1))')
+    expect(saved).toContain('dev -p $((KERNEL_PORT+1))')
+    expect(saved).not.toContain('CONDUCTOR_PORT+1')
     expect(text).toContain('CONDUCTOR_FOO')
   })
 
@@ -121,8 +128,8 @@ describe('setup script feature end to end', () => {
 })
 
 describe('Use from the Setup tab on a room that already has run and archive scripts', () => {
-  // Known gap: the patch carries the repo's run and archive, and Use saves the whole patch, so it replaces the user's own.
-  it.fails('keeps the run and archive the room already has', async () => {
+  // The suggestion leaves out every script the room has, so Use saves only what is missing (KERNEL-707).
+  it('keeps the run and archive the room already has', async () => {
     const toml = `[scripts]\nsetup = "pnpm install"\narchive = "echo conductor-archive"\nrun = "conductor run"\n`
     const { h, room } = await boot({ '.conductor/settings.toml': toml })
     await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run', archive: 'my own archive' } } })
@@ -131,5 +138,26 @@ describe('Use from the Setup tab on a room that already has run and archive scri
     const after = await h['settings.room']({ roomId: room.id })
     expect(after.scripts.run).toBe('my own run')
     expect(after.scripts.archive).toBe('my own archive')
+    expect(after.scripts.setup).toBe('pnpm install')
+  })
+
+  it('offers a room with only a run script just the setup, archive and named run scripts it lacks', async () => {
+    const toml = `[scripts]\nsetup = "pnpm install"\narchive = "echo bye"\nrun_mode = "nonconcurrent"\n[scripts.run.web]\ncommand = "pnpm dev"\ndefault = true\n[scripts.run.docs]\ncommand = "pnpm docs"\n[scripts.run.site]\ncommand = "pnpm site"\n`
+    const { h, room } = await boot({ '.conductor/settings.toml': toml })
+    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run', runMode: 'concurrent' }, runScripts: { site: 'my own site' } } })
+    const [s] = await h['scripts.suggest']({ roomId: room.id })
+    expect(s.patch).toEqual({ scripts: { setup: 'pnpm install', archive: 'echo bye' }, runScripts: { docs: 'pnpm docs' } })
+    await h['settings.setRoom']({ roomId: room.id, patch: s.patch })
+    const after = await h['settings.room']({ roomId: room.id })
+    expect(after.scripts).toMatchObject({ run: 'my own run', runMode: 'concurrent', setup: 'pnpm install', archive: 'echo bye' })
+    expect(after.runScripts.find((r) => r.name === 'site')?.command).toBe('my own site')
+    expect(await h['scripts.suggest']({ roomId: room.id })).toEqual([])
+  })
+
+  it('offers only setup to a room with a run script, from a repo with setup and run', async () => {
+    const { h, room } = await boot({ '.conductor/settings.toml': '[scripts]\nsetup = "pnpm install"\nrun = "conductor run"\n' })
+    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { run: 'my own run' } } })
+    const s = await h['scripts.suggest']({ roomId: room.id })
+    expect(s.map((x) => x.patch)).toEqual([{ scripts: { setup: 'pnpm install' } }])
   })
 })
