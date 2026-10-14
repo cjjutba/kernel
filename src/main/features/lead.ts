@@ -49,7 +49,7 @@ export class Lead extends Feature {
     this.overlaps.resolve(overlapId)
     // A note, not a brief: this isn't a new brief to the Lead.
     const lead = agents.find((a) => a.id === this.store.workspace(chat.workspaceId)?.agentId)
-    bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
+    bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'Kernel'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
 
   /**
@@ -64,7 +64,7 @@ export class Lead extends Feature {
     const open = all.filter((w) => w.status !== 'archived')
     if (!open.length) return undefined
     const moved = open.map((ws) => this.updateWs(ws.id, { agentId: leadId }))
-    bus.activity({ kind: 'note', roomId, workspaceId: moved[0].id, agentId: leadId, actor: 'kernel', text: "handed the Lead's chats to", object: this.agentsSync(roomId).find((a) => a.id === leadId)?.name ?? leadId })
+    bus.activity({ kind: 'note', roomId, workspaceId: moved[0].id, agentId: leadId, actor: 'kernel', text: 'handed the chats with the old lead file to', object: this.agentsSync(roomId).find((a) => a.id === leadId)?.name ?? leadId })
     return moved[0]
   }
 
@@ -831,9 +831,9 @@ export class Lead extends Feature {
         let chat: Chat
         if (agentId) {
           const ws = this.store.workspaces(roomId).find((w) => w.agentId === agentId && w.status !== 'archived')
-          if (!ws) throw new Error('That agent has no open workspace. Brief the Lead instead.')
+          if (!ws) throw new Error('That agent has no open workspace. Brief Kernel instead.')
           const first = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-          if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief the Lead instead.')
+          if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief Kernel instead.')
           chat = first
         } else chat = await this.leadChat(roomId)
         const message = messageOf(text, parts)
@@ -841,7 +841,7 @@ export class Lead extends Feature {
         await this.sessions.send(chat.id, message)
         // The activity line for the brief, with the brief quoted under it.
         const to = this.store.workspace(chat.workspaceId)?.agentId
-        const name = (await this.k.team.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
+        const name = (await this.k.team.agents(roomId)).find((a) => a.id === to)?.name ?? 'Kernel'
         const quote = parts ? message.map((p) => (p.type === 'text' ? p.text : p.name)).join(' ').replace(/\s+/g, ' ').trim() : text
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }

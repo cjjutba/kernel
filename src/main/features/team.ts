@@ -1,5 +1,5 @@
-import { readFile, rm, stat } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { readFile, rename, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Provider, Role, RoleModel, RosterAdvice, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { rolePick } from '@shared/rolePick'
@@ -498,8 +498,31 @@ export class Team extends Feature {
     const was = await this.agents(roomId)
     const file = was.find((a) => a.lead)?.file
     const path = join(room.path, '.claude', 'agents', KERNEL_FILE)
-    if (file && file !== path) throw new Error(`Kernel is customized in ${basename(file)}. Remove lead: true from that file to reset it.`)
+    if (file && file !== path) throw new Error(`Kernel is customized in ${basename(file)}. Move it to ${KERNEL_FILE} first.`)
     await rm(path, { force: true })
+    return this.reloadLead(roomId, was)
+  }
+
+  /**
+   * Move to kernel.md on Kernel's profile: the file that customizes Kernel from before KERNEL-692 (a file marked Lead, or the
+   * one `[team] lead` names) becomes .claude/agents/kernel.md with its content, so Reset can delete it (KERNEL-741). Its own
+   * id, name and `lead: true` lines are harmless there, since kernel.md customizes Kernel by its name. Kernel keeps its id,
+   * so its open chats carry on.
+   */
+  private async moveLead(roomId: string): Promise<AgentDef[]> {
+    const room = this.mustRoom(roomId)
+    const was = await this.agents(roomId)
+    const file = was.find((a) => a.lead)?.file
+    const dir = join(room.path, '.claude', 'agents')
+    const path = join(dir, KERNEL_FILE)
+    if (!file) throw new Error('No file customizes Kernel in this room.')
+    if (file === path) throw new Error(`Kernel is already customized in ${KERNEL_FILE}.`)
+    if (dirname(file) !== dir) throw new Error(`Kernel is customized in ${basename(file)}, which isn't in this room's .claude/agents.`)
+    if (await stat(path).then(() => true, () => false)) throw new Error(`.claude/agents already has a ${KERNEL_FILE}. Remove it or rename it first.`)
+    const custom = (await loadAgents(room.path)).find((a) => a.file === file)
+    await rename(file, path)
+    const { team } = await loadRepoSettings(room.path)
+    if (team?.lead && team.lead === custom?.id) await saveTeamSettings(room.path, { lead: null })
     return this.reloadLead(roomId, was)
   }
 
@@ -616,6 +639,7 @@ export class Team extends Feature {
       'agents.setTeam': async ({ roomId, team, from }) => this.listed(roomId, await this.setTeam(roomId, team, from)),
       'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),
       'agents.resetLead': async ({ roomId }) => this.listed(roomId, await this.resetLead(roomId)),
+      'agents.moveLead': async ({ roomId }) => this.listed(roomId, await this.moveLead(roomId)),
       'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id),
       'agents.listGlobal': async () => this.globalAgents(),
       'agents.saveGlobal': async ({ agentId, patch }) => this.saveGlobal(agentId, patch)

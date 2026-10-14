@@ -300,7 +300,7 @@ async function fileOf(repoPath: string, id: string, o: { retired?: boolean } = {
  * `.claude/agents`, the home folder too (KERNEL-466).
  */
 export async function freeId(repoPath: string, id: string) {
-  if (RESERVED_AGENT_IDS.includes(id)) throw new Error(`${id} is the name of Kernel's own ${id === KERNEL_LEAD ? 'Lead' : 'reviewer'}. Pick another name.`)
+  if (RESERVED_AGENT_IDS.includes(id)) throw new Error(id === KERNEL_LEAD ? `${id} is Kernel's own name. Pick another name.` : `${id} is the name of Kernel's own reviewer. Pick another name.`)
   if (await fileOf(repoPath, id) || await exists(agentPath(repoPath, id))) throw new Error(`${titleCase(id)} is already on the team. Pick another name or edit the file.`)
 }
 

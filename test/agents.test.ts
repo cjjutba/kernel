@@ -235,7 +235,7 @@ describe('agents', () => {
     await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
     await expect(saveAgent(repo, { id: 'kai', description: 'Another Kai.', prompt: 'x' })).rejects.toThrow(/already on the team/)
     expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('You are Kai.')
-    await expect(saveAgent(repo, { id: 'kernel-lead', description: 'Lead.', prompt: 'x' })).rejects.toThrow(/Kernel's own Lead/)
+    await expect(saveAgent(repo, { id: 'kernel-lead', description: 'Lead.', prompt: 'x' })).rejects.toThrow("kernel-lead is Kernel's own name. Pick another name.")
     await expect(createAgent(repo, draftAgent({ description: 'reviews', name: 'Kernel Reviewer' }))).rejects.toThrow(/Kernel's own reviewer/)
     await writeFile(join(repo, '.claude', 'agents', 'other.md'), '---\nname: ivy\ndescription: QA.\n---\nx\n')
     await expect(saveAgent(repo, { id: 'ivy', description: 'QA.', prompt: 'x' })).rejects.toThrow(/already on the team/)

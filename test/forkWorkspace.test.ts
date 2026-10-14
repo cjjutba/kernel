@@ -134,7 +134,7 @@ describe('fork into new workspace (KERNEL-346)', () => {
     const term = await k.handlers()['chats.create']({ workspaceId: src.id, kind: 'terminal' })
     await expect(k.workspaces.forkWorkspace(term.id)).rejects.toThrow('cannot be forked')
     const leadChat = await k.lead.leadChat(room.id)
-    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("A chat with the Lead can't fork")
+    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("A chat with Kernel can't fork")
     const other = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
     await k.archiveWorkspace(other.id, false)
     await expect(k.workspaces.forkWorkspace(k.store.chats(other.id)[0].id)).rejects.toThrow('Restore the workspace')

@@ -225,7 +225,7 @@ describe('deleting workspaces from History', () => {
     expect(r.skipped).toEqual([
       { id: live.id, name: live.name, reason: 'It is not archived.' },
       { id: 'nope', name: 'nope', reason: 'Kernel no longer has it.' },
-      { id: lead.id, name: 'lead', reason: "It is the Lead's workspace." }
+      { id: lead.id, name: 'lead', reason: "It is Kernel's workspace." }
     ])
     expect(k.store.workspace(live.id)?.status).not.toBe('archived')
     expect(k.store.workspace(lead.id)).toBeDefined()
