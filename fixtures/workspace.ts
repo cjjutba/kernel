@@ -244,13 +244,15 @@ const runningItems = (): ChatItem[] => {
   return [
     { kind: 'user', id: 'ru1', ts: t(134), parts: [{ type: 'text', text: 'T-15c: snapshot tests for three invoice types. Use stable fixture dates.' }, { type: 'file', name: 'plan.md', path: 'docs/plan.md', lines: 42 }] },
     { kind: 'thinking', id: 'rth1', ts: t(130), text: 'I should check how invoices render before writing fixtures.' },
-    tool('rt1', 'Read the PDF renderer', 'cat src/pdf/render.ts', { name: 'Read', ts: t(120) }),
+    tool('rt1', 'Read the PDF renderer', 'src/pdf/render.ts', { name: 'Read', ts: t(125), input: { file_path: 'src/pdf/render.ts' } }),
+    tool('rt1b', 'Read the invoice types', 'src/pdf/types.ts', { name: 'Read', ts: t(120), input: { file_path: 'src/pdf/types.ts' } }),
     { kind: 'thinking', id: 'rth2', ts: t(110), text: 'Three types: standard, credit note, and multi-currency.' },
     tool('rt2', 'Find the existing snapshot setup', 'rg -n "toMatchSnapshot" tests', { ts: t(100) }),
     { kind: 'text', id: 'rx1', ts: t(90), text: 'Vitest already snapshots the invoice table, so I will reuse that setup and add fixtures with frozen dates.' },
-    tool('rt3', 'Create the test file', "cat > tests/invoice-pdf.spec.ts <<'EOF'", { ts: t(60) }),
+    tool('rt3', 'Create the test file', 'tests/invoice-pdf.spec.ts', { name: 'Write', ts: t(60), input: { file_path: 'tests/invoice-pdf.spec.ts', content: 'import { test } from "vitest"' } }),
+    tool('rt3b', 'Create the fixtures', 'tests/fixtures/invoices.ts', { name: 'Write', ts: t(50), input: { file_path: 'tests/fixtures/invoices.ts', content: 'export const invoices = []' } }),
     { kind: 'thinking', id: 'rth3', ts: t(40), text: 'Freezing time at 2026-10-01 keeps every snapshot stable.' },
-    tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { ts: t(20), status: 'running', durationMs: undefined })
+    tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { ts: t(20), status: 'running', durationMs: undefined, input: { command: 'pnpm vitest run tests/invoice-pdf.spec.ts' } })
   ]
 }
 
@@ -328,6 +330,59 @@ const leadSteps: ChatItem[] = [
     mcpCall(`ls-w${i}`, 'kernel', 'create_workspace', { agent, issue, title, brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
 ]
 
+/** A Lead turn in progress (WorkspaceStepRuns): a run of seven Linear issues with one failure, a run of five handoffs and the step in flight. Times count back from now so the clock reads 10m 49s. */
+const stepRunItems = (done: boolean): ChatItem[] => {
+  const t = (secs: number) => Date.now() - secs * 1000
+  const titles = ['Settings say Saving and Saved next to the control', 'Settings pages line up', 'Room settings update when the TOML changes', 'Record when each setting takes effect', 'Settings rows say Applies to new chats', 'Settings tabs keep their scroll position', 'Settings search finds a row by its hint']
+  const issues = titles.map((title, i) => mcpCall(`sr-s${i}`, 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', parentId: 'KERNEL-720', title }, i === 5
+    ? { status: 'failed', output: 'Validation failed: title is a duplicate of KERNEL-731' } : { output: `KERNEL-72${i + 1}` }))
+  const hands = [['kai', 'KERNEL-721'], ['noor', 'KERNEL-723'], ['noor', 'KERNEL-724'], ['kai', 'KERNEL-722'], ['kai', 'KERNEL-725']].map(([agent, issue], i) =>
+    mcpCall(`sr-w${i}`, 'kernel', 'create_workspace', { agent, issue, title: titles[i], brief: `Build ${issue}.` }, { output: `Created a workspace for ${agent}.` }))
+  return [
+    { kind: 'user', id: 'sr-u', ts: t(649), parts: [{ type: 'text', text: 'Approved' }] },
+    { kind: 'thinking', id: 'sr-th1', ts: t(640), text: 'I should file the Linear issues first, so I need to check team and project names along with labels, then create the sub-issues.' },
+    tool('sr-t1', 'ToolSearch', '{}', { name: 'ToolSearch', input: { query: 'select:mcp__linear__save_issue' }, output: 'Loaded 1 tool' }),
+    mcpCall('sr-t2', 'linear', 'list_issue_labels', { team: 'Kernel' }, { output: 'Bug\nImprovement\nFeature' }),
+    mcpCall('sr-t3', 'linear', 'list_issues', { team: 'Kernel', query: 'Settings' }, { output: 'KERNEL-716 Room settings title misaligned' }),
+    { kind: 'thinking', id: 'sr-th2', ts: t(600), text: 'KERNEL-716 is already in review covering the room title misalignment, so I will leave it out.' },
+    { kind: 'text', id: 'sr-x1', ts: t(590), text: 'KERNEL-716, now in review, already fixes the room title alignment, so I will leave it out of the layout issue. Filing the issues now.' },
+    mcpCall('sr-t4', 'linear', 'save_issue', { team: 'Kernel', project: 'Kernel v1', title: 'Settings: clear saving, scope and layout' }, { output: 'KERNEL-720' }),
+    { kind: 'text', id: 'sr-x2', ts: t(560), text: 'Now the sub-issues.' },
+    ...issues.slice(0, 3),
+    { kind: 'thinking', id: 'sr-th3', ts: t(540), text: 'Next the rest of the sub-issues.' },
+    ...issues.slice(3),
+    { kind: 'thinking', id: 'sr-th4', ts: t(500), text: 'Now I need to check list_workspaces for the limit, then plan the new ones.' },
+    mcpCall('sr-t5', 'kernel', 'list_workspaces', {}, { output: 'ws-716 Room settings title misaligned (in review)' }),
+    ...hands,
+    ...(done
+      ? [{ kind: 'text' as const, id: 'sr-x3', ts: t(20), text: 'Filed KERNEL-720 with six sub-issues, and handed five tasks to Kai and Noor. One issue was a duplicate of KERNEL-731, so I left it out.' }, { kind: 'result' as const, id: 'sr-res', ts: t(10), durationMs: 640_000, ok: true }]
+      : [mcpCall('sr-t6', 'kernel', 'wait_for_merge', { on: 'KERNEL-721' }, { status: 'running', durationMs: undefined })])
+  ]
+}
+
+/** A running turn of 500 steps: reads, commands, edits and thinking, then the step in flight (WorkspaceStepsLong). */
+const longSteps = (): ChatItem[] => [
+  { kind: 'user', id: 'sl-u', ts: Date.now() - 1_800_000, parts: [{ type: 'text', text: 'Sweep every screen for hard-coded colours and move them to tokens.' }] },
+  ...Array.from({ length: 500 }, (_, i): ChatItem => {
+    const file = `src/renderer/src/screens/screen${Math.floor(i / 5)}.tsx`
+    switch (i % 5) {
+      case 0: return tool(`sl${i}`, 'Read', file, { name: 'Read', input: { file_path: file } })
+      case 1: return { kind: 'thinking', id: `sl${i}`, ts: at(10, 28), text: 'This screen has two hex values, both in the header.' }
+      case 2: return tool(`sl${i}`, 'Run', 'rg -n "#[0-9a-f]{6}" src', { input: { command: `rg -n "#[0-9a-f]{6}" ${file}` } })
+      case 3: return tool(`sl${i}`, 'Edit', file, { name: 'Edit', input: { file_path: file, old_string: '#fff', new_string: 'var(--ink-2)' } })
+      default: return tool(`sl${i}`, 'Run', 'pnpm typecheck', { input: { command: 'pnpm typecheck' } })
+    }
+  }),
+  tool('sl-live', 'Run the shots', 'pnpm shots --all', { status: 'running', durationMs: undefined, input: { command: 'pnpm shots --all' } })
+]
+
+/** The Lead's chat with `items`, and the turn running unless it is told otherwise. */
+const leadRunning = (f: Fixture, items: ChatItem[], running = true): Partial<Fixture> => {
+  // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+  const { approvals: _none, ...rest } = scene2(f, { id: ids.lead, agentId: 'kernel-lead' }, 'Settings save feedback', items, {}, { model: 'claude-opus-5-5' })
+  return { ...rest, push: running ? [...f.push, { type: 'chat.running', chatId: ids.leadChat, running: true }] : f.push }
+}
+
 const stepStates: ChatItem[] = (() => {
   const bash = (id: string, input: Record<string, unknown>, status: ToolItem['status'], output?: string) =>
     tool(id, 'Run', String(input.command), { input, status, output, durationMs: status === 'running' ? undefined : 900 })
@@ -352,12 +407,14 @@ const stepStates: ChatItem[] = (() => {
 
 const toolCalls: ChatItem[] = [
   tableItems[0],
-  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100 }),
+  tool('c1', 'Read the plan', 'plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100, input: { file_path: 'plans/t-14-invoice-table.md' } }),
+  tool('c1b', 'Read DESIGN.md', 'DESIGN.md', { name: 'Read', durationMs: 60, input: { file_path: 'DESIGN.md' } }),
   tool('c2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
   tool('c3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120 }),
   tool('c4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90 }),
   tool('c5', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
   tool('c6', 'Run Playwright', 'pnpm playwright test invoices', { durationMs: 41_000, output: '4 passed (38.2s)' }),
+  tool('c7', 'Check types', 'pnpm tsc --noEmit', { durationMs: 6100, status: 'failed', output: 'src/app/invoices/table.tsx(41,7): error TS2322: Type string is not assignable to type number.' }),
   ...tableItems.slice(-2)
 ]
 
@@ -1812,6 +1869,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', toolsOpen: false } }
+  })),
+  /** The Lead's turn from KERNEL-784: seven issues filed with one failure and five handoffs fold into rows, and the step in flight sits under them with the clock. */
+  WorkspaceStepRuns: scene((f) => ({
+    ...leadRunning(f, stepRunItems(false)),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  /** The same turn finished: its summary names what happened, and with the fold open the run with a failure is open too. */
+  WorkspaceStepRunsDone: scene((f) => ({
+    ...leadRunning(f, stepRunItems(true), false),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** A running turn of 500 steps stays one fold and a live line. */
+  WorkspaceStepsLong: scene((f) => ({
+    ...leadRunning(f, longSteps()),
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),

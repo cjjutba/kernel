@@ -190,6 +190,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-btn:hover { color: var(--ink-2); }
 .chev { display: inline-flex; width: 12px; transition: transform 0.12s; }
 .chev[data-open='true'] { transform: rotate(90deg); }
+.group-text { min-width: 0; text-align: left; }
+/* What went wrong in a run or a summary, after its sentence. */
+.step-bad { color: var(--del); }
+.run-list { display: flex; flex-direction: column; margin-left: 5px; padding-left: 14px; border-left: 1px solid var(--line-2); }
+.run-list .group-item { padding: 4px 0; }
 .group-list { display: flex; flex-direction: column; margin-left: 5px; padding-left: 14px; border-left: 1px solid var(--line-2); }
 .group-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
 .group-item .tool-out { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); font-size: 11.5px; }
@@ -239,7 +244,10 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* With no reply, the card sits in the thread's 12px gap under the fold, and the time under it is 10px away. */
 .thread > .tf + .meta { margin-top: -2px; }
 .meta { font-size: 12px; color: var(--muted); }
-.running { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--mono); color: var(--muted); }
+.running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: 12.5px var(--mono); color: var(--muted); }
+/* The step in flight, after the clock: the body face, one line. */
+.live-step { min-width: 0; font: 13px var(--font); color: var(--ink-3); }
+.live-step .mono { font: 12px var(--mono); }
 .interrupted { align-self: flex-start; font: 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: 12.5px; }
 .note a { color: var(--ink-2); font-weight: 500; white-space: nowrap; }

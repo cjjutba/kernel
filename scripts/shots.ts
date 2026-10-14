@@ -436,8 +436,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceQuestionStates: questionStates,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
-  WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edited']),
-  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edited']),
+  WorkspaceRowsOpen: (page) => openRows(page, ['Thought', 'Run unit tests', 'Edited']),
+  WorkspaceRowsFolded: (page) => openRows(page, ['Thought', 'Message', 'Edited']),
   WorkspaceDiffImageInlineOpen: async (page) => {
     await page.getByRole('button', { name: 'Open public/logo.png' }).click()
     await page.mouse.move(0, 0)

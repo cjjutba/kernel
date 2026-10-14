@@ -15,7 +15,7 @@ import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, MessageActions, useCopy, type MessageAction } from './MessageActions'
 import { ChipIcon, HoverPreview, ImageButton, isPastedText, OpenImage, TextButton, type ImagePart } from './composer/Chip'
-import { buildThread, countsLabel, fmtDuration, groupLabel, turnFiles, type ThreadBlock } from './thread'
+import { buildThread, countsLabel, fmtDuration, runLabel, turnFiles, type Entry, type Run, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
 import { userView } from './sender'
@@ -220,8 +220,10 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * slot and no chevron, and a right-hand note.
  */
 /** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. `chip` draws after the label in the detail's place, as the image on a Read image row. */
-function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip, mono, meta, compact, onOpen, onPeek, peek, children }: {
-  icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean
+function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip, mono, meta, compact, startOpen, onOpen, onPeek, peek, children }: {
+  icon?: IconName; glyph?: ReactNode; failed?: boolean; label: ReactNode; detail?: string; chip?: ReactNode; mono?: boolean; meta?: string; compact?: boolean
+  /** The row starts open, as a run with a failure does inside an open fold. */
+  startOpen?: boolean
   /** The sentence a screen reader reads for the row, in place of its label and preview. */
   name?: string
   /** Draws in the detail's place, and `keep` leaves it in place once the row is open. */
@@ -233,7 +235,7 @@ function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip
   peek?: ReactNode
   children?: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(!!startOpen)
   const [at, setAt] = useState<DOMRect | null>(null)
   const panel = useId()
   const can = !!children
@@ -279,7 +281,7 @@ function StepRow({ icon, glyph, failed, label, detail, preview, keep, name, chip
 
 /** Rows compare their item, so a step that didn't change isn't drawn again when its neighbours do. `StepRow` below takes its body as children, a new element every time, so the skip has to happen here. */
 const ThinkingRow = memo(function ThinkingRow({ item, compact }: { item: Extract<ChatItem, { kind: 'thinking' }>; compact?: boolean }) {
-  return <StepRow icon={compact ? undefined : 'bulb'} label="Thinking" detail={item.text} compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
+  return <StepRow icon={compact ? undefined : 'bulb'} label="Thought" compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
 })
 
 const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
@@ -454,19 +456,44 @@ const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta
   return null
 })
 
+/**
+ * Calls of one verb on one service as one row: "Filed 7 issues in Linear". It keeps the service's mark, says what failed in red after the sentence,
+ * and opens to each call as its own row. Inside an open fold a run with a failure is already open (KERNEL-784). Closed, it draws nothing but its line.
+ */
+const RunRow = memo(function RunRow({ run, changes, compact, startOpen }: { run: Run; changes: ChangedFile[]; compact?: boolean; startOpen?: boolean }) {
+  const { text, bad } = runLabel(run)
+  const mark = run.service ? <span className="step-mark"><ServiceMark name={run.service} size={15} /></span> : undefined
+  return (
+    <StepRow
+      icon={compact || mark ? undefined : 'term'} glyph={compact ? undefined : mark} failed={!run.done && !!bad} startOpen={startOpen && !!bad}
+      label={<>{text}{bad && <span className="step-bad">, {bad}</span>}</>} name={bad ? `${text}, ${bad}` : text} compact={compact}
+    >
+      <div className="run-list">
+        {run.items.map((i) => <GroupItem key={i.id} item={i} meta={i.kind === 'tool' ? toolMeta(i, changes) : undefined} />)}
+      </div>
+    </StepRow>
+  )
+}, (a, b) => (a.run === b.run || (a.run.id === b.run.id && sameList(a.run.items, b.run.items) && a.run.failed === b.run.failed)) && a.changes === b.changes && a.compact === b.compact && a.startOpen === b.startOpen)
+
+const GroupEntry = memo(function GroupEntry({ entry, changes }: { entry: Entry; changes: ChangedFile[] }) {
+  if (entry.kind === 'run') return <div className="group-item"><RunRow run={entry.run} changes={changes} compact startOpen /></div>
+  return <GroupItem item={entry.item} meta={entry.item.kind === 'tool' ? toolMeta(entry.item, changes) : undefined} />
+}, (a, b) => (a.entry === b.entry || (a.entry.kind === 'item' && b.entry.kind === 'item' && a.entry.item === b.entry.item) || (a.entry.kind === 'run' && b.entry.kind === 'run' && a.entry.run.id === b.entry.run.id && sameList(a.entry.run.items, b.entry.run.items))) && a.changes === b.changes)
+
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
   // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
   const [open, setOpen] = useRowOpen(useContext(TranscriptChat), block.id, getState().ui.workspace.toolsOpen)
   const id = `${block.id}-list`
+  const { text, bad } = block.summary
   return (
     <div className="col" style={{ gap: 2 }}>
       <button type="button" className="group-btn" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
         <span className="chev" data-open={open}><Icon name="right" size={12} /></span>
-        {groupLabel(block.tools.length, block.messages)}
+        <span className="group-text">{text}{bad && <span className="step-bad">, {bad}</span>}</span>
       </button>
       {open && (
         <div id={id} className="group-list">
-          {block.items.map((i) => <GroupItem key={i.id} item={i} meta={i.kind === 'tool' ? toolMeta(i, changes) : undefined} />)}
+          {block.entries.map((e) => <GroupEntry key={e.kind === 'run' ? e.run.id : e.item.id} entry={e} changes={changes} />)}
         </div>
       )}
     </div>
@@ -474,10 +501,19 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
 }
 
 /** Seconds since the turn started. Counts from the message's own timestamp, so it is right after a reload. */
-function Elapsed({ since }: { since: number }) {
+function Elapsed({ since, step }: { since: number; step?: ReactNode }) {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
-  return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}</span>
+  return <span className="running"><Spinner label="Working" pattern="spiral" />{fmtDuration(now - since)}{step}</span>
+}
+
+/** The step in flight, under a running turn's folds: what it is doing, next to the turn's clock. */
+function LiveLine({ item, since }: { item: Extract<ThreadBlock, { kind: 'live' }>['item']; since: number }) {
+  const workspaceId = useContext(TranscriptWorkspace)
+  const root = useStore((s) => s.workspaces.find((w) => w.id === workspaceId)?.path)
+  const view = useMemo(() => (item.kind === 'tool' ? toolView(item, { root }) : undefined), [item, root])
+  const verb = item.kind === 'thinking' ? 'Thinking' : view?.hidden ? undefined : view?.verb
+  return <Elapsed since={since} step={verb && <span className="live-step ellipsis">{verb}{view?.object && <span className={view.mono ? 'mono' : undefined}> {view.object}</span>}</span>} />
 }
 
 function ApprovalRow({ id }: { id: string }) {
@@ -492,7 +528,9 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   if (a === b) return true
   switch (a.kind) {
     case 'item': return b.kind === 'item' && a.item === b.item
-    case 'group': return b.kind === 'group' && a.id === b.id && a.messages === b.messages && sameList(a.tools, b.tools) && sameList(a.items, b.items)
+    case 'group': return b.kind === 'group' && a.id === b.id && sameList(a.items, b.items)
+    case 'run': return b.kind === 'run' && a.id === b.id && sameList(a.run.items, b.run.items)
+    case 'live': return b.kind === 'live' && a.item === b.item
     case 'files': return b.kind === 'files' && a.id === b.id && sameList(a.files, b.files)
     case 'meta': return b.kind === 'meta' && a.id === b.id && a.text === b.text
     case 'reply': return b.kind === 'reply' && a.item === b.item && a.meta === b.meta && a.checkpointId === b.checkpointId && sameList(a.files ?? [], b.files ?? [])
@@ -506,7 +544,7 @@ interface BlockProps { block: ThreadBlock; chatId: string; workspaceId: string; 
 /** Only a tool group reads the changed files, so a new list redraws the groups and nothing else. */
 const sameProps = (a: BlockProps, b: BlockProps) =>
   sameBlock(a.block, b.block) && a.chatId === b.chatId && a.workspaceId === b.workspaceId && a.inWorkspace === b.inWorkspace && a.agentName === b.agentName && a.onEdit === b.onEdit && a.onOpenDiff === b.onOpenDiff && a.onFork === b.onFork && a.onForkWorkspace === b.onForkWorkspace && a.onTerminal === b.onTerminal
-  && (a.block.kind !== 'group' || a.changes === b.changes)
+  && ((a.block.kind !== 'group' && a.block.kind !== 'run') || a.changes === b.changes)
 
 const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorkspace, agentName, onEdit, onOpenDiff, onFork, onForkWorkspace, onTerminal }: BlockProps) {
   if (block.kind === 'error') {
@@ -517,6 +555,8 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
     )
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
+  if (block.kind === 'run') return <RunRow run={block.run} changes={changes} />
+  if (block.kind === 'live') return block.item.kind === 'tool' ? <ToolRow item={block.item} /> : <ThinkingRow item={block.item} />
   if (block.kind === 'relaunch') return <KernelNote item={block.message} lead={block.note.text} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
   if (block.kind === 'files') return <TurnFilesCard rowId={block.id} files={block.files} inWorkspace={inWorkspace} onOpenDiff={onOpenDiff} />
@@ -560,7 +600,7 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   const isLead = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return !!s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.lead })
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
-  const blocks = useMemo(() => buildThread(items), [items])
+  const blocks = useMemo(() => buildThread(items, running), [items, running])
   // The blocks that put an element in the thread, in order, so the thread's children line up with them.
   const drawn = useRef<string[]>([])
   drawn.current = blocks.filter((b) => b.kind !== 'item' || !(b.item.kind === 'result' || (b.item.kind === 'user' && !instructionOf(b.item) && userView(b.item) === 'hidden') || (b.item.kind === 'approval' && !approvals.some((a: Approval) => a.id === (b.item as Extract<ChatItem, { kind: 'approval' }>).approvalId)))).map(blockKey)
@@ -766,11 +806,11 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
         <TranscriptWorkspace.Provider value={workspaceId}>
         <TranscriptChat.Provider value={chatId}>
         <div ref={thread} className="thread" style={empty ? { display: 'none' } : undefined}>
-          {blocks.map((b, i) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
+          {blocks.map((b, i) => b.kind === 'live' && i === blocks.length - 1 && !planWaits && !loose.length ? <LiveLine key={b.id} item={b.item} since={since} /> : <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} workspaceId={workspaceId} changes={changes} inWorkspace={i === latestFiles && changes.length > 0 && changes.length !== ((b.kind === 'reply' || b.kind === 'files') && b.files ? b.files.length : 0) ? changes.length : undefined} agentName={agentName} onEdit={editMessage} onOpenDiff={openDiff} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
           {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
           {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
           {ws && <LocalMergeRow ws={ws} />}
-          {running && !planWaits && <Elapsed since={since} />}
+          {running && !planWaits && (blocks[blocks.length - 1]?.kind !== 'live' || loose.length > 0) && <Elapsed since={since} />}
           <div ref={end} />
         </div>
         </TranscriptChat.Provider>
