@@ -266,3 +266,15 @@
 .cmp-where-local:hover .where-tip, .cmp-where-local:focus-visible .where-tip { display: block; }
 /* An issue or pull request chip: its key in mono, its title in the normal font. */
 .cmp-chip[data-kind='issue'] .chip-meta, .cmp-chip[data-kind='pr'] .chip-meta { font: 12px var(--font); }
+
+/* What the Lead chat still owes, above the box (KERNEL-792). */
+.open-items { display: flex; flex-direction: column; border: 1px solid var(--line-4); border-radius: var(--r-sm); font-size: 12.5px; }
+.open-items-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-align: left; }
+.open-items-head:hover { color: var(--ink); }
+.open-items-line { flex: 1; min-width: 0; }
+.open-items-head[aria-expanded="true"] svg { transform: rotate(180deg); }
+.open-items-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-4); }
+.open-items-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; color: var(--ink-2); }
+.open-items-row + .open-items-row { border-top: 1px solid var(--line-4); }
+.open-items-text { flex: 1; min-width: 0; }
+.open-items-row .btn { height: 24px; padding: 0 8px; font-size: 12px; }
