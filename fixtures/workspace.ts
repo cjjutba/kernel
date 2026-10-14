@@ -2605,6 +2605,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ],
     draft: ''
   }),
+  /** KERNEL-824: an image chip then typed text, the line must be as tall as a plain one. */
+  WorkspacePasteAfter: composing({
+    parts: [{ type: 'image', name: 'image.png', width: 2486, height: 1349, dataUrl: screenshot }],
+    draft: 'eaeafe'
+  }),
+  /** KERNEL-824: chips and words over three lines, with a chip at the start and the end of a line. */
+  WorkspacePasteWrap: composing({
+    parts: [
+      { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot },
+      { type: 'text', text: ' Staging breaks on the invoices page, the log is in ' },
+      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
+      { type: 'text', text: ' and the screenshot of what I see is ' },
+      { type: 'image', name: 'image_2.png', width: 1280, height: 800, dataUrl: screenshot },
+      { type: 'text', text: ' so can you check the invoice table against both and tell me which query is slow before you change anything, then look at ' },
+      { type: 'file', name: 'pasted_text_2.txt', lines: 64, text: pastedLog },
+      { type: 'text', text: ' ' },
+      { type: 'image', name: 'image_3.png', width: 1280, height: 800, dataUrl: screenshot }
+    ],
+    draft: ''
+  }),
   /** KERNEL-815: files dragged over the chat pane. scripts/shots.ts starts the drag, the overlay is local to the composer. */
   ComposerDragOver: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
   /** KERNEL-815: three files dropped on the box while they read. scripts/shots.ts slows the read down so the placeholders show. */
