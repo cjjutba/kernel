@@ -124,13 +124,15 @@ export interface SetupRun { startedAt: number; endedAt?: number; end?: number | 
 /**
  * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't
  * gone out. `base` is HEAD when the brief was held. `releasing` means they merged and the teammate, which had already
- * started, hasn't taken Kernel's message yet.
+ * started, hasn't taken Kernel's message yet. `tip` is `<remote>/<base>` when Kernel asked that teammate to rebase onto it,
+ * and the wait ends only once the teammate's branch contains it (KERNEL-691).
  */
 export interface WaitsFor {
   on: string[]
   held: boolean
   base?: string
   releasing?: boolean
+  tip?: string
 }
 
 /** Git facts the archive and discard confirmations show (ConfirmArchive.png, ConfirmDiscard.png). */
