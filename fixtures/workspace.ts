@@ -2507,6 +2507,34 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** One follow-up behind a running turn: the tray has no "N queued" header. */
+  WorkspaceQueuedOne: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A multiline follow-up with a file and a skill: one truncated line, with the file counted. */
+  WorkspaceQueuedLong: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'skill', name: 'verify' }, { type: 'text', text: 'Check the Terminal tab for the same problem.\nThe console output is in the attached file, and the first run also printed a warning about the sort hook that I would like you to look at before the next change.' }, { type: 'file', name: 'pasted_text_1.txt', text: 'Terminal\n  Run\n  Run', lines: 14 }] },
+      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'image', name: 'image.png' }, { type: 'text', text: 'Use the shared EmptyState component' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  /** A follow-up typed while the Mac is offline: the tray says so and has no Send now. */
+  WorkspaceQueuedOffline: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Also add a loading skeleton to the table' }] }]
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   /** A brief held because every agent slot is in use (KERNEL-273). Not on the canvas, see docs/decisions/KERNEL-273.md. */
   WorkspaceQueuedCapacity: scene((f) => {
     const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Build the loading skeleton from the plan' }] }]

@@ -11,7 +11,7 @@ import { FileIcon } from '../../../components/FileIcon'
 import { useModeAvailability } from '../../../permissionModes'
 import { actions, getState, loadWorkspace, setLeadMode, useStore } from '../../../store'
 import { useRoomSettings } from '../../settings/useSettings'
-import { Button, Icon } from '../../../ui'
+import { Button, Icon, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
@@ -28,7 +28,7 @@ import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMem
 import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, type CycleRun, nextMode, offLine, shownMode, type ComposerMode } from './modes'
 import { ComposerShell } from './ComposerShell'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
-import { QueueList } from './QueueList'
+import { canSendNow, QueueList } from './QueueList'
 import { sendsOn, useSendWith } from './sendKey'
 import { NoteText } from '../NoteText'
 import { UncommittedNote } from './UncommittedNote'
@@ -233,6 +233,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
   // Claude's guess at the next message (KERNEL-530) stands in for the placeholder of an empty box, and Tab or → takes it. Only a key does: Enter on an empty box sends nothing.
   const suggested = provider === 'claude' && !d.parts.length && !running && !chat.plan && !plan && !blocked && !queue.length && queueWhy !== 'setup' && !acOpen ? chat.suggestion : undefined
   const sendWith = useSendWith()
+  const [sendingNow, runNow] = useBusy<string>()
+  const sendNow = (q: QueuedMessage) => void runNow(q.id, () => attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id }))))
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -242,6 +244,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (suggested && (e.key === 'Tab' || e.key === 'ArrowRight') && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); d.setText(suggested); d.focus(); return }
+    // ⌘⇧ Enter sends the first queued message now, whatever Send messages with says.
+    if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey) && queue.length && canSendNow(queueWhy)) { e.preventDefault(); sendNow(queue[0]); return }
+    // Up in an empty box pulls the last queued message back, as clicking its text does.
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && d.empty && queue.length && queueWhy !== 'setup') { e.preventDefault(); editQueued(queue[queue.length - 1]); return }
     if (sendsOn(e, sendWith)) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); cycleMode(); return }
     if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) run.current = null
@@ -304,16 +310,18 @@ export function Composer({ chat, agent, blocked, running, prefill, banner, where
       above={<>
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
         {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
+        {banner}
+        {dirty.length > 0 && <UncommittedNote files={dirty} />}
         <QueueList
           queue={queue}
           why={queueWhy}
           held={held}
+          running={running}
+          sending={sendingNow}
           onEdit={editQueued}
-          onNow={(q) => void attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id })))}
+          onNow={sendNow}
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
         />
-        {banner}
-        {dirty.length > 0 && <UncommittedNote files={dirty} />}
       </>}
       popup={<>
         {acOpen && rows.length > 0 && (
