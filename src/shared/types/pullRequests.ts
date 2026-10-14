@@ -100,4 +100,6 @@ export interface IssueSummary {
   source?: TrackerKind
   /** Linear's priority, 0 none, 1 urgent to 4 low, where the tracker has one. Up next in New chat shows it. */
   priority?: number
+  /** The Linear project the issue is in, when it has one. Up next shows it after the title. */
+  project?: string
 }

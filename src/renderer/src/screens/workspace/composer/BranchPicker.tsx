@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
 import { Button, Icon, Kbd } from '../../../ui'
@@ -39,18 +39,38 @@ export function BranchPicker({ roomId, picked, open, disabled, onToggle, onClose
   )
 }
 
-type Read = { ok: { name: string; committedAt: number }[] } | { failed: true } | null
+export type BranchRead = { ok: { name: string; committedAt: number }[] } | { failed: true } | null
+
+/**
+ * Each room's branches as last read. New chat reads them when it opens, so the menu opens on the list instead of a loading line that
+ * the list then replaces, and opening the menu reads them again behind it. A failed read keeps the list from before.
+ */
+const branches = new Map<string, BranchRead>()
+const reading = new Map<string, Promise<void>>()
+const branchListeners = new Set<() => void>()
+
+export function readBranches(roomId: string): Promise<void> {
+  const now = reading.get(roomId)
+  if (now) return now
+  const set = (r: BranchRead) => { branches.set(roomId, r); for (const fn of [...branchListeners]) fn() }
+  const p = call('git.branchList', { roomId })
+    .then((ok) => set({ ok }), () => { if (!branches.get(roomId)) set({ failed: true }) })
+    .finally(() => reading.delete(roomId))
+  reading.set(roomId, p)
+  return p
+}
+
+const onBranches = (fn: () => void) => { branchListeners.add(fn); return () => { branchListeners.delete(fn) } }
+
+/** The room's branches as last read, null until the first read answers. */
+export const useBranches = (roomId: string): BranchRead => useSyncExternalStore(onBranches, () => branches.get(roomId) ?? null)
 
 function BranchMenu({ roomId, target, fallback, remote, anchorRef, onClose, onPick }: { roomId: string; target: string; fallback: string; remote: string; anchorRef: React.RefObject<HTMLElement | null>; onClose: (refocus?: boolean) => void; onPick: (ref: string) => void }) {
-  const [read, setRead] = useState<Read>(null)
+  const read = useBranches(roomId)
   const [text, setText] = useState('')
   const workspaces = useStore((s) => s.workspaces)
   const list = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    let live = true
-    call('git.branchList', { roomId }).then((ok) => { if (live) setRead({ ok }) }, () => { if (live) setRead({ failed: true }) })
-    return () => { live = false }
-  }, [roomId])
+  useEffect(() => { void readBranches(roomId) }, [roomId])
 
   // A pick from before stays listed, even when the repo no longer has it, so the check always shows.
   const rows = useMemo(() => {

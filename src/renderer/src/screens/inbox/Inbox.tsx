@@ -4,6 +4,7 @@ import type { AgentDef, Approval, Decision, Overlap } from '@shared/types'
 import { call } from '../../api'
 import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
+import { oneOf, useRemembered } from '../../remember'
 import { Button, Icon, Pill, Spinner, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
@@ -133,7 +134,8 @@ export function Inbox() {
   const agents = useStore((s) => s.agents)
   const firstRoom = useStore((s) => s.rooms.find((r) => !r.archived)?.id)
   const lead = useStore((s) => (firstRoom ? s.agents[firstRoom]?.find((a) => a.lead) : undefined))
-  const [tab, setTab] = useState<InboxTab>('all')
+  // The tab stays picked when you leave the Inbox and come back (DESIGN.md, Remembered choices).
+  const [tab, setTab] = useRemembered<InboxTab>('kernel.inboxTab', oneOf<InboxTab>(['all', 'needs', 'updates'], 'all'))
   const [sel, setSel] = useState<string | null>(null)
   const detail = useRef<HTMLDivElement>(null)
   const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps), workspaces), [notifications, approvals, rooms, overlaps, workspaces])

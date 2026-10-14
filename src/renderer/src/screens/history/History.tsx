@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
+import { oneOf, useRemembered } from '../../remember'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
 import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prGlyph, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import { restoredFromHistory } from '../workspace/byHand'
@@ -20,7 +21,7 @@ export function History() {
   const workspaces = useStore((s) => s.workspaces)
   const rooms = useStore((s) => s.rooms)
   const agents = useStore((s) => s.agents)
-  const [tab, setTab] = useState<HistoryTab>('all')
+  const [tab, setTab] = useRemembered<HistoryTab>('kernel.historyTab', oneOf<HistoryTab>(['all', 'merged', 'notMerged'], 'all'))
   const [q, setQ] = useState('')
   const [busy, run] = useBusy()
   const roomName = (w: Workspace) => rooms.find((r) => r.id === w.roomId)?.name

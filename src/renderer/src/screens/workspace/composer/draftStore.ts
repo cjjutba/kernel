@@ -1,10 +1,23 @@
-import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type PermissionMode } from '@shared/types'
+import { EFFORT_LABELS, PERMISSION_MODES, type ChatPart, type Effort, type LeadMode, type PermissionMode, type WorkspaceMode } from '@shared/types'
 
 /**
- * What a New chat box picked for its chat, a field only once it is picked. A field left out follows the Lead, so a box nobody
- * touched follows Settings, Models and effort as it changes (KERNEL-544). Picks live with the box's draft, in memory and on disk.
+ * What a New chat box picked, a field only once it is picked. A field left out follows the Lead, the room or Settings, so a box nobody
+ * touched follows them as they change (KERNEL-544). Picks live with the box's draft, in memory and on disk, so leaving the page keeps them.
+ * Model, effort, plan, permission mode and the branch are the next chat's and go with a send. Hand off or Build here and Worktree or
+ * Local are the room's way of working and stay after one (`ROOM_PICKS`).
  */
-export interface DraftPicks { model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }
+export interface DraftPicks {
+  model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode
+  /** Hand off or Build here. */
+  leadMode?: LeadMode
+  /** Worktree or Local. */
+  place?: WorkspaceMode
+  /** The branch the chat starts from, as the branch menu lists it. Left out for the default. */
+  baseRef?: string
+}
+
+/** The picks a send keeps: how the user works in the room, not what the next chat starts from. */
+const ROOM_PICKS = ['leadMode', 'place'] as const
 
 /**
  * Unsent messages by chat id: the parts in the box, text and chips in order, and the workspace the chat belongs to. Module level, so
@@ -40,12 +53,15 @@ let listening = false
 /** The picks a file holds, field by field: a value that isn't a model id, an effort or a boolean is dropped. */
 function picksOf(v: unknown): DraftPicks | undefined {
   if (!v || typeof v !== 'object') return undefined
-  const { model, effort, plan, mode } = v as Record<string, unknown>
+  const { model, effort, plan, mode, leadMode, place, baseRef } = v as Record<string, unknown>
   const out: DraftPicks = {}
   if (typeof model === 'string' && model.trim()) out.model = model
   if (typeof effort === 'string' && Object.keys(EFFORT_LABELS).includes(effort)) out.effort = effort as Effort
   if (typeof plan === 'boolean') out.plan = plan
   if (typeof mode === 'string' && PERMISSION_MODES.includes(mode as PermissionMode)) out.mode = mode as PermissionMode
+  if (leadMode === 'handoff' || leadMode === 'build') out.leadMode = leadMode
+  if (place === 'worktree' || place === 'current') out.place = place
+  if (typeof baseRef === 'string' && baseRef.trim()) out.baseRef = baseRef
   return Object.keys(out).length ? out : undefined
 }
 
@@ -125,11 +141,14 @@ export function onPicksChange(fn: () => void): () => void {
 /** The picks of a box's draft. The same object until they change. */
 export const loadPicks = (key: string): DraftPicks | undefined => { load(); return saved.get(key)?.picks }
 
-/** Adds picks to a box's draft, over the ones it has. The text stays. */
+/** Adds picks to a box's draft, over the ones it has. A field set to undefined goes back to following its default. The text stays. */
 export function savePicks(key: string, patch: DraftPicks) {
   load()
   const d = saved.get(key)
-  saved.set(key, { workspaceId: d?.workspaceId ?? '', parts: d?.parts ?? [], picks: { ...d?.picks, ...patch } })
+  const picks = Object.fromEntries(Object.entries({ ...d?.picks, ...patch }).filter(([, v]) => v !== undefined && v !== '')) as DraftPicks
+  const kept = Object.keys(picks).length ? picks : undefined
+  if (d?.parts.length || kept) saved.set(key, { workspaceId: d?.workspaceId ?? '', parts: d?.parts ?? [], ...(kept ? { picks: kept } : {}) })
+  else saved.delete(key)
   schedule()
   for (const fn of [...pickListeners]) fn()
 }
@@ -149,13 +168,26 @@ export function moveDraft(from: string, to: string) {
   schedule()
 }
 
-/** A send: the draft goes with its text and its picks, so the box starts from the Lead again. */
+/** A send: the draft goes with its text and the next chat's picks, so the box starts from the Lead again. The room's picks stay. */
 export function clearDraft(key: string) {
   load()
   const had = saved.get(key)?.picks
-  saved.delete(key)
+  const kept = Object.fromEntries(ROOM_PICKS.flatMap((k) => (had?.[k] ? [[k, had[k]]] : []))) as DraftPicks
+  if (Object.keys(kept).length) saved.set(key, { workspaceId: saved.get(key)?.workspaceId ?? '', parts: [], picks: kept })
+  else saved.delete(key)
   schedule()
   if (had) for (const fn of [...pickListeners]) fn()
+}
+
+/** Forgets the New chat drafts of rooms that are gone or archived, text and picks, so a room that comes back starts from its defaults. */
+export function dropRoomDrafts(liveRoomIds: Iterable<string>) {
+  load()
+  const live = new Set(liveRoomIds)
+  let changed = false
+  for (const key of [...saved.keys()]) {
+    if (isNewChatDraft(key) && !live.has(key.slice(NEW_CHAT.length + 1))) { saved.delete(key); changed = true }
+  }
+  if (changed) { schedule(); for (const fn of [...pickListeners]) fn() }
 }
 
 /** Forgets the drafts of chats that are gone, and their saved copy. An image chip holds its whole screenshot, so a stale draft is a real cost. */

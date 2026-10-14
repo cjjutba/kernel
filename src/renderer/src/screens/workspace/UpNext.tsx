@@ -3,7 +3,6 @@ import type { ChatPart, IssueSummary, RoomTracker, TrackerKind } from '@shared/t
 import { call } from '../../api'
 import { IssuePriority } from '../../icons'
 import { go, useStore } from '../../store'
-import { Button } from '../../ui'
 import { readUpNext, storeUpNext } from './upNextCache'
 
 /** Up next shows this many issues. */
@@ -12,9 +11,10 @@ const SHOWN = 3
 const NAMES: Record<TrackerKind, string> = { linear: 'Linear', github: 'GitHub', jira: 'Jira' }
 
 /**
- * Up next, under New chat's composer: the room tracker's issues nobody has started, the most pressing first, as
- * `issues.next` lists them, less the ones a workspace in the room already started from. Plan hands the issue to `onPlan` as a chip.
- * A room with no tracker, one on Jira, whose issues Kernel can't list yet, or a tracker that doesn't answer shows nothing.
+ * Up next, on New chat's composer: the room tracker's issues nobody has started, the most pressing first, as `issues.next` lists them,
+ * less the ones a workspace in the room already started from. A Linear room lists its own team's only. Each row is one button: the
+ * priority, the key, the title and the project, with Plan showing on hover and focus. Pressing it hands the issue to `onPlan` as a chip.
+ * A room with no tracker, one on Jira, whose issues Kernel can't list yet, a Linear room with no team, or a tracker that doesn't answer shows nothing.
  */
 export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string; onPlan: (part: ChatPart) => void }) {
   const [view, setView] = useState(() => ({ roomId, entry: readUpNext(roomId), settled: false }))
@@ -59,11 +59,14 @@ export function UpNext({ roomId, lead, onPlan }: { roomId: string; lead: string;
       </div>
       <ul className={ranked ? undefined : 'up-next-plain'}>
         {shown.map((i) => (
-          <li key={i.id} className="up-next-row">
-            {ranked && <IssuePriority priority={i.priority ?? 0} size={14} />}
-            <span className="mono up-next-key">{i.id}</span>
-            <span className="ellipsis">{i.title}</span>
-            <Button className="up-next-plan" aria-label={`Plan ${i.id} with ${lead}`} onClick={() => onPlan({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? kind })}>Plan</Button>
+          <li key={i.id} className="up-next-item">
+            <button type="button" className="up-next-row" aria-label={`Plan ${i.id}, ${i.title}, with ${lead}`} onClick={() => onPlan({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? kind })}>
+              {ranked && <IssuePriority priority={i.priority ?? 0} size={14} />}
+              <span className="mono up-next-key">{i.id}</span>
+              <span className="up-next-title ellipsis">{i.title}</span>
+              <span className="up-next-project ellipsis">{i.project}</span>
+              <span className="up-next-plan" aria-hidden="true">Plan</span>
+            </button>
           </li>
         ))}
       </ul>
@@ -77,7 +80,7 @@ function UpNextSpace() {
     <section className="up-next up-next-space" aria-hidden="true">
       <div className="up-next-head"><h3>&nbsp;</h3></div>
       <ul className="up-next-plain">
-        {[0, 1, 2].map((i) => <li key={i} className="up-next-row" />)}
+        {[0, 1, 2].map((i) => <li key={i} className="up-next-item"><span className="up-next-row" /></li>)}
       </ul>
     </section>
   )

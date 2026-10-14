@@ -1,4 +1,4 @@
-import { isFixture } from './store'
+import { readSaved, writeSaved } from './remember'
 
 /**
  * Whether the user has already answered ConfirmBypass (KERNEL-455). Every way into Bypass permissions asks once: Settings,
@@ -11,12 +11,10 @@ let confirmed: boolean | undefined
 
 export function bypassConfirmed(): boolean {
   if (confirmed !== undefined) return confirmed
-  let saved = false
-  if (!isFixture()) try { saved = localStorage.getItem(KEY) === '1' } catch { /* not restored */ }
-  return (confirmed = saved)
+  return (confirmed = readSaved(KEY) === '1')
 }
 
 export function rememberBypassConfirmed() {
   confirmed = true
-  if (!isFixture()) try { localStorage.setItem(KEY, '1') } catch { /* not remembered */ }
+  writeSaved(KEY, '1')
 }

@@ -641,11 +641,11 @@ const queuedItems = (): ChatItem[] => {
 /** New chat with Kernel in a room with no open chat (KERNEL-366, KERNEL-405), with Todo issues for Up next and the remote's branches. */
 function leadNoChats(f: Fixture): Partial<Fixture> {
   const g = grouped(f, { running: [], threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
-  const issue = (id: string, title: string, priority: number): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority })
+  const issue = (id: string, title: string, priority: number, project?: string): IssueSummary => ({ id, title, url: `https://linear.app/client-a/issue/${id}`, source: 'linear', priority, ...(project ? { project } : {}) })
   // Nothing is open, so no tab is stored and the archived chats keep no transcript here.
   return {
     ...g, items: {}, ui: { ...g.ui!, route: { name: 'leadNew', roomId: ids.roomA }, tabs: {} },
-    issues: [issue('T-17', 'Email an invoice to the client from the row actions', 2), issue('T-19', 'Overdue badge on unpaid invoices past their due date', 3), issue('T-22', 'Remember the sort order on the invoices table', 0)],
+    issues: [issue('T-17', 'Email an invoice to the client from the row actions', 2, 'Invoicing'), issue('T-19', 'Overdue badge on unpaid invoices past their due date', 3, 'Invoicing'), issue('T-22', 'Remember the sort order on the invoices table', 0)],
     branches: ['origin/main', 'origin/invoice-pdf-renderer', 'origin/invoice-pdf-button', 'origin/invoice-table', 'origin/invoice-schema', 'origin/org-invites', 'origin/release/2.4', 'origin/hotfix/pdf-fonts']
   }
 }
@@ -2395,6 +2395,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // KERNEL-786: the where row's pickers and the + menu, each open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode.
   // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
   NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
+  // New chat on a room that was archived under it: the title asks without a room, and Pick a room opens the same menu.
+  NewChatNoRoom: scene((f) => {
+    const p = noPlan(leadNoChats(f))
+    const gone = { ...f.rooms[0], id: 'room-gone', name: 'Old app', archived: true }
+    return { ...p, rooms: [...(p.rooms ?? f.rooms), gone], ui: { ...p.ui!, route: { name: 'leadNew', roomId: gone.id } } }
+  }),
   NewChatMode: scene((f) => noPlan(leadNoChats(f))),
   NewChatKeyboard: scene((f) => noPlan(leadNoChats(f))),
   NewChatBranch: scene((f) => ({

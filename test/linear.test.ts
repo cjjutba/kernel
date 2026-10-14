@@ -98,13 +98,20 @@ describe('Linear queries', () => {
     expect(l.calls[1].variables.filter).toEqual({ and: [OPEN, { or: [{ title: { containsIgnoreCase: 'KERNEL-83' } }, { number: { eq: 83 } }] }] })
   })
 
-  it('lists Todo issues for Up next, urgent first and no priority last, keeping the order within a priority', async () => {
-    const n = (identifier: string, priority: number) => ({ identifier, title: identifier, url: `https://linear.app/cj/issue/${identifier}`, priority })
+  it("lists the room team's Todo issues for Up next, urgent first and no priority last, keeping the order within a priority", async () => {
+    const n = (identifier: string, priority: number) => ({ identifier, title: identifier, url: `https://linear.app/cj/issue/${identifier}`, priority, project: identifier === 'K-3' ? { name: 'Kernel v1' } : null })
     const l = linear(() => ({ issues: { nodes: [n('K-1', 0), n('K-2', 3), n('K-3', 1), n('K-4', 3), n('K-5', 4)] } }))
-    const out = await nextIssues('k', l.fetch)
-    expect(l.calls[0].variables.filter).toEqual({ state: { type: { eq: 'unstarted' } } })
+    const out = await nextIssues('k', 'K', l.fetch)
+    expect(l.calls[0].variables.filter).toEqual({ state: { type: { eq: 'unstarted' } }, team: { key: { eq: 'K' } } })
     expect(out.map((i) => i.id)).toEqual(['K-3', 'K-2', 'K-4', 'K-5', 'K-1'])
-    expect(out[0]).toEqual({ id: 'K-3', title: 'K-3', url: 'https://linear.app/cj/issue/K-3', source: 'linear', priority: 1 })
+    expect(out[0]).toEqual({ id: 'K-3', title: 'K-3', url: 'https://linear.app/cj/issue/K-3', source: 'linear', priority: 1, project: 'Kernel v1' })
+    expect(out[1]).not.toHaveProperty('project')
+  })
+
+  it("lists nothing for Up next in a room with no Linear team, rather than another team's issues", async () => {
+    const l = linear(() => ({ issues: { nodes: [{ identifier: 'BYTE-45', title: 'Submit', priority: 1 }] } }))
+    expect(await nextIssues('k', undefined, l.fetch)).toEqual([])
+    expect(l.calls).toHaveLength(0)
   })
 
   it('reads an issue marked as a duplicate with its state type', async () => {

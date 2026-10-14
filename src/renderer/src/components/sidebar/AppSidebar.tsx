@@ -4,6 +4,7 @@ import { call, cleanError } from '../../api'
 import { Icon, type IconName } from '../../icons'
 import { IconButton, Spinner, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route, type State } from '../../store'
+import { readSavedJson, writeSavedJson } from '../../remember'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { chatWorkspaces, isLeadWorkspace, leadOf, openNewChat, useLeadWaiting } from '../../lead'
 import { archiveChatFromSidebar, archivingChat } from '../../screens/workspace/archiveChat'
@@ -359,7 +360,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
  */
 const EXPANDED = 'kernel.roomsExpanded'
 function readExpanded(): Record<string, boolean> {
-  try { return JSON.parse(localStorage.getItem(EXPANDED) ?? '{}') as Record<string, boolean> } catch { return {} }
+  return readSavedJson(EXPANDED, (v) => (v && typeof v === 'object' ? v as Record<string, boolean> : {}))
 }
 
 /**
@@ -394,7 +395,7 @@ export function AppSidebar() {
   const toggle = (id: string, expanded: boolean) => {
     const next = { ...chosen, [id]: !expanded }
     setChosen(next)
-    try { localStorage.setItem(EXPANDED, JSON.stringify(next)) } catch { /* not remembered */ }
+    writeSavedJson(EXPANDED, next)
   }
 
   // Arriving on a workspace or chat from anywhere but the list (Open in the PRs list, the Inbox, search, the palette, a notification) brings its row into view.

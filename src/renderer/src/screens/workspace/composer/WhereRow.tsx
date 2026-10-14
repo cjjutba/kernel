@@ -5,13 +5,13 @@ import { Icon } from '../../../ui'
 
 /**
  * Where the chat works, in a quiet row under the box: the room, Worktree or Local, and the branch. A chat shows its branch as text. New chat
- * passes `branch` as a picker, and `roomPicker` and `modePicker` for the room and Worktree or Local. Every item is as tall as that picker's
- * button, so the row is the same height in both.
+ * passes `branch` as a picker, `modePicker` for Worktree or Local, and `roomPicker={null}`, since its title names and picks the room. Every
+ * item is as tall as that picker's button, so the row is the same height in both.
  */
-export function WhereRow({ room, mode, branch, roomPicker, modePicker }: { room: Pick<Room, 'id' | 'name' | 'icon'> | undefined; mode: WorkspaceMode; branch: ReactNode; roomPicker?: ReactNode; modePicker?: ReactNode }) {
+export function WhereRow({ room, mode, branch, roomPicker, modePicker }: { room: Pick<Room, 'id' | 'name' | 'icon'> | undefined; mode: WorkspaceMode; branch: ReactNode; roomPicker?: ReactNode | null; modePicker?: ReactNode }) {
   return (
     <div className="cmp-where" role="group" aria-label="Where this chat works">
-      {roomPicker ?? <span className="cmp-where-item"><RoomIcon room={room} size={16} /><span className="ellipsis">{room?.name}</span></span>}
+      {roomPicker !== undefined ? roomPicker : <span className="cmp-where-item"><RoomIcon room={room} size={16} /><span className="ellipsis">{room?.name}</span></span>}
       {modePicker ?? <span className="cmp-where-item"><Icon name={mode === 'current' ? 'computer' : 'fork'} size={14} />{mode === 'current' ? 'Local' : 'Worktree'}</span>}
       {branch}
     </div>

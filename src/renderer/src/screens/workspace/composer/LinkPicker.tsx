@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import type { ChatPart, IssueSummary, PrSummary, Workspace } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
+import { oneOf, useRemembered } from '../../../remember'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { chooseTracker, JIRA_NOT_BROWSABLE } from '../../issues/parts'
@@ -42,7 +43,7 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
   const { read } = useRoomTracker(roomId)
   const kind = read.kind === 'ready' ? read.tracker.kind : undefined
   const roomName = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
-  const [tab, setTab] = useState<Source>(() => (localStorage.getItem(TAB_KEY) === 'github' ? 'github' : 'linear'))
+  const [tab, setTab] = useRemembered<Source>(TAB_KEY, oneOf<Source>(['linear', 'github'], 'linear'))
   // A GitHub room has the one source and only a Linear room chooses between the two. A Jira room or one with no tracker lists
   // nothing, so a tab stored from another room never lists that tracker's issues here.
   const source: Source | undefined = kind === 'github' ? 'github' : kind === 'linear' ? tab : undefined
@@ -69,7 +70,7 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
 
   const rows = load.state === 'ready' ? load.rows : []
   const pick = (i: IssueSummary) => { if (source) onPick({ type: 'issue', name: i.id, title: i.title, url: i.url, source: i.source ?? source }) }
-  const switchTo = (s: Source) => { setTab(s); try { localStorage.setItem(TAB_KEY, s) } catch { /* nothing to keep */ } }
+  const switchTo = setTab
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }

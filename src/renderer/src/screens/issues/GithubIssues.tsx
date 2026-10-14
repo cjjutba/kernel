@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent }
 import type { GithubIssue, Room } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { getState, useStore } from '../../store'
+import { readSavedJson, writeSavedJson } from '../../remember'
 import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
 import { IssueState } from '../../icons'
 import { GithubDetail } from './GithubDetail'
 import {
-  byUpdated, DEFAULT_GITHUB_FILTER, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowStatus,
+  byUpdated, DEFAULT_GITHUB_FILTER, githubFilterKey, parseGithubFilter, describeGithub, issueAge, joinFits, labelsOf, linkedWorkspaces, loginInitials, milestonesOf, narrowGithub, rowLabels, rowStatus,
   type GithubFilter
 } from './model'
 import { FilterChip, IssuesHeader, typing, type RoomHead } from './parts'
@@ -32,7 +33,7 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
   const running = useStore((s) => s.running)
   const [view, setView] = useState<View>({ kind: 'loading' })
   const [issues, setIssues] = useState<GithubIssue[]>([])
-  const [filter, setFilter] = useState<GithubFilter>(DEFAULT_GITHUB_FILTER)
+  const [filter, setFilter] = useState<GithubFilter>(() => readSavedJson(githubFilterKey(room.id), parseGithubFilter))
   const [query, setQuery] = useState('')
   const [sel, setSel] = useState<string | undefined>(issueId)
   const [tick, setTick] = useState(0)
@@ -124,6 +125,8 @@ export function GithubIssues({ room, where, issueId, head }: { room: Room; where
 
   const shown: View = !online && (view.kind === 'ready' || view.kind === 'error') ? UNREACHABLE : view
   const ready = shown.kind === 'ready'
+  // The room's filter is kept when you leave Issues and come back (DESIGN.md, Remembered choices).
+  useEffect(() => { writeSavedJson(githubFilterKey(room.id), filter) }, [room.id, filter])
   const set = (patch: Partial<GithubFilter>) => setFilter((f) => ({ ...f, ...patch }))
 
   return (
