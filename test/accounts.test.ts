@@ -1708,7 +1708,11 @@ describe('One login, one row (KERNEL-701)', () => {
     const add = async (provider: 'claude' | 'codex', email: string) => {
       if (provider === 'claude') process.env.FAKE_EMAIL = email
       else process.env.FAKE_CODEX_LOGIN_EMAIL = email
-      return h['accounts.add']({ provider })
+      const added = await h['accounts.add']({ provider })
+      // Adding reads the account's usage and MCP servers in the background. A read still running when the test sets the next
+      // login's email reads that email into this account's row.
+      await quiet()
+      return added
     }
     /** Run login: Claude Code's own login in Terminal signs in as `email`. */
     const runLogin = async (email: string, org?: string) => {
