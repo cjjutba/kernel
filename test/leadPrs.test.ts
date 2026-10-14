@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef, PrInfo, Workspace } from '@shared/types'
-import { leadPrs, reviewLine } from '../src/renderer/src/screens/workspace/pr/leadPrList'
+import { leadPrs, reviewLine, rowGlyph, rowState } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 
 // The Lead's PRs tab: which workspaces it lists, which come first, and what each row says (KERNEL-354).
 
@@ -48,6 +48,46 @@ describe('the order', () => {
     expect(unread.ready).toBe(false)
     const green = info('a', { checks: [{ name: 'lint', state: 'pass' }] })
     expect(leadPrs([ws('a')], { leadId: 'kernel', roomId: 'room', prs: { a: green }, rules: strict, agents })[0].ready).toBe(true)
+  })
+})
+
+describe('the three lists (KERNEL-757)', () => {
+  it('puts ready PRs first, then what needs a person, then what is on its way, each in the order given', () => {
+    const rows = list([
+      ws('draft', { prState: 'draft' }), ws('cifail', { prState: 'cifail' }), ws('r1'), ws('checks', { prState: 'checks' }),
+      ws('conflict', { prState: 'conflict' }), ws('resolving', { prState: 'resolving' }), ws('changes', { prState: 'changes' })
+    ])
+    expect(rows.map((r) => [r.ws.id, r.group])).toEqual([
+      ['r1', 'ready'], ['cifail', 'attention'], ['conflict', 'attention'], ['changes', 'attention'], ['draft', 'progress'], ['checks', 'progress'], ['resolving', 'progress']
+    ])
+  })
+
+  it('puts a PR only blockers hold back under Needs attention, with Merge anyway', () => {
+    const [row] = list([ws('b', { reviews: [verdict('blockers', { blockers: [{ text: 'No test covers it.' }] })] })], { b: info('b') })
+    expect(row).toMatchObject({ ready: false, group: 'attention', blockers: { count: 1 } })
+    expect(rowState(row)).toMatchObject({ text: 'Blockers found', tone: 'fail' })
+  })
+
+  it("gives each row the sidebar's icon: green to merge, red for a person, the spinner while something runs", () => {
+    const [ready, failed, draft, running] = list([ws('r'), ws('f', { prState: 'cifail' }), ws('d', { prState: 'draft' }), ws('c', { prState: 'checks' })])
+    expect(rowGlyph(ready)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(rowGlyph(failed)).toEqual({ icon: 'pr', tone: 'del', label: 'Checks failed' })
+    expect(rowGlyph(running)).toEqual({ icon: 'spin', tone: 'muted', label: 'Checks running' })
+    expect(rowGlyph(draft)).toEqual({ icon: 'prDraft', tone: 'muted', label: 'Draft' })
+    // A merge spins in the row's Merge place, whoever started it, so the icon stays the ready one (KERNEL-520).
+    expect(rowGlyph(ready, 'merge')).toEqual({ icon: 'pr', tone: 'add', label: 'Merging' })
+    expect(rowGlyph(list([ws('m', { prState: 'merging' })])[0])).toEqual({ icon: 'pr', tone: 'add', label: 'Merging' })
+    // Any other action main runs on the PR spins the icon, since the row has no button to spin.
+    expect(rowGlyph(failed, 'resolve')).toEqual({ icon: 'spin', tone: 'muted', label: 'Sending' })
+  })
+
+  it('says a ready row\'s review, since its list says it can merge, and what any other row waits on with the reason', () => {
+    const [approved] = list([ws('a', { reviews: [verdict('approved')] })], { a: info('a') })
+    expect(rowState(approved)).toEqual({ text: 'Code approved', tone: 'idle' })
+    expect(rowState(list([ws('n')])[0])).toEqual({ text: 'Not reviewed', tone: 'idle' })
+    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail' })
+    const [waiting] = list([ws('w', { reviews: [verdict('approved', { sha: 'old' })] })], { w: info('w') })
+    expect(rowState(waiting)).toEqual({ text: 'Waiting for approval', tone: 'idle', why: expect.stringContaining("The code review hasn't approved") })
   })
 })
 
@@ -120,14 +160,5 @@ describe('what the tab and the Team update share (KERNEL-411)', () => {
     expect(summaryText(2, 3)).toBe('2 ready to merge')
     expect(summaryText(0, 2)).toBe('2 open, none ready')
     expect(summaryText(0, 0)).toBe('No open PRs')
-  })
-
-  it('says where Merge all stopped and why, and nothing when it merged everything', async () => {
-    const { stoppedText } = await import('../src/renderer/src/screens/workspace/pr/LeadPrs')
-    expect(stoppedText({ merged: [331, 330] })).toBeNull()
-    expect(stoppedText({ merged: [331], stopped: { workspaceId: 'w', prNumber: 330, reason: 'It has merge conflicts.' } }))
-      .toBe('Merged #331. Stopped at #330. It has merge conflicts.')
-    expect(stoppedText({ merged: [], stopped: { workspaceId: 'w', reason: 'It is not an open workspace in this room.' } }))
-      .toBe('Stopped at the next pull request. It is not an open workspace in this room.')
   })
 })

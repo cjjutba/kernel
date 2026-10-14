@@ -228,6 +228,16 @@ async function narrowPanel(page: Page) {
   await page.waitForTimeout(400)
 }
 
+// LeadPrsNarrow is the PRs tab with the panel at its narrowest, 320px (KERNEL-757). Home on the panel's handle takes it there.
+async function panelAtNarrowest(page: Page) {
+  const handle = page.getByRole('separator', { name: 'Resize panel' })
+  await handle.focus()
+  await page.keyboard.press('Home')
+  await handle.blur()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400)
+}
+
 // PanelFilter is Changes with the filter open and "inbox" typed. Both are local to the tab, so open the field from the search button and type, as a person would (KERNEL-515).
 async function filterChanges(page: Page) {
   await page.getByRole('button', { name: 'Filter changed files' }).click()
@@ -380,6 +390,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   PanelResize: hoverSplitHandle,
   WorkspaceHistoryButtonsNarrow: narrowSidebar,
   PanelTabsOverflow: narrowPanel,
+  LeadPrsNarrow: panelAtNarrowest,
   NewWorkspaceFromGitHub: openIssuesTab,
   NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,

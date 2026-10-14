@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { MergeQueue, PrInfo, PrPending, PrState, Workspace } from '../src/shared/types'
+import type { PrInfo, PrPending, PrState, Workspace } from '../src/shared/types'
 import { workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
 import { PR_STATUS, busyLabel, headerView, localNote, localRow, localStand, localStatus, type PrAction } from '../src/renderer/src/screens/workspace/pr/model'
 import { leadPrs } from '../src/renderer/src/screens/workspace/pr/leadPrList'
@@ -52,7 +52,7 @@ describe("a PR's state in every place it shows", () => {
 // KERNEL-520: an action main announces as pending spins every place showing the PR in the same frame, before the PR's own state moves.
 
 describe('a PR action pending (KERNEL-520)', () => {
-  const draw = (w: Workspace, pending?: PrPending, queue?: MergeQueue) => html(React.createElement(MergeSlot, { ws: w, view: mergeView(w, undefined, rules, undefined, queue, pending), onMerge: () => undefined }))
+  const draw = (w: Workspace, pending?: PrPending) => html(React.createElement(MergeSlot, { ws: w, view: mergeView(w, undefined, rules, undefined, pending), onMerge: () => undefined }))
   const idle = { waiting: [], running: false }
 
   it('spins a ready PR as Merging in the band, the sidebar, a Team update row and the PRs tab, and returns them together', () => {
@@ -63,7 +63,8 @@ describe('a PR action pending (KERNEL-520)', () => {
     expect(headerView('ready', true, false, undefined, false, 'merge')).toMatchObject({ state: { label: 'Ready to merge', tone: 'ready' }, button: { label: 'Merging', kind: 'busy' } })
     expect(workspaceGlyph(w, { ...idle, pending: 'merge' })).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
     const spinning = draw(w, 'merge')
-    expect(spinning).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
+    expect(spinning).toMatch(/^<span class="pr-word pr-run" data-tone="ready" aria-busy="true"><span class="dots"[^>]*>.*<\/span>Merging<\/span>$/)
+    expect(spinning).not.toContain('<button')
     // It reads as the engine's own merging state does, so the two can't disagree.
     expect(spinning).toBe(draw(ws('merging')))
     // Another PR in the same list has nothing pending and keeps its button.
@@ -72,14 +73,6 @@ describe('a PR action pending (KERNEL-520)', () => {
     expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })
     expect(workspaceGlyph(w, idle)).toMatchObject({ icon: 'prReady', label: 'Ready to merge' })
     expect(draw(w)).toContain('Merge #7')
-  })
-
-  it("shows Merge all's current row as Merging, never a live Merge", () => {
-    const queue = { ids: ['w1', 'w2'], current: 'w1' }
-    expect(draw(ws('ready'), undefined, queue)).toContain('Merge #7')
-    const current = draw(ws('ready'), 'merge', queue)
-    expect(current).toContain('aria-busy="true"')
-    expect(current).not.toContain('Merge PR')
   })
 
   it("spins the band in each action's word, with nothing to press and no key to answer", () => {

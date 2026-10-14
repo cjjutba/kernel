@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -89,10 +89,6 @@ export interface State {
   // pull requests
   /** By workspace id. */
   prs: Record<string, PrInfo>
-  /** By room id, the Merge all run going in that room (KERNEL-411). */
-  mergeQueues: Record<string, MergeQueue>
-  /** By room id, a Merge all run that stopped, until the next run starts (KERNEL-411). */
-  mergeStops: Record<string, MergeAllResult>
   /** By workspace id, the PR action main is running, from whichever button or tool started it (KERNEL-519). */
   prPending: Record<string, PrPending>
   // usage, account, settings, system
@@ -207,7 +203,7 @@ let state: State = {
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, scriptData: {}, scriptReplays: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, runModes: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
-  prs: {}, mergeQueues: {}, mergeStops: {}, prPending: {},
+  prs: {}, prPending: {},
   usage: [], account: null, accounts: [], accountAdd: null, mcpRuns: {}, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   ui: { route: { name: 'home' }, nav: { canBack: false, canForward: false }, modal: null, menu: null, toasts: [], banner: null, theme: startupTheme(), workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel'), bottomRatio: bottomRatio(), bottomCollapsed: { lead: bottomCollapsed('lead'), teammate: bottomCollapsed('teammate') }, usageView: usageView(), usageOpen: usageOpenAtFirst(usageView()) }
@@ -673,15 +669,6 @@ export const actions = {
   prs: {
     set: (info: PrInfo) => setState((s) => ({ prs: { ...s.prs, [info.workspaceId]: info } })),
     setState: (workspaceId: string, prState: Workspace['prState']) => setState((s) => ({ workspaces: s.workspaces.map((w) => (w.id === workspaceId ? { ...w, prState } : w)) })),
-    /** A run's step, or its end with how it ended. A run that starts clears the last one's stop; one that stops keeps it. */
-    setQueue: (roomId: string, queue: MergeQueue | undefined, result?: MergeAllResult) => setState((s) => {
-      const { [roomId]: _q, ...queues } = s.mergeQueues
-      const { [roomId]: _s, ...stops } = s.mergeStops
-      return {
-        mergeQueues: queue ? { ...queues, [roomId]: queue } : queues,
-        mergeStops: !queue && result?.stopped ? { ...stops, [roomId]: result } : queue ? stops : s.mergeStops
-      }
-    }),
     /** A PR action started, or ended with no `action`. */
     setPending: (workspaceId: string, action?: PrPending) => setState((s) => {
       const { [workspaceId]: _p, ...rest } = s.prPending
@@ -786,7 +773,6 @@ export function apply(e: PushEvent) {
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
-    case 'pr.queue': return actions.prs.setQueue(e.roomId, e.queue, e.result)
     case 'pr.pending': pushedPending?.add(e.workspaceId); return actions.prs.setPending(e.workspaceId, e.action)
     case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)

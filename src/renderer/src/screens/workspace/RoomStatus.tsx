@@ -8,7 +8,7 @@ import { useLeadPrs } from './pr/leadPrList'
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 /**
- * Several PRs ready to merge open the PRs tab in the room's newest Lead chat, where Merge all is. One opens its own
+ * Several PRs ready to merge open the PRs tab in the room's newest Lead chat, which lists them all. One opens its own
  * workspace, and so does the first when the room has no Lead chat open.
  */
 async function openReady(roomId: string, ready: Workspace[]): Promise<void> {

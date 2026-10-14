@@ -1,4 +1,4 @@
-import type { AutoMerge, MergeAllResult, MergeMethod, MergeQueue, PrInfo, PrPending, PrState, Room, Workspace } from '@shared/types'
+import type { AutoMerge, MergeMethod, PrInfo, PrPending, PrState, Room, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, autoMergeInRoom, loadRepoSettings, localSettingsOwn, prInstructions, sharedMergeOf } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
@@ -7,7 +7,7 @@ import { type CodeHost, fingerprintOf, GhReadError, prNote, resolveFile } from '
 import { type PrContext, prTextFor } from '../services/conventions'
 import { PrCadence } from '../services/prCadence'
 import { inPaths } from '../services/lenses'
-import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, notMergeable, type AutoMergeFacts } from '@shared/merge'
+import { ALWAYS_REVIEW, autoMergeBlock, autoMergeWhy, kindStates, mergeableState, mergeBlock, mergeNeedsPr, type AutoMergeFacts } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -350,7 +350,7 @@ export class Prs extends Feature {
   /**
    * Merges with the room's method (`codeHost.methodFor`, KERNEL-468) once `mergeBlock` finds nothing in the way: green
    * checks and a reviewer's approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115),
-   * and no blockers on it. `override` is a person's Merge anyway past those blockers; the Lead and Merge all never pass it
+   * and no blockers on it. `override` is a person's Merge anyway past those blockers; the Lead never passes it
    * (KERNEL-497). `head` is the commit auto-merge weighed: a PR GitHub reads at another one doesn't merge (KERNEL-556).
    */
   mergePr(id: string, o: { override?: boolean; head?: string } = {}) { return this.running(id, 'merge', () => this.merge(id, o)) }
@@ -374,7 +374,7 @@ export class Prs extends Feature {
     }
     let info = await fresh()
     // Right after another merge GitHub is still working out whether this PR conflicts with the new base. The merge waits
-    // for its answer instead of refusing, so a second Merge, or Merge all's next PR, goes through (KERNEL-411).
+    // for its answer instead of refusing, so a second Merge pressed right after the first goes through (KERNEL-411).
     for (let waited = 0; info?.conflictsUnknown && waited < Prs.conflictWait.cap; waited += Prs.conflictWait.every) {
       await new Promise((resolve) => setTimeout(resolve, Prs.conflictWait.every))
       ws = this.mustWs(id)
@@ -536,53 +536,6 @@ export class Prs extends Feature {
     this.warnedMerge.add(key)
     const keys = ignored.map((k) => `[merge] ${k}`).join(' and ')
     bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: `ignores ${keys} in .kernel/settings.toml:`, object: 'auto-merge is a personal setting, set in .kernel/settings.local.toml', warn: true })
-  }
-
-  /** The Merge all run going in each room, by room id (KERNEL-411). */
-  private queues = new Map<string, MergeQueue>()
-
-  /**
-   * Merges the room's PRs one at a time, in the order given, each through `mergePr` with its fresh read and rules, since every
-   * merge moves the base the next one goes into. Stops at the first PR that can't merge and says why: nothing merges that the
-   * user didn't see first. Each step goes out as `pr.queue`, so the PRs tab shows which PR merges and which come next.
-   */
-  async mergeAll(roomId: string, ids: string[]): Promise<MergeAllResult> {
-    if (this.queues.has(roomId)) throw new Error('Merge all is already running in this room.')
-    const result: MergeAllResult = { merged: [] }
-    const step = (current: string) => {
-      const queue: MergeQueue = { ids, current }
-      this.queues.set(roomId, queue)
-      bus.push({ type: 'pr.queue', roomId, queue })
-    }
-    try {
-      for (const id of ids) {
-        step(id)
-        const ws = this.store.workspace(id)
-        let now: Workspace | undefined
-        try {
-          if (!ws || ws.roomId !== roomId) throw new Error('It is not an open workspace in this room.')
-          // A PR that can't merge is read again, so its row moves to where it now stands and the reason names it: a merge just
-          // before often leaves the next PR conflicting. The read comes before its pending clears, so no place shows Merge in
-          // between (KERNEL-519).
-          const after = await this.running(id, 'merge', () => this.merge(id, {}).catch(async (e: unknown) => {
-            now = await this.k.refreshPr(id).catch(() => undefined)
-            throw e
-          }))
-          if (after.prNumber) result.merged.push(after.prNumber)
-        } catch (e) {
-          // The state that read found, else mergeBlock's sentence or the first line of gh's output.
-          const state = now ? notMergeable[now.prState] : undefined
-          const why = state ? `${state.charAt(0).toUpperCase()}${state.slice(1)}` : (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
-          result.stopped = { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` }
-          break
-        }
-      }
-      return result
-    } finally {
-      // The end goes out with the result, so the PRs tab says where a run stopped even after the window reloads mid-run.
-      this.queues.delete(roomId)
-      bus.push({ type: 'pr.queue', roomId, result })
-    }
   }
 
   private readyPr(id: string) {
@@ -895,7 +848,6 @@ export class Prs extends Feature {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId, override }) => this.mergePr(workspaceId, { override }),
-      'pr.mergeAll': async ({ roomId, workspaceIds }) => this.mergeAll(roomId, workspaceIds),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
