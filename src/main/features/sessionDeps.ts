@@ -17,6 +17,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     settings: () => k.settings,
     // A review chat runs its kind's agent, which isn't always its workspace's (KERNEL-549).
     agentFor: (ws, chat) => (chat && k.reviews.agentForChat(ws, chat)) || k.team.agentOf(ws.roomId, ws.agentId),
+    teamOf: (roomId) => k.team.agentCache.get(roomId),
     roleFor: (ws, agent) => k.team.roleFor(ws, agent),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
     codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), apiKey: k.providers.apiKey('codex'), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),

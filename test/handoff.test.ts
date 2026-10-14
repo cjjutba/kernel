@@ -385,8 +385,9 @@ describe('with plan mode off, the Lead hands off only on a clear go-ahead (KERNE
       expect(said).not.toMatch(/[\u2013\u2014]/)
     }
     for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, starter]) expect(said).toMatch(/Filing (or editing )?tracker issues/)
-    // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to.
-    expect(LEAD_RULE.length).toBeLessThanOrEqual(5395)
+    // LEAD_RULE's length on main before KERNEL-678. The rule was rewritten, not added to. KERNEL-745 added its one sentence
+    // about mentions, 80 characters past that.
+    expect(LEAD_RULE.length).toBeLessThanOrEqual(5475)
   })
 
   // KERNEL-692: Kernel is the Lead, so its rule speaks to Kernel and never about Kernel in the third person.

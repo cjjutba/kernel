@@ -105,6 +105,11 @@ export interface KernelToolDeps {
    */
   planApproved?: () => string | void | Promise<string | void>
   handedOff?: () => void
+  /**
+   * The Lead acted for a teammate the user addressed (KERNEL-745): create_workspace or message_agent for `agentId`, or
+   * ask_user, which leaves `agentId` out and covers them all.
+   */
+  acted?: (agentId?: string) => void
   /** Saves set_room_scripts' patch to the room's `.kernel/settings.local.toml` as Settings does. Left out, the tool refuses (KERNEL-683). */
   saveRoomScripts?: (patch: RoomSettingsPatch) => Promise<unknown>
 }
@@ -448,6 +453,8 @@ export function kernelTools(d: KernelToolDeps) {
       const long = asked?.find((o) => o.label.length > LABEL_MAX)
       if (long) return { ...text(`Not asked: the label "${long.label.slice(0, 40)}..." is over ${LABEL_MAX} characters. Keep each label to a few words and move the rest into description.`), isError: true }
       const questions = asked && [{ question, options: asked }]
+      // The user decides now, for every teammate the message was addressed to.
+      d.acted?.()
       const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions }, signalOf(extra))
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
@@ -548,6 +555,7 @@ export function kernelTools(d: KernelToolDeps) {
       const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}), ...(attached.parts.length ? { images: attached.parts } : {}), ...(goAhead ? { goAhead } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
+      d.acted?.(pick.id)
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
@@ -599,6 +607,7 @@ export function kernelTools(d: KernelToolDeps) {
       // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
       if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
+      if (ws) d.acted?.(ws.agentId)
       // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
       if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).

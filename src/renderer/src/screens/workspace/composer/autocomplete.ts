@@ -1,4 +1,5 @@
-import type { BuiltinCommand, ChatPart, FileEntry, Skill } from '@shared/types'
+import type { AgentDef, BuiltinCommand, ChatPart, FileEntry, Skill } from '@shared/types'
+import { takesTasks } from '@shared/team'
 
 /** The @ word at the end of the draft, if the caret is in one. */
 export function mentionAt(draft: string): { start: number; query: string } | null {
@@ -66,15 +67,30 @@ export function runsOnEnter(row: SlashRow, query: string): boolean {
   return row.command && (!hint || hint.startsWith('[') || /optional/i.test(hint))
 }
 
-/**
- * The @ menu: its rows under their headings. Files and folders share Files. Agents (KERNEL-746) goes above it as another group.
- */
-export function mentionMenu(entries: FileEntry[]): { label: string; rows: FileEntry[] }[] {
-  return [{ label: 'Files', rows: entries }].filter((g) => g.rows.length)
+/** A row of the @ menu: a teammate (Lead chats only) or a file or folder. */
+export type MentionRow = { kind: 'agent'; agent: AgentDef } | { kind: 'file'; entry: FileEntry }
+
+/** The teammates the @ menu offers: the agents the Lead can hand a task to, the set list_agents shows in full as teammates. Closer matches first. */
+export function filterAgents(team: AgentDef[], query: string, limit = 5): AgentDef[] {
+  const rows = team.filter((a) => !a.lead && !a.retired && takesTasks(a)).map((a) => ({ a, name: a.name, description: a.role, aliases: [a.id] }))
+  return ranked(rows, query, limit).map((r) => r.a)
 }
 
-/** What picking an @ row inserts. A folder's path ends in `/`, so the agent gets the folder, not the files in it. */
-export function mentionPart(f: FileEntry): ChatPart {
+/**
+ * The @ menu: its rows under their headings. Agents (KERNEL-746) come first and only in the Lead's chat, which passes
+ * the team; every other composer passes none. Files and folders share Files.
+ */
+export function mentionMenu(entries: FileEntry[], agents: AgentDef[] = []): { label: string; rows: MentionRow[] }[] {
+  return [
+    { label: 'Agents', rows: agents.map((agent): MentionRow => ({ kind: 'agent', agent })) },
+    { label: 'Files', rows: entries.map((entry): MentionRow => ({ kind: 'file', entry })) }
+  ].filter((g) => g.rows.length)
+}
+
+/** What picking an @ row inserts. A teammate becomes an agent part. A folder's path ends in `/`, so the agent gets the folder, not the files in it. */
+export function mentionPart(r: MentionRow): ChatPart {
+  if (r.kind === 'agent') return { type: 'agent', name: r.agent.name, agentId: r.agent.id }
+  const f = r.entry
   return f.dir ? { type: 'file', name: `${baseName(f.path)}/`, path: `${f.path}/`, dir: true } : { type: 'file', name: baseName(f.path), path: f.path }
 }
 

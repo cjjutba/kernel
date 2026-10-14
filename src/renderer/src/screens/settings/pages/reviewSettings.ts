@@ -39,9 +39,11 @@ export async function patchReview(roomId: string, patch: ReviewPatch) {
   if (before) actions.settings.setRoom(roomId, { ...before, review: applyReviewPatch(before.review ?? NO_REVIEW, patch) })
   try {
     actions.settings.setRoom(roomId, await call('settings.setReview', { roomId, review: patch }))
+    return true
   } catch (e) {
     if (before) actions.settings.setRoom(roomId, before)
     actions.ui.toast({ title: 'Could not save the review settings', sub: cleanError(e) })
+    return undefined
   }
 }
 

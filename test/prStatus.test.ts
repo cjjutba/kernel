@@ -70,7 +70,7 @@ describe('a PR action pending (KERNEL-520)', () => {
     expect(draw({ ...w, id: 'w2', prNumber: 8 })).toMatch(/aria-label="Merge PR #8"/)
     // A refused merge clears the pending, and every place reads Merge again from the same state.
     expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })
-    expect(workspaceGlyph(w, idle)).toMatchObject({ icon: 'pr', label: 'Ready to merge' })
+    expect(workspaceGlyph(w, idle)).toMatchObject({ icon: 'prReady', label: 'Ready to merge' })
     expect(draw(w)).toContain('Merge #7')
   })
 

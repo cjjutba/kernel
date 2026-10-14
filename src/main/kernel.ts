@@ -236,6 +236,7 @@ export class Kernel {
     // After the waits, which read each room's team first, so the Lead's workspace is known.
     void this.waits.sweepWaits().catch(() => undefined).then(() => this.autoArchive.sweepMerged()).catch(() => undefined)
     this.archive.start()
+    this.reviews.start()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
   }

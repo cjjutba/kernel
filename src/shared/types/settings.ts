@@ -91,7 +91,8 @@ export interface AppSettings {
    */
   permissions: { mode: PermissionMode; bypassOnlyInWorktrees: boolean; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   /**
-   * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, only on PRs a reviewer looked at.
+   * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, on PRs a reviewer looked at and, from the
+   * ready event on, on PRs `autoReview` plans a required review for (KERNEL-717).
    * `autoReview` has Kernel start the reviews a room's `[review]` asks for when a PR passes checks (KERNEL-115, KERNEL-549).
    * Off until the user turns it on, on every plan (feat-automatic-review-off-by-default).
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).

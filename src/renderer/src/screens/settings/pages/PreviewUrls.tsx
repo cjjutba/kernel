@@ -27,7 +27,7 @@ export function PreviewUrls({ roomId, rs }: { roomId: string; rs: RoomSettings |
   const save = (next: Urls) => patchRoomSettings(roomId, { preview: { urls: savedUrls(next) } })
   return (
     <>
-      <Section title="Preview URLs" scope="mac" plain action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}>
+      <Section title="Preview URLs" plain action={<Button onClick={() => setEditing(urls.length)}>Add preview URL</Button>}>
         <DataTable
           label="Preview URLs" columns={['Name', 'Address']} grid="140px minmax(0, 1fr)" empty="No preview URLs. Add one and Open in a workspace goes to it."
           rows={urls.map((u, i) => {

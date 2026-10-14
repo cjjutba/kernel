@@ -92,6 +92,11 @@ export interface Workspace {
    * brings back whatever its reviews find. `note` is why, as the user put it.
    */
   overruled?: Overrule
+  /**
+   * The PR head Kernel is working out the reviews for, from the ready event until the round is saved or the plan comes back
+   * empty (KERNEL-717). With "Wait for the reviewer's approval to merge" on, the PR doesn't merge meanwhile.
+   */
+  reviewPending?: string
   /** The PR's head commit as GitHub last reported it. */
   prHead?: string
   prNumber?: number
@@ -123,9 +128,9 @@ export interface Overrule { head: string; kinds: ReviewKind[]; by: 'user' | 'lea
  * round starts, so a change to `[review]` meanwhile applies from the next round. `n` counts the rounds that ran a review,
  * from 1. `rounds` is `[review] rounds`, the most Kernel runs while blockers are left. `kept` approved the head before and
  * kept that approval, since the new commits touched none of their paths. `skipped` are optional kinds Kernel left out to
- * save usage. The kinds in neither ran.
+ * save usage. The kinds in neither ran. `optional` are the kinds whose approval the merge doesn't wait for (KERNEL-717).
  */
-export interface ReviewRound { n: number; rounds: number; head: string; prNumber: number; kinds: ReviewKind[]; kept?: ReviewKind[]; skipped?: ReviewKind[] }
+export interface ReviewRound { n: number; rounds: number; head: string; prNumber: number; kinds: ReviewKind[]; kept?: ReviewKind[]; skipped?: ReviewKind[]; optional?: ReviewKind[] }
 
 /** When the setup script started and how it ended: an exit code, null when it was stopped, or `timeout`. No `endedAt` while it runs. */
 export interface SetupRun { startedAt: number; endedAt?: number; end?: number | null | 'timeout' }
