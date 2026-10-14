@@ -2,7 +2,7 @@
 description: Work a Linear issue end to end, for example /issue KERNEL-14
 argument-hint: KERNEL-<number>
 ---
-Work Linear issue $ARGUMENTS from start to finish, following CLAUDE.md.
+Work Linear issue $ARGUMENTS from start to finish, following AGENTS.md.
 
 1. Fetch $ARGUMENTS with the Linear MCP. Move it to In Progress. In a Kernel workspace, stay on the branch Kernel created. Otherwise check out a branch named `<type>/<key>-<a few words>`, with `fix` for the Bug label and `feat` otherwise, 60 characters at most.
 2. Read the screenshots or mocks in the issue or brief. They are the spec for the task. Without one, match the current app and DESIGN.md.

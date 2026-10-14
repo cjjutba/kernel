@@ -168,7 +168,7 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
     who('noor', 'Noor', 'Backend', 'sonnet', 'Schema, API and migrations.', { tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }),
     who('ivy', 'Ivy', 'QA', 'sonnet', 'Runs tests and attaches the output.', { tools: ['Read', 'Bash', 'Grep', 'Glob'], skills: ['/verify'] }),
     who('theo', 'Theo', 'Reviewer', 'opus', 'Types at boundaries, security, tenant isolation.', { tools: ['Read', 'Grep', 'Glob'] }),
-    who('lumi', 'Lumi', 'Designer', 'sonnet', 'Checks every screen against DESIGN.md.', { tools: ['Read', 'Grep', 'Glob', 'Bash'], joinedAt: Date.now() - 2 * HOUR })
+    who('wren', 'Wren', 'Designer', 'sonnet', 'Checks every screen against DESIGN.md.', { tools: ['Read', 'Grep', 'Glob', 'Bash'], joinedAt: Date.now() - 2 * HOUR })
   ]
   const table = f.workspaces.find((w) => w.id === ids.table)!
   const open = (id: string, name: string, agentId: string, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId, prState: 'none', prNumber: undefined, prUrl: undefined, stat: undefined, createdAt: at(10, mins) })
@@ -183,7 +183,7 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
   const skills: Skill[] = [['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image']].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
   return {
     agents: { [A]: crew, [ids.roomB]: crew.slice(0, 1), [ids.roomOwn]: crew.filter((a) => ['kernel-lead', 'kai', 'ivy'].includes(a.id)), [ids.roomPortfolio]: crew.slice(0, 1) },
-    status: { [A]: { 'kernel-lead': 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', lumi: 'idle' } },
+    status: { [A]: { 'kernel-lead': 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', wren: 'idle' } },
     workspaces, skills,
     // The other rooms only seat some of the crew, so a question from someone who is not there comes from Kernel.
     approvals: f.approvals.map((a) => (a.roomId === ids.roomB || a.roomId === ids.roomPortfolio ? { ...a, agentId: 'kernel-lead' } : a)),
@@ -220,7 +220,7 @@ const ownCrew: AgentDef[] = [
 const ownTeamScene = (f: Fixture): Partial<Fixture> => {
   const A = ids.roomA
   const t = teamScene(f)
-  const swap: Record<string, string> = { kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', lumi: 'web' }
+  const swap: Record<string, string> = { kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', wren: 'web' }
   const mapped = <T extends { roomId?: string; agentId?: string }>(x: T): T => (x.roomId === A && x.agentId && swap[x.agentId] ? { ...x, agentId: swap[x.agentId] } : x)
   return {
     ...t,
@@ -232,19 +232,19 @@ const ownTeamScene = (f: Fixture): Partial<Fixture> => {
   }
 }
 
-/** The team as it is before Lumi is hired, behind the New agent modal. */
-const beforeLumi = (f: Fixture): Partial<Fixture> => {
+/** The team as it is before Wren is hired, behind the New agent modal. */
+const beforeWren = (f: Fixture): Partial<Fixture> => {
   const t = teamScene(f)
-  const { lumi: _, ...status } = t.status![ids.roomA]
-  return { ...t, agents: { ...t.agents, [ids.roomA]: t.agents![ids.roomA].filter((a) => a.id !== 'lumi') }, status: { [ids.roomA]: status } }
+  const { wren: _, ...status } = t.status![ids.roomA]
+  return { ...t, agents: { ...t.agents, [ids.roomA]: t.agents![ids.roomA].filter((a) => a.id !== 'wren') }, status: { [ids.roomA]: status } }
 }
 
-const lumiDraft: AgentDraft = {
-  id: 'lumi', name: 'Lumi', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'], file: '.claude/agents/lumi.md',
+const wrenDraft: AgentDraft = {
+  id: 'wren', name: 'Wren', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'], file: '.claude/agents/wren.md',
   description: 'A designer who checks every screen against DESIGN.md before review.',
-  text: '---\nname: lumi\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Lumi. Before Theo reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
+  text: '---\nname: wren\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Wren. Before Theo reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
 }
-const lumiPrefill = { name: 'Lumi', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
+const wrenPrefill = { name: 'Wren', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
 
 const home = { route: { name: 'home' } } as const
 
@@ -609,11 +609,11 @@ export const teamFixtures: Record<string, Fixture> = {
   }),
   // No PNG: the same confirm from one row.
   HistoryConfirmDeleteOne: scene((f) => ({ ...historyScene(f), deletePreview: { workspaces: 1, skipped: [], unpushedBranches: 1, transcriptBytes: 3_460_300 }, ui: { route: { name: 'history' }, modal: { name: 'confirm', kind: 'deleteHistory', workspaceIds: ['ws-h3'] } } })),
-  NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
+  NewAgent: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
   // No PNG: New agent from Settings, Agents with no room added. NewAgent.png without a room, so Kernel and the room's team are not named.
-  NewAgentNoRoom: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
-  NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
-  NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
+  NewAgentNoRoom: scene((f) => ({ ...f, ...empty, ui: { route: { name: 'settings', page: 'agents' }, modal: { name: 'newAgent', step: 'describe', prefill: { name: 'Wren', model: 'sonnet' } } } })),
+  NewAgentDraft: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
+  NewAgentDone: scene((f) => ({ ...beforeWren(f), ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...wrenPrefill, draft: wrenDraft } } } })),
   // KERNEL-642: a repo's own agents in Settings, Agents: Architect's warning on its row, New agent and Add a starter agent at the top of In this repo, and Retired with Restore.
   SettingsTeamOwnAgents: scene((f) => {
     const t = ownTeamScene(f)

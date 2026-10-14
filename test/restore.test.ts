@@ -54,6 +54,7 @@ describe('restore', () => {
     const chats = k.store.chats(ws.id).map((c) => c.id)
     // Archive keeps the branch, so Restore can find it again.
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)).toMatchObject({ status: 'archived' })
     expect(k.store.workspace(ws.id)?.archivedAt).toBeGreaterThan(0)
     await expect(stat(ws.path)).rejects.toThrow()
@@ -70,11 +71,13 @@ describe('restore', () => {
     const other = await k.createWorkspace(room.id, { prompt: 'Another', agentId: 'kai', title: 'Other' })
     k.store.saveWorkspace({ ...other, port: ws.port })
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     expect((await k.restoreWorkspace(ws.id)).port).not.toBe(ws.port)
     await setUp(k, ws.id)
 
     // A branch deleted on archive cannot come back, and the message says so.
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     await expect(k.restoreWorkspace(ws.id)).rejects.toThrow(/no longer exists/)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
 
@@ -318,6 +321,7 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     expect(await runs()).toBe(1)
     expect(await starts()).toBe(1)
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     await writeFile(join(repo, '.env.local'), 'V=2\n')
     const back = await k.restoreWorkspace(ws.id)
     expect(back.status).toBe('setup')
@@ -334,6 +338,7 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
   it('holds the chats through a failed setup until Run again', async () => {
     const { k, repo, ws, chat, runs } = await restorable()
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     await writeFile(join(repo, 'fail.txt'), 'no\n')
     await k.restoreWorkspace(ws.id)
     await setUp(k, ws.id, 'failed')
@@ -348,6 +353,7 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
   it('waits for trust when the scripts changed while it was archived', async () => {
     const { k, repo, room, ws, chat } = await restorable()
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
     await k.restoreWorkspace(ws.id)
     await setUp(k, ws.id, 'trust')
@@ -361,6 +367,7 @@ describe('restoring a workspace sets it up again (KERNEL-77)', () => {
     const { k, ws, runs } = await restorable('current')
     expect(await runs()).toBe(1)
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     expect((await k.restoreWorkspace(ws.id)).status).toBe('ready')
     expect(await runs()).toBe(1)
   }, 30000)

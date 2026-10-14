@@ -191,6 +191,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     ].join('\n'))
 
     expect(k.store.workspace(done.id)?.status).toBe('archived')
+    await k.archive.cleanedUp(done.id)
     await expect(stat(done.path)).rejects.toThrow()
     // Settings keep branches on archive by default, so the branch stays for Restore.
     expect(await git(repo, 'branch', '--list', done.branch)).toContain(done.branch)
@@ -253,6 +254,8 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
 
     await k.archiveWorkspace(gone.id)
     await k.archiveWorkspace(there.id)
+    await k.archive.cleanedUp(gone.id)
+    await k.archive.cleanedUp(there.id)
     expect(k.store.workspace(gone.id)?.status).toBe('archived')
     expect(k.store.workspace(there.id)?.status).toBe('archived')
     expect(ran).not.toContain(gone.id)
@@ -384,7 +387,10 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
     expect(k.store.workspace(kai.id)?.status).toBe('archived')
     expect(k.store.workspace(own.id)?.status).toBe('archived')
     expect(k.store.workspace(loose.id)?.status).toBe('ready')
-    expect(await lines()).toEqual([kai.name, own.name])
+    await k.archive.cleanedUp(kai.id)
+    await k.archive.cleanedUp(own.id)
+    // Each cleanup runs its archive script in the background, so the two may finish in either order (KERNEL-702).
+    expect((await lines()).sort()).toEqual([kai.name, own.name].sort())
     expect(k.store.thread(chat.threadId!)!.closedAt).toBeGreaterThan(0)
     expect(pushed).toEqual([`${chat.threadId}:closed`])
     expect(await k.handlers()['lead.open']({ roomId: own.roomId })).toBeNull()
@@ -401,6 +407,7 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
   it("deletes Rowan's branch when it has no commits of its own, whatever Delete branch on archive says, and keeps one with commits", async () => {
     const { k, repo, room, chat, own } = await chatWithWork()
     await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(own.id)
     expect(await git(repo, 'branch', '--list', own.branch)).toBe('')
     const other = await k.lead.newLeadChat(room.id, { prompt: 'Write the plan down' })
     const ws = await setUp(k, other.id)
@@ -408,6 +415,7 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
     await git(ws.path, 'add', '-A')
     await git(ws.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'plan')
     await k.lead.archiveLeadChat(other.threadId!)
+    await k.archive.cleanedUp(ws.id)
     expect((await git(repo, 'branch', '--list', ws.branch)).trim()).toBe(ws.branch)
   })
 
@@ -432,6 +440,7 @@ describe('archiving a chat with Rowan (KERNEL-405)', () => {
   it('restores the chat with its tabs and a new branch when the old one was deleted, and sets it up again', async () => {
     const { k, repo, chat, own } = await chatWithWork()
     await k.lead.archiveLeadChat(chat.threadId!)
+    await k.archive.cleanedUp(own.id)
     expect(await git(repo, 'branch', '--list', own.branch)).toBe('')
     const back = await k.restoreWorkspace(own.id)
     expect(back).toMatchObject({ status: 'setup', branch: own.branch, baseRef: 'main' })

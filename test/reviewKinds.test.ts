@@ -27,7 +27,7 @@ const AGENTS = {
   '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
   '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash\n---\nYou are Kai.',
   // Can edit by its tools line, which a review chat overrides.
-  '.claude/agents/lumi.md': '---\nname: lumi\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Lumi, and you look at screens.'
+  '.claude/agents/wren.md': '---\nname: wren\ndescription: Designer.\nrole: Designer\ntools: Read, Edit, Write, NotebookEdit, Bash\n---\nYou are Wren, and you look at screens.'
 }
 
 /** A room with no reviewer agent and no built-ins (no starter folder), its `[review]` committed on main. Automatic review is on unless `app` says otherwise. */
@@ -139,27 +139,27 @@ describe('which reviews a PR gets', () => {
   })
 
   it('takes the model and an agent for a kind from its table', async () => {
-    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.security]\nagent = "lumi"\nrequired = false\nmodel = "claude-haiku-4-5-20251001"\n' })
+    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.security]\nagent = "wren"\nrequired = false\nmodel = "claude-haiku-4-5-20251001"\n' })
     const ws = await pr({ 'a.txt': 'a\n' })
     await k.reviews.onReady(ws.id)
     const [rws] = reviewsOf(ws.id)
-    expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security', agent: 'lumi', optional: true }])
+    expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security', agent: 'wren', optional: true }])
     expect(chatOf(rws, 'security')).toMatchObject({ title: 'Security review', model: 'claude-haiku-4-5-20251001' })
-    expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'lumi' })
+    expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'wren' })
   })
 
   it("never lets an agent review its own PR with its own prompt", async () => {
-    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "lumi"\n\n[review.security]\nagent = "kai"\n' })
+    const { k, pr, reviewsOf, lenses, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n\n[review.security]\nagent = "kai"\n' })
     const ws = await pr({ 'a.txt': 'a\n' }, 'kai')
     await k.reviews.onReady(ws.id)
     const [rws] = reviewsOf(ws.id)
-    // Kai wrote it, so the security review runs Kernel's prompt. Lumi didn't, so the UX review is Lumi's.
-    expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security' }, { kind: 'ux', agent: 'lumi' }])
+    // Kai wrote it, so the security review runs Kernel's prompt. Wren didn't, so the UX review is Wren's.
+    expect(lenses(rws)).toEqual([{ kind: 'code' }, { kind: 'security' }, { kind: 'ux', agent: 'wren' }])
     expect(k.sessions['d'].agentFor(rws, chatOf(rws, 'security'))).toMatchObject({ id: 'kernel-reviewer', prompt: expect.stringMatching(/^You run the security review/) })
-    const lumis = await setup({ settings: '[review.ux]\nagent = "lumi"\n' })
-    const own = await lumis.pr({ 'a.txt': 'a\n' }, 'lumi')
-    await lumis.k.reviews.onReady(own.id)
-    expect(lumis.lenses(lumis.reviewsOf(own.id)[0])).toEqual([{ kind: 'code' }, { kind: 'ux' }])
+    const wrens = await setup({ settings: '[review.ux]\nagent = "wren"\n' })
+    const own = await wrens.pr({ 'a.txt': 'a\n' }, 'wren')
+    await wrens.k.reviews.onReady(own.id)
+    expect(wrens.lenses(wrens.reviewsOf(own.id)[0])).toEqual([{ kind: 'code' }, { kind: 'ux' }])
   })
 
   it("reviews a PR that edits [review] by its base branch's [review], not its own or the checkout's", async () => {
@@ -224,13 +224,13 @@ describe('which reviews a PR gets', () => {
 
 describe('a review chat', () => {
   it("can't edit or write, even when its agent's tools line allows it", async () => {
-    const { k, pr, reviewsOf, chatOf } = await setup({ settings: '[review.ux]\nagent = "lumi"\n' })
+    const { k, pr, reviewsOf, chatOf } = await setup({ settings: '[review.ux]\nagent = "wren"\n' })
     const ws = await pr({ 'a.txt': 'a\n' })
     await k.reviews.onReady(ws.id)
     const [rws] = reviewsOf(ws.id)
     // Setup passed and the briefs went out, so each chat's session started.
     await vi.waitFor(() => expect(queries.filter((q) => q.options.cwd === rws.path)).toHaveLength(2), { timeout: 10_000, interval: 20 })
-    const ux = queries.find((q) => q.options.cwd === rws.path && q.options.systemPrompt?.append?.includes('You are Lumi'))!
+    const ux = queries.find((q) => q.options.cwd === rws.path && q.options.systemPrompt?.append?.includes('You are Wren'))!
     expect(ux.options.disallowedTools).toEqual(expect.arrayContaining(['Edit', 'Write', 'NotebookEdit']))
     expect(ux.options.disallowedTools).not.toContain('Bash')
     expect(ux.options.systemPrompt?.append).toContain('You run the UX review of it.')
@@ -270,10 +270,10 @@ describe('[review] in the shared settings file', () => {
       kinds: { code: { enabled: true, paths: [], required: true }, security: { enabled: false, paths: [], required: true }, ux: { enabled: false, paths: [], required: true } }
     })
     // A kind's table turns it on unless it says otherwise. Values of the wrong type keep their default.
-    const read = reviewOf({ rounds: 3, code: { enabled: false }, security: { paths: ['src/main/**', 7], required: 'yes' }, ux: { enabled: false, agent: ' lumi ', provider: 'gemini' } })
+    const read = reviewOf({ rounds: 3, code: { enabled: false }, security: { paths: ['src/main/**', 7], required: 'yes' }, ux: { enabled: false, agent: ' wren ', provider: 'gemini' } })
     expect(read).toEqual({
       rounds: 3,
-      kinds: { code: { enabled: false, paths: [], required: true }, security: { enabled: true, paths: ['src/main/**'], required: true }, ux: { enabled: false, paths: [], required: true, agent: 'lumi' } }
+      kinds: { code: { enabled: false, paths: [], required: true }, security: { enabled: true, paths: ['src/main/**'], required: true }, ux: { enabled: false, paths: [], required: true, agent: 'wren' } }
     })
     expect(reviewOf({ rounds: 0 }).rounds).toBe(2)
     expect(reviewPolicyOf('[team]\nreviewer = "none"\n[review.ux]\n')).toMatchObject({ team: { reviewer: 'none' }, review: { kinds: { ux: { enabled: true } } } })
@@ -283,14 +283,14 @@ describe('[review] in the shared settings file', () => {
   it('writes [review] through settings.setReview, keeping comments and every other table as written', async () => {
     const { k, repo, room } = await setup({ settings: '# Shared with the team.\n[pr]\nmerge_method = "rebase" # always\n\n[review.code]\n# Who reviews code.\npaths = [\n  "src/**",\n]\n' })
     const file = join(repo, '.kernel', 'settings.toml')
-    const out = await k.handlers()['settings.setReview']({ roomId: room.id, review: { rounds: 3, kinds: { code: { paths: null, required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'lumi' } } } })
+    const out = await k.handlers()['settings.setReview']({ roomId: room.id, review: { rounds: 3, kinds: { code: { paths: null, required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'wren' } } } })
     expect(await readFile(file, 'utf8')).toBe([
       '# Shared with the team.', '[pr]', 'merge_method = "rebase" # always', '',
       '[review.code]', '# Who reviews code.', 'required = false', '',
       '[review]', 'rounds = 3', '',
-      '[review.ux]', 'enabled = true', 'paths = ["src/renderer/**"]', 'agent = "lumi"', ''
+      '[review.ux]', 'enabled = true', 'paths = ["src/renderer/**"]', 'agent = "wren"', ''
     ].join('\n'))
-    expect(out.review).toMatchObject({ rounds: 3, kinds: { code: { enabled: true, paths: [], required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'lumi' } } })
+    expect(out.review).toMatchObject({ rounds: 3, kinds: { code: { enabled: true, paths: [], required: false }, ux: { enabled: true, paths: ['src/renderer/**'], agent: 'wren' } } })
     // Back to the defaults: the tables left empty go, the rest stays.
     await saveReviewSettings(repo, { rounds: null, kinds: { code: { required: null }, ux: { enabled: null, paths: [], agent: '' } } })
     expect(await readFile(file, 'utf8')).toBe('# Shared with the team.\n[pr]\nmerge_method = "rebase" # always\n')

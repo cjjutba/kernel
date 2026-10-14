@@ -68,6 +68,7 @@ async function setup() {
     await snapshot(ws, { chatId: chat.id, title: 'Go', start: true })
     onDisk[ws.path] = [{ sessionId: `${title}-now`, fileSize: 1000 }, { sessionId: `${title}-forgotten`, fileSize: 250 }]
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     if (o.merged) k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'merged' })
     return k.store.workspace(ws.id)!
   }
@@ -116,6 +117,7 @@ describe('deleting workspaces from History', () => {
 
     // Deleting the fork later finds its session there, though its own folder has none.
     await k.archiveWorkspace(fork.id, false)
+    await k.archive.cleanedUp(fork.id)
     expect(await k.deleteWorkspaces([fork.id], { deleteUnpushed: false })).toMatchObject({ deleted: [fork.id], freedBytes: 500 })
     expect(deleted.at(-1)).toEqual(['fork-session', undefined])
     expect(onDisk[src.path]).toEqual([])

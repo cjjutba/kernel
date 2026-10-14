@@ -66,6 +66,7 @@ describe('symlink node_modules into worktrees', () => {
   it('leaves the main folder alone on archive and links again on restore', async () => {
     const { k, repo, ws } = await setup({ link: true })
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     await expect(stat(ws.path)).rejects.toThrow()
     expect((await stat(join(repo, 'node_modules/pkg/index.js'))).isFile()).toBe(true)
 
@@ -189,6 +190,7 @@ describe('Files to copy patterns in worktrees (KERNEL-245)', () => {
     await expect(lstat(join(ws.path, 'node_modules'))).rejects.toThrow()
 
     await k.archiveWorkspace(ws.id, false)
+    await k.archive.cleanedUp(ws.id)
     await k.restoreWorkspace(ws.id)
     // files.copy runs again with setup, before the agent goes on (KERNEL-77).
     await setUp(k, ws.id)

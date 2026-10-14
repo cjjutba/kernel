@@ -59,6 +59,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(Math.abs(second.port - ws.port)).toBeGreaterThanOrEqual(PORT_BLOCK)
 
     await k.archiveWorkspace(ws.id, true)
+    await k.archive.cleanedUp(ws.id)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(ws.path)).rejects.toThrow()
 

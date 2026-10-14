@@ -10,7 +10,7 @@ export const serverTitle = (name: string) => {
   return bare.charAt(0).toUpperCase() + bare.slice(1)
 }
 
-/** The new agent's name for the card's sentences: the file's `name:` line, else its file name, with a capital (`lumi.md` is Lumi). */
+/** The new agent's name for the card's sentences: the file's `name:` line, else its file name, with a capital (`wren.md` is Wren). */
 export function hireName(file: { path: string; text: string }): string {
   const named = /^name:\s*(.+?)\s*$/m.exec(file.text)?.[1]
   const bare = (named ?? file.path.split('/').pop()?.replace(/\.md$/, '') ?? '').replace(/^["']|["']$/g, '')

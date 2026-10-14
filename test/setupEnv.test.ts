@@ -119,6 +119,7 @@ describe('$KERNEL_ENV (KERNEL-405)', () => {
     const file = setupEnvPath(dataDir, ws.id)
     expect(existsSync(file)).toBe(true)
     await k.archiveWorkspace(ws.id)
+    await k.archive.cleanedUp(ws.id)
     expect(existsSync(file)).toBe(true)
     await k.deleteWorkspaces([ws.id], { deleteUnpushed: true })
     expect(existsSync(file)).toBe(false)
