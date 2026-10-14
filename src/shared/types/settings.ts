@@ -1,7 +1,7 @@
 import type { TeamConfig } from './agents'
 import type { Effort, Provider } from './chats'
 import type { TrackerKind } from './trackers'
-import type { WorkspaceMode } from './workspaces'
+import type { LeadMode, WorkspaceMode } from './workspaces'
 
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
@@ -82,8 +82,11 @@ export interface AppSettings {
     effortByModel: Partial<Record<string, Effort>> }
   /** Settings, Accounts, Advanced (KERNEL-406, KERNEL-680). Accounts and their credentials live apart from this file. */
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
-  /** `defaultTemplate` seeds an empty room (Settings, Agents, New rooms start with). */
-  team: { defaultTemplate: 'starter' | 'pair' }
+  /**
+   * `defaultTemplate` seeds an empty room (Settings, Agents, New rooms start with). `leadMode` is how a new chat with Kernel
+   * works, Hand off or Build here, where the room's `[agents] lead_mode` doesn't say (KERNEL-770).
+   */
+  team: { defaultTemplate: 'starter' | 'pair'; leadMode: LeadMode }
   /**
    * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
    * permissions off a current-branch workspace. The modes were `ask`, `acceptEdits` and `bypassInWorktrees` before
@@ -232,8 +235,9 @@ export interface RoomSettings {
    * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this room though its file doesn't list them.
    * Both files merge agent by agent. `openWorkspaces` (`open_workspaces`) is how many teammate workspaces the Lead may have
    * open in the room, 0 to 12, and 0 is no limit. Unset, the room follows Settings, Models' `agentLimit` (KERNEL-492).
+   * `leadMode` (`lead_mode`) is how a new chat with Kernel works in this room, over the app's `team.leadMode` (KERNEL-770).
    */
-  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number }
+  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]>; openWorkspaces?: number; leadMode?: LeadMode }
   /**
    * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
@@ -351,7 +355,7 @@ export type RoomSettingsPatch = {
   /** Only the personal file takes it, so a `shared` save that sets it is refused. An empty list or `null` removes the key (KERNEL-748). */
   references?: string[] | null
   mcp?: { aliases?: Record<string, string | null> }
-  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null }
+  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null>; openWorkspaces?: number | null; leadMode?: LeadMode | null }
 }
 
 /**
