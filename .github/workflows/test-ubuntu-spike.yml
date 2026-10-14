@@ -1,0 +1,64 @@
+name: Test on Ubuntu (spike)
+
+# KERNEL-737 spike: does the full suite pass on ubuntu-latest? Manual only, never required, never on other PRs.
+# The push trigger below exists only so the spike could run from its own branch, before this file reached main.
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/spike-run-full-test-suite-on-ubuntu]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Ubuntu run ${{ matrix.attempt }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: [1, 2, 3]
+    env:
+      KERNEL_HEADLESS: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      # Keep going after a failure so the report lists every failing file, not just the first.
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: |
+          start=$(date +%s)
+          pnpm test --reporter=default --reporter=json --outputFile.json=vitest.json
+          code=$?
+          echo "wall=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### Ubuntu run ${{ matrix.attempt }}: pnpm test wall time ${{ steps.test.outputs.wall }}s"
+            if [ -f vitest.json ]; then
+              jq -r '"Summed file time: \(([.testResults[] | (.endTime - .startTime)] | add) / 1000 | floor)s over \(.testResults | length) files, \(.numFailedTests) failed tests"' vitest.json
+              echo
+              echo "Failing files:"
+              jq -r '.testResults[] | select(.status == "failed") | "- \(.name | sub(".*/test/"; "test/")): \([.assertionResults[] | select(.status == "failed") | .fullName] | length) failed, e.g. \(([.assertionResults[] | select(.status == "failed") | .failureMessages[0]] | first // .message // "suite failed") | split("\n")[0])"' vitest.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if tests failed
+        if: steps.test.outcome == 'failure'
+        run: exit 1
