@@ -2580,6 +2580,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ],
     draft: ''
   }),
+  /** KERNEL-815: files dragged over the chat pane. scripts/shots.ts starts the drag, the overlay is local to the composer. */
+  ComposerDragOver: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
+  /** KERNEL-815: three files dropped on the box while they read. scripts/shots.ts slows the read down so the placeholders show. */
+  ComposerAttaching: composing({ parts: [], draft: 'Can you check the invoice table against ' }),
   WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
   WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, contextOpen: true } } })),
   /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */

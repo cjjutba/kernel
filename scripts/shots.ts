@@ -447,7 +447,29 @@ async function openOverrule(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// Files over the chat pane (KERNEL-815). The overlay and the placeholders are local to the composer, so the shot starts the drag and the drop itself.
+async function dragOverPane(page: Page) {
+  await page.locator('.ws-main').evaluate((pane) => {
+    const dt = new DataTransfer()
+    dt.items.add(new File(['x'], 'invoice-table.png', { type: 'image/png' }))
+    pane.dispatchEvent(new DragEvent('dragenter', { dataTransfer: dt, bubbles: true }))
+  })
+  await page.waitForTimeout(300)
+}
+async function dropWhileReading(page: Page) {
+  // A read that never finishes in time for the shot, so the placeholders are what shows.
+  await page.evaluate(() => { FileReader.prototype.readAsDataURL = function () { /* never loads */ } })
+  await page.locator('.cmp-input').evaluate((box) => {
+    const dt = new DataTransfer()
+    for (const n of ['invoice-table.png', 'staging-log.txt', 'Screenshot 2026-10-14 at 21.21.42.png']) dt.items.add(new File(['x'], n, { type: n.endsWith('.png') ? 'image/png' : 'text/plain' }))
+    box.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }))
+  })
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  ComposerDragOver: dragOverPane,
+  ComposerAttaching: dropWhileReading,
   ConfirmOverrule: openOverrule,
   UsageFooterNarrow: narrowWindow,
   AccountSwitching: async (page) => { await page.locator('.ft-other').first().click(); await page.waitForTimeout(200) },

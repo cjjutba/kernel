@@ -231,14 +231,14 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
       </div>
       <div className="lead-up">{usable && <UpNext roomId={roomId} lead={name} onPlan={planIssue} />}</div>
       <ComposerShell
-        box={{ 'data-plan': plan ? 'true' : undefined, ...d.drop }}
+        box={{ 'data-plan': plan ? 'true' : undefined, 'data-drop': d.over || undefined }}
         input={<DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
         foot={<ComposerToolbar disabled={busy}
           lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: (m) => { setMenu(null); pickLeadMode(m); d.focus() } }}
           model={{ label: modelLabelOf(model, codexModels), effort: effortLabel(effort), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
           mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
           plus={{ panel: plusPanel, onPanel: setMenu, roomId, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
-          send={{ label: 'Send', ready: hasDraft && usable, busy, busyLabel: checking ? 'Checking' : 'Sending', onSend: start }} />}
+          send={{ label: 'Send', ready: hasDraft && usable, busy: busy || d.pending > 0, busyLabel: d.pending > 0 ? 'Attaching' : checking ? 'Checking' : 'Sending', onSend: start }} />}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
         where={<WhereRow room={room} mode={place} roomPicker={null}
           modePicker={<ModePicker mode={place} open={menu === 'place'} disabled={busy} onToggle={() => setMenu(menu === 'place' ? null : 'place')} onClose={() => setMenu((m) => (m === 'place' ? null : m))} onPick={pickPlace} />}

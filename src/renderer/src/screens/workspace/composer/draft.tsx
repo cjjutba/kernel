@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type DragEvent, type HTMLAttributes, type KeyboardEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type HTMLAttributes, type KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
-import { attachFiles, clipboardImages, pastedText } from './attach'
+import { attachFiles, clipboardImages, Held, pastedText } from './attach'
 import { ComposerChip } from './Chip'
 import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
 import { dropRoomDrafts, loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
@@ -146,7 +146,13 @@ const caretAfter = (node: Node) => {
 /** What a chip reads as outside the box, for a copy. */
 const chipText = (p: ChatPart) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.type === 'file' ? p.path ?? p.text ?? p.name : p.name)
 
-interface View { parts: ChatPart[]; before: string; after: string; first: boolean; slots: { id: string; el: HTMLElement; part: ChatPart }[] }
+/** A chip's slot. `pending` is a file still being read (its part only has the name), `fresh` a chip that just landed and fades in. */
+interface Slot { id: string; el: HTMLElement; part: ChatPart; pending?: boolean; fresh?: boolean }
+interface View { parts: ChatPart[]; before: string; after: string; first: boolean; slots: Slot[]; pending: number }
+
+/** The chat pane a draft's box sits in: what shows the drop overlay and takes a drop anywhere on it. */
+const PANE = '.ws-main, .lead-new'
+const hasFiles = (e: globalThis.DragEvent) => !!e.dataTransfer?.types.includes('Files')
 
 /** The caret at the end of `parts`. */
 const atEnd = (parts: ChatPart[]) => {
@@ -171,7 +177,14 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   /** The key whose draft the box shows, and where `sync` keeps it. Moves to the new key only after that key's draft is drawn. */
   const shown = useRef(key)
   const [initial] = useState(() => (key ? loadDraft(key) : undefined) ?? [...(init?.parts ?? []), ...(init?.draft ? [text(init.draft)] : [])])
-  const [view, setView] = useState<View>(() => ({ parts: initial, ...atEnd(initial), slots: [] }))
+  /** Files still being read, by the id of their placeholder slot. Their slots are in the box but not in the draft. */
+  const pending = useRef(new Held())
+  /** Chips that just landed, which fade in once. */
+  const fresh = useRef(new Set<string>())
+  /** The pane the box sits in, and whether files are being dragged over it. */
+  const [pane, setPane] = useState<HTMLElement | null>(null)
+  const [over, setOver] = useState(false)
+  const [view, setView] = useState<View>(() => ({ parts: initial, ...atEnd(initial), slots: [], pending: 0 }))
 
   const read = () => (input.current ? readParts(input.current, chips.current) : view.parts)
 
@@ -180,21 +193,31 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     const el = input.current
     if (!el) return
     const seen = new Set<string>()
-    const slots: View['slots'] = []
+    const slots: Slot[] = []
     for (const s of el.querySelectorAll<HTMLElement>('[data-chip]')) {
       let id = s.dataset.chip ?? ''
+      const wait = pending.current.nameOf(id)
+      if (wait !== undefined) {
+        if (seen.has(id)) { s.remove(); continue }
+        seen.add(id)
+        if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
+        slots.push({ id, el: s, part: { type: 'file', name: wait }, pending: true })
+        continue
+      }
       const part = chips.current.get(id)
       if (!part) continue
       // A browser copy of a chip (a drag, an odd paste) becomes a chip of its own.
       if (seen.has(id)) { id = `c${++chipCount}`; chips.current.set(id, part); s.dataset.chip = id }
       seen.add(id)
       if (!drawn.current.has(s)) { s.replaceChildren(); drawn.current.add(s) }
-      slots.push({ id, el: s, part })
+      slots.push({ id, el: s, part, fresh: fresh.current.has(id) })
     }
+    // A placeholder the browser removed (Backspace, a cut) is no longer being waited for.
+    for (const id of pending.current.ids()) if (!seen.has(id)) pending.current.release(id)
     const parts = readParts(el, chips.current)
     if (shown.current) saveDraft(shown.current, parts, workspaceOf(shown.current))
     const caret = caretIn(el, chips.current) ?? (toEnd ? atEnd(parts) : null)
-    setView((v) => ({ ...v, ...caret, parts, slots }))
+    setView((v) => ({ ...v, ...caret, parts, slots, pending: pending.current.size }))
   }
 
   /** Focuses the box with the caret where it was, or at the end. */
@@ -211,20 +234,26 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     sel.addRange(r)
   }
 
-  const htmlOf = (parts: ChatPart[]) => parts.map((p) => {
+  const htmlOf = (parts: ChatPart[], landing = false) => parts.map((p) => {
     if (p.type === 'text') return escapeHtml(p.text)
     const id = `c${++chipCount}`
     chips.current.set(id, p)
+    if (landing) fresh.current.add(id)
     return slotHtml(id, p)
   }).join('')
 
   /** Parts where the caret is, replacing the selection. `drop` is how much typed text before the caret they replace (the @ or / word). */
   const put = (parts: ChatPart[], drop = 0) => {
-    const el = input.current
-    if (!el || !parts.length) return
-    const html = htmlOf(parts)
+    if (!parts.length) return
+    const html = htmlOf(parts, true)
     // The id htmlOf gave the last part, when that part is a chip.
-    const lastChip = parts[parts.length - 1].type === 'text' ? '' : `c${chipCount}`
+    putHtml(html, parts[parts.length - 1].type === 'text' ? '' : `c${chipCount}`, drop)
+  }
+
+  /** Markup at the caret, replacing the selection. `lastChip` is the id of the chip it ends with, if any. */
+  const putHtml = (html: string, lastChip: string, drop = 0) => {
+    const el = input.current
+    if (!el) return
     if (!el.isContentEditable) {
       // A paused box still takes a chip from elsewhere, at the end.
       const t = document.createElement('template')
@@ -245,7 +274,27 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
 
   const insert = (part: ChatPart, drop = 0) => put([part], drop)
   const insertText = (t: string) => put([text(t)])
-  const attach = (files: File[]) => void attachFiles(files, (p) => insert(p))
+
+  /** A placeholder chip for a file being read, at the caret. */
+  const hold = (name: string) => {
+    const id = `c${++chipCount}`
+    pending.current.add(id, name)
+    putHtml(slotHtml(id, { type: 'file', name }), id)
+    return id
+  }
+  /** The file is read: its placeholder becomes the chip, in place. A placeholder that was removed or cleared meanwhile stays gone. */
+  const settle = (id: string, part: ChatPart) => {
+    if (!pending.current.release(id) || !input.current?.querySelector(`[data-chip="${id}"]`)) return
+    chips.current.set(id, part)
+    fresh.current.add(id)
+    sync()
+  }
+  const release = (id: string) => {
+    pending.current.release(id)
+    input.current?.querySelector(`[data-chip="${id}"]`)?.remove()
+    sync()
+  }
+  const attach = (files: File[]) => void attachFiles(files, { hold, settle, drop: release })
 
   /**
    * Everything in the box at once, with the caret at the end. `undo` makes it one Cmd+Z step; otherwise old chips are
@@ -263,6 +312,8 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       document.execCommand(parts.length ? 'insertHTML' : 'delete', false, htmlOf(parts))
     } else {
       chips.current.clear()
+      pending.current.clear()
+      fresh.current.clear()
       const t = document.createElement('template')
       t.innerHTML = htmlOf(parts)
       const last = parts[parts.length - 1]
@@ -319,6 +370,62 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     return () => { document.removeEventListener('selectionchange', onSelect); el.removeEventListener('beforeinput', onBeforeInput) }
   }, [])
 
+  // The pane takes files dragged over it, wherever they land. A blocked or disabled box (not editable) takes none. A count of enters and
+  // leaves tells the pane from the elements inside it, so moving between them doesn't clear the overlay.
+  useEffect(() => {
+    const el = input.current
+    const host = el?.closest<HTMLElement>(PANE)
+    if (!el || !host) return
+    setPane(host)
+    let depth = 0
+    const clear = () => { depth = 0; setOver(false) }
+    const onEnter = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e) || !el.isContentEditable) return
+      depth++
+      setOver(true)
+    }
+    const onOver = (e: globalThis.DragEvent) => {
+      if (el.isContentEditable && (hasFiles(e) || (e.dataTransfer?.types.includes('text/plain') && el.contains(e.target as Node)))) e.preventDefault()
+    }
+    const onLeave = (e: globalThis.DragEvent) => {
+      if (!hasFiles(e)) return
+      depth = Math.max(0, depth - 1)
+      if (!depth) setOver(false)
+    }
+    /** Files land at the caret when they are dropped on the box, at the end of the draft anywhere else. Text only lands in the box. */
+    const onDrop = (e: globalThis.DragEvent) => {
+      const files = [...(e.dataTransfer?.files ?? [])]
+      const t = files.length ? '' : e.dataTransfer?.getData('text/plain') ?? ''
+      clear()
+      if (!el.isContentEditable || (!files.length && !(t && el.contains(e.target as Node)))) return
+      e.preventDefault()
+      const on = el.contains(e.target as Node)
+      const at = on ? document.caretRangeFromPoint(e.clientX, e.clientY) : null
+      el.focus({ preventScroll: true })
+      const sel = getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(at && el.contains(at.startContainer) && !chipOf(at.startContainer) ? at : endOf(el))
+      if (files.length) attach(files)
+      else insertText(t.replace(/\r\n?/g, '\n'))
+    }
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') clear() }
+    host.addEventListener('dragenter', onEnter)
+    host.addEventListener('dragover', onOver)
+    host.addEventListener('dragleave', onLeave)
+    host.addEventListener('drop', onDrop)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('blur', clear)
+    return () => {
+      host.removeEventListener('dragenter', onEnter)
+      host.removeEventListener('dragover', onOver)
+      host.removeEventListener('dragleave', onLeave)
+      host.removeEventListener('drop', onDrop)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('blur', clear)
+      clear()
+    }
+  }, [])
+
   /** Pastes as plain text, so no styling comes in. Images and long text become chips, and chips copied from a box stay chips. */
   const onPaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -358,6 +465,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
   const removeChip = (id: string) => {
     const el = input.current
     const s = el?.querySelector(`[data-chip="${id}"]`)
+    pending.current.release(id)
     if (!el || !s) return
     if (el.isContentEditable) {
       el.focus({ preventScroll: true })
@@ -368,29 +476,6 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       document.execCommand('delete')
     } else s.remove()
     sync()
-  }
-
-  /** Lets a box take dropped files, and text dropped on the box itself. Either lands where it was dropped. */
-  const drop = {
-    onDragOver: (e: DragEvent) => {
-      const types = e.dataTransfer.types
-      if (types.includes('Files') || (types.includes('text/plain') && input.current?.contains(e.target as Node))) e.preventDefault()
-    },
-    onDrop: (e: DragEvent) => {
-      const el = input.current
-      const files = [...e.dataTransfer.files]
-      const t = files.length ? '' : e.dataTransfer.getData('text/plain')
-      if (!el || (!files.length && !(t && el.contains(e.target as Node)))) return
-      e.preventDefault()
-      const at = el.isContentEditable ? document.caretRangeFromPoint(e.clientX, e.clientY) : null
-      if (at && el.contains(at.startContainer) && !chipOf(at.startContainer)) {
-        el.focus({ preventScroll: true })
-        getSelection()?.removeAllRanges()
-        getSelection()?.addRange(at)
-      }
-      if (files.length) attach(files)
-      else insertText(t.replace(/\r\n?/g, '\n'))
-    }
   }
 
   /** `forKey` when its draft is not in the box: the composer shows another chat, or it unmounted while an await ran. */
@@ -413,7 +498,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       sel.removeAllRanges()
       sel.addRange(endOf(el))
     },
-    insert, insertText, attach, drop, onPaste, onKey, removeChip,
+    insert, insertText, attach, onPaste, onKey, removeChip,
     onCopy: (e: ClipboardEvent<HTMLDivElement>) => copy(e, false),
     onCut: (e: ClipboardEvent<HTMLDivElement>) => copy(e, true),
     parts: view.parts,
@@ -427,7 +512,13 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     /** All the typed text, without the chips. */
     text: view.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''),
     empty: !messageOf(view.parts).length,
-    message: () => messageOf(read()),
+    /** What to send, or nothing while a file is still being read, so a message never goes without it. */
+    message: () => (pending.current.size ? [] : messageOf(read())),
+    /** How many files are still being read. */
+    pending: view.pending,
+    /** Files are being dragged over the pane the box sits in. */
+    over,
+    pane,
     plain: () => plainText(read()),
     /** The chips in the box, in order, then `t`. Undoable. */
     setText: (t: string) => write([...read().filter((p) => p.type !== 'text'), ...(t ? [text(t)] : [])], true),
@@ -470,7 +561,8 @@ export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onI
         onPaste={d.onPaste} onCopy={d.onCopy} onCut={d.onCut}
         onDragStart={(e) => e.preventDefault()}
       />
-      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
+      {d.slots.map((s) => createPortal(<ComposerChip part={s.part} pending={s.pending} entering={s.fresh} onRemove={() => d.removeChip(s.id)} />, s.el, s.id))}
+      {d.over && d.pane && createPortal(<div className="drop-veil" aria-hidden="true"><div className="drop-frame">Drop to attach</div></div>, d.pane)}
     </>
   )
 }

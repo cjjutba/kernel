@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ButtonHTML
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
 import { FileIcon } from '../../../components/FileIcon'
-import { Icon, Modal, type IconName } from '../../../ui'
+import { Icon, Modal, Spinner, type IconName } from '../../../ui'
 
 /** A short label after a chip's name: lines of a pasted text, the size of an image, or a linked issue's or pull request's title. */
 function chipMeta(p: ChatPart): string {
@@ -116,8 +116,17 @@ export function TextButton({ paste, children, ...rest }: { paste: TextPart } & B
 }
 
 /** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
-export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () => void }) {
+export function ComposerChip({ part, pending, entering, onRemove }: { part: ChatPart; /** A file still being read: its name with the dot loader where the icon goes. */ pending?: boolean; /** A chip that just landed, which fades in. */ entering?: boolean; onRemove: () => void }) {
   if (part.type === 'text') return null
+  if (pending) {
+    return (
+      <span className="chip cmp-chip" data-kind="pending" aria-busy="true">
+        <Spinner label={`Attaching ${part.name}`} pattern="arrow-down" />
+        <span className="ellipsis" style={{ maxWidth: 220 }}>{part.name}</span>
+        <button type="button" className="chip-x" aria-label={`Cancel ${part.name}`} onClick={onRemove}><Icon name="close" size={12} /></button>
+      </span>
+    )
+  }
   const label = part.type === 'skill' ? `/${part.name}` : part.name
   const meta = chipMeta(part)
   const body = (
@@ -128,7 +137,7 @@ export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () 
     </>
   )
   return (
-    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
+    <span className="chip cmp-chip" data-entering={entering || undefined} data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'pr' || part.type === 'workspace' || part.type === 'agent' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton>
         : isPastedText(part) ? <TextButton paste={part} className="chip-open">{body}</TextButton> : body}
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={12} /></button>
