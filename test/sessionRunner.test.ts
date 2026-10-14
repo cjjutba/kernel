@@ -16,6 +16,7 @@ import type { Ask } from '../src/main/services/providers/types'
 import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
+import { mentionReminder } from '../src/main/services/mentions'
 import type { AppSettings } from '../src/main/services/settings'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
@@ -720,6 +721,67 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect((await contexts(s.options, 'PostToolUse', 'ExitPlanMode'))[0]).not.toContain(HANDOFF_NOW)
     expect(hooksFor(s.options, 'Stop').length).toBe(1)
     expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+
+  describe('teammates the user addressed (KERNEL-745)', () => {
+    const kai: AgentDef = { ...noor, id: 'kai', name: 'Kai', role: 'Frontend' }
+    const at = (a: AgentDef): ChatPart => ({ type: 'agent', name: a.name, agentId: a.id })
+    /** A Lead chat whose first turn has ended, then a message from the user to `mentioned`. */
+    async function addressed(...mentioned: AgentDef[]) {
+      const s = await setup('acceptEdits', { agent: kernel, deps: { teamOf: () => [kernel, noor, kai] } })
+      s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+      s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+      await flush()
+      await nextSent(s.call)
+      await s.sessions.send('chat', [...mentioned.map(at), { type: 'text', text: 'take the Stop hook' }])
+      const { value } = await s.call.prompt[Symbol.asyncIterator]().next()
+      return { ...s, read: (value.message.content as { text: string }[]).map((c) => c.text) }
+    }
+
+    it('tells the Lead who the user addressed, and keeps the chat row as the user wrote it', async () => {
+      const s = await addressed(noor, kai)
+      expect(s.read).toEqual(['@Noor', '@Kai', 'take the Stop hook', 'The user addressed this to Noor and Kai.'])
+      expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ parts: [at(noor), at(kai), { type: 'text', text: 'take the Stop hook' }] })
+    })
+
+    it('reminds the Lead once when the turn ends without acting for each one', async () => {
+      const s = await addressed(noor)
+      expect(await contexts(s.options, 'Stop')).toEqual([mentionReminder(['Noor'])])
+      expect(await contexts(s.options, 'Stop')).toEqual([])
+    })
+
+    it('reminds only for the teammates the Lead has not acted for', async () => {
+      const s = await addressed(noor, kai)
+      s.sessions.mentions.acted('chat', 'noor') // what create_workspace for Noor does
+      expect(await contexts(s.options, 'Stop')).toEqual([mentionReminder(['Kai'])])
+    })
+
+    it('drops the reminder when the user stops the turn or writes again', async () => {
+      const stopped = await addressed(noor)
+      await stopped.sessions.interrupt('chat')
+      expect(await contexts(stopped.options, 'Stop')).toEqual([])
+      const redirected = await addressed(noor)
+      await redirected.sessions.send('chat', [{ type: 'text', text: 'Never mind' }])
+      expect(await contexts(redirected.options, 'Stop')).toEqual([])
+    })
+
+    it('reminds about the hand-off and the mention in one Stop', async () => {
+      const s = await addressed(noor)
+      await approvePlan(s)
+      expect(await contexts(s.options, 'Stop')).toEqual([`${HANDOFF_REMINDER}\n\n${mentionReminder(['Noor'])}`])
+    })
+
+    it('gives a teammate who is mentioned nothing extra', async () => {
+      const s = await setup('acceptEdits', { agent: noor, deps: { teamOf: () => [kernel, noor] } })
+      s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+      s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+      await flush()
+      await nextSent(s.call)
+      await s.sessions.send('chat', [at(kai), { type: 'text', text: 'ask Kai' }])
+      const { value } = await s.call.prompt[Symbol.asyncIterator]().next()
+      expect((value.message.content as { text: string }[]).map((c) => c.text)).toEqual(['@Kai', 'ask Kai'])
+      expect(s.sessions.mentions.open('chat')).toEqual([])
+    })
   })
 })
 

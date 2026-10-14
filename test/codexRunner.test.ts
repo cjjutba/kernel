@@ -11,6 +11,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, planChanges, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import { mentionNote, mentionReminder } from '../src/main/services/mentions'
 import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
@@ -37,7 +38,7 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const kernel: AgentDef = { ...noor, id: 'kernel', name: 'Kernel', role: 'Lead', lead: true, prompt: 'You are Kernel.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string } } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability']; mcp?: string; off?: string[]; aliases?: Record<string, string>; access?: ReturnType<NonNullable<SessionDeps['accessFor']>>; onMcp?: SessionDeps['onMcp']; tools?: SdkMcpToolDefinition<any>[]; account?: { id: () => string; home: () => string }; team?: AgentDef[] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
@@ -53,7 +54,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const reached = { count: 0 }
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } }), ...(o.tools ?? [])]
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
+    store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
     ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
@@ -599,6 +600,21 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: APPROVED }], approvalId: card.id })
     // The settled card says the plan was approved, so the chat adds no note.
     expect(t.store.items('chat').filter((i) => i.kind === 'note')).toEqual([])
+  })
+
+  it('tells a Codex Lead who the user addressed, and reminds it once with the tools named as Codex calls them (KERNEL-745)', async () => {
+    const helper = { ...noor, id: 'mira', name: 'Mira', member: false } as AgentDef
+    const t = track(await setup({ agent: kernel, team: [kernel, noor, helper] }))
+    await t.sessions.send('chat', [{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }, { type: 'text', text: 'take the Stop hook' }])
+    await until(async () => (await t.sent('turn/start')).length === 2)
+    await t.idle()
+    const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
+    expect(inputs[0]).toBe(`@Noor @Mira take the Stop hook ${forProvider(mentionNote([{ type: 'agent', name: 'Noor', agentId: 'noor' }, { type: 'agent', name: 'Mira', agentId: 'mira' }], [kernel, noor, helper])!, 'codex')}`)
+    expect(inputs[0]).toContain("Mira doesn't take tasks in this room, so tell the user or ask with kernel_ask_user")
+    expect(inputs[1]).toBe(forProvider(mentionReminder(['Noor', 'Mira']), 'codex'))
+    expect(inputs[1]).toContain('kernel_create_workspace')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(await t.sent('turn/start')).toHaveLength(2)
   })
 
   it("asks once when the Lead already asked with request_plan_approval in the same turn", async () => {

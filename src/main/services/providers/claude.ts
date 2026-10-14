@@ -578,6 +578,7 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
     else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
+    else if (p.type === 'agent') text(`@${p.name}`)
     else if (p.type === 'image' && p.path) text(imageMarker(++images, { ...p, path: p.path }))
     else if (p.type === 'image' && p.dataUrl) {
       const m = IMAGE_DATA_URL.exec(p.dataUrl)

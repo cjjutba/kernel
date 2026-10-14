@@ -20,6 +20,7 @@ const PROMPT = [
 function partText(p: ChatPart): string {
   if (p.type === 'text') return p.text
   if (p.type === 'issue') return `[issue ${p.name}: ${p.title}]`
+  if (p.type === 'agent') return `@${p.name}`
   if (p.type === 'file' || p.type === 'image' || p.type === 'skill' || p.type === 'workspace') return `[${p.type} ${p.name}]`
   return ''
 }
