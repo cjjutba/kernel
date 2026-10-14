@@ -323,7 +323,7 @@ export interface KernelApi {
 
   /** The scripts the room could take from Conductor, Superset or its lockfiles, without the ones it already runs. Reads only, and `settings.setRoom` saves one (KERNEL-682). */
   'scripts.suggest': { req: { roomId: string }; res: ScriptSuggestion[] }
-  /** Ask Rowan: a new Lead chat in the room that reads the repo and proposes its scripts with set_room_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
+  /** Ask Kernel: a new Lead chat in the room that reads the repo and proposes its scripts with set_room_scripts. Main writes the message, so the renderer sends none (KERNEL-683). */
   'scripts.askLead': { req: { roomId: string }; res: Chat }
 
   // activity, usage and account (KERNEL-21, 25, 28)

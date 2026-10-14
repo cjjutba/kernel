@@ -100,7 +100,7 @@ describe('set_room_scripts (KERNEL-683)', () => {
   it('is the Lead\'s alone: a teammate\'s tools have no set_room_scripts', async () => {
     const { k, room, team, chat } = await boot()
     const names = (agentId: string) => k.tools.toolsFor({ id: chat.workspaceId, roomId: room.id } as Workspace, team.find((a) => a.id === agentId), chat).map((t) => t.name)
-    expect(names('rowan')).toContain('set_room_scripts')
+    expect(names('kernel-lead')).toContain('set_room_scripts')
     expect(names('kai')).not.toContain('set_room_scripts')
   })
 

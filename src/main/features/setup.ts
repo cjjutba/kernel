@@ -11,7 +11,7 @@ import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
 /**
- * Ask Rowan's message: read the repo, then propose scripts with set_room_scripts. What `scripts.suggest` found goes in as
+ * Ask Kernel's message: read the repo, then propose scripts with set_room_scripts. What `scripts.suggest` found goes in as
  * JSON with every `<` escaped, so a file in the repo can't close the block it sits in (KERNEL-683).
  */
 export function askLeadPrompt(found: ScriptSuggestion[]): string {
@@ -358,7 +358,7 @@ export class Setup extends Feature {
         const { path } = this.mustRoom(roomId)
         return suggestScripts(path, await loadRepoSettings(path), this.home)
       },
-      // Ask Rowan: a new Lead chat, out of plan mode, since the save card is the user's check (KERNEL-683).
+      // Ask Kernel: a new Lead chat, out of plan mode, since the save card is the user's check (KERNEL-683).
       'scripts.askLead': async ({ roomId }) => {
         const { path } = this.mustRoom(roomId)
         const found = await suggestScripts(path, await loadRepoSettings(path), this.home)
