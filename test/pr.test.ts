@@ -750,7 +750,9 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
   })
 
   it('continues on a fresh branch from the base, in the same worktree', async () => {
-    const { k, ws, gh, notes } = await setup()
+    // Archive on merge is on by default and archives a merged workspace within a fraction of a second, removing the worktree
+    // this test continues in. Continue is for a workspace that stays, so the test keeps it.
+    const { k, ws, gh, notes } = await setup({ workspace: { baseRef: 'main', archiveOnMerge: false } })
     gh.pr = info({ state: 'ready' })
     await k.refreshPr(ws.id)
     gh.pr = info({ state: 'merged' })

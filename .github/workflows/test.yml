@@ -3,7 +3,10 @@ name: Test
 # A PR runs typecheck and only the tests its changes affect. A push to main runs the whole suite, so two PRs that each
 # passed and break main together show up right away (KERNEL-296).
 # No path filter, so the Test job reports on every PR and can be a required check on main, like Release note (see release-note.yml).
-# macOS because the tests are written there and need the macOS builds of better-sqlite3 and node-pty.
+# Typecheck and the tests run on Ubuntu: it is faster than macOS, and GitHub runs 20 Ubuntu jobs at once against 5 macOS jobs
+# per account, so PRs don't queue for a runner. The files named *.mac.test.ts need the Mac (zsh, the Mac build of Codex), so
+# they run in their own macOS job, on every PR and every push to main. They take seconds, so there is no affected-files gate:
+# one would only delay that job until the Ubuntu run had said which tests are affected.
 on:
   pull_request:
   push:
@@ -20,7 +23,7 @@ concurrency:
 jobs:
   typecheck:
     name: Typecheck
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -41,7 +44,7 @@ jobs:
   # Runs the tests. Named apart from the Test job below, which is the one branch protection requires.
   vitest:
     name: Vitest
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       KERNEL_HEADLESS: '1'
@@ -114,24 +117,64 @@ jobs:
           files=$(node -e "const r=require('./vitest-result.json');console.log(r.testResults.filter(t=>t.status==='failed').map(t=>t.name.replace(process.cwd()+'/','')).join(','))")
           echo "files=$files" >> "$GITHUB_OUTPUT"
 
+  # The tests that only run on the Mac (test/*.mac.test.ts). The Ubuntu run leaves them out (see vitest.config.ts).
+  vitest-mac:
+    name: Vitest (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      KERNEL_HEADLESS: '1'
+    outputs:
+      failed: ${{ steps.failed.outputs.files }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run the macOS-only tests
+        run: pnpm exec vitest run mac.test.ts --reporter=default --reporter=json --outputFile.json=vitest-result.json
+
+      # The files with a failing test, for the ci-main-red issue.
+      - name: Name the failing tests
+        id: failed
+        if: failure()
+        run: |
+          [ -f vitest-result.json ] || exit 0
+          files=$(node -e "const r=require('./vitest-result.json');console.log(r.testResults.filter(t=>t.status==='failed').map(t=>t.name.replace(process.cwd()+'/','')).join(','))")
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
   # The one check branch protection requires. It passes only when every job it needs passes, and it runs even when one
   # of them fails or is skipped, so the check always reports.
   test:
     name: Test
-    needs: [typecheck, vitest]
+    needs: [typecheck, vitest, vitest-mac]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      RESULTS: ${{ join(needs.*.result, ' ') }}
     steps:
       - run: |
           echo "typecheck: ${{ needs.typecheck.result }}"
           echo "vitest: ${{ needs.vitest.result }}"
-          [ "${{ needs.typecheck.result }}" = "success" ] && [ "${{ needs.vitest.result }}" = "success" ]
+          echo "vitest-mac: ${{ needs.vitest-mac.result }}"
+          # A job may be skipped on purpose. Failed, cancelled and never-ran jobs fail the check.
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || [ "$r" = "skipped" ] || exit 1
+          done
 
   # A red main is easy to see: one open issue while it is red, updated by each failing run, closed on the next green run.
   main-red:
     name: Main status
-    needs: [test, vitest]
+    needs: [test, vitest, vitest-mac]
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -142,7 +185,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       RESULT: ${{ needs.test.result }}
-      FAILED: ${{ needs.vitest.outputs.failed }}
+      FAILED_UBUNTU: ${{ needs.vitest.outputs.failed }}
+      FAILED_MAC: ${{ needs.vitest-mac.outputs.failed }}
       SHA: ${{ github.sha }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
@@ -155,6 +199,7 @@ jobs:
             [ -n "$open" ] && gh issue close "$open" --comment "Main is green again at $commit ([run]($RUN_URL))."
             exit 0
           fi
+          FAILED=$(printf '%s\n%s' "$FAILED_UBUNTU" "$FAILED_MAC" | grep . | paste -sd, -)
           tests=${FAILED:-"none named: typecheck failed, or the tests did not finish"}
           body="Main is red at $commit ([run]($RUN_URL)).
 
