@@ -1,4 +1,4 @@
-import type { ChatPart, Effort, HeldChat, PermissionMode } from '@shared/types'
+import type { ChatPart, Effort, HeldChat, LeadMode, PermissionMode } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, loadWorkspace } from '../../store'
 import { openLeadChat, openNewChat } from '../../lead'
@@ -17,6 +17,8 @@ export interface ChatStart {
   mode?: PermissionMode
   /** The target branch picked, empty for the room's default. */
   baseRef: string
+  /** Hand off or Build here, left out while it follows the room or Settings. */
+  leadMode?: LeadMode
 }
 
 /**
@@ -27,7 +29,7 @@ export interface ChatStart {
 export async function startChat(c: ChatStart): Promise<string | undefined> {
   let chat
   // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
-  try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}) }) }
+  try { chat = await call('lead.start', { roomId: c.roomId, ...leadMessage(c.parts), model: c.model, effort: c.effort, plan: c.plan, ...(c.mode ? { mode: c.mode } : {}), ...(c.baseRef ? { baseRef: c.baseRef } : {}), ...(c.leadMode ? { leadMode: c.leadMode } : {}) }) }
   catch (e) { return cleanError(e) }
   clearDraft(newChatDraftOf(c.roomId))
   // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
@@ -55,10 +57,10 @@ export function backToNewChat(h: HeldChat) {
  * that can't be sent goes back to New chat with the reason, since the warning has nowhere to show it.
  */
 export async function startHeld(h: HeldChat): Promise<void> {
-  const { model, effort, plan, baseRef } = h.picks
+  const { model, effort, plan, baseRef, leadMode } = h.picks
   const issue = h.source.kind === 'issue' ? h.source.id : ''
   const mode = loadPicks(newChatDraftOf(h.roomId))?.mode
-  const failed = await startChat({ roomId: h.roomId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, mode, baseRef })
+  const failed = await startChat({ roomId: h.roomId, parts: issue ? briefParts(h.parts, null, [startAnywayLine(issue)]) : h.parts, model, effort, plan, mode, baseRef, leadMode })
   if (!failed) return
   backToNewChat(h)
   actions.ui.toast({ title: failed })

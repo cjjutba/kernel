@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
-import type { ChatPart, IssueTakenFinding, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, IssueTakenFinding, LeadMode, NewChatPicks, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { bypassConfirmed } from '../../bypassConfirm'
 import { useModeAvailability } from '../../permissionModes'
 import { providerOf } from '@shared/providers'
@@ -8,7 +8,7 @@ import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { leadOf } from '../../lead'
 import { leadNewKey } from '../../components/sidebar/slots'
-import { Button, Icon, IconButton, useBusy } from '../../ui'
+import { useBusy } from '../../ui'
 import { briefParts, pickedLines } from '../new-workspace/brief'
 import { startChat } from '../new-workspace/start'
 import { takenFindings } from '../new-workspace/taken'
@@ -18,14 +18,15 @@ import { BranchPicker, useBaseBranch } from './composer/BranchPicker'
 import { DraftInput, useDraft } from './composer/draft'
 import { ComposerShell } from './composer/ComposerShell'
 import { moveDraft, newChatDraftOf, type DraftPicks } from './composer/draftStore'
-import { ModeButton } from './composer/ModeMenu'
-import { ModelPicker } from './composer/ModelPicker'
-import { cyclePatch, cycleRun, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
+import { ComposerToolbar } from './composer/ComposerToolbar'
+import { cyclePatch, cycleRun, leadDefaultLine, leadPlaceholder, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
 import { effortLabel, useLeadBox } from './composer/modelPrefs'
-import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
+import type { PlusPanel } from './composer/PlusMenu'
 import { sendsOn, useSendWith } from './composer/sendKey'
 import { WhereLocalBranch, WhereRow } from './composer/WhereRow'
 import { ModePicker, RoomPicker } from './composer/WherePickers'
+import { newChatLeadMode } from '@shared/leadMode'
+import { useRoomSettings } from '../settings/useSettings'
 import { stripRemote } from '../settings/remote'
 import { RoomStatus } from './RoomStatus'
 import { UpNext } from './UpNext'
@@ -50,9 +51,14 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const draftKey = newChatDraftOf(roomId)
   // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the room's draft (KERNEL-544).
   const { model, effort, plan, mode, fallback, pickModel, pickEffort, savePick } = useLeadBox(draftKey, lead, picks && { model: picks.model, effort: picks.effort, plan: picks.plan })
-  const [menu, setMenu] = useState<'model' | 'branch' | 'mode' | 'room' | 'place' | PlusPanel>(null)
+  const [menu, setMenu] = useState<'model' | 'branch' | 'mode' | 'leadMode' | 'room' | 'place' | PlusPanel>(null)
   const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' ? menu : null
   const rooms = useStore((s) => s.rooms)
+  // Hand off or Build here starts from the room's default, else the app's (KERNEL-770). A pick here is this chat's own.
+  const roomLeadMode = useRoomSettings(roomId)?.agents?.leadMode
+  const appLeadMode = useStore((s) => s.settings?.team.leadMode)
+  const [leadPick, setLeadPick] = useState<LeadMode | undefined>(picks?.leadMode)
+  const leadMode = leadPick ?? newChatLeadMode({ team: { leadMode: appLeadMode } }, { agents: { leadMode: roomLeadMode } })
   // Worktree or Local starts from Settings' workspace mode. Kernel's own chat is a worktree either way (KERNEL-405), so Local only tells Kernel how teammates run.
   const appPlace = useStore((s) => s.settings?.workspace.mode)
   const [placePick, setPlacePick] = useState<WorkspaceMode | undefined>(picks?.mode)
@@ -67,8 +73,6 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
   const [sending, run] = useBusy()
   const busy = sending !== null
   const filePick = useRef<HTMLInputElement>(null)
-  const modelAnchor = useRef<HTMLSpanElement>(null)
-  const plusAnchor = useRef<HTMLSpanElement>(null)
   const topRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLDivElement>(null)
   const fits = useFits(topRef, titleRef)
@@ -133,7 +137,7 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
     if (!found.length) return false
     if (getState().ui.modal) return true
     const held: WorkspaceSource = { kind: 'issue', id: issue.name, title: issue.title, ...(issue.url ? { url: issue.url } : {}), tracker: issue.source }
-    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { roomId, source: held, parts, picks: { mode: place, model, effort, plan, baseRef: picked } } })
+    actions.ui.openModal({ name: 'confirm', kind: 'issueTaken', issue: issue.name, findings: found, held: { roomId, source: held, parts, picks: { mode: place, model, effort, plan, baseRef: picked, leadMode: leadPick } } })
     return true
   }
 
@@ -145,7 +149,7 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
     void run('send', async () => {
       const issue = typed.find((p): p is Extract<ChatPart, { type: 'issue' }> => p.type === 'issue')
       if (issue && (await someoneIsOn(issue, parts))) return
-      const failed = await startChat({ roomId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '' })
+      const failed = await startChat({ roomId, parts, model, effort, plan, mode, baseRef: picked && place === 'worktree' ? picked : '', leadMode })
       if (failed) { actions.ui.toast({ title: 'Could not send', sub: failed }); return }
       setBases((b) => ({ ...b, [roomId]: '' }))
     })
@@ -191,7 +195,6 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
     d.focus()
   }
 
-  const modelLabel = modelLabelOf(model, codexModels)
   const hasDraft = !d.empty
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   return (
@@ -205,20 +208,13 @@ export function NewLeadChat({ roomId: routeRoom, focusIn, source, picks }: { roo
       <div className="lead-up"><UpNext roomId={roomId} lead={name} onPlan={planIssue} /></div>
       <ComposerShell
         box={{ 'data-plan': plan ? 'true' : undefined, ...d.drop }}
-        input={<DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={`Brief ${name} on what to build next`} onKeyDown={onKey} />}
-        foot={<>
-          <span ref={modelAnchor} style={{ position: 'relative' }}>
-            <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={12} /></Button>
-            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={pickEffort} />}
-          </span>
-          <ModeButton provider={providerOf(model)} availability={availability} shown={shown} open={menu === 'mode'} onOpen={(o) => setMenu(o ? 'mode' : null)} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} />
-          <span className="grow" />
-          <span ref={plusAnchor} style={{ position: 'relative' }}>
-            <PlusMenu panel={plusPanel} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId}
-              onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
-          </span>
-          <IconButton className="send" icon="up" size={14} label="Send" busy={busy} busyPattern="arrow-right" busyLabel={checking ? 'Checking' : 'Sending'} data-ready={hasDraft} onClick={() => start()} />
-        </>}
+        input={<DraftInput d={d} aria-label={`Message ${name}`} disabled={busy} placeholder={leadPlaceholder(leadMode, name)} onKeyDown={onKey} />}
+        foot={<ComposerToolbar disabled={busy}
+          lead={{ mode: leadMode, footer: leadDefaultLine(roomLeadMode, appLeadMode), open: menu === 'leadMode', onOpen: (o) => setMenu(o ? 'leadMode' : null), onPick: (m) => { setMenu(null); setLeadPick(m); d.focus() } }}
+          model={{ label: modelLabelOf(model, codexModels), effort: effortLabel(effort), open: menu === 'model', onOpen: (o) => setMenu(o ? 'model' : null), picker: { provider: providerOf(model), grouped: codexInUse, model, effort, fallback, onClose: () => setMenu(null), onModel: (m, x) => { setMenu(null); pickModel(m, x) }, onEffort: pickEffort } }}
+          mode={{ provider: providerOf(model), availability, shown, open: menu === 'mode', onOpen: (o) => setMenu(o ? 'mode' : null), onPick: (m) => { setMenu(null); pickMode(m); d.focus() }, onCycle: cycleMode }}
+          plus={{ panel: plusPanel, onPanel: setMenu, roomId, onAttach: () => filePick.current?.click(), onInsert: (parts) => { for (const p of parts) d.insert(p); d.focus() } }}
+          send={{ label: 'Send', ready: hasDraft, busy, busyLabel: checking ? 'Checking' : 'Sending', onSend: start }} />}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
         where={<WhereRow room={room} mode={place}
           roomPicker={<RoomPicker rooms={rooms} room={room} open={menu === 'room'} disabled={busy} onToggle={() => setMenu(menu === 'room' ? null : 'room')} onClose={() => setMenu((m) => (m === 'room' ? null : m))} onPick={pickRoom} onNewRoom={() => actions.ui.openModal({ name: 'newRoom' })} />}

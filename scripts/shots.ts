@@ -312,6 +312,16 @@ async function driveWhereByKeyboard(page: Page) {
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
+// NewChatLeadModeMenu is New chat with the Hand off and Build here menu open. NewChatBuildHere has Build here picked from it (KERNEL-805).
+async function openLeadModeMenu(page: Page) {
+  await openWhere(page, /^How Kernel works:/, /Build here/)
+}
+async function pickBuildHere(page: Page) {
+  await page.getByRole('button', { name: /^How Kernel works:/ }).click()
+  await page.getByRole('menuitemradio', { name: /Build here/ }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
 async function openBranchMenu(page: Page) {
   await page.getByRole('button', { name: 'New branch from main' }).click()
   await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
@@ -451,6 +461,8 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   NewChatBranch: openBranchMenu,
   NewChatLocal: hoverLocalBranch,
   NewChatPlus: (page) => openWhere(page, 'Add context'),
+  NewChatLeadModeMenu: openLeadModeMenu,
+  NewChatBuildHere: pickBuildHere,
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
   SettingsAddAccount: (page) => openAddAccount(page, 0),

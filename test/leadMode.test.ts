@@ -78,6 +78,14 @@ describe("a new chat's mode (KERNEL-770)", () => {
     expect(app.k.store.workspace(next.workspaceId)?.leadMode).toBe('handoff')
     expect(app.k.store.workspace(open.workspaceId)?.leadMode).toBe('build')
   })
+
+  it('starts in the mode lead.start sends over the default (KERNEL-805)', async () => {
+    const s = await setup({ app: { team: { leadMode: 'build' } } })
+    const picked = await s.k.lead.newLeadChat(s.room.id, { prompt: '', leadMode: 'handoff' })
+    expect(s.k.store.workspace(picked.workspaceId)?.leadMode).toBe('handoff')
+    const plain = await s.k.lead.newLeadChat(s.room.id, { prompt: '' })
+    expect(s.k.store.workspace(plain.workspaceId)?.leadMode).toBe('build')
+  })
 })
 
 describe('lead.setMode (KERNEL-770)', () => {
