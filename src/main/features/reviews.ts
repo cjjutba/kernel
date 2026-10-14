@@ -1,5 +1,5 @@
-import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type ReviewRound, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
-import { kindStates, lensOf, reviewsText, reviewVerdicts } from '@shared/merge'
+import { REVIEW_KINDS, type AgentDef, type Chat, type ChatPart, type Provider, type ReviewConfig, type ReviewKind, type BaseUpdate, type ReviewRound, type ReviewVerdict, type RoleModel, type TeamConfig, type Workspace } from '@shared/types'
+import { kindStates, lensOf, reviewsText, reviewVerdicts, sameHeads } from '@shared/merge'
 import { KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { providerOf } from '@shared/providers'
 import { rolePick } from '@shared/rolePick'
@@ -9,7 +9,7 @@ import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
 import { reviewRule } from '../services/handoff'
 import { remoteOf, reviewPolicyOf, saveAlwaysReview, saveReviewSettings } from '../services/settings'
-import { resolveBaseRef } from '../services/worktrees'
+import { fetchOrigin, resolveBaseRef } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { isUnreadable } from '../services/agents'
 import { inPaths, kindLabel, kindsFor, lensAgent } from '../services/lenses'
@@ -185,7 +185,8 @@ export class Reviews extends Feature {
    * "review again" to each kind the round runs. One round per head commit, so a ready on a head that already had one, as
    * when the base moved, starts nothing, and a change to `[review]` meanwhile waits for the next. Except when the user
    * archived the review workspace before every kind reported: then the kinds with no verdict on the head run again in a new
-   * review workspace, in the same round (KERNEL-633). Reviews get none, and the Lead's own workspaces get none unless the chat
+   * review workspace, in the same round (KERNEL-633). A head Kernel updated from the base is the head it updated, so it
+   * starts no round of its own (KERNEL-832). Reviews get none, and the Lead's own workspaces get none unless the chat
    * is in Build here, whose PR is reviewed as a teammate's (KERNEL-778). From the ready event
    * until the round is saved, the workspace's `reviewPending` names the head, so a PR waiting for its reviewer's approval
    * doesn't merge before Kernel knows which reviews it gets (KERNEL-717). A plan that comes back empty clears it.
@@ -200,7 +201,7 @@ export class Reviews extends Feature {
     this.notStarted.delete(of.id)
     if (this.starting.has(of.id)) return
     const last = this.roundOf(of)
-    const again = last?.head === (of.prHead ?? '') ? last : undefined
+    const again = last && sameHeads(of, of.prHead ?? '').has(last.head) ? last : undefined
     if (again && (this.openReview(of) || !this.unreported(of, again).length)) return
     // Before any await, so an update composed meanwhile reads the review as in progress, and no merge goes ahead meanwhile.
     this.starting.add(of.id)
@@ -254,6 +255,51 @@ export class Reviews extends Feature {
       if (ws.prState === 'ready' && ws.reviewPending === (ws.prHead ?? '')) void this.onReady(ws.id).catch(() => undefined)
       else this.updateWs(ws.id, { reviewPending: undefined })
     }
+  }
+
+  /**
+   * Records that Kernel updated the PR's branch from its base, moving its head from `from` to `to` (KERNEL-832), so the
+   * reviews of `from` count on `to` and `to` starts no new review. Call it after the update, as after `gh pr update-branch`.
+   * Kernel fetches, then records only when git shows `to` is a merge of `from` with a commit of the base that brings in nothing
+   * else: its first parent is `from`, its second is on the base, and its tree is the one git's own merge of the two makes. A
+   * head that also carries a teammate's push, or conflicts someone resolved by hand, isn't recorded. True when it was recorded.
+   */
+  async recordBaseUpdate(workspaceId: string, from: string, to: string): Promise<boolean> {
+    const of = this.store.workspace(workspaceId)
+    if (!of || !from || !to || from === to) return false
+    if (of.baseUpdates?.some((u) => u.from === from && u.to === to)) return true
+    const repo = this.mustRoom(of.roomId).path
+    const remote = await this.k.config.remoteFor(repo)
+    await fetchOrigin(repo, remote, { fresh: true })
+    const update = await this.mergesBaseOnly(repo, remote, of.baseRef, from, to)
+    const now = this.store.workspace(workspaceId)
+    if (!update || !now || this.stopped) return false
+    this.updateWs(now.id, { baseUpdates: [...(now.baseUpdates ?? []).filter((u) => u.to !== update.to), update] })
+    return true
+  }
+
+  /**
+   * `from` and `to` as full commit ids when `to` is git's merge of `from` with a commit of `base`, as `<remote>/<base>` or else
+   * the local branch has it, and nothing else. Undefined otherwise.
+   */
+  private async mergesBaseOnly(repo: string, remote: string, base: string, from: string, to: string): Promise<BaseUpdate | undefined> {
+    const name = base.startsWith(`${remote}/`) ? base.slice(remote.length + 1) : base
+    const parents = await exec('git', ['-C', repo, 'rev-list', '--parents', '-n', '1', `${to}^{commit}`])
+    const [self, first, second, ...more] = parents.stdout.trim().split(' ')
+    if (parents.code !== 0 || !self || !second || more.length) return undefined
+    const full = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', `${from}^{commit}`])
+    if (full.code !== 0 || full.stdout.trim() !== first) return undefined
+    let onBase = false
+    for (const ref of new Set([`${remote}/${name}`, name])) {
+      if (!(await this.resolves(repo, ref))) continue
+      onBase = (await exec('git', ['-C', repo, 'merge-base', '--is-ancestor', second, ref])).code === 0
+      break
+    }
+    if (!onBase) return undefined
+    // A merge with conflicts exits 1: whoever resolved them wrote changes of their own.
+    const merged = await exec('git', ['-C', repo, 'merge-tree', '--write-tree', first, second])
+    const tree = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', `${to}^{tree}`])
+    return merged.code === 0 && tree.code === 0 && merged.stdout.split('\n')[0].trim() === tree.stdout.trim() ? { from: first, to: self } : undefined
   }
 
   /** The PR's newest review workspace still open. */

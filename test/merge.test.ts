@@ -257,6 +257,32 @@ describe('reviews Kernel planned for the head commit (KERNEL-717)', () => {
   })
 })
 
+describe('a head Kernel updated from the base (KERNEL-832)', () => {
+  const C = 'c'.repeat(40)
+  const code = (verdict: 'approved' | 'blockers', sha = A) => v(verdict, sha, 1, { lens: 'code' })
+  const updated = (o: Partial<Workspace> = {}) => ws({ baseUpdates: [{ from: A, to: B }], ...o })
+
+  it('counts verdicts on the head it updated, blockers included, through updates one after another', () => {
+    expect(reviewVerdicts(updated({ reviews: [code('approved')] })).current).toHaveLength(1)
+    expect(mergeBlock(updated({ reviews: [code('approved')] }), info(), both, name)).toBeUndefined()
+    expect(mergeBlock(updated({ reviews: [code('blockers')] }), info(), both, name)).toBe(found)
+    const twice = updated({ prHead: C, baseUpdates: [{ from: A, to: B }, { from: B, to: C }], reviews: [code('approved')] })
+    expect(mergeBlock(twice, info({ head: C }), both, name)).toBeUndefined()
+  })
+
+  it('carries the round, the pending review and the overrule of the head it updated', () => {
+    const round = { n: 1, rounds: 2, head: A, prNumber: 42, kinds: ['code' as const] }
+    expect(mergeBlock(updated({ reviewRound: round }), info(), both, name)).toBe(held)
+    expect(mergeBlock(updated({ reviewPending: A }), info(), both, name)).toContain('is starting')
+    expect(kindStates(updated({ reviews: [code('blockers')], overruled: { head: A, kinds: ['code'], by: 'user', ts: 2 } }))).toMatchObject({ blocking: [], overruled: ['code'] })
+  })
+
+  it('counts nothing for a head Kernel never recorded, nor backwards from an update', () => {
+    expect(mergeBlock(ws({ reviews: [code('approved')] }), info(), both, name)).toBe(held)
+    expect(mergeBlock(updated({ prHead: A, reviews: [code('approved', B)] }), info({ head: A }), both, name)).toBe(held)
+  })
+})
+
 describe('blockers on the head commit (KERNEL-497)', () => {
   const off = { requireGreen: true, requireReviewer: false }
   const override = { override: true }

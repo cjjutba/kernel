@@ -48,10 +48,27 @@ export function blockedText(blocked: PrBlocked, base: string): string {
   return "GitHub's branch rules block this merge."
 }
 
-/** Verdicts on the workspace's PR, and those of them on its head commit, as far as either is known. */
-export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { verdicts: ReviewVerdict[]; current: ReviewVerdict[] } {
+/**
+ * `head` and the heads Kernel updated from the base to reach it (KERNEL-832), following updates one after another. A review of
+ * any of them reads as a review of `head`. A teammate's push isn't recorded, so it starts a new set.
+ */
+export function sameHeads(ws: Pick<Workspace, 'baseUpdates'>, head: string): Set<string> {
+  const heads = new Set([head])
+  for (let grew = true; grew;) {
+    grew = false
+    for (const u of ws.baseUpdates ?? []) if (heads.has(u.to) && !heads.has(u.from)) { heads.add(u.from); grew = true }
+  }
+  return heads
+}
+
+/**
+ * Verdicts on the workspace's PR, and those of them on its head commit, as far as either is known. A verdict on a head Kernel
+ * updated from the base counts on the update (KERNEL-832).
+ */
+export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead' | 'baseUpdates'>): { verdicts: ReviewVerdict[]; current: ReviewVerdict[] } {
   const verdicts = (ws.reviews ?? []).filter((v) => !v.prNumber || !ws.prNumber || v.prNumber === ws.prNumber)
-  return { verdicts, current: verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead) }
+  const heads = ws.prHead ? sameHeads(ws, ws.prHead) : undefined
+  return { verdicts, current: verdicts.filter((v) => !v.sha || !heads || heads.has(v.sha)) }
 }
 
 /** A verdict's kind of review. One from before review kinds counts as the code review's (KERNEL-549). */
@@ -92,13 +109,14 @@ export interface KindStates {
 }
 
 /** What a kind-by-kind read of the reviews needs from the workspace. */
-type ReviewFacts = Pick<Workspace, 'reviews' | 'prNumber' | 'prHead' | 'overruled'>
+type ReviewFacts = Pick<Workspace, 'reviews' | 'prNumber' | 'prHead' | 'overruled' | 'baseUpdates'>
 
 /**
  * The PR's verdicts read kind by kind (KERNEL-549). Verdicts of two kinds both count. Within a kind, blockers on the head
  * commit from any review hold it, and an approval of the head commit stands only without them. Blockers of a kind the user
  * overruled on this very head hold nothing and wait for nothing, and they don't approve it either (KERNEL-732). The
- * overrule names a head, so a head Kernel doesn't know matches none.
+ * overrule names a head, so a head Kernel doesn't know matches none. A head Kernel updated from the base keeps the verdicts
+ * and the overrule of the head it updated (KERNEL-832).
  */
 export function kindStates(ws: ReviewFacts): KindStates {
   const { verdicts, current } = reviewVerdicts(ws)
@@ -108,7 +126,7 @@ export function kindStates(ws: ReviewFacts): KindStates {
   const blockingOf = (k: ReviewKind) => current.filter((v) => lensOf(v) === k && v.verdict === 'blockers')
   const found = ran.filter((k) => blockingOf(k).length)
   const o = ws.overruled
-  const overruled = o && ws.prHead && o.head === ws.prHead ? found.filter((k) => o.kinds.includes(k)) : []
+  const overruled = o && ws.prHead && sameHeads(ws, ws.prHead).has(o.head) ? found.filter((k) => o.kinds.includes(k)) : []
   const blocking = found.filter((k) => !overruled.includes(k))
   const all = current.filter((v) => v.verdict === 'blockers' && blocking.includes(lensOf(v)))
   const approved = ran.filter((k) => !found.includes(k) && current.some((v) => lensOf(v) === k && v.verdict === 'approved'))
@@ -133,12 +151,14 @@ export function headBlockers(ws: ReviewFacts): { agentId: string; count: number;
  * What Kernel's automatic review plans for the PR's `head` (KERNEL-717): `pending` while it works out the reviews, from the
  * ready event until the round is saved, else the required kinds of the PR's round on that head, the ones it skipped near the
  * usage limit and the optional ones left out. Nothing when no round of this PR is on the head, as when automatic review is off
- * or the plan came back empty.
+ * or the plan came back empty. A round or a pending review on a head Kernel updated from the base counts for the update
+ * (KERNEL-832).
  */
-export function plannedReviews(ws: Pick<Workspace, 'reviewRound' | 'reviewPending' | 'prNumber'>, head: string | undefined): 'pending' | ReviewKind[] {
-  if (ws.reviewPending !== undefined && ws.reviewPending === (head ?? '')) return 'pending'
+export function plannedReviews(ws: Pick<Workspace, 'reviewRound' | 'reviewPending' | 'prNumber' | 'baseUpdates'>, head: string | undefined): 'pending' | ReviewKind[] {
+  const heads = sameHeads(ws, head ?? '')
+  if (ws.reviewPending !== undefined && heads.has(ws.reviewPending)) return 'pending'
   const r = ws.reviewRound
-  if (!r || r.prNumber !== ws.prNumber || r.head !== (head ?? '')) return []
+  if (!r || r.prNumber !== ws.prNumber || !heads.has(r.head)) return []
   return r.kinds.filter((k) => !r.skipped?.includes(k) && !r.optional?.includes(k))
 }
 
