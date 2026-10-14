@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef, PrInfo, Workspace } from '@shared/types'
-import { leadPrs, reviewLine } from '../src/renderer/src/screens/workspace/pr/leadPrList'
+import { leadPrs, reviewLine, rowGlyph, rowState } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 
 // The Lead's PRs tab: which workspaces it lists, which come first, and what each row says (KERNEL-354).
 
@@ -48,6 +48,44 @@ describe('the order', () => {
     expect(unread.ready).toBe(false)
     const green = info('a', { checks: [{ name: 'lint', state: 'pass' }] })
     expect(leadPrs([ws('a')], { leadId: 'kernel', roomId: 'room', prs: { a: green }, rules: strict, agents })[0].ready).toBe(true)
+  })
+})
+
+describe('the three lists (KERNEL-757)', () => {
+  it('puts ready PRs first, then what needs a person, then what is on its way, each in the order given', () => {
+    const rows = list([
+      ws('draft', { prState: 'draft' }), ws('cifail', { prState: 'cifail' }), ws('r1'), ws('checks', { prState: 'checks' }),
+      ws('conflict', { prState: 'conflict' }), ws('resolving', { prState: 'resolving' }), ws('changes', { prState: 'changes' })
+    ])
+    expect(rows.map((r) => [r.ws.id, r.group])).toEqual([
+      ['r1', 'ready'], ['cifail', 'attention'], ['conflict', 'attention'], ['changes', 'attention'], ['draft', 'progress'], ['checks', 'progress'], ['resolving', 'progress']
+    ])
+  })
+
+  it('puts a PR only blockers hold back under Needs attention, with Merge anyway', () => {
+    const [row] = list([ws('b', { reviews: [verdict('blockers', { blockers: [{ text: 'No test covers it.' }] })] })], { b: info('b') })
+    expect(row).toMatchObject({ ready: false, group: 'attention', blockers: { count: 1 } })
+    expect(rowState(row)).toMatchObject({ text: 'Blockers found', tone: 'fail' })
+  })
+
+  it("gives each row the sidebar's icon: green to merge, red for a person, the spinner while something runs", () => {
+    const [ready, failed, draft, running] = list([ws('r'), ws('f', { prState: 'cifail' }), ws('d', { prState: 'draft' }), ws('c', { prState: 'checks' })])
+    expect(rowGlyph(ready)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(rowGlyph(failed)).toEqual({ icon: 'pr', tone: 'del', label: 'Checks failed' })
+    expect(rowGlyph(running)).toEqual({ icon: 'spin', tone: 'muted', label: 'Checks running' })
+    expect(rowGlyph(draft)).toEqual({ icon: 'prDraft', tone: 'muted', label: 'Draft' })
+    // A merge pending or running spins the row, whoever started it (KERNEL-520).
+    expect(rowGlyph(ready, 'merge')).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+    expect(rowGlyph(list([ws('m', { prState: 'merging' })])[0])).toEqual({ icon: 'spin', tone: 'muted', label: 'Merging' })
+  })
+
+  it('says a ready row\'s review, since its list says it can merge, and what any other row waits on with the reason', () => {
+    const [approved] = list([ws('a', { reviews: [verdict('approved')] })], { a: info('a') })
+    expect(rowState(approved)).toEqual({ text: 'Code approved', tone: 'idle' })
+    expect(rowState(list([ws('n')])[0])).toEqual({ text: 'Not reviewed', tone: 'idle' })
+    expect(rowState(list([ws('f', { prState: 'cifail' })])[0])).toEqual({ text: 'Checks failed', tone: 'fail' })
+    const [waiting] = list([ws('w', { reviews: [verdict('approved', { sha: 'old' })] })], { w: info('w') })
+    expect(rowState(waiting)).toEqual({ text: 'Waiting for approval', tone: 'idle', why: expect.stringContaining("The code review hasn't approved") })
   })
 })
 

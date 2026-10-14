@@ -817,6 +817,9 @@ const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 33
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
 
+/** Five PRs that can all merge, two of them not reviewed (KERNEL-757). */
+const ALL_READY: OpenPr[] = [LEAD_PRS[0], LEAD_PRS[1], MERGE_A, { ...MERGE_B, review: undefined }, { ...MERGE_C, state: 'ready', review: undefined }]
+
 /**
  * KERNEL-515: the panel's strip for each tab, as the PanelToolbar* fixtures and PanelFilter show it. Noor's PR #147 for KERNEL-155 changed 16 files, which the Changes tab lists, the
  * All files tree marks and the Checks tab counts. Its run script is on port 4303.
@@ -1878,11 +1881,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })(),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   LeadPrsReviewPlanned: scene((f) => leadPrsScene(f, [LEAD_PRS[0], { id: 'ws-705', agentId: 'kai', key: 'KERNEL-705', n: 170, title: 'Toasts rise from the bottom', state: 'ready', stat: [63, 42], review: 'planned' }, LEAD_PRS[3]], 'What can I merge?', "#162 from Kai is ready. #170 passed its checks and its code review is running, so it waits for that approval. #166 is still running checks.")),
-  // A PR with blockers on its latest commit isn't ready: it sits under Still open, says Blockers found and offers Merge anyway (KERNEL-501).
+  // A PR with blockers on its latest commit isn't ready: it sits under Needs attention, says Blockers found and offers Merge anyway (KERNEL-501, KERNEL-757).
   LeadPrsBlockers: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. Theo found 2 blockers on #167, so it isn't ready. #158 is waiting for his approval, and #166 is still running checks.")),
   LeadPrsOverruled: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], OVERRULED_PR, LEAD_PRS[2], LEAD_PRS[3]], 'What can I merge?', "Three PRs are ready. #162 from Kai and #161 from Noor have Theo's approval. You overruled Theo's 2 blockers on #167, so it can merge. #158 is waiting for his approval, and #166 is still running checks.")),
   // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
+  // Every open PR ready: one Merge per row and nothing to merge them all at once (KERNEL-757).
+  LeadPrsAllReady: scene((f) => leadPrsScene(f, ALL_READY, 'What can I merge?', "All five are ready. Theo approved #162, #161 and #331. #330 and #333 haven't been reviewed. Tell me which ones to merge, or merge them from the PRs tab.")),
+  // The PRs tab at the panel's narrowest, 320px, with every list and a blocked PR's Merge anyway: titles end in an ellipsis and nothing overlaps (KERNEL-757).
+  LeadPrsNarrow: scene((f) => leadPrsScene(f, [LEAD_PRS[0], LEAD_PRS[1], BLOCKERS_PR, LEAD_PRS[3], LEAD_PRS[4], LEAD_PRS[6], LEAD_PRS[7]], 'What can I merge?', LEAD_PRS_REPLY)),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
   LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
   // Kernel's team updates in Kernel's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.

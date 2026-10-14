@@ -1,22 +1,29 @@
-import { go } from '../../../store'
-import { Icon } from '../../../ui'
+import type { FocusEvent, PointerEvent } from 'react'
+import { go, useStore } from '../../../store'
+import { Icon, Spinner } from '../../../ui'
 import { PanelTools, RefreshButton } from '../PanelTools'
-import { MergeButton, PrStatusTag } from './MergeButton'
+import { MergeButton } from './MergeButton'
 import { prDisplayTitle } from './model'
-import { useLeadPrs, type LeadPr } from './leadPrList'
+import { rowGlyph, rowState, useLeadPrs, type LeadPr, type PrGroup } from './leadPrList'
 import './pr.css'
+
+/** The tab's lists, in the order they show (KERNEL-757). An empty one is left out. */
+const SECTIONS: { group: PrGroup; title: string }[] = [
+  { group: 'ready', title: 'Ready to merge' },
+  { group: 'attention', title: 'Needs attention' },
+  { group: 'progress', title: 'In progress' }
+]
 
 /**
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
- * Ready ones come first with Merge, the rest follow muted with what they wait on, in the words every place uses (KERNEL-417). One
- * that only blockers hold back says Blockers found and offers Merge anyway, and never counts as ready (KERNEL-501).
- * Each row opens its workspace. The strip beside the tabs holds the tab's action (PanelToolbarPrs.png, KERNEL-515): Refresh, which reads
- * every listed PR again. Each PR merges from its own row (KERNEL-757).
+ * Its rows sit in three lists, Ready to merge, Needs attention and In progress, each title first with one line under it, in the
+ * words every place uses (KERNEL-417, KERNEL-757). One that only blockers hold back offers Merge anyway, and never counts as
+ * ready (KERNEL-501). Each PR merges from its own row. The strip beside the tabs holds the tab's action (PanelToolbarPrs.png,
+ * KERNEL-515): Refresh, which reads every listed PR again.
  */
 export function LeadPrs({ roomId }: { roomId: string }) {
   const rows = useLeadPrs(roomId)
-  const ready = rows.filter((r) => r.ready)
-  const rest = rows.filter((r) => !r.ready)
+  const sections = SECTIONS.map((s) => ({ ...s, rows: rows.filter((r) => r.group === s.group) })).filter((s) => s.rows.length)
   return (
     <>
       <PanelTools>
@@ -26,8 +33,7 @@ export function LeadPrs({ roomId }: { roomId: string }) {
         ? <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
         : (
           <div className="panel-scroll" aria-label="Pull requests">
-            {ready.length > 0 && <Section title="Ready to merge" rows={ready} />}
-            {rest.length > 0 && <Section title="Still open" rows={rest} />}
+            {sections.map((s) => <Section key={s.group} title={s.title} rows={s.rows} />)}
           </div>
         )}
     </>
@@ -36,40 +42,60 @@ export function LeadPrs({ roomId }: { roomId: string }) {
 
 function Section({ title, rows }: { title: string; rows: LeadPr[] }) {
   return (
-    <section>
+    <section aria-label={title}>
       <div className="lp-sec"><h3>{title}</h3><span className="mono">{rows.length}</span></div>
       <ul className="lp-list">{rows.map((r) => <Row key={r.ws.id} row={r} />)}</ul>
     </section>
   )
 }
 
+/** The full title as a tooltip, only when the row cuts it short. It is set before the app's tooltip reads it. */
+const tipIfCut = (e: PointerEvent<HTMLButtonElement> | FocusEvent<HTMLButtonElement>) => {
+  const el = e.currentTarget
+  el.dataset.tip = el.scrollWidth > el.clientWidth ? el.textContent ?? '' : ''
+}
+
+/**
+ * One PR (KERNEL-757). Line one: the state icon the sidebar shows, the title, and Merge or Merge anyway on the right, or an arrow
+ * on hover for a row with nothing to press. Line two: where it stands, the agent, the PR on GitHub and its size. The title's
+ * button covers the row, so a click anywhere opens the workspace.
+ */
 function Row({ row }: { row: LeadPr }) {
-  const { ws, state } = row
+  const { ws } = row
+  const pending = useStore((s) => s.prPending[ws.id])
+  const glyph = rowGlyph(row, pending)
+  const state = rowState(row)
   const stat = ws.stat
   return (
-    <li className="lp-row" data-ready={row.ready || undefined}>
-      <div className="lp-l1">
-        <span className="lp-name">{row.name}</span>
-        {row.key && <span className="lp-key">{row.key}</span>}
-        <span className="lp-key">#{ws.prNumber}</span>
-        <span className="lp-act">
-          {row.ready
-            ? <MergeButton ws={ws} short />
-            : (
-              <>
-                {state && <PrStatusTag status={state} why={state.why} />}
-                {row.blockers && <MergeButton ws={ws} short />}
-              </>
-            )}
-          <button type="button" className="lp-open" aria-label={`Open ${row.name}'s workspace${row.key ? ` for ${row.key}` : ''}`} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>
-            Open<Icon name="ext" size={12} />
+    <li className="lp-row" data-group={row.group}>
+      <span className="lp-glyph" data-tone={glyph.tone} role="img" aria-label={glyph.label}>
+        {glyph.icon === 'spin' ? <Spinner label={null} /> : <Icon name={glyph.icon} size={14} />}
+      </span>
+      <div className="lp-body">
+        <div className="lp-l1">
+          <button type="button" className="lp-open" onPointerOver={tipIfCut} onFocus={tipIfCut} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>
+            {prDisplayTitle(ws)}
           </button>
-        </span>
-      </div>
-      <div className="lp-title ellipsis">{prDisplayTitle(ws)}</div>
-      <div className="lp-l3">
-        <span className="lp-review" data-tone={row.review.tone}>{row.review.text}</span>
-        {stat && <span className="mono lp-stat"><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}
+          {row.ready || row.blockers
+            ? <span className="lp-act"><MergeButton ws={ws} short /></span>
+            : <span className="lp-chev" aria-hidden="true"><Icon name="right" size={14} /></span>}
+        </div>
+        <div className="lp-l2">
+          <span className="lp-state" data-tone={state.tone} data-tip={state.why}>{state.text}</span>
+          <span className="lp-dot" aria-hidden="true">·</span>
+          <span className="lp-name">{row.name}</span>
+          {ws.prNumber
+            ? (
+              <>
+                <span className="lp-dot" aria-hidden="true">·</span>
+                {ws.prUrl
+                  ? <a className="lp-num" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}>#{ws.prNumber}<Icon name="ext" size={12} /></a>
+                  : <span className="lp-num">#{ws.prNumber}</span>}
+              </>
+            )
+            : null}
+          {stat && (stat.added || stat.removed) ? <span className="lp-stat"><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span> : null}
+        </div>
       </div>
     </li>
   )

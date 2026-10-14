@@ -4,16 +4,20 @@ import { mergeBlock, mergeNeedsPr, mergeableState, verdictPhrase } from '@shared
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
-import { workspaceGlyph } from '../../../components/sidebar/workspaceGlyph'
-import { BLOCKERS_STATUS, NO_RULES, blockersHold, prStatus, type PrStatus, type Rules } from './model'
+import { workspaceGlyph, type GlyphTone } from '../../../components/sidebar/workspaceGlyph'
+import { BLOCKERS_STATUS, NO_RULES, PR_STATUS, blockersHold, busyLabel, prStatus, type PrAction, type PrStatus, type Rules } from './model'
+
+/**
+ * The PRs tab's lists, in the order they show (KERNEL-757): what can merge, what needs a person (checks failed, conflicts,
+ * changes requested, blockers), and what is still on its way (checks running, a draft, waiting for approval).
+ */
+export type PrGroup = 'ready' | 'attention' | 'progress'
 
 /** One row of the Lead's PRs tab (KERNEL-354). */
 export interface LeadPr {
   ws: Workspace
   /** The agent who owns the workspace. */
   name: string
-  /** The issue the workspace started on, when it started on one. */
-  key?: string
   /** It can merge, or its merge is running (KERNEL-411). */
   ready: boolean
   /**
@@ -24,7 +28,14 @@ export interface LeadPr {
   /** Blockers on the latest commit are all that holds it back: who found them and how many. It offers Merge anyway, never Merge (KERNEL-501). */
   blockers?: { reviewer: string; count: number }
   review: { text: string; tone: 'good' | 'bad' | 'faint' }
+  /** Which list it sits in. */
+  group: PrGroup
 }
+
+/** A row that waits on nothing goes on its way; one in the fail tone, without anything running, needs a person. */
+const GROUPS: PrGroup[] = ['ready', 'attention', 'progress']
+
+const groupOf = (r: Omit<LeadPr, 'group'>): PrGroup => (r.ready ? 'ready' : !r.state?.spin && r.state?.tone === 'fail' ? 'attention' : 'progress')
 
 /** A workspace with a PR that is not merged or closed. Reviews, the Lead's own and archived workspaces never count. */
 export const listsPr = (ws: Workspace, leadId: string | undefined) =>
@@ -39,15 +50,16 @@ export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined): LeadPr
 }
 
 /**
- * The room's open PRs, ready ones first, each group in the order the workspaces came in. Ready is the rule every Merge button
- * uses (`mergeBlock`), so the tab never offers a Merge the header would refuse.
+ * The room's open PRs in the tab's three lists, ready ones first, then what needs a person, then what is on its way, each in
+ * the order the workspaces came in (KERNEL-757). Ready is the rule every Merge button uses (`mergeBlock`), so the tab never
+ * offers a Merge the header would refuse.
  */
 export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined; roomId: string; prs: Record<string, PrInfo>; rules: Rules; agents: AgentDef[] }): LeadPr[] {
   const name = (id: string) => o.agents.find((a) => a.id === id)?.name ?? id
-  const rows = workspaces.filter((w) => w.roomId === o.roomId && listsPr(w, o.leadId)).map((ws): LeadPr => {
+  const rows = workspaces.filter((w) => w.roomId === o.roomId && listsPr(w, o.leadId)).map((ws): Omit<LeadPr, 'group'> => {
     const pr = o.prs[ws.id]
     const why = mergeBlock(ws, pr, o.rules, name)
-    const base = { ws, name: name(ws.agentId), key: ws.source?.kind === 'issue' ? ws.source.id : undefined, review: reviewLine(ws, pr) }
+    const base = { ws, name: name(ws.agentId), review: reviewLine(ws, pr) }
     // A PR merging stays where Merge was pressed, with the ready ones, until GitHub says it merged (KERNEL-411).
     if (!why || ws.prState === 'merging') return { ...base, ready: true }
     const status = prStatus(ws.prState)
@@ -59,8 +71,38 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     const approval = mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
     const label = approval ? 'Waiting for approval' : workspaceGlyph(ws, { waiting: [], running: false }).label
     return { ...base, ready: false, state: { label, tone: 'idle', spin: false, why } }
-  })
-  return [...rows.filter((r) => r.ready), ...rows.filter((r) => !r.ready)]
+  }).map((r): LeadPr => ({ ...r, group: groupOf(r) }))
+  return GROUPS.flatMap((g) => rows.filter((r) => r.group === g))
+}
+
+/** A row's icon (KERNEL-757): the pull request in the sidebar's tones, green to merge, red for a person, or the spinner while something runs. */
+export interface RowGlyph { icon: 'pr' | 'prDraft' | 'spin'; tone: GlyphTone; label: string }
+
+/**
+ * The icon in front of a row. It spins while the PR merges, while an action main announced runs on it (`pending`, KERNEL-520) and
+ * while its state runs, as the sidebar's icon does. Its label is the state, for a screen reader.
+ */
+export function rowGlyph(row: LeadPr, pending?: PrAction): RowGlyph {
+  const { ws, state } = row
+  if (ws.prState === 'merging') return { icon: 'spin', tone: 'muted', label: PR_STATUS.merging.label }
+  if (pending) return { icon: 'spin', tone: 'muted', label: busyLabel[pending] }
+  if (state?.spin) return { icon: 'spin', tone: 'muted', label: state.label }
+  if (row.group === 'ready') return { icon: 'pr', tone: 'add', label: 'Ready to merge' }
+  const label = state?.label ?? 'Open'
+  if (row.group === 'attention') return { icon: 'pr', tone: 'del', label }
+  return { icon: ws.prState === 'draft' ? 'prDraft' : 'pr', tone: 'muted', label }
+}
+
+/** What a row's second line says first (KERNEL-757). */
+export interface RowState { text: string; tone: 'idle' | 'fail'; why?: string }
+
+/**
+ * A ready row says its review, since its list already says it can merge. Any other row says what it waits on, in the words and
+ * tone every place uses (KERNEL-417), with the rule's reason as its tooltip.
+ */
+export function rowState(row: LeadPr): RowState {
+  if (row.ready || !row.state) return { text: row.review.text, tone: 'idle' }
+  return { text: row.state.label, tone: row.state.tone === 'fail' ? 'fail' : 'idle', ...(row.state.why ? { why: row.state.why } : {}) }
 }
 
 const NO_AGENTS: AgentDef[] = []
