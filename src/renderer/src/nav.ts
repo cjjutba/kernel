@@ -158,8 +158,8 @@ function soundSource(v: any): WorkspaceSource | undefined {
 
 /** What New chat had picked, as a saved route holds it, or nothing when a field is missing or the wrong type. */
 function soundPicks(v: any): NewChatPicks | undefined {
-  const ok = (v?.mode === 'worktree' || v?.mode === 'current') && isText(v.model) && isText(v.effort) && typeof v.plan === 'boolean' && ['baseRef', 'pickedRef', 'filled'].every((k) => typeof v[k] === 'string')
-  return ok ? { mode: v.mode, model: v.model, effort: v.effort, plan: v.plan, baseRef: v.baseRef, pickedRef: v.pickedRef, filled: v.filled } : undefined
+  const ok = (v?.mode === 'worktree' || v?.mode === 'current') && isText(v.model) && isText(v.effort) && typeof v.plan === 'boolean' && typeof v.baseRef === 'string'
+  return ok ? { mode: v.mode, model: v.model, effort: v.effort, plan: v.plan, baseRef: v.baseRef } : undefined
 }
 
 /** A saved route made sound, or nothing. Missing ids would open a screen with no room or workspace, so they are rejected here. */

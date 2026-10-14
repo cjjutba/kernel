@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Approval, Provider } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, go, useStore } from '../../store'
-import { isLeadWorkspace, leadOf, openLead, openRoom } from '../../lead'
+import { isLeadWorkspace, leadOf, openLead, openNewChat, openRoom } from '../../lead'
 import { currentThread } from '../../nav'
 import { openRow, openThreads } from '../../components/sidebar/slots'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
@@ -70,7 +70,7 @@ export function CommandPalette() {
   }, [route, rooms, workspaces, chats, threads])
   const { items, more } = useMemo(() => buildItems({
     route, rooms, workspaces, approvals, agents, terminal, accounts, chats: roomChats, shared: Object.values(shared),
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs, ws) => openRow(roomId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }), switchAccount }
+    act: { go, openNewChat, newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs, ws) => openRow(roomId, { kind: 'chat', thread, ws, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }), switchAccount }
   }), [route, rooms, workspaces, approvals, agents, terminal, accounts, roomChats, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)

@@ -15,12 +15,14 @@ export function summaryText(ready: number, open: number): string {
  * while something can merge; in the chat header (`capsule`) it sits in a capsule of the same tone, like `PrHeader`. Open PRs
  * that can't merge yet are counted as such, never as "No open PRs" (KERNEL-411).
  */
-export function LeadPrSummary({ roomId, spread, capsule }: { roomId: string; spread?: boolean; capsule?: boolean }) {
+export function LeadPrSummary({ roomId, spread, capsule, quiet }: { roomId: string; spread?: boolean; capsule?: boolean; quiet?: boolean }) {
   const rows = useLeadPrs(roomId)
   const ready = rows.filter((r) => r.ready).length
   const text = summaryText(ready, rows.length)
   const tone = ready ? 'ready' : 'idle'
   const open = () => { actions.ui.setWorkspaceView({ leadRight: 'prs' }); actions.ui.setRightPanel(true) }
+  // `quiet` leaves the capsule out while there is no PR to count, as a chat just started from New chat has none (KERNEL-788).
+  if (quiet && !rows.length) return null
   const state = <span className="pr-state"><Icon name="pr" size={14} /><span className="pr-label">{text}</span></span>
   return (
     <span className={capsule ? 'pr-tone pr-cap' : 'pr-tone'} data-tone={tone}>

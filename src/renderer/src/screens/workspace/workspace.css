@@ -49,7 +49,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .tab-caret { width: 22px; height: 22px; border-radius: var(--r-sm); }
 .tab-caret.more, .tab-pen { transition: opacity 0.12s; }
 .tab-caret.more { opacity: 0; }
-.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more { opacity: 1; }
+.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more, .tab-group[data-rest] .tab-caret.more { opacity: 1; }
 .tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
 
 /* transcript */

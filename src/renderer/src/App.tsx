@@ -48,7 +48,6 @@ import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { ConfirmRevert } from './screens/workspace/ConfirmRevert'
-import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
 import { useArchiveLanding } from './screens/workspace/archiveLanding'
 import { useArchiveStage } from './screens/workspace/archiveMotion'
@@ -93,7 +92,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
-    case 'leadNew': return <LeadNewScreen roomId={route.roomId} />
+    case 'leadNew': return <LeadNewScreen roomId={route.roomId} source={route.source} picks={route.picks} />
     case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} agentId={route.agentId} />
     case 'devUi': return <DevUi page={route.page} />
   }
@@ -102,7 +101,6 @@ function Screen({ route }: { route: Route }): ReactNode {
 /** The one modal shell's contents (DESIGN.md: one modal at a time). */
 function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
-    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} source={modal.source} picks={modal.picks} />
     case 'search': return <CommandPalette />
     case 'newRoom': return <NewRoom prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />

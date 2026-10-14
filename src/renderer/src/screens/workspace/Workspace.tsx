@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
+import type { ChangedFile, NewChatPicks, Room, Workspace as WorkspaceModel, WorkspaceSource } from '@shared/types'
 import { call } from '../../api'
-import { actions, getState, loadWorkspace, useStore } from '../../store'
+import { actions, getState, loadWorkspace, panelShownIn, useStore } from '../../store'
 import { Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
@@ -11,6 +11,7 @@ import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
+import { NewChatHeader, NewChatTab } from './NewChatBar'
 import { NewLeadChat } from './NewLeadChat'
 import { nextTab } from './nextTab'
 import { OpenIn } from './OpenIn'
@@ -97,7 +98,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const view = useStore((s) => s.ui.workspace)
   const stored = useStore((s) => tabOf(s, workspaceId))
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
-  const panels = useStore((s) => s.ui.rightPanel)
+  // A chat started from New chat keeps its panel closed until the toggle is pressed in it (KERNEL-788).
+  const panels = useStore((s) => panelShownIn(s.ui, workspaceId))
+  const held = useStore((s) => s.ui.panelHeld.includes(workspaceId))
   const bottomRatio = useStore((s) => s.ui.bottomRatio)
   // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
   const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
@@ -233,6 +236,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     setTexts((list) => list.filter((t) => t.id !== id))
     afterClosing(id)
   }
+  // New chat is the only tab while the room has no chat and nothing else is open, so the row is its one tab (KERNEL-788).
+  const alone = newChatShown && !order.length
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
@@ -241,7 +246,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // the panel's head while it is open, in a neutral cell beside the PR band so it never takes the band's tone (KERNEL-769).
   return (
     <div className="panel ws-panel">
-      <header className="header">
+      {newChatShown ? <NewChatHeader room={room} /> : <header className="header">
         <SidebarToggle />
         <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
@@ -251,13 +256,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <IssueKey ws={ws} room={room} />
         <span className="grow" />
         <OpenIn ws={ws} />
-        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule />)}
+        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule quiet={held} />)}
         {!panels && <RightPanelToggle name="panels" />}
-      </header>
+      </header>}
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          {alone ? <NewChatTab /> : <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />}
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
@@ -284,7 +289,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         </section>
       </OpenText.Provider>
       </OpenImage.Provider>
-      {panels && (
+      {panels && !newChatShown && (
         <aside ref={aside} aria-label="Workspace panels" className="ws-aside" style={panelWidth === null ? undefined : { width: `max(${PANEL_MIN}px, min(${panelWidth}px, 100cqw - ${CHAT_MIN}px))` }}>
           <ResizeHandle
             targetRef={aside} edge="left" label="Resize panel" size={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultSize={panelDefault}
@@ -307,23 +312,17 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 }
 
 /**
- * New chat in a room with no open chat (KERNEL-366). No workspace exists before the first message, which makes the chat's own
- * worktree (KERNEL-405), so there are no tabs and no right panel.
+ * The New chat page (KERNEL-788): the `leadNew` route, the same two header rows as a chat and the box below. No workspace exists before
+ * the first message, which makes the chat's own worktree (KERNEL-405), so there is no right panel. `source` and `picks` are the route's.
  */
-export function LeadNewScreen({ roomId }: { roomId: string }) {
+export function LeadNewScreen({ roomId, source, picks }: { roomId: string; source?: WorkspaceSource; picks?: NewChatPicks }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   return (
     <div className="panel ws-panel">
-      <header className="header">
-        <SidebarToggle />
-        <RoomIcon room={room} className="crumb-avatar" />
-        <span className="crumb">{room?.name}</span>
-        <span className="muted"><Icon name="right" size={12} /></span>
-        <h1 className="ellipsis">New chat</h1>
-        <span className="grow" />
-      </header>
+      <NewChatHeader room={room} />
       <section aria-label="Agent" className="ws-main">
-        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} /></div>
+        <NewChatTab />
+        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} source={source} picks={picks} /></div>
       </section>
     </div>
   )
