@@ -265,6 +265,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { threadId, title: t?.title ?? '', workspaces: [...rows.filter((w) => !w.lead), ...rows.filter((w) => w.lead)].map((w) => ({ id: w.id, name: w.name, own: !!w.lead, running: running(w.id), ...(w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? { pr: w.prNumber } : {}), dirty: w.stat?.files ?? 0, unpushed: 0 })) }
     },
     'threads.archive': async () => { throw new Error('Fixture mode does not archive chats.') },
+    'openItems.list': async ({ threadId }) => (f.openItems ?? []).filter((i) => i.threadId === threadId),
+    'openItems.dismiss': async () => ({ ok: true }),
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),

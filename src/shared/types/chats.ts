@@ -298,6 +298,36 @@ export interface TeamUpdate {
 }
 
 /**
+ * Something a Lead chat owes until the Lead acts on it (KERNEL-749): a teammate's question, a review's blockers not passed on
+ * yet, a hand-off a teammate proposed, or a teammate the user addressed with @. Kernel opens one from the real event and
+ * closes it when the Lead messages that workspace, creates its workspace or asks the user about it, or when the user dismisses it.
+ */
+export type OpenItemKind = 'question' | 'blockers' | 'handoff.proposed' | 'mention'
+
+export interface OpenItem {
+  id: string
+  kind: OpenItemKind
+  roomId: string
+  /** The Lead chat it belongs to, and the tab it opened in. */
+  threadId: string
+  chatId: string
+  /** The teammate workspace it is about: the one that asked or proposed, or the work the review blocked. A mention has none. */
+  workspaceId?: string
+  /** That teammate, or the one the user addressed, by id and name. */
+  agentId: string
+  name: string
+  /** A question's text, or the task a proposed hand-off names. */
+  text?: string
+  /** The teammate a hand-off was proposed for. */
+  proposed?: { agentId: string; name: string }
+  /** How many blockers the review found. */
+  blockers?: number
+  /** Kernel has listed it in a reminder at Stop. A reminder goes again only once a new item opens. */
+  reminded?: true
+  createdAt: number
+}
+
+/**
  * A reviewer's verdict from submit_review. `sha` is the review worktree's HEAD; a verdict for an older commit is stale. A review
  * workspace keeps one verdict per kind of review (KERNEL-549).
  */

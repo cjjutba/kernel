@@ -592,7 +592,12 @@ export class Lead extends Feature {
       unsaved: (id) => this.k.archive.unsavedOf(id),
       planApproved: () => this.sessions.planApproved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
-      acted: (agentId) => this.sessions.mentions.acted(chat.id, agentId),
+      acted: (a) => {
+        if ('messaged' in a) this.k.openItems.messaged(chat.id, a.messaged)
+        else if ('created' in a) this.k.openItems.created(chat.id, a.created)
+        else this.k.openItems.asked(chat.id, a.asked)
+      },
+      openMarks: () => this.k.openItems.marks(chat.id),
       hireAgent: async (a, scope) => {
         const was = this.k.team.agentCache.get(roomId) ?? await this.k.team.agents(roomId)
         const { agent, pr } = await this.k.agentChanges.hire(roomId, { id: a.id, text: renderAgentFile(a) }, scope)
