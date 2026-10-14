@@ -149,6 +149,8 @@ const manyAccounts = [secondClaude, mainClaude, footerKey(), thirdClaude, ...man
 const usageHome = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => ({
   ...teamFixtures.UpdateReady, accounts: [secondClaude, mainClaude, footerKey(), thirdClaude, footerCodex], usage: footerUsage(), ...extra, ui: { ...teamFixtures.UpdateReady.ui, ...ui }
 })
+/** The footer after a switch: the accounts push comes first, as it does from the engine, so the notice can name both accounts (KERNEL-699). */
+const switchedHome = (accounts: AccountProfile[], switched: PushEvent): Fixture => usageHome({ accounts, push: [{ type: 'accounts', accounts }, switched] })
 /** The popover open over the same home, in Detailed unless `view` says Compact. */
 const usagePopover = (extra: Partial<Fixture> = {}, ui: Partial<Fixture['ui']> = {}): Fixture => usageHome(extra, { menu: 'plan', ...ui })
 /** Settings, Accounts with each account's nickname, plan and usage windows (KERNEL-561, KERNEL-680). `tab` scrolls to that provider. */
@@ -481,6 +483,9 @@ export const platformFixtures: Record<string, Fixture> = {
   UsageFooterManyAccounts: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   UsageFooterNarrow: usageHome({ accounts: manyAccounts, usage: manyUsage() }),
   UsageFooterAtLimit: usageHome({ usage: [...footerUsage().filter((l) => !(l.accountId === 'third')), { ...window5('claude', 'third', 100, next(15, 0)), status: 'rejected' }, windowWeek('claude', 'third', 40, nextOn(3, 3, 0))] }),
+  // KERNEL-699: every switch shows a notice with Undo. Your own says what you now use, and Kernel's at a limit says why it moved.
+  UsageSwitchToast: switchedHome([{ ...secondClaude, active: false }, { ...mainClaude, active: true }, footerKey(), thirdClaude, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'cli', to: 'main', reason: 'user' }),
+  UsageSwitchToastAtLimit: switchedHome([{ ...secondClaude, active: false }, mainClaude, footerKey(), { ...thirdClaude, active: true }, footerCodex], { type: 'accountSwitched', provider: 'claude', from: 'main', to: 'third', reason: 'limit', limit: 'five_hour' }),
   // KERNEL-697: Codex's chip opens the popover with Codex expanded and Claude Code folded.
   UsagePopoverFromCodex: usagePopover({}, { usageOpen: ['codex'] }),
   UsagePopoverManyAccounts: usagePopover({ accounts: manyAccounts, usage: manyUsage() }),
