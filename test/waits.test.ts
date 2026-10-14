@@ -720,8 +720,8 @@ describe('the Lead\'s tools', () => {
   it('create_workspace and wait_for_merge refuse work that merges into another base (KERNEL-693)', async () => {
     const { k, room, lead, target } = await setup()
     const noor = k.store.saveWorkspace({ ...await target(k, 164), baseRef: 'origin/release/1.2' })
-    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const tools = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead))
+    const leadAgent = (await k.agents(room.id)).find((a) => a.lead)!
+    const tools = kernelTools(k.lead['leadToolDeps'](room.id, leadAgent, lead))
     const call = async (name: string, input: object) => { const r = await tools.find((t) => t.name === name)!.handler(input as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
     // The hand-off would start from the base Settings set, main.
     expect(await call('create_workspace', { agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] })).toEqual({ isError: true, text: 'Not created: PR #164 merges into release/1.2, and the new workspace would start from main, so its merge never reaches that branch.' })

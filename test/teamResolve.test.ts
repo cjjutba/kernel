@@ -25,7 +25,7 @@ const warningsOf = (agents: AgentDef[]) => Object.fromEntries(agents.filter((a) 
 
 const KAI = file('kai', 'name: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob')
 const NOOR = file('noor', 'name: noor\ndescription: Backend engineer.')
-const ROWAN = file('rowan', 'name: rowan\ndescription: Lead. Plans.\nrole: Lead\nlead: true')
+const PLANNER = file('planner', 'name: planner\ndescription: Lead. Plans.\nrole: Lead\nlead: true')
 const THEO = file('theo', 'name: theo\ndescription: Reviewer. Read-only.\nrole: Reviewer\ntools: Read, Grep, Glob, Bash')
 
 describe('resolveTeam', () => {
@@ -69,29 +69,28 @@ describe('resolveTeam', () => {
   })
 
   // KERNEL-692: a repo's Lead file customizes Kernel instead of replacing it.
-  // The rowan.md cases here are on purpose: an old repo file named rowan.md still customizes Kernel.
-  it('lets a rowan.md marked Lead customize Kernel, which shows as Kernel', async () => {
-    const rowan = file('rowan', 'name: rowan\ndescription: Lead. Plans.\nrole: Lead\nlead: true\nmodel: opus\neffort: high\ntools: Read, Bash\ndisallowedTools: Edit', 'You plan for this repo.')
-    const r = await team([KAI, NOOR, rowan, THEO])
+  it('lets a planner.md marked Lead customize Kernel, which shows as Kernel', async () => {
+    const planner = file('planner', 'name: planner\ndescription: Lead. Plans.\nrole: Lead\nlead: true\nmodel: opus\neffort: high\ntools: Read, Bash\ndisallowedTools: Edit', 'You plan for this repo.')
+    const r = await team([KAI, NOOR, planner, THEO])
     expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member'], ['noor', 'Noor', 'member'], ['theo', 'Theo', 'reviewer']])
-    expect(r.agents[0]).toMatchObject({ prompt: 'You plan for this repo.', tools: ['Read', 'Bash'], disallowedTools: ['Edit'], model: 'opus', effort: 'high', file: '/repo/.claude/agents/rowan.md', role: 'Lead' })
+    expect(r.agents[0]).toMatchObject({ prompt: 'You plan for this repo.', tools: ['Read', 'Bash'], disallowedTools: ['Edit'], model: 'opus', effort: 'high', file: '/repo/.claude/agents/planner.md', role: 'Lead' })
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['file', 'file'])
     expect(warningsOf(r.agents)).toEqual({})
   })
 
   it('lets kernel.md customize Kernel, over a file marked Lead and over [team] lead', async () => {
     const kernel = file('kernel', 'name: kernel\ndescription: Lead.\ntools: Read', 'You are Kernel, my way.')
-    const r = await team([KAI, ROWAN, kernel], { lead: 'rowan' })
-    expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member'], ['rowan', 'Rowan', 'member']])
+    const r = await team([KAI, PLANNER, kernel], { lead: 'planner' })
+    expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member'], ['planner', 'Planner', 'member']])
     expect(r.agents[0]).toMatchObject({ prompt: 'You are Kernel, my way.', tools: ['Read'], file: '/repo/.claude/agents/kernel.md' })
     expect(r.leadFrom).toBe('file')
-    expect(warningsOf(r.agents)).toEqual({ rowan: ['second-lead:Kernel'] })
+    expect(warningsOf(r.agents)).toEqual({ planner: ['second-lead:Kernel'] })
     // Without kernel.md, [team] lead picks the file, over the first marked Lead by name.
     const ada = file('ada', 'name: ada\ndescription: Plans.\nlead: true', 'Ada plans, then opens a PR.')
-    const picked = await team([KAI, ROWAN, ada], { lead: 'rowan' })
-    expect(picked.agents[0]).toMatchObject({ id: 'kernel-lead', name: 'Kernel', file: '/repo/.claude/agents/rowan.md' })
+    const picked = await team([KAI, PLANNER, ada], { lead: 'planner' })
+    expect(picked.agents[0]).toMatchObject({ id: 'kernel-lead', name: 'Kernel', file: '/repo/.claude/agents/planner.md' })
     expect(warningsOf(picked.agents)).toEqual({ ada: ['second-lead:Kernel'] })
-    expect((await team([KAI, ROWAN, ada])).agents[0]).toMatchObject({ prompt: 'Ada plans, then opens a PR.' })
+    expect((await team([KAI, PLANNER, ada])).agents[0]).toMatchObject({ prompt: 'Ada plans, then opens a PR.' })
   })
 
   it('shows a teammate named Kernel as Kernel (agent), with a warning', async () => {
@@ -145,27 +144,27 @@ describe('resolveTeam', () => {
 
   it('follows [team]: the Lead, no reviewer, and who takes tasks', async () => {
     const helper = file('scout', 'name: scout\ndescription: Looks things up.\ntools: Read, WebFetch')
-    const r = await team([KAI, NOOR, ROWAN, helper], { lead: 'noor', reviewer: 'none', helpers: ['kai'], members: ['scout'] })
-    expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'helper'], ['rowan', 'Rowan', 'member'], ['scout', 'Scout', 'member']])
+    const r = await team([KAI, NOOR, PLANNER, helper], { lead: 'noor', reviewer: 'none', helpers: ['kai'], members: ['scout'] })
+    expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'helper'], ['planner', 'Planner', 'member'], ['scout', 'Scout', 'member']])
     expect(r.agents[0].file).toBe('/repo/.claude/agents/noor.md')
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['file', 'setting'])
-    expect(warningsOf(r.agents)).toEqual({ rowan: ['second-lead:Kernel'] })
+    expect(warningsOf(r.agents)).toEqual({ planner: ['second-lead:Kernel'] })
     // `kernel-lead` names Kernel, which leads anyway, so the file marked Lead still customizes it.
-    const builtins = await team([KAI, ROWAN], { lead: 'kernel-lead', reviewer: 'kernel-reviewer' })
+    const builtins = await team([KAI, PLANNER], { lead: 'kernel-lead', reviewer: 'kernel-reviewer' })
     expect(roles(builtins.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member']])
     expect([builtins.leadFrom, builtins.reviewerFrom]).toEqual(['file', 'setting'])
   })
 
   it('flags a [team] setting that names nobody, and resolves as if it were not there', async () => {
-    const r = await team([KAI, ROWAN], { lead: 'ghost', reviewer: 'rowan' })
+    const r = await team([KAI, PLANNER], { lead: 'ghost', reviewer: 'planner' })
     expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member']])
-    // With no reviewer to hold it, the reviewer's warning goes to the Lead. Rowan customizes Kernel, so it can't review.
-    expect(warningsOf(r.agents)).toEqual({ 'kernel-lead': ['setting-missing:lead = "ghost"', 'setting-missing:reviewer = "rowan"'] })
+    // With no reviewer to hold it, the reviewer's warning goes to the Lead. Planner customizes Kernel, so it can't review.
+    expect(warningsOf(r.agents)).toEqual({ 'kernel-lead': ['setting-missing:lead = "ghost"', 'setting-missing:reviewer = "planner"'] })
   })
 
-  it('keeps the name Kernel when the repo has its own Rowan or Lead', async () => {
-    const r = await team([file('rowan', 'name: rowan\ndescription: Frontend engineer.\nrole: Frontend'), file('lead', 'name: lead\ndescription: x\nrole: Data')])
-    expect(roles(r.agents)).toEqual([KERNEL, ['lead', 'Lead', 'member'], ['rowan', 'Rowan', 'member']])
+  it('keeps the name Kernel when the repo has its own Planner or Lead', async () => {
+    const r = await team([file('planner', 'name: planner\ndescription: Frontend engineer.\nrole: Frontend'), file('lead', 'name: lead\ndescription: x\nrole: Data')])
+    expect(roles(r.agents)).toEqual([KERNEL, ['lead', 'Lead', 'member'], ['planner', 'Planner', 'member']])
     expect(r.agents[0].prompt).toMatch(/^You are Kernel, the Lead/)
   })
 
@@ -232,7 +231,7 @@ describe('resolveTeam', () => {
   })
 
   it("keeps only the roster's agents on the team, and the Lead and the reviewer whatever it says", async () => {
-    const files = [KAI, NOOR, ROWAN, THEO, file('ivy', 'name: ivy\ndescription: QA.\nrole: QA')]
+    const files = [KAI, NOOR, PLANNER, THEO, file('ivy', 'name: ivy\ndescription: QA.\nrole: QA')]
     const r = await team(files, { roster: ['kai', 'ghost'] })
     expect(roles(r.agents)).toEqual([KERNEL, ['kai', 'Kai', 'member'], ['theo', 'Theo', 'reviewer']])
     expect([r.leadFrom, r.reviewerFrom]).toEqual(['file', 'file'])

@@ -4,6 +4,6 @@
 
 With no commits of its own and no changed tracked files, `fastForward` moves it to its base, `fetchFailed` is cleared, and the chat gets a note that it now starts from the latest base. With work on the branch, or when git refuses the fast-forward, Kernel posts one message asking the teammate to rebase onto its base, and clears `fetchFailed` once the message went. A branch that is already level with its base just loses `fetchFailed`, with the same note. A workspace caught up in a check isn't also checked for conflicts in that check, so it gets one message.
 
-A busy workspace waits. Its turn end already calls BaseWatch for that workspace (KERNEL-180), and while it has `fetchFailed` that check runs a normal fetch, reusing one that passed in the last minute. That fetch is the retry, so there is no timer. Chats with Rowan are left out: `syncLead` keeps Rowan's worktree on its base (KERNEL-181).
+A busy workspace waits. Its turn end already calls BaseWatch for that workspace (KERNEL-180), and while it has `fetchFailed` that check runs a normal fetch, reusing one that passed in the last minute. That fetch is the retry, so there is no timer. Chats with Kernel are left out: `syncLead` keeps Kernel's worktree on its base (KERNEL-181).
 
 Amends KERNEL-542 (a recent fetch is reused by every caller) and KERNEL-179 (a workspace that started from a stale base stays there). KERNEL-653.
