@@ -229,16 +229,16 @@ export function syncClaudePlugins(home: string, root: string) {
   for (const f of PLUGIN_FILES) {
     const own = join(home, 'plugins', f.name)
     const shared = join(root, 'plugins', f.name)
-    if (!lstatOf(own)?.isFile()) continue
+    if (!lstatOf(own)?.isFile()) { console.error(`TMPDEBUG sync own-not-file ${own} ${JSON.stringify(lstatOf(own)?.isSymbolicLink())}`); continue }
     mkdirSync(join(root, 'plugins'), { recursive: true })
     const unlockShared = lockConfig(shared)
-    if (!unlockShared) continue
+    if (!unlockShared) { console.error(`TMPDEBUG sync shared-locked ${shared}`); continue }
     try {
       const unlockOwn = lockConfig(own)
-      if (!unlockOwn) continue
+      if (!unlockOwn) { console.error(`TMPDEBUG sync own-locked ${own}`); continue }
       try {
         const merged = mergePluginFile(own, shared, base[f.name], { home, root, key: f.key })
-        if (!merged) continue
+        if (!merged) { console.error(`TMPDEBUG sync merge-undefined ${own} ${shared}`); continue }
         base[f.name] = merged
         changed = true
       } finally { unlockOwn() }
