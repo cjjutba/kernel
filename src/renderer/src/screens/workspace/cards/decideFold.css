@@ -1,0 +1,4 @@
+/* An approval that was decided leaves the way an archived row does (KERNEL-834, DESIGN.md Motion). Same lengths and curve as .row-fold, but no 3px gap to close. */
+.decide-fold.decide-fold { pointer-events: none; min-height: 0; interpolate-size: allow-keywords; overflow-y: clip; animation: decide-fold var(--archive-fold) ease-out forwards, archive-fade var(--archive-fade) ease-out forwards; }
+@keyframes decide-fold { to { height: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; border-bottom-width: 0; } }
+@media (prefers-reduced-motion: reduce) { .decide-fold.decide-fold { animation: none; } }

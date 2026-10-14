@@ -8,6 +8,7 @@ import { Markdown } from '../markdown'
 import { HireServers, hireName } from './HireServers'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
+import { decideAtOnce, useFoldPhase } from './decideFold'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { AnswerBubble } from './AnswerBubble'
 import { allAnswered, answerDecision, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, questionAnswer, type Picked } from './steps'
@@ -23,7 +24,7 @@ function Result({ a }: { a: Approval }) {
 }
 
 function PermCard({ a, who }: { a: Approval; who: string }) {
-  const [busy, run] = useBusy<'deny' | 'always' | 'once'>()
+  const phase = useFoldPhase(a.id)
   const input = (a.input ?? {}) as Record<string, unknown>
   const bash = a.toolName === 'Bash'
   const path = String(input.file_path ?? input.path ?? '')
@@ -35,11 +36,11 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
       {a.detail && <span className="sub">{a.detail}</span>}
       {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
       {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
-      {a.status === 'pending' ? (
-        <div className="acts">
-          <Button busy={busy === 'deny'} busyPattern="pulse" busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
-          <Button busy={busy === 'always'} busyPattern="pulse" busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>Always allow here</Button>
-          <Button variant="primary" busy={busy === 'once'} busyPattern="pulse" busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('once', () => decide(a, { behavior: 'allow' }))}>Allow once</Button>
+      {phase === 'folded' && a.status === 'pending' ? null : a.status === 'pending' || phase === 'folding' ? (
+        <div className={`acts${phase ? ' decide-fold' : ''}`}>
+          <Button onClick={() => decideAtOnce(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
+          <Button onClick={() => decideAtOnce(a, { behavior: 'allow', always: true })}>Always allow here</Button>
+          <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>Allow once</Button>
         </div>
       ) : <Result a={a} />}
     </section>
@@ -306,13 +307,14 @@ function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
 /** Approve, or say what should change. The words depend on who planned: the Lead hands off, anyone else builds. */
 function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   const [asking, setAsking] = useState(false)
-  const [busy, run] = useBusy()
-  if (a.status !== 'pending') return <Result a={a} />
+  const phase = useFoldPhase(a.id)
+  if (phase === 'folded' && a.status === 'pending') return null
+  if (a.status !== 'pending' && phase !== 'folding') return <Result a={a} />
   if (asking) return <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please revise the plan.' })} />
   return (
-    <div className="acts">
-      <Button disabled={!!busy} onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
-      <Button variant="primary" busy={!!busy} busyPattern="pulse" busyLabel="Approving" onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
+    <div className={`acts${phase ? ' decide-fold' : ''}`}>
+      <Button onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
+      <Button variant="primary" onClick={() => decideAtOnce(a, { behavior: 'allow' })}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
     </div>
   )
 }
