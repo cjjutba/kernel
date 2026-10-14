@@ -60,7 +60,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, teamOf: () => o.team, mcpFor: () => undefined, envFor: () => (o.mcp ? { ...fake.env, FAKE_CODEX_MCP: o.mcp } : fake.env),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, roomTools: () => allowTools, allowToolInRoom: (_room, rule) => { allowTools.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability, referencesFor: () => o.references,
     codexFor: () => ({ bin: fake.bin, home: o.account?.home(), personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined }),
-    ...(o.account ? { accountFor: () => o.account?.id(), switchNote: (_p: string, id: string) => `Now on ${id}` } : {}),
+    ...(o.account ? { accountFor: () => o.account?.id(), moveNote: (c: Chat, from: string) => `Moved from ${from} to ${c.ranOn}`, emailOf: (_p: string, id?: string) => (id ? `${id}@example.com` : undefined) } : {}),
     disabledFor: () => ({ skills: [], mcp: o.off ?? [] }), aliasesFor: () => o.aliases, accessFor: () => o.access, onMcp: o.onMcp,
     // What a Lead chat owes, on the same store (KERNEL-749).
     openItems
@@ -263,6 +263,20 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.store.chat('chat')).toMatchObject({ context: 25, contextUsage: { used: 45000, max: 180000, rows: [] } })
     // Asked for the CLI login's windows, the live process on it answers (KERNEL-567).
     expect(await t.sessions.usage([{ provider: 'codex' }])).toContainEqual({ type: 'five_hour', provider: 'codex', status: 'allowed', utilization: 0.4, resetsAt: 1791734191, readAt: expect.any(Number) })
+  })
+
+  it("saves the turn's cache numbers from its first and last model calls as the chat's last turn (KERNEL-842)", async () => {
+    const t = track(await setup({ account: { id: () => 'work', home: () => '' } }))
+    const counts = (input: number, cached: number, written: number, output: number) => ({ totalTokens: input + output, inputTokens: input, cachedInputTokens: cached, cacheWriteInputTokens: written, outputTokens: output, reasoningOutputTokens: 0 })
+    const update = (last: ReturnType<typeof counts>) => ({ notify: 'thread/tokenUsage/updated', params: { threadId: '$thread', turnId: '$turn', tokenUsage: { total: last, last, modelContextWindow: 400_000 } } })
+    // The first call finds nothing in the cache, the second reads what the first wrote.
+    await t.sessions.send('chat', [{ type: 'text', text: script(update(counts(120_000, 0, 119_000, 800)), update(counts(121_000, 119_500, 1_000, 400))) }])
+    await t.idle()
+    expect(t.store.chat('chat')?.lastTurn).toMatchObject({
+      account: 'work', email: 'work@example.com', model: 'gpt-6-astra', context: 121_400, input: 500, cacheRead: 119_500, cacheWrite: 1_000,
+      first: { input: 1_000, cacheRead: 0, cacheWrite: 119_000 }
+    })
+    expect(t.store.chat('chat')?.lastTurn?.estimated).toBeUndefined()
   })
 
   it('stops the running turn with Stop', async () => {
@@ -961,7 +975,7 @@ describe('switching accounts while a chat waits on the user, on Codex (KERNEL-61
     await t.sessions.send('chat', [{ type: 'text', text: 'Run the tests' }])
     await t.idle()
     expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
-    expect(notes(t)).toEqual(['Now on personal'])
+    expect(notes(t)).toEqual(['Moved from work to personal'])
   })
 
   it("keeps a plan waiting through a switch, whose turn already ended on the old account, and the approved plan's work runs on the new one", async () => {
@@ -977,7 +991,7 @@ describe('switching accounts while a chat waits on the user, on Codex (KERNEL-61
     await t.idle()
     expect(await started(t)).toEqual([a.homes.work, a.homes.personal])
     expect((await t.sent('turn/start'))[1].params).toMatchObject({ input: [{ type: 'text', text: APPROVED }] })
-    expect(notes(t)).toEqual(['Now on personal'])
+    expect(notes(t)).toEqual(['Moved from work to personal'])
   })
 })
 

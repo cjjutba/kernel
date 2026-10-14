@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rm
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AccountAddStep, AccountProfile, Chat, McpAccount, McpConnect, McpNeeded, McpSignInAll, McpSignInStep, RateLimit, Workspace } from '@shared/types'
+import type { AccountAddStep, AccountProfile, Chat, LastTurn, McpAccount, McpConnect, McpNeeded, McpSignInAll, McpSignInStep, RateLimit, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { limitProvider } from '@shared/providers'
 import { bus } from '../src/main/bus'
@@ -700,8 +700,10 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     expect(new Set(sdk.probes.map((p) => p.dir))).toEqual(new Set(['', folder('Side'), folder('Personal')]))
     expect(k.store.room(room.id)?.paused).toBeFalsy()
     await k.sessions.send('chat', [{ type: 'text', text: 'Go on' }])
-    expect(notes(k)).toEqual(['Now on Personal (Work hit its 5-hour limit)'])
     expect(k.store.chat('chat')?.ranOn).toBe(ids.Personal)
+    // The note comes once the turn ends, which this fake Claude never does, so it is asked for here (KERNEL-842).
+    expect(notes(k)).toEqual([])
+    expect(k.placement.moved(k.store.chat('chat')!, 'cli')).toBe('Moved to Personal (Work hit its 5-hour limit)')
     // Work's window resets. Kernel stays on Personal, and says once that the user can switch back.
     k.sessions.resetLimit('five_hour')
     k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
@@ -849,7 +851,7 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     reject(k, { provider: 'codex' })
     await until(() => k.providers.active('codex') === added.id)
     await until(() => notes(k, 'codex').length && k.store.chat('codex')?.ranOn === added.id && !k.sessions.isRunning('codex'))
-    expect(notes(k, 'codex')).toEqual(['Now on Personal (Work hit its 5-hour limit)'])
+    expect(notes(k, 'codex')).toEqual(['Moved to Personal (Work hit its 5-hour limit)'])
     const cwd = await realpath(repo)
     expect((await fake.messages()).filter((m) => 'started' in m && m.cwd === cwd).map((m) => m.started)).toEqual([null, k.providers.codexHome(added.id)])
     // Claude's chats stay where they are.
@@ -860,10 +862,10 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
   it("notes a switch the user made without a reason, and a switch from the limit banner with the account's limit", async () => {
     const { k, h, ids } = await setUp(['Personal'])
     await h['accounts.switch']({ provider: 'claude', accountId: ids.Personal })
-    expect(k.providers.switchNote('claude', ids.Personal)).toBe('Now on Personal')
+    expect(k.providers.switchReason('claude', ids.Personal)).toBeUndefined()
     reject(k, { accountId: ids.Personal })
     await h['accounts.switch']({ provider: 'claude', accountId: 'cli', reason: 'banner' })
-    expect(k.providers.switchNote('claude', 'cli')).toBe('Now on Work (Personal hit its 5-hour limit)')
+    expect(k.providers.switchReason('claude', 'cli')).toBe('Personal hit its 5-hour limit')
     // Personal's reset says so once, and asking with "Notify me" on the account in use still works per account.
     k.sessions.resetLimit(`claude:${ids.Personal}:five_hour`)
     expect(k.store.notifications().filter((n) => n.title === "Personal's 5-hour limit reset")).toHaveLength(1)
@@ -1862,6 +1864,119 @@ describe('One login, one row (KERNEL-701)', () => {
     await claude.setLogin(k.providers.claudeHome(side.id), null)
     await k.providers.readUsage({ force: true })
     expect(k.notifications.list().filter((n) => n.title.endsWith('is signed out'))).toHaveLength(1)
+    await k.stop({ budgetMs: 0 })
+  })
+})
+
+describe("where a chat's cache is and what moving it costs (KERNEL-842)", () => {
+  const MIN = 60_000
+  /**
+   * A Kernel whose Claude CLI login is cj@example.com, with Side, a subscription login, and Key, an API key account, added,
+   * and a Codex account. `chat` saves a chat in one workspace, `turn` a last turn on the CLI login that read the chat from the cache.
+   */
+  async function setUp() {
+    const t = await kernel()
+    type Stored = { id: string; label: string; email?: string; auth?: 'apiKey'; createdAt: number }
+    const file = (t.k.providers as unknown as { load: () => Record<'claude' | 'codex', { cli?: { email?: string }; accounts: Stored[] }> }).load()
+    file.claude.cli = { email: 'cj@example.com' }
+    file.claude.accounts.push({ id: 'side', label: 'Side', email: 'side@example.com', createdAt: 1 }, { id: 'key', label: 'Key', auth: 'apiKey', createdAt: 1 })
+    file.codex.accounts.push({ id: 'cx', label: 'Personal', email: 'p@example.com', createdAt: 1 })
+    t.k.store.saveWorkspace({ id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'b', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 })
+    const chat = (id: string, o: Partial<Chat> = {}) => t.k.store.saveChat({ id, workspaceId: 'ws', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'low', plan: false, ranOn: 'cli', createdAt: 1, ...o })
+    const turn = (o: Partial<LastTurn> = {}): LastTurn => ({ at: Date.now(), account: 'cli', email: 'cj@example.com', model: 'claude-opus-5-5', context: 200_000, input: 10, cacheRead: 199_000, cacheWrite: 990, ...o })
+    return { ...t, file, chat, turn, place: t.k.placement }
+  }
+
+  it('says why a move reads the chat again: another account or email, another model, or the cache gone by', async () => {
+    const { k, file, chat, turn, place } = await setUp()
+    const c = chat('a', { lastTurn: turn() })
+    expect(place.coldReason(c, { account: 'cli' })).toBeUndefined()
+    expect(place.coldReason(c, { account: 'side' })).toBe('account')
+    // The CLI's login changed in a terminal: the same id, another email.
+    file.claude.cli = { email: 'other@example.com' }
+    expect(place.coldReason(c, { account: 'cli' })).toBe('account')
+    file.claude.cli = { email: 'CJ@example.com' }
+    expect(place.coldReason(c, { account: 'cli' })).toBeUndefined()
+    expect(place.coldReason(c, { account: 'cli', model: 'claude-sonnet-5-5' })).toBe('model')
+    // A Claude plan keeps the cache an hour, an API key and Codex 5 minutes.
+    expect(place.coldReason(c, { account: 'cli' }, Date.now() + 30 * MIN)).toBeUndefined()
+    expect(place.coldReason(c, { account: 'cli' }, Date.now() + 61 * MIN)).toBe('idle')
+    const onKey = chat('b', { ranOn: 'key', lastTurn: turn({ account: 'key', email: undefined, at: Date.now() - 6 * MIN }) })
+    expect(place.coldReason(onKey, { account: 'key' })).toBe('idle')
+    const codex = chat('c', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', email: undefined, at: Date.now() - 6 * MIN }) })
+    expect(place.coldReason(codex, { account: 'cli' })).toBe('idle')
+    // A chat that never ran has nothing cached anywhere.
+    expect(place.coldReason(chat('d', { ranOn: undefined }), { account: 'side' })).toBeUndefined()
+
+    // A move to Side whose first call wrote the whole chat is noted with what it re-read.
+    const cold = chat('e', { ranOn: 'side', lastTurn: turn({ account: 'side', email: 'side@example.com', context: 310_000, input: 20, cacheRead: 300_000, cacheWrite: 310_500, first: { input: 10, cacheRead: 0, cacheWrite: 309_800 } }) })
+    expect(place.moved(cold, 'cli')).toBe('Moved to Side and re-read 310k tokens')
+    expect(place.coldReason(c, { account: 'side' })).toBe('account')
+    // One whose first call read most of it from the cache proves the two share one, so Side reads warm from then on.
+    const warm = chat('f', { ranOn: 'side', lastTurn: turn({ account: 'side', email: 'side@example.com', first: { input: 10, cacheRead: 199_000, cacheWrite: 990 } }) })
+    expect(place.moved(warm, 'cli')).toBe('Moved to Side and read this chat from the cache')
+    expect(place.coldReason(c, { account: 'side' })).toBeUndefined()
+    expect(place.coldReason(c, { account: 'key' })).toBe('account')
+    // The same pair on Codex is another provider's.
+    expect(place.shares('codex', 'cli', 'side')).toBe(false)
+    // A turn with no numbers says where it moved.
+    expect(place.moved(chat('g', { ranOn: 'side' }), 'cli')).toBe('Moved to Side')
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("gives a move's tokens, window fit and API key price, and guesses an older chat's size from its transcript", async () => {
+    const { k, chat, turn, place } = await setUp()
+    const big = chat('big', { lastTurn: turn({ context: 400_000 }) })
+    expect(place.moveCost(big, { account: 'side' })).toEqual({ tokens: 400_000, window: 1_000_000, fits: true })
+    // 0.4M tokens written to the cache at Opus 5.5's $4 input price, times 1.25.
+    expect(place.moveCost(big, { account: 'key' })).toEqual({ tokens: 400_000, window: 1_000_000, fits: true, price: 2 })
+    expect(place.moveCost(big, { account: 'cli', model: 'claude-haiku-4-5-20251001' })).toMatchObject({ window: 200_000, fits: false })
+    // Codex says tokens only, with the window /context gave on the chat's own model.
+    const codex = chat('cx', { provider: 'codex', model: 'gpt-6-astra', contextUsage: { used: 300_000, max: 272_000, rows: [] }, lastTurn: turn({ model: 'gpt-6-astra', context: 300_000 }) })
+    expect(place.moveCost(codex, { account: 'cx' })).toEqual({ tokens: 300_000, window: 272_000, fits: false })
+    expect(place.moveCost(codex, { account: 'cx', model: 'gpt-6-nova' })).toEqual({ tokens: 300_000, fits: true })
+
+    // A chat from before has no last turn: what came after its last compaction counts, at 4 characters a token.
+    const old = chat('old')
+    const at = Date.now() - 2 * MIN
+    k.store.saveItem('old', { kind: 'user', id: 'u1', ts: at, parts: [{ type: 'text', text: 'x'.repeat(40_000) }] })
+    k.store.saveItem('old', { kind: 'note', id: 'n1', ts: at, text: 'Compacted the conversation, 150k to 12k tokens.' })
+    k.store.saveItem('old', { kind: 'text', id: 't1', ts: at, text: 'y'.repeat(8_000) })
+    k.store.saveItem('old', { kind: 'tool', id: 'b1', ts: at, toolUseId: 'b1', name: 'Bash', label: 'ls', detail: '', status: 'done', output: 'z'.repeat(3_998) })
+    expect(place.size(old)).toEqual({ tokens: 3_000, estimated: true })
+    expect(place.moveCost(old, { account: 'key' })).toEqual({ tokens: 3_000, estimated: true, window: 1_000_000, fits: true, price: 0.02 })
+    expect(k.store.chat('old')?.lastTurn).toMatchObject({ account: 'cli', context: 3_000, at, estimated: true })
+    expect(place.coldReason(k.store.chat('old')!, { account: 'cli' })).toBeUndefined()
+    await k.stop({ budgetMs: 0 })
+  })
+
+  it("previews a switch with the long chats on the account in use only, flags running ones and prices an API key, and records a chat's choice", async () => {
+    const { k, chat, turn } = await setUp()
+    const h = k.handlers()
+    chat('big', { lastTurn: turn({ context: 400_000 }) })
+    chat('mid', { lastTurn: turn({ context: 120_000, at: Date.now() - 2 * 60 * MIN }) })
+    chat('small', { lastTurn: turn({ context: 10_000 }) })
+    chat('elsewhere', { ranOn: 'side', lastTurn: turn({ account: 'side', context: 400_000 }) })
+    chat('closed', { closed: true, lastTurn: turn({ context: 400_000 }) })
+    chat('codex', { provider: 'codex', model: 'gpt-6-astra', lastTurn: turn({ model: 'gpt-6-astra', context: 400_000 }) })
+    vi.spyOn(k.sessions, 'isRunning').mockImplementation((id) => id === 'big')
+    const preview = await h['accounts.previewSwitch']({ provider: 'claude', accountId: 'key' })
+    expect(preview).toEqual({
+      provider: 'claude', from: 'cli', to: 'key', chats: [
+        { chatId: 'big', title: 'big', workspaceId: 'ws', workspace: 'invoice-schema', provider: 'claude', from: 'cli', to: 'key', tokens: 400_000, running: true, coldReason: 'account', fits: true, price: 2 },
+        { chatId: 'mid', title: 'mid', workspaceId: 'ws', workspace: 'invoice-schema', provider: 'claude', from: 'cli', to: 'key', tokens: 120_000, running: false, coldReason: 'account', fits: true, price: 0.6 }
+      ]
+    })
+    // A subscription target has no price, and the long chat size is the user's.
+    await k.config.setSettings({ accounts: { longChatTokens: 150_000 } })
+    expect((await h['accounts.previewSwitch']({ provider: 'claude', accountId: 'side' })).chats).toEqual([expect.not.objectContaining({ price: expect.anything() })])
+    expect((await h['accounts.previewSwitch']({ provider: 'codex', accountId: 'cx' })).chats.map((c) => c.chatId)).toEqual(['codex'])
+    // Nothing moved.
+    expect(k.providers.active('claude')).toBeUndefined()
+    expect(k.store.chat('big')?.ranOn).toBe('cli')
+    const picked = await h['chats.moveChoice']({ chatId: 'big', choice: 'keep' })
+    expect(picked.moveChoice).toEqual({ choice: 'keep', at: expect.any(Number) })
+    expect(k.store.chat('big')?.moveChoice?.choice).toBe('keep')
     await k.stop({ budgetMs: 0 })
   })
 })

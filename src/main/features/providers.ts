@@ -970,13 +970,18 @@ export class Providers extends Feature {
   }
 
   /**
-   * The note a chat gets when its turn starts on another account than its last one (KERNEL-568): "Now on Personal", with
-   * "(Work hit its 5-hour limit)" after it when the provider's last switch, to this account, left Work at its limit.
+   * Why the provider is on `accountId`, for the note a chat gets after it moved there (KERNEL-568, KERNEL-842): "Work hit its
+   * 5-hour limit" when the provider's last switch, to this account, left Work at its limit. Undefined otherwise.
    */
-  switchNote(provider: Provider, accountId: string): string {
+  switchReason(provider: Provider, accountId: string): string | undefined {
     const s = this.switches.get(provider)
-    const why = s?.to === accountId && s.limit ? ` (${this.label(provider, s.from)} hit its ${LIMIT_NAME[s.limit]})` : ''
-    return `Now on ${this.label(provider, accountId)}${why}`
+    return s?.to === accountId && s.limit ? `${this.label(provider, s.from)} hit its ${LIMIT_NAME[s.limit]}` : undefined
+  }
+
+  /** An account's email as Kernel last read it, by its id in `accounts.*`, undefined or `cli` for the CLI's own login (KERNEL-842). */
+  emailOf(provider: Provider, accountId?: string): string | undefined {
+    const file = this.load()[provider]
+    return !accountId || accountId === CLI_ACCOUNT ? file.cli?.email : this.stored(provider, accountId)?.email
   }
 
   /**

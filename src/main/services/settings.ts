@@ -42,7 +42,8 @@ export const DEFAULT_SETTINGS = (home: string, build: HookBuild = 'app'): AppSet
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   // Kernel moves accounts on its own only once the user turns it on (KERNEL-568).
-  accounts: { switchAtLimit: { claude: false, codex: false } },
+  // Chats keep the account that holds their cache, and a long one is summarized before it moves (KERNEL-841).
+  accounts: { switchAtLimit: { claude: false, codex: false }, keepChatsOnAccount: true, longChatMove: { claude: 'summarize', codex: 'summarize' }, longChatTokens: 50_000 },
   workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: false, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: {

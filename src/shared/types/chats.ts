@@ -15,11 +15,15 @@ export type ModelId = 'claude-fable-5-1' | 'claude-opus-5-5' | 'claude-sonnet-5-
 /** Claude offers the first four (EFFORTS). Codex models list their own, which can go up to `max` and `ultra` (KERNEL-406). */
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
 
-export const MODELS: { id: ModelId; label: string }[] = [
-  { id: 'claude-fable-5-1', label: 'Fable 5.1' },
-  { id: 'claude-opus-5-5', label: 'Opus 5.5' },
-  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
+/**
+ * `window` is the model's context window in tokens, and `inputPrice` the API's price in US dollars per million input tokens,
+ * which a move onto an API key account is priced at (KERNEL-842).
+ */
+export const MODELS: { id: ModelId; label: string; window: number; inputPrice: number }[] = [
+  { id: 'claude-fable-5-1', label: 'Fable 5.1', window: 1_000_000, inputPrice: 10 },
+  { id: 'claude-opus-5-5', label: 'Opus 5.5', window: 1_000_000, inputPrice: 4 },
+  { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', window: 1_000_000, inputPrice: 2 },
+  { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', window: 200_000, inputPrice: 1 }
 ]
 
 export const EFFORTS: { id: Effort; label: string }[] = [
@@ -89,8 +93,67 @@ export interface Chat {
    * turn that starts on another account adds a note that says so (KERNEL-568).
    */
   ranOn?: string
+  /** What the chat's last finished turn read and cached, for moving it between accounts (KERNEL-842). Unset until one ends. */
+  lastTurn?: LastTurn
+  /** What the user picked for this chat when a switch would move it to another account, kept until a later step acts on it (KERNEL-842). */
+  moveChoice?: { choice: MoveChoice; at: number }
   createdAt: number
 }
+
+/** Token counts of one model call or one turn: input that wasn't cached, input read from the cache, and input written to it. */
+export interface TokenCounts { input: number; cacheRead: number; cacheWrite: number }
+
+/**
+ * A chat's last finished turn (KERNEL-842). `account` is the one it ran on (`cli` for the CLI's own login) and `email` that
+ * login's email as Kernel knew it then, so a login changed in a terminal reads as another account. `context` is the chat's
+ * size in tokens as the turn ended. `input`, `cacheRead` and `cacheWrite` are the turn's: Claude's result usage, Codex's last
+ * model call. `first` is the turn's first model call, which says whether the turn found the chat in the cache.
+ * `estimated`: a chat from before KERNEL-842 has no turn on record, so `context` is guessed from its transcript and the
+ * counts are 0.
+ */
+export interface LastTurn extends TokenCounts {
+  at: number
+  account: string
+  email?: string
+  model: string
+  context: number
+  first?: TokenCounts
+  estimated?: true
+}
+
+/**
+ * Why a chat's next turn would read its whole history again (KERNEL-842): it moves to another `account` (or the same id signed
+ * in to another email), to another `model`, or it has been `idle` past the provider's cache lifetime.
+ */
+export type ColdReason = 'account' | 'model' | 'idle'
+
+/** What the user picks for a long chat a switch would move (KERNEL-842): summarize it first, continue it as it is, or keep it on its account. */
+export type MoveChoice = 'summarize' | 'continue' | 'keep'
+
+/**
+ * One long chat a switch to `to` would move off `from`, the account its provider runs on now (KERNEL-842). `tokens` is its
+ * size, `estimated` when Kernel guessed it from the transcript. `running`: a turn is running now, which finishes where it
+ * started. `coldReason` is why the move reads the whole chat again, none when the target shares its cache. `fits` says it
+ * fits the target model's window. `price` is in US dollars, only for a Claude API key target: what reading it once costs.
+ */
+export interface MovePreviewChat {
+  chatId: string
+  title: string
+  workspaceId: string
+  workspace: string
+  provider: Provider
+  from: string
+  to: string
+  tokens: number
+  estimated?: true
+  running: boolean
+  coldReason?: ColdReason
+  fits: boolean
+  price?: number
+}
+
+/** What a switch to `to` would move: the provider's chats on `from` at or above `accounts.longChatTokens`, largest first (KERNEL-842). */
+export interface MovePreview { provider: Provider; from: string; to: string; chats: MovePreviewChat[] }
 
 /**
  * A chat with the Lead, which holds one or more of its tabs (KERNEL-337). Called a thread in code so it doesn't clash with
@@ -223,10 +286,11 @@ export interface QueuedMessage {
 /**
  * What a chat's queue waits for: the running turn, the workspace's setup, a PR to merge before the brief goes out (KERNEL-259),
  * a paused room, every room held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
- * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220).
+ * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220),
+ * or a long chat that waits to move to another account (`move`, KERNEL-841).
  * Computed, never saved (KERNEL-271, KERNEL-361).
  */
-export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit'
+export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit' | 'move'
 
 /** Where a chat's permission mode was picked: in the chat's composer, for its room, or in Settings, Permissions. */
 export type ModeScope = 'chat' | 'room' | 'app'

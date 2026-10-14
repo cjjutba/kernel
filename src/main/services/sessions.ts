@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ModelInfo, Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
+import type { AccountAuth, Approval, UnlistedTools, AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, ChatRunMode, CodexPersonality, CompactWindow, Decision, LastTurn, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, Role, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -28,7 +28,7 @@ import { chatMode, type ChatAvailability, type RunMode } from './permissions'
 import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 import { CodexRunner } from './providers/codex/runner'
 import { chatProvider, limitProvider } from '@shared/providers'
-import type { Ask, Proc, Runner, RunnerHost } from './providers/types'
+import type { Ask, Proc, Runner, RunnerHost, TurnUsage } from './providers/types'
 
 // Moved behind the provider seam (KERNEL-406). Exported here too for what imports them from Sessions.
 export { askedQuestions, packagedClaude, InputQueue, toUserMessage, builtinCommands, sessionEnv, AGENT_TEAMS, switchedOff, limitsFromEvent, limitsFromUsage, HOLD_TIMEOUT_SEC, SESSION_GONE, TOOL_STOPPED } from './providers/claude'
@@ -65,6 +65,8 @@ interface Live {
   failed?: 'auth' | 'network'
   /** The account the process runs on, which its usage windows belong to. Undefined is the CLI's own login (KERNEL-406). */
   account?: string
+  /** What the running turn read and cached, as its runner reported it just before it ended (KERNEL-842). */
+  usage?: TurnUsage
   /** That account is an API key account: it has no usage windows, and the key should pay for it (KERNEL-523). */
   onKey?: boolean
   /** A Claude process started allowed to take Bypass permissions, which it keeps for life (KERNEL-447). Undefined on Codex. */
@@ -171,10 +173,13 @@ export interface SessionDeps {
   /** How an account signs in (KERNEL-523). Without it every account is a subscription one. */
   authOf?: (provider: Provider, accountId: string | undefined) => AccountAuth
   /**
-   * The note a chat gets when its turn starts on another account than its last one, `cli` for the CLI's own login: "Now on
-   * Personal", and why when a limit moved it (KERNEL-568). Without it the chat says nothing.
+   * The note a chat gets after its first turn on another account than its last one, `from` that account (`cli` for the CLI's
+   * own login): "Moved to Personal and re-read 310k tokens", from the turn's `lastTurn`, and why when a limit moved it
+   * (KERNEL-568, KERNEL-842). Without it the chat says nothing.
    */
-  switchNote?: (provider: Provider, accountId: string) => string
+  moveNote?: (chat: Chat, from: string) => string | undefined
+  /** The email of a provider's account as Kernel last read it, undefined `accountId` for the CLI's own login (KERNEL-842). */
+  emailOf?: (provider: Provider, accountId: string | undefined) => string | undefined
   /**
    * A note the agent reads at the start of the chat's next turn, taken as the turn starts so it goes once, as after its files
    * were reverted (KERNEL-764). The chat's row doesn't show it.
@@ -288,6 +293,8 @@ export class Sessions {
   private queues = new Map<string, QueuedMessage[]>()
   /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
   private reasons = new Map<string, QueueReason | undefined>()
+  /** Chats whose turn started on another account than their last turn's, by that account, until a turn ends there (KERNEL-842). */
+  private moves = new Map<string, string>()
   /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
   private unsent = new Set<string>()
   private managedIds = new Set<string>()
@@ -916,16 +923,17 @@ export class Sessions {
   }
 
   /**
-   * The turn about to start runs on another account than the chat's last one, as after a switch: a note says which, and why
-   * when a limit moved it (KERNEL-568). The turn runs in the chat's live process when it has one, else on the account its
-   * provider runs on now. A chat's first turn says nothing.
+   * The turn about to start runs on another account than the chat's last one, as after a switch (KERNEL-568). The turn runs
+   * in the chat's live process when it has one, else on the account its provider runs on now. Once the turn ends, a note says
+   * where it moved and what that read (`moveNote`, KERNEL-842). A move before that turn ended still counts from the account
+   * the chat left. A chat's first turn says nothing.
    */
   private noteAccount(chat: Chat): Chat {
     const live = this.live.get(chat.id)
     const provider = chatProvider(chat)
     const on = (live ? live.account : this.d.accountFor?.(provider)) ?? 'cli'
     if (chat.ranOn === on) return chat
-    if (chat.ranOn && this.d.switchNote) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: this.d.switchNote(provider, on) })
+    if (chat.ranOn && !this.moves.has(chat.id)) this.moves.set(chat.id, chat.ranOn)
     const next = { ...chat, ranOn: on }
     this.d.store.saveChat(next)
     return next
@@ -1487,6 +1495,7 @@ export class Sessions {
         this.d.onReset?.(ws, chat, trigger)
       },
       setContext: (context, usage) => this.setContext(chatId, context, usage),
+      turnUsage: (u) => { live.usage = u },
       turnEnded: (t) => this.turnEnded(chatId, ws, live, t),
       suggested: (text) => this.suggested(chatId, live, text),
       sessionGone: () => this.renew(this.mustChat(chatId), ws, live),
@@ -1593,10 +1602,14 @@ export class Sessions {
 
   /** The running turn ended. Its result row, then what waits for the chat goes out, or Stop drops it. */
   private turnEnded(chatId: string, ws: Workspace, live: Live, t: { id: string; ok: boolean; durationMs?: number; error?: string }) {
-    const chat = this.mustChat(chatId)
+    const chat = this.recordTurn(this.mustChat(chatId), live)
     const ok = t.ok
     // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
     if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: t.id, ts: Date.now(), durationMs: t.durationMs ?? 0, ok, error: ok ? undefined : t.error })
+    const from = this.moves.get(chatId)
+    this.moves.delete(chatId)
+    const moved = from !== undefined && from !== chat.ranOn ? this.d.moveNote?.(chat, from) : undefined
+    if (moved) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: moved })
     this.clearRetry(chatId, live)
     void live.runner.context()
     const stopped = live.interrupted && !live.sendNext
@@ -1724,6 +1737,23 @@ export class Sessions {
     if (!live.retry) return
     live.retry = undefined
     bus.push({ type: 'retry', chatId, retry: null })
+  }
+
+  /**
+   * Saves what the turn that just ended read and cached as the chat's `lastTurn` (KERNEL-842), on the account its process
+   * runs on. A turn its runner reported nothing for keeps the last one. `context` falls back to /context's numbers.
+   */
+  private recordTurn(chat: Chat, live: Live): Chat {
+    const u = live.usage
+    live.usage = undefined
+    if (!u) return chat
+    const email = this.d.emailOf?.(chatProvider(chat), live.account)
+    const context = u.context ?? chat.contextUsage?.used ?? u.input + u.cacheRead + u.cacheWrite
+    const lastTurn: LastTurn = { at: Date.now(), account: live.account ?? 'cli', ...(email ? { email } : {}), model: chat.model, context, input: u.input, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite, ...(u.first ? { first: u.first } : {}) }
+    const next = { ...chat, lastTurn }
+    this.d.store.saveChat(next)
+    bus.push({ type: 'chat', chat: next })
+    return next
   }
 
   /** Context window use, saved on the chat for the composer and the banner. Nothing changes when the numbers are the same. */
