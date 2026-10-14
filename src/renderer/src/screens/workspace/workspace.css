@@ -249,9 +249,6 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .thread > .tf + .meta { margin-top: -2px; }
 .meta { font-size: 12px; color: var(--muted); }
 .running { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; font: 12.5px var(--mono); color: var(--muted); }
-/* The step in flight, after the clock: the body face, one line. */
-.live-step { min-width: 0; font: 13px var(--font); color: var(--ink-3); }
-.live-step .mono { font: 12px var(--mono); }
 .interrupted { align-self: flex-start; font: 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .note { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: var(--r); background: var(--card-bg); color: var(--ink-3); font-size: 12.5px; }
 .note a { color: var(--ink-2); font-weight: 500; white-space: nowrap; }

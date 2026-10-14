@@ -54,6 +54,12 @@ export const ANCHOR_GAP = 16
  */
 export const anchorPad = (clientHeight: number, anchorTop: number, endBottom: number) => Math.max(0, Math.round(clientHeight - ANCHOR_GAP - (endBottom - anchorTop)))
 
+/** What the thread does about a sent message's anchor when it changes: anchor a message it hasn't anchored yet, keep the padding while the turn it started runs, and clear it once nothing is running (KERNEL-807). */
+export const sendAnchor = (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean): 'anchor' | 'keep' | 'clear' => {
+  if (last && followsSend(last) && last.id !== anchoredId) return 'anchor'
+  return padded && !running ? 'clear' : 'keep'
+}
+
 const distFromEnd = (v: ScrollView) => v.scrollHeight - v.scrollTop - v.clientHeight
 
 const rangeOf = (v: ScrollView) => v.scrollHeight - v.clientHeight
@@ -925,18 +931,18 @@ function ChatTranscript({ chat, workspaceId, changes, onEdit, onOpenDiff, onFork
   }, [])
   // Sending a message anchors it at the top of the view even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
-  const sent = followsSend(last)
   const arrived = useRef(false)
-  const wasRunning = useRef(running)
+  const sentId = useRef<string | null>(null)
+  const queued = useStore((s) => s.queue[chat.id]?.length ?? 0)
   useEffect(() => {
     // The first run is the chat opening, which the effect above has placed already.
-    if (sent && arrived.current && last) anchorSend(last.id)
-    // The turn ending takes the padding with it, so a thread never ends in a blank gap.
-    if (wasRunning.current && !running) { anchored.current = null; padReply() }
-    wasRunning.current = running
+    const step = arrived.current ? sendAnchor(last, sentId.current, anchored.current !== null, running) : 'keep'
+    if (step === 'anchor' && last) { sentId.current = last.id; anchorSend(last.id) }
+    else if (step === 'clear') { anchored.current = null; padReply() }
+    else if (!arrived.current && followsSend(last)) sentId.current = last?.id ?? null
     arrived.current = true
     if (pinned.current) followNow()
-  }, [items.length, loose.length, running])
+  }, [items.length, loose.length, running, queued])
   const since = useMemo(() => { for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'user') return items[i].ts; return Date.now() }, [items])
   // This chat is on screen, so it is read, whether the window has focus or not. Main can't tell which chat is shown, so it clears the flag when asked:
   // on opening the chat, and again whenever a turn ends in it while it stays open (KERNEL-507, KERNEL-508).

@@ -186,3 +186,32 @@ describe('what a send anchors (KERNEL-803)', () => {
     expect(followsSend({ kind: 'note', id: 'n1', ts: 1, text: 'PR #12 merged' } as ChatItem)).toBe(false)
   })
 })
+
+describe('a send anchors once and its padding does not linger (KERNEL-807)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/Transcript' as string) as Promise<{ sendAnchor: (last: ChatItem | undefined, anchoredId: string | null, padded: boolean, running: boolean) => 'anchor' | 'keep' | 'clear' }>
+
+  it('anchors a new message, then leaves the reader alone when the turn starts or an approval arrives', async () => {
+    const { sendAnchor } = await load()
+    expect(sendAnchor(user(), null, false, false)).toBe('anchor')
+    expect(sendAnchor(user(), 'u1', true, true)).toBe('keep')
+    expect(sendAnchor(user(), 'u1', true, true)).toBe('keep')
+  })
+
+  it('anchors the next message after the first', async () => {
+    const { sendAnchor } = await load()
+    expect(sendAnchor(user({ id: 'u2' }), 'u1', false, false)).toBe('anchor')
+  })
+
+  it('clears the padding when nothing is running, so a send that never starts a turn leaves no gap', async () => {
+    const { sendAnchor } = await load()
+    expect(sendAnchor(user(), 'u1', true, false)).toBe('clear')
+    expect(sendAnchor({ kind: 'text', id: 't1', ts: 2, text: 'Done.' }, 'u1', true, false)).toBe('clear')
+    expect(sendAnchor(user(), 'u1', false, false)).toBe('keep')
+  })
+
+  it('never anchors what is not the reader\'s own message', async () => {
+    const { sendAnchor } = await load()
+    expect(sendAnchor(user({ from: 'lead' }), null, false, true)).toBe('keep')
+    expect(sendAnchor(undefined, null, false, false)).toBe('keep')
+  })
+})
