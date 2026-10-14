@@ -4,6 +4,7 @@ import type { AppSettings, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPa
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
+import { toolView } from '@shared/toolView'
 import { bus } from '../../bus'
 import { NO_PROMPTS } from '../exec'
 import { describeTool } from '../approvals'
@@ -643,6 +644,9 @@ function toolDetail(name: string, input: any): string {
   if (SUBAGENT_TOOLS.has(name) && input?.description) return String(input.description)
   if (input?.file_path) return String(input.file_path)
   if (input?.pattern) return String(input.pattern)
+  // A tool the chat's own wording knows keeps what that wording says about it, not its raw input (KERNEL-785).
+  const view = toolView({ name, input: input ?? {}, status: 'running' })
+  if (!view.hidden && view.verb !== name) return view.detail ?? view.object ?? ''
   return JSON.stringify(input ?? {}).slice(0, 120)
 }
 
