@@ -134,6 +134,21 @@ export function savePicks(key: string, patch: DraftPicks) {
   for (const fn of [...pickListeners]) fn()
 }
 
+/**
+ * Moves what is typed in one New chat box to another's key, for picking a different room under the box (KERNEL-786). The text and chips
+ * replace the other box's, and the picks stay with the room they were made in. An empty box moves nothing.
+ */
+export function moveDraft(from: string, to: string) {
+  load()
+  const d = saved.get(from)
+  if (from === to || !d?.parts.length) return
+  if (d.picks) saved.set(from, { workspaceId: d.workspaceId, parts: [], picks: d.picks })
+  else saved.delete(from)
+  const dest = saved.get(to)
+  saved.set(to, { workspaceId: dest?.workspaceId ?? d.workspaceId, parts: d.parts, ...(dest?.picks ? { picks: dest.picks } : {}) })
+  schedule()
+}
+
 /** A send: the draft goes with its text and its picks, so the box starts from the Lead again. */
 export function clearDraft(key: string) {
   load()

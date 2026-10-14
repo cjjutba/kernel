@@ -253,11 +253,33 @@ async function openCompare(page: Page) {
   await page.waitForTimeout(300)
 }
 
+
+// NewChatRoomPicker, NewChatMode, NewChatBranch and NewChatPlus are New chat with one of the where row's menus, or the + menu, open (KERNEL-786).
+// NewChatLocal rests the pointer on the branch text, which shows its tooltip.
+async function openWhere(page: Page, name: string | RegExp, item?: string | RegExp) {
+  await page.getByRole('button', { name }).click()
+  if (item) await page.getByRole('menuitemradio', { name: item }).first().waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+async function openBranchMenu(page: Page) {
+  await page.getByRole('button', { name: 'New branch from main' }).click()
+  await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
+  // The row with a workspace shows Open workspace while it is the active one, as on hover or focus.
+  await page.getByRole('menuitemradio', { name: /t-12-invoice-schema/ }).focus()
+  await page.waitForTimeout(300)
+}
+async function hoverLocalBranch(page: Page) {
+  await page.locator('.cmp-where-local').hover()
+  await page.locator('.where-tip').waitFor({ state: 'visible' })
+  await page.waitForTimeout(200)
+}
+
 // LeadNoChatsBranch is New chat with Kernel with New branch from main open. The menu is the composer's own, so press the button and wait for the
 // remote's branches, which the menu reads when it opens.
 async function openBaseBranch(page: Page) {
   await page.getByRole('button', { name: 'New branch from main' }).click()
-  await page.getByRole('menuitemradio', { name: /origin\/invoice-table/ }).waitFor()
+  await page.getByRole('menuitemradio', { name: /invoice-table/ }).waitFor()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -373,6 +395,11 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   RoomSetupTeam: openReviewer,
   PanelCompare: openCompare,
   LeadNoChatsBranch: openBaseBranch,
+  NewChatRoomPicker: (page) => openWhere(page, /^Room:/, /Client B/),
+  NewChatMode: (page) => openWhere(page, /^Work as:/, /Local/),
+  NewChatBranch: openBranchMenu,
+  NewChatLocal: hoverLocalBranch,
+  NewChatPlus: (page) => openWhere(page, 'Add context'),
   PanelFilter: filterChanges,
   SettingsAddAccountApiKey: typeApiKey,
   SettingsAddAccount: (page) => openAddAccount(page, 0),

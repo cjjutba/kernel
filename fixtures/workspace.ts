@@ -2148,6 +2148,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [], draft } } } }
   }),
   NewChatPlan: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: true } } })),
+  // KERNEL-786: the where row's pickers and the + menu, each open (the shot opens them, scripts/shots.ts). NewChatLocal has Local picked by Settings' workspace mode.
+  // NewChatBranch lists branches with two that have an open workspace, one that is local only, and the default first. NewChatLinked has an issue chip in the box.
+  NewChatRoomPicker: scene((f) => noPlan(leadNoChats(f))),
+  NewChatMode: scene((f) => noPlan(leadNoChats(f))),
+  NewChatBranch: scene((f) => ({
+    ...noPlan(leadNoChats(f)),
+    branches: ['origin/main', 'origin/feat/t-14-invoice-table', 'origin/feat/t-12-invoice-schema', 'origin/feat/t-09-org-invites', 'origin/fix/t-17-pdf-fonts', 'origin/feat/t-21-saving-saved', 'origin/feat/t-23-room-settings', 'spike/pdf-fonts']
+  })),
+  NewChatLocal: scene((f) => ({ ...leadNoChats(f), settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, mode: 'current' }, models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } } })),
+  NewChatPlus: scene((f) => noPlan(leadNoChats(f))),
+  NewChatLinked: scene((f) => {
+    const g = noPlan(leadNoChats(f))
+    const issue = { type: 'issue' as const, name: 'T-17', title: 'Email an invoice to the client from the row actions', url: 'https://linear.app/client-a/issue/T-17', source: 'linear' as const }
+    return { ...g, ui: { ...g.ui!, workspace: { right: 'changes', bottom: 'run', toolsOpen: false, composer: { parts: [issue, { type: 'text', text: ' ' }], draft: '' } } } }
+  }),
   ChatWhereRow: scene(() => ({ ui: open })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Kernel's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).

@@ -25,10 +25,6 @@
 .cmp-branch { min-width: 0; max-width: 280px; }
 .cmp-branch > svg:first-child { color: var(--muted); }
 .cmp-branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compare-menu.cmp-branch-menu { top: calc(100% + 8px); right: auto; left: -8px; width: 360px; }
-.cmp-branch-head { padding: 4px 8px 6px; font-size: 12px; }
-.cmp-branch-tag { flex-shrink: 0; font-size: 12px; color: var(--muted); }
-.cmp-branch-hint { margin: 0; padding: 2px 8px 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
 /* The mode is a second button drawn like the model's (ComposerModes.png, KERNEL-573): its icon at 14px in muted before the name, then the same chevron. Plan keeps its blue, as the box does. */
 .cmp-mode > svg:first-child { color: var(--muted); }
 .cmp-mode[data-mode='plan'], .cmp-mode[data-mode='plan'] > svg { color: var(--plan); }
@@ -243,4 +239,30 @@
 .cmp-where-branch { font-size: 12px; }
 .cmp-where .room-icon { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--r-xs); border: 1px solid var(--line-3); background: var(--surface-3); font-size: 9px; font-weight: 600; color: var(--ink-2); }
 .cmp-where .cmp-model { margin-left: -8px; color: var(--muted); font-size: 12.5px; }
-.cmp-where .cmp-branch-menu { top: auto; bottom: calc(100% + 8px); }
+
+/* The where row's menus (KERNEL-786). They open upward and end 8px above the box (WherePop), so the toolbar is never covered. */
+.where-pop { left: -8px; display: flex; flex-direction: column; max-height: min(420px, calc(100vh - 220px)); padding: 4px; background: var(--surface-2); z-index: 60; }
+.where-pop > * { flex-shrink: 0; }
+.where-search { height: 34px; margin: 0 0 4px; padding: 0 10px; border: 1px solid var(--input-line); border-radius: var(--r); background: var(--input-bg); color: var(--muted); }
+.where-list { display: flex; flex-direction: column; gap: 1px; min-height: 0; overflow-y: auto; }
+.where-branches { max-height: 330px; }
+.where-row { height: 32px; gap: 10px; }
+.where-row:hover { background: var(--hover); }
+.where-mode { height: auto; min-height: 44px; padding-top: 6px; padding-bottom: 6px; text-align: left; }
+.where-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.where-t { font-size: 13px; line-height: 18px; color: var(--ink); }
+.where-t.mono { font-size: 12.5px; }
+.where-d { font-size: 12px; line-height: 16px; color: var(--muted); }
+.where-note { margin: 0; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.where-pop .menu-sep { margin: 4px -4px; }
+.where-branch { position: relative; }
+.where-branch .menu-item { width: 100%; }
+.where-open { position: absolute; top: 50%; right: 36px; display: none; align-items: center; gap: 8px; height: 26px; padding: 0 8px; transform: translateY(-50%); border: 1px solid var(--line-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); font-size: 12.5px; }
+.where-open .kbd { border: 0; background: transparent; }
+.where-branch:hover .where-open, .where-branch:focus-within .where-open { display: inline-flex; }
+/* Local: the branch is flat text. Its tooltip opens to the right in the row, never above it where the box's toolbar is. */
+.cmp-where-local { position: relative; padding: 0 0 0 4px; font-size: 12px; outline: 0; }
+.where-tip { position: absolute; top: 50%; left: calc(100% + 8px); display: none; transform: translateY(-50%); padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink-2); font: 12px/16px var(--font); white-space: nowrap; pointer-events: none; z-index: 60; }
+.cmp-where-local:hover .where-tip, .cmp-where-local:focus-visible .where-tip { display: block; }
+/* An issue or pull request chip: its key in mono, its title in the normal font. */
+.cmp-chip[data-kind='issue'] .chip-meta, .cmp-chip[data-kind='pr'] .chip-meta { font: 12px var(--font); }

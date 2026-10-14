@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
-import type { ChatPart } from '@shared/types'
+import type { ChatPart, WorkspaceMode } from '@shared/types'
 import { bypassConfirmed } from '../../bypassConfirm'
 import { useModeAvailability } from '../../permissionModes'
 import { providerOf } from '@shared/providers'
@@ -14,14 +14,16 @@ import { focusComposerWhenOpen, onComposerFocusAsked, takeComposerFocus } from '
 import { BranchPicker, useBaseBranch } from './composer/BranchPicker'
 import { DraftInput, useDraft } from './composer/draft'
 import { ComposerShell } from './composer/ComposerShell'
-import { clearDraft, newChatDraftOf, type DraftPicks } from './composer/draftStore'
+import { clearDraft, moveDraft, newChatDraftOf, type DraftPicks } from './composer/draftStore'
 import { ModeButton } from './composer/ModeMenu'
 import { ModelPicker } from './composer/ModelPicker'
 import { cyclePatch, cycleRun, modePatch, nextMode, offLine, shownMode, type ComposerMode, type CycleRun } from './composer/modes'
 import { effortLabel, useLeadBox } from './composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
 import { sendsOn, useSendWith } from './composer/sendKey'
-import { WhereRow } from './composer/WhereRow'
+import { WhereLocalBranch, WhereRow } from './composer/WhereRow'
+import { ModePicker, RoomPicker } from './composer/WherePickers'
+import { stripRemote } from '../settings/remote'
 import { RoomStatus } from './RoomStatus'
 import { UpNext } from './UpNext'
 
@@ -32,7 +34,10 @@ import { UpNext } from './UpNext'
  * so typed text survives leaving the screen and never shows in another room. `focusIn` is the workspace whose focus requests it
  * takes, for the shared Lead workspace from before, else the room's New chat key.
  */
-export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: string }) {
+export function NewLeadChat({ roomId: routeRoom, focusIn }: { roomId: string; focusIn?: string }) {
+  // The room picked under the box. It starts as the route's, and follows the route when that moves to another room.
+  const [roomId, setRoomId] = useState(routeRoom)
+  useEffect(() => { setRoomId(routeRoom) }, [routeRoom])
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const name = lead?.name ?? 'Kernel'
   const codexInUse = useCodexInUse()
@@ -40,7 +45,13 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const draftKey = newChatDraftOf(roomId)
   // Model, effort and plan mode are the Lead's until picked here, and a pick stays with the room's draft (KERNEL-544).
   const { model, effort, plan, mode, fallback, pickModel, pickEffort, savePick } = useLeadBox(draftKey, lead)
-  const [menu, setMenu] = useState<'model' | 'branch' | 'mode' | PlusPanel>(null)
+  const [menu, setMenu] = useState<'model' | 'branch' | 'mode' | 'room' | 'place' | PlusPanel>(null)
+  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkPr' || menu === 'linkWorkspaces' ? menu : null
+  const rooms = useStore((s) => s.rooms)
+  // Worktree or Local starts from Settings' workspace mode. Kernel's own chat is a worktree either way (KERNEL-405), so Local only tells Kernel how teammates run.
+  const appPlace = useStore((s) => s.settings?.workspace.mode)
+  const [placePick, setPlacePick] = useState<WorkspaceMode | undefined>()
+  const place: WorkspaceMode = placePick ?? appPlace ?? 'worktree'
   // The branch picked per room, empty for the default. It lasts until the chat starts.
   const [bases, setBases] = useState<Record<string, string>>({})
   const picked = bases[roomId] ?? ''
@@ -72,10 +83,10 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const start = () => {
     const typed = d.message()
     if (!typed.length) { d.focus(); return }
-    const parts = briefParts(typed, null, picked ? pickedLines({ mode: 'worktree', target: base.target, fallback: base.fallback, picked: '' }) : [])
+    const parts = briefParts(typed, null, pickedLines({ mode: place, target: base.target, fallback: base.fallback, picked: '' }))
     void run('send', async () => {
       let chat
-      try { chat = await call('lead.start', { roomId, ...leadMessage(parts), model, effort, plan, ...(mode ? { mode } : {}), ...(picked ? { baseRef: picked } : {}) }) }
+      try { chat = await call('lead.start', { roomId, ...leadMessage(parts), model, effort, plan, ...(mode ? { mode } : {}), ...(picked && place === 'worktree' ? { baseRef: picked } : {}) }) }
       catch (e) { actions.ui.toast({ title: 'Could not send', sub: cleanError(e) }); return }
       clearDraft(draftKey)
       setBases((b) => ({ ...b, [roomId]: '' }))
@@ -116,6 +127,14 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); setMenu('linkIssue') }
   }
 
+  /** Another room: the typed text moves to that room's box, and its status, Up next, model and branch follow. */
+  const pickRoom = (id: string) => {
+    if (id === roomId) return
+    moveDraft(draftKey, newChatDraftOf(id))
+    setRoomId(id)
+    d.focus()
+  }
+
   const modelLabel = modelLabelOf(model, codexModels)
   const hasDraft = !d.empty
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
@@ -139,16 +158,20 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
           <ModeButton provider={providerOf(model)} availability={availability} shown={shown} open={menu === 'mode'} onOpen={(o) => setMenu(o ? 'mode' : null)} onPick={(m) => { setMenu(null); pickMode(m); d.focus() }} onCycle={cycleMode} />
           <span className="grow" />
           <span ref={plusAnchor} style={{ position: 'relative' }}>
-            <PlusMenu panel={menu === 'model' || menu === 'branch' || menu === 'mode' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId}
-              onMode={() => setMenu('mode')} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
+            <PlusMenu panel={plusPanel} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId}
+              onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
           <IconButton className="send" icon="up" size={14} label="Send" busy={busy} busyPattern="arrow-right" busyLabel="Sending" data-ready={hasDraft} onClick={() => start()} />
         </>}
         hidden={<input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />}
-        where={<WhereRow room={room} mode="worktree" branch={
-          <BranchPicker roomId={roomId} lead={name} picked={picked} open={menu === 'branch'} disabled={busy} onToggle={() => setMenu(menu === 'branch' ? null : 'branch')} onClose={() => setMenu((m) => (m === 'branch' ? null : m))}
-            onPick={(ref) => setBases((b) => ({ ...b, [roomId]: ref }))} />
-        } />}
+        where={<WhereRow room={room} mode={place}
+          roomPicker={<RoomPicker rooms={rooms} room={room} open={menu === 'room'} disabled={busy} onToggle={() => setMenu(menu === 'room' ? null : 'room')} onClose={() => setMenu((m) => (m === 'room' ? null : m))} onPick={pickRoom} onNewRoom={() => actions.ui.openModal({ name: 'newRoom' })} />}
+          modePicker={<ModePicker mode={place} open={menu === 'place'} disabled={busy} onToggle={() => setMenu(menu === 'place' ? null : 'place')} onClose={() => setMenu((m) => (m === 'place' ? null : m))} onPick={setPlacePick} />}
+          branch={place === 'current'
+            ? <WhereLocalBranch branch={stripRemote(base.fallback, base.remote)} />
+            : <BranchPicker roomId={roomId} picked={picked} open={menu === 'branch'} disabled={busy} onToggle={() => setMenu(menu === 'branch' ? null : 'branch')} onClose={() => setMenu((m) => (m === 'branch' ? null : m))}
+              onPick={(ref) => setBases((b) => ({ ...b, [roomId]: ref }))} />
+          } />}
       />
     </div>
   )
