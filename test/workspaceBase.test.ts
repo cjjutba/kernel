@@ -30,6 +30,9 @@ async function clone(head: 'main' | 'dev') {
   await git(remote, 'checkout', '-q', head)
   const dir = join(await mkdtemp(join(tmpdir(), 'kernel-clone-')), 'quarter')
   await git(remote, 'clone', '-q', remote, dir)
+  // A clone brings no identity of its own, and the workspaces made from it commit.
+  await git(dir, 'config', 'user.email', 't@t.dev')
+  await git(dir, 'config', 'user.name', 'Test')
   if (head === 'dev') await git(dir, 'branch', 'main', 'origin/main')
   return dir
 }
