@@ -27,3 +27,4 @@ Work is tracked in a private Linear workspace: team Kernel, project "Kernel v1".
 2. Two sessions do KERNEL-8 and KERNEL-9 in parallel; merge both.
 3. Open one Conductor workspace per lane (Workspace, Team, Floor, Platform, plus Engine for KERNEL-30 prep). Each works its lane's issues in order.
 4. When the lanes land, run KERNEL-31.
+demo
