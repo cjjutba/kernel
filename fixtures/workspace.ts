@@ -1418,6 +1418,30 @@ const railLead = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * Kernel's chat in Hand off or Build here (KERNEL-780). The chat holds the user's ask, a divider for each switch, and whatever `o` adds.
+ * `ws` overrides the chat's workspace, `changes` are its files, `right` the open tab of the right panel and `menu` the composer menu forced open.
+ */
+const leadModeScene = (f: Fixture, o: { mode: 'handoff' | 'build'; items?: ChatItem[]; ws?: Partial<Workspace>; changes?: ChangedFile[]; right?: 'prs' | 'changes'; menu?: 'mode'; running?: boolean }): Partial<Fixture> => {
+  const ask: ChatItem = { kind: 'user', id: 'lm-u1', ts: at(10, 0), parts: [{ type: 'text', text: 'The invoice total is off by a cent on refunds. Can you fix it?' }] }
+  const s = scene2(f, { id: ids.lead, agentId: 'kernel-lead', leadMode: o.mode, ...(o.changes?.length ? { stat: { files: o.changes.length, added: 33, removed: 3 } } : {}), ...o.ws }, 'Refund rounding', [ask, ...(o.items ?? [])], {}, { model: 'claude-opus-5-5', effort: 'high', plan: false })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    changes: { ...f.changes, [ids.lead]: o.changes ?? [] },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', toolsOpen: false }, ...(o.menu ? { menu: o.menu } : {}), tabs: { [ids.lead]: { tab: ids.leadChat, lastChat: ids.leadChat, files: [], diffs: [] } } }
+  }
+}
+const lmReply = (id: string, text: string, m: number): ChatItem[] => [
+  { kind: 'text', id: `${id}-x`, ts: at(10, m), text },
+  { kind: 'result', id: `${id}-r`, ts: at(10, m), durationMs: 38_000, ok: true }
+]
+const lmFiles: ChangedFile[] = [
+  { path: 'src/lib/money.ts', status: 'M', added: 9, removed: 3 },
+  { path: 'src/lib/money.test.ts', status: 'M', added: 24, removed: 0 }
+]
+const lmPr = { prNumber: 171, prUrl: 'https://github.com/samrivera/client-a/pull/171', prTitle: 'fix(money): round refunds half away from zero' }
+
 // ---------- Lead chats that hold several tabs (KERNEL-338)
 
 const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
@@ -1771,6 +1795,33 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ChatRail: railScene(),
   ChatRailOpen: railScene(),
   ChatRailLead: scene((f) => railLead(f)),
+  // KERNEL-780: Hand off and Build here. Hand off is the default and is drawn as before, with the mode chip first in the composer.
+  WorkspaceLeadHandOff: scene((f) => leadModeScene(f, { mode: 'handoff', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
+  WorkspaceLeadModeMenu: scene((f) => leadModeScene(f, { mode: 'handoff', menu: 'mode', items: lmReply('lm-a', 'Noor has it. I will tell you when the PR is ready.', 1) })),
+  WorkspaceLeadBuildHere: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles,
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I rounded refunds half away from zero in money.ts and added a test for the cent case.', 3)]
+  })),
+  WorkspaceLeadBuildHereReview: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles, ws: { ...lmPr, prState: 'ready' },
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'I opened PR #171. Checks passed and it has no conflicts.', 6)]
+  })),
+  WorkspaceLeadBuildHereMerged: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', ws: { ...lmPr, prState: 'merged', mergedAt: at(10, 20) },
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' }, ...lmReply('lm-b', 'PR #171 merged.', 21)]
+  })),
+  WorkspaceLeadTooBig: scene((f) => leadModeScene(f, {
+    mode: 'build', right: 'changes', changes: lmFiles,
+    items: [
+      { kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'build' },
+      ...lmReply('lm-b', 'Rounding is shared by invoices, credit notes and the export. That touches 14 files across three modules.', 4),
+      { kind: 'modeSuggestion', id: 'lm-s1', ts: at(10, 5), mode: 'handoff', why: 'This change touches 14 files across three modules. Splitting it between teammates keeps each PR small.' }
+    ]
+  })),
+  WorkspaceLeadHandOffDirty: scene((f) => leadModeScene(f, {
+    mode: 'handoff', changes: lmFiles,
+    items: [{ kind: 'leadMode', id: 'lm-d1', ts: at(10, 2), mode: 'handoff' }, ...lmReply('lm-a', 'Noor has it. Your edits in this chat stay where they are.', 3)]
+  })),
   ChatRailNarrow: railScene(true),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],

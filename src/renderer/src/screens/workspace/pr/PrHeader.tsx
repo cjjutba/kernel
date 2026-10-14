@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { Workspace } from '@shared/types'
 import { mergeableState } from '@shared/merge'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { leadModeOf } from '@shared/leadMode'
+import { commandComposer } from '../composer/bus'
 import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
@@ -124,6 +127,15 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
 
   if (busy) return out(spinner(busy))
 
+  // A chat with Kernel in Build here stays open after its PR merges: the band says so and its next change starts a new branch from main (KERNEL-780).
+  const building = isLeadChatWorkspace(ws) && leadModeOf(ws) === 'build'
+  if (view.merged && building) {
+    const merged = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">PR #{ws.prNumber} merged</span></span>
+    const next = <span className="pr-next">The next change starts a new branch from main.</span>
+    return spread
+      ? tone(<><div className="pr-r1">{merged}</div><div className="pr-r2 pr-r2-text">{next}</div></>)
+      : tone(<>{merged}{next}</>)
+  }
   if (view.merged) return out(
     <>
       <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} /><span className="pr-btn-label">Continue</span></Button>
@@ -140,8 +152,12 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
     : b.kind === 'busy' ? spinner(b.label)
       : <Button variant="secondary" className={[view.caret && 'split-main', solid ? 'pr-solid' : 'pr-soft'].filter(Boolean).join(' ')} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && press(b.action)}>{icon && <Icon name={icon} size={12} />}{b.label}</Button>
 
+  // Kernel links an issue it was given (KERNEL-780): the button opens the composer's issue picker, and the pick goes to Kernel in the message.
+  const linkIssue = building && ws.prState === 'none' && changed && !local && ws.source?.kind !== 'issue'
+    ? <Button className="pr-soft" onClick={() => commandComposer('linkIssue')}><Icon name="link" size={12} /><span className="pr-btn-label">Link issue</span></Button>
+    : null
   const overrule = facts && <Button className="pr-soft" onClick={() => setOverruling(true)}>Overrule</Button>
-  const buttons = !main && !view.archive ? null : (
+  const buttons = !main && !view.archive && !linkIssue ? null : (
     <>
       {view.caret ? (
         <span className="pr-split">
@@ -160,6 +176,7 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
           </span>
         </span>
       ) : main}
+      {linkIssue}
       {overrule}
       {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} />Archive</Button>}
     </>

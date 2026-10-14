@@ -1,11 +1,12 @@
 import { createContext, memo, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
+import type { Approval, ChangedFile, Chat, ChatItem, ChatPart, LeadMode } from '@shared/types'
+import { leadModeName, leadModeOf, leadModeSwitched } from '@shared/leadMode'
 import { maskSecrets, stripAnsi, toolView } from '@shared/toolView'
 import { call } from '../../api'
 import { FileIcon } from '../../components/FileIcon'
-import { Avatar, Button, Card, Icon, IconButton, Spinner, type IconName } from '../../ui'
+import { Avatar, Button, Card, Icon, IconButton, Spinner, useBusy, type IconName } from '../../ui'
 import { ServiceMark } from '../../icons'
-import { actions, getState, go, loadWorkspace, useStore } from '../../store'
+import { actions, getState, go, loadWorkspace, setLeadMode, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
 import { NoteText } from './NoteText'
@@ -24,6 +25,7 @@ import { SharedCard } from './cards/SharedCard'
 import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
+import { LEAD_MODE_ICON } from './composer/modes'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 import { ChatRail } from './ChatRail'
 import { opensAtEnd, placeTop, readPlace, savePlace, takePlace, TranscriptChat, useRowOpen, type RowBox } from './chatPlace'
@@ -516,6 +518,23 @@ function LiveLine({ item, since }: { item: Extract<ThreadBlock, { kind: 'live' }
   return <Elapsed since={since} step={verb && <span className="live-step ellipsis">{verb}{view?.object && <span className={view.mono ? 'mono' : undefined}> {view.object}</span>}</span>} />
 }
 
+/** One line across the thread where the chat switched between Hand off and Build here, so the transcript shows which turns could edit (KERNEL-780). */
+function LeadModeDivider({ mode }: { mode: LeadMode }) {
+  return <div className="mode-divider" role="separator" aria-label={leadModeSwitched(mode)}><Icon name={LEAD_MODE_ICON[mode]} size={14} /><span>{leadModeSwitched(mode)}</span></div>
+}
+
+/** Under Kernel's reply when the work is bigger than one PR: one button, only while the chat is still in Build here. Kernel never switches on its own. */
+function ModeSuggestion({ workspaceId, mode }: { workspaceId: string; mode: LeadMode }) {
+  const current = useStore((s) => leadModeOf(s.workspaces.find((w) => w.id === workspaceId)))
+  const [busy, run] = useBusy()
+  if (current === mode) return null
+  return (
+    <div className="mode-suggest">
+      <Button icon={LEAD_MODE_ICON[mode]} busy={!!busy} busyLabel="Switching" onClick={() => void run('Switching', () => attempt('Could not switch', () => setLeadMode(workspaceId, mode)))}>Switch to {leadModeName(mode)}</Button>
+    </div>
+  )
+}
+
 function ApprovalRow({ id }: { id: string }) {
   const a = useStore((s) => s.approvals.find((x) => x.id === id))
   return a ? <ApprovalCard approval={a} inChat /> : null
@@ -576,6 +595,8 @@ const Block = memo(function Block({ block, chatId, workspaceId, changes, inWorks
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
+    case 'leadMode': return <LeadModeDivider mode={item.mode} />
+    case 'modeSuggestion': return <ModeSuggestion workspaceId={workspaceId} mode={item.mode} />
     // Result is folded into a meta row or an error card by buildThread.
     case 'result': return null
   }

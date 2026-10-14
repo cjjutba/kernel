@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type { AccountAddStep, AccountProfile, Provider,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, BottomKind, Chat, ChatItem, ChatRunMode, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, LeadMode, MenuId, McpNeeded, McpSignInAll, Modal, Notification, Overlap, PreflightCheck, PrInfo, PrPending, QueuedMessage, QueueReason, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, UsageView, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -949,6 +949,13 @@ export function replayTerminal(id: string) {
   if (replayedTerminals.has(id)) return
   replayedTerminals.add(id)
   void call('terminal.replay', { chatId: id }).catch(() => { replayedTerminals.delete(id) })
+}
+
+/** Switches a chat with Kernel to Hand off or Build here (KERNEL-770). The saved workspace replaces the store's copy, so the composer chip and the right panel follow at once. */
+export async function setLeadMode(workspaceId: string, mode: LeadMode) {
+  const ws = await call('lead.setMode', { workspaceId, mode })
+  actions.workspaces.upsert(ws)
+  return ws
 }
 
 export async function loadWorkspace(workspaceId: string) {

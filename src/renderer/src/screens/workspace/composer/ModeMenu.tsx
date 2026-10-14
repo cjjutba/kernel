@@ -1,9 +1,10 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
-import type { Provider } from '@shared/types'
+import type { LeadMode, Provider } from '@shared/types'
+import { leadModeName } from '@shared/leadMode'
 import type { ModeAvailabilities } from '../../../permissionModes'
 import { Button, Icon, Kbd } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
-import { MODE_ICON, buttonName, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
+import { LEAD_MODE_ICON, MODE_ICON, buttonName, leadModeRows, modeAria, modeRows, type ComposerMode, type Shown } from './modes'
 
 /**
  * The permission mode of one chat (ComposerModeMenu.png, KERNEL-456): the five modes with a line each, a check on the picked one and
@@ -68,6 +69,61 @@ export function ModeButton({ provider, availability, shown, open, onOpen, onPick
         <Icon name={MODE_ICON[shown.runs]} size={14} /><span className="cmp-mode-name">{buttonName(shown.runs)}</span><Icon name="chevron" size={12} />
       </Button>
       {open && <ModeMenu anchorRef={anchor} provider={provider} availability={availability} shown={shown} onPick={onPick} onCycle={onCycle} onClose={() => onOpen(false)} />}
+    </span>
+  )
+}
+
+/**
+ * How a chat with Kernel works (KERNEL-780): Hand off or Build here, in the menu shape of the permission modes. A pick applies from the
+ * next turn. Arrow keys move, Enter picks, Escape closes. It has no shortcut, so Shift+Tab stays with the permission modes.
+ */
+export function LeadModeMenu({ anchorRef, mode, footer, onPick, onClose }: { anchorRef: React.RefObject<HTMLElement | null>; mode: LeadMode; footer: string; onPick: (mode: LeadMode) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
+  const items = () => [...(ref.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])]
+
+  useEffect(() => {
+    const list = items()
+    ;(list.find((el) => el.getAttribute('aria-checked') === 'true') ?? list[0])?.focus({ preventScroll: true })
+    const trigger = anchorRef.current?.querySelector<HTMLElement>('button')
+    return () => { if (!document.querySelector('[aria-modal="true"]') && (!document.activeElement || document.activeElement === document.body)) trigger?.focus({ preventScroll: true }) }
+  }, [])
+
+  const onKey = (e: KeyboardEvent) => {
+    const list = items()
+    const i = list.indexOf(document.activeElement as HTMLElement)
+    const go = (to: number) => { e.preventDefault(); e.stopPropagation(); list[(to + list.length) % list.length]?.focus() }
+    if (e.key === 'ArrowDown') go(i + 1)
+    else if (e.key === 'ArrowUp') go(i - 1)
+    else if (e.key === 'Home') go(0)
+    else if (e.key === 'End') go(list.length - 1)
+    else if (e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); onClose() }
+  }
+
+  return (
+    <div ref={ref} className="menu cmp-pop mode-pop" role="menu" aria-label="How Kernel works in this chat" onKeyDown={onKey}>
+      {leadModeRows(mode).map((r) => (
+        <button key={r.mode} type="button" role="menuitemradio" aria-checked={r.checked} className="menu-item mode-row" onClick={() => onPick(r.mode)}>
+          <Icon name={r.icon} size={16} />
+          <span className="mode-tx"><span className="mode-t">{r.name}</span><span className="mode-d">{r.desc}</span></span>
+          {r.checked && <Icon name="check" size={14} />}
+        </button>
+      ))}
+      <div className="menu-sep" role="separator" />
+      <div className="mode-foot">{footer}</div>
+    </div>
+  )
+}
+
+/** The chip first in the composer row of a chat with Kernel, with its menu above it. */
+export function LeadModeButton({ mode, footer, open, onOpen, onPick }: { mode: LeadMode; footer: string; open: boolean; onOpen: (open: boolean) => void; onPick: (mode: LeadMode) => void }) {
+  const anchor = useRef<HTMLSpanElement>(null)
+  return (
+    <span ref={anchor} style={{ position: 'relative' }}>
+      <Button variant="ghost" className="cmp-model cmp-mode cmp-lead" aria-label={`How Kernel works: ${leadModeName(mode)}`} aria-haspopup="menu" aria-expanded={open} onClick={() => onOpen(!open)}>
+        <Icon name={LEAD_MODE_ICON[mode]} size={14} /><span className="cmp-mode-name">{leadModeName(mode)}</span><Icon name="chevron" size={12} />
+      </Button>
+      {open && <LeadModeMenu anchorRef={anchor} mode={mode} footer={footer} onPick={onPick} onClose={() => onOpen(false)} />}
     </span>
   )
 }
