@@ -82,9 +82,8 @@ export function Avatar({ name, size = 20, solid }: { name: string; size?: number
   return <span className="avatar" data-solid={solid ? 'true' : undefined} aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.48) }}>{name.trim()[0]?.toUpperCase()}</span>
 }
 
-/** A stable offset into the 1s loop from an id, so a row keeps its rhythm across renders and rows run out of step. */
 /**
- * The loader: a 3x3 grid of round dots that rest at full size and dip out on their turn in a 1.2s loop, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 13px grid, and it always sits beside words.
+ * The loader: a 3x3 grid of round dots that rest at full size and dip out on their turn in a 0.8s loop, in a pattern that says what kind of wait it is (the library is in `dotPatterns.ts`, shown in DevUi, and which place uses which is in DESIGN.md, Motion). It is a fixed 13px grid, and it always sits beside words.
  * A string `label` makes it a status. `null` makes it decorative, for a button or row that already shows a word. Every loader starts its loop together, so rows run in step. Under reduced motion it holds a still frame that shows the pattern's shape (KERNEL-714, KERNEL-740, KERNEL-759).
  */
 export function Spinner({ label = 'Loading', pattern = 'wave', className }: { label?: string | null; pattern?: SpinnerPattern; className?: string }) {
@@ -93,9 +92,11 @@ export function Spinner({ label = 'Loading', pattern = 'wave', className }: { la
   const { n, dots, still } = dotPatterns[pattern]
   const ref = useRef<HTMLSpanElement>(null)
   // A loader that mounts later joins the loop where it already is, so every loader on screen runs in step.
-  useLayoutEffect(() => { ref.current?.getAnimations?.({ subtree: true }).forEach((a) => { a.startTime = 0 }) }, [pattern])
+  const sync = () => { ref.current?.getAnimations?.({ subtree: true }).forEach((a) => { if (a.startTime !== 0) a.startTime = 0 }) }
+  useLayoutEffect(sync, [pattern])
+  // The browser recreates a loader's animations when an ancestor stops being display:none or the reduced-motion setting flips, and they start at that moment. animationstart fires then, so rejoin the loop.
   return (
-    <span ref={ref} className={cls} data-pattern={pattern} style={{ '--n': n } as CSSProperties} {...a11y}>
+    <span ref={ref} onAnimationStart={sync} className={cls} data-pattern={pattern} style={{ '--n': n } as CSSProperties} {...a11y}>
       {dots.map((d, i) => <i key={i} style={{ '--k': d.at, '--s': still.includes(i) ? 1 : undefined } as CSSProperties} />)}
     </span>
   )
