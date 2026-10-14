@@ -112,7 +112,7 @@ export function AccountRow({ account, line2, back, note, cells, active, action, 
         <div className="ac-acts" ref={anchor} data-keep={keep || undefined}>
           {pending
             ? <Button busy busyLabel={pending}>{pending}</Button>
-            : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
+            : action && <Button aria-label={`${action.label} ${account.label}`} busy={action.busy} busyPattern="wave-back" busyLabel={action.busyLabel} disabled={locked} onClick={action.onClick}>{action.label}</Button>}
           <IconButton
             icon="more" size={16} label={`More for ${account.label}`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={locked || !!pending}
             className={menuOpen ? 'ac-more on' : 'ac-more'} onClick={() => onMenu(!menuOpen)}

@@ -178,7 +178,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
             <Icon name="search" size={14} />
             <input type="search" aria-label="Search issues" placeholder="Search issues" autoComplete="off" value={query} onChange={(e) => setQuery(e.target.value)} />
           </span>
-          <IconButton icon="refresh" size={16} label="Refresh issues" busy={refreshing} busyLabel="Refreshing issues" onClick={refresh} />
+          <IconButton icon="refresh" size={16} label="Refresh issues" busy={refreshing} busyPattern="rotate" busyLabel="Refreshing issues" onClick={refresh} />
         </div>
       )}
 
@@ -195,7 +195,7 @@ export function LinearIssues({ issueId, head }: { issueId?: string; head: RoomHe
       {shown.kind === 'error' && (
         <div className="is-center">
           <div className="is-fail">
-            <Banner kind={shown.title.includes('rejected') ? 'auth' : 'offline'} title={shown.title} actions={<Button size="md" busy={refreshing} busyLabel="Trying" onClick={refresh}>Try again</Button>}>{shown.sub}</Banner>
+            <Banner kind={shown.title.includes('rejected') ? 'auth' : 'offline'} title={shown.title} actions={<Button size="md" busy={refreshing} busyPattern="rotate" busyLabel="Trying" onClick={refresh}>Try again</Button>}>{shown.sub}</Banner>
           </div>
         </div>
       )}

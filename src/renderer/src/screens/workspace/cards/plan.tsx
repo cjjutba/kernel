@@ -142,7 +142,7 @@ export function PlanBar({ a }: { a: Approval }) {
     <div className="cmp-planbar" role="group" aria-label="Plan">
       <span className="grow" />
       <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
-      <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" busy={!!busy} busyLabel="Approving" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
+      <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" busy={!!busy} busyPattern="pulse" busyLabel="Approving" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
     </div>
   )
 }

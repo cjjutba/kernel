@@ -206,7 +206,7 @@ export function Accounts({ s }: { s: AppSettings }) {
       {holds.map((h) => (
         <div key={h.provider} className="ac-hold" role="status">
           <span><b>{NAME[h.provider]} is on hold.</b> Every subscription is at a limit{h.until ? ` until ${h.until}` : ''}.</span>
-          {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
+          {h.key && <Button busy={busy === `use:${keyOf(h.key)}`} busyPattern="wave-back" busyLabel="Switching" disabled={locked} onClick={() => void switchTo(h.key!)}>Use {h.key.label}</Button>}
         </div>
       ))}
       {PROVIDERS.map((p) => {
@@ -261,7 +261,7 @@ export function Accounts({ s }: { s: AppSettings }) {
         <ConfirmDialog
           title={`Remove ${removing.label}?`}
           body={`${removing.auth === 'apiKey' ? `Kernel deletes the saved key for ${removing.label}.` : `Kernel signs out of ${removing.label} and deletes its saved login.`}${removing.active ? ` Agents move to ${accounts.find((x) => x.provider === removing.provider && x.cli)?.label ?? `${NAME[removing.provider]}’s own login`}.` : ''} You can add it again later.`}
-          confirmLabel="Remove" danger busy={busy === `remove:${keyOf(removing)}`} busyLabel="Removing"
+          confirmLabel="Remove" danger busy={busy === `remove:${keyOf(removing)}`} busyPattern="scatter" busyLabel="Removing"
           onConfirm={() => void remove(removing)} onCancel={() => setRemoving(null)}
         />
       )}
@@ -300,7 +300,7 @@ function CliRows({ provider, s, status, busy, act, setStatus }: {
             <span className="set-label">Kernel can't run {NAME[provider]}</span>
             <span className="set-desc">{status.error}</span>
           </div>
-          {exe !== 'bundled' && <Button busy={busy === `${provider}:bundled`} busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
+          {exe !== 'bundled' && <Button busy={busy === `${provider}:bundled`} busyPattern="wave-back" busyLabel="Switching" disabled={busy !== null} onClick={() => void setPath('bundled', { path: '', useSystem: false })}>Use bundled</Button>}
         </div>
       )}
       <Row label="Executable" labelId={`ac-exe-${provider}`} desc={<><span className="ac-mono">{version}</span>{exePath && <span className="ac-path">{tilde(exePath)}</span>}</>}>

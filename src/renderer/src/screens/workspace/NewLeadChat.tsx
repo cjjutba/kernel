@@ -108,7 +108,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
               <PlusMenu panel={menu === 'model' || menu === 'branch' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} plan={plan} onPlan={() => { togglePlan(); setMenu(null) }}
                 onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
             </span>
-            <IconButton className="send" icon="up" size={14} label="Send" busy={busy} busyLabel="Sending" data-ready={hasDraft} onClick={() => start()} />
+            <IconButton className="send" icon="up" size={14} label="Send" busy={busy} busyPattern="arrow-right" busyLabel="Sending" data-ready={hasDraft} onClick={() => start()} />
           </div>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />

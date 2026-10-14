@@ -130,5 +130,5 @@ function RefreshButton() {
   const refresh = () => run('refresh', async () => {
     try { actions.usage.set(await call('usage.get', { force: true })) } catch { /* a failed read keeps the last numbers */ }
   })
-  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyLabel="Refreshing usage" onClick={refresh} />
+  return <IconButton className="ft-refresh" icon="refresh" size={14} label="Refresh usage" busy={busy !== null} busyPattern="rotate" busyLabel="Refreshing usage" onClick={refresh} />
 }
