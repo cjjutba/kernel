@@ -25,7 +25,7 @@ const KEYCHAIN = 'keychain'
  * and `switched` that the switch went through. A move that waits says why and until when nothing has room, the earliest
  * reset across the provider's accounts in seconds, for the Lead (KERNEL-777).
  */
-interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number }
+interface Move { at?: number; state: 'reading' | 'waiting' | 'done'; to?: string; switched?: boolean; why?: 'full' | 'signIn'; until?: number; told?: string }
 
 /** How often every account's usage is read while any agent works (KERNEL-567). */
 const USAGE_EVERY_MS = 10 * 60_000
@@ -332,6 +332,10 @@ export class Account extends Feature {
     move.state = 'waiting'
     move.why = why
     move.until = resets.length ? Math.min(...resets) : undefined
+    // Each reading of the same limits comes through here again, but the Lead hears about one stuck state once.
+    const told = `${why}:${move.until ?? ''}`
+    if (move.told === told) return
+    move.told = told
     this.k.leadUpdates.limitStuck(p, { stuck: why, ...(move.until ? { resetsAt: move.until } : {}) })
   }
 

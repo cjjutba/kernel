@@ -800,6 +800,25 @@ describe('switching accounts at a limit (KERNEL-568)', () => {
     await k.stop()
   })
 
+  it('tells the Lead about a limit it waits on once, however many readings find the same limit (KERNEL-777)', async () => {
+    const { k, ids, folder } = await setUp(['Personal'])
+    const stuck = vi.spyOn(k.leadUpdates, 'limitStuck')
+    sdk.usage = { '': 100, [folder('Personal')]: 100 }
+    reject(k)
+    reject(k, { accountId: ids.Personal })
+    await k.config.setSettings({ accounts: { switchAtLimit: { claude: true } } })
+    k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+    await until(() => moving(k).includes('waiting'))
+    await until(() => stuck.mock.calls.length > 0)
+    // The usage read that follows a limit, and the recheck while it stands, apply the same limits again.
+    for (let i = 0; i < 3; i++) {
+      k.account.applyLimits(k.store.meta<RateLimit[]>('limits') ?? [])
+      await new Promise((r) => setTimeout(r, 50))
+    }
+    expect(stuck).toHaveBeenCalledTimes(1)
+    await k.stop({ budgetMs: 0 })
+  })
+
   it('moves Codex off a limit too, and the chat the limit cut off carries on on the new account with a note', async () => {
     const { k, h, repo } = await setUp()
     const added = await h['accounts.add']({ provider: 'codex' })
